@@ -1,0 +1,23 @@
+# PyPI publishing — keep off GitHub
+Makefile.publish
+
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# My stuff
+prd.md
+prd2.md
+NOTES.txt
+CLAUDE.md
+PROMPTS.md
+example_specs/
+v3-design/*
+PACKAGING.md
