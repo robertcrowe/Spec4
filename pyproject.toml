@@ -1,6 +1,6 @@
 [project]
 name = "spec4"
-version = "0.1.0"
+version = "0.1.1"
 description = "AI-assisted software project planning — from idea to executable coding phases"
 readme = "README.md"
 license = { text = "Apache-2.0" }
