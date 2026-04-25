@@ -44,6 +44,9 @@
 #chat-scroll-area {
   resize: vertical;
   min-height: 200px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 8px;
 }
 
 /* Chat send button matches textarea height */
