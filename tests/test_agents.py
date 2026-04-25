@@ -94,14 +94,14 @@ class TestBrainstormer:
         session = make_session()
         vision_response = (
             'Great vision!\n\n```json\n'
-            '{"name": "TodoApp", "vision": "A simple task manager"}\n'
+            '{"vision_statement": {"name": "TodoApp", "vision": "A simple task manager"}}\n'
             '```'
         )
         with mock_litellm_stream(vision_response):
             collect(brainstormer.run("Yes, finalize it", session, session["llm_config"]))
 
         assert session["brainstormer_state"] == "vision_complete"
-        assert session["vision_statement"] == {"name": "TodoApp", "vision": "A simple task manager"}
+        assert session["vision_statement"] == {"vision_statement": {"name": "TodoApp", "vision": "A simple task manager"}}
 
     def test_non_vision_response_stays_in_progress(self):
         session = make_session()
@@ -231,8 +231,8 @@ class TestStackAdvisor:
 class TestBrainstormerBranches:
     def test_extract_vision_json_valid(self):
         from spec4.agents.brainstormer import _extract_vision_json
-        text = '```json\n{"name": "App", "vision": "desc"}\n```'
-        assert _extract_vision_json(text) == {"name": "App", "vision": "desc"}
+        text = '```json\n{"vision_statement": {"name": "App", "vision": "desc"}}\n```'
+        assert _extract_vision_json(text) == {"vision_statement": {"name": "App", "vision": "desc"}}
 
     def test_extract_vision_json_invalid_json_returns_none(self):
         from spec4.agents.brainstormer import _extract_vision_json

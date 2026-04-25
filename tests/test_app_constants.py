@@ -17,8 +17,8 @@ class TestPathToPhase:
     def test_chat_maps_to_chat(self):
         assert PATH_TO_PHASE["/chat"] == "chat"
 
-    def test_all_five_phases_covered(self):
-        expected = {"landing", "working_dir", "setup", "agent_select", "chat"}
+    def test_all_phases_covered(self):
+        expected = {"landing", "working_dir", "setup", "agent_select", "chat", "done"}
         assert set(PATH_TO_PHASE.values()) == expected
 
 

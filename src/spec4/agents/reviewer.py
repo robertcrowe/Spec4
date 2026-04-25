@@ -130,7 +130,8 @@ Cover these sections IN ORDER, one at a time:
    setup, notable patterns, areas that will affect new development).
 
 For each section, present your findings clearly, then ask the user to confirm or correct them \
-before moving to the next section. Confirmation questions must end with "(yes/no)". When you \
+before moving to the next section. Confirmation questions must never be phrased as "X or Y?" — ask them directly. End them \
+with "(yes/no — you're also welcome to ask questions or share comments either way)". When you \
 offer numbered options, end with "Please select an option (answer with number and/or optional comments)". Update your \
 understanding if the user provides corrections before moving on. Any links in your responses \
 should open a new browser tab.

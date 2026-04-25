@@ -35,7 +35,9 @@ You must treat the stack spec as the authoritative list of approved system compo
 and library dependencies. If you determine that a phase requires any component, database, service, \
 or library dependency that is NOT already defined in the stack spec, you must stop and ask the user \
 for explicit confirmation before including it. Describe why it is needed and what it would add, \
-then ask "(yes/no)" and wait for the user's approval. Do not assume approval — only add it to a phase after the user confirms.
+then ask directly — never as "X or Y?" — and end with "(yes/no — you're also welcome to ask \
+questions or share comments either way)". Wait for the user's approval. Do not assume approval — \
+only add it to a phase after the user confirms.
 
 Phasing Logic & Constraints:
 
@@ -164,11 +166,28 @@ Operating Procedure:
 guess incorrectly (e.g., complex regex, tricky auth flows) and provide explicit guidance in the \
 risk_assessment.
 
+Brownfield — Incremental Phases (existing phases provided):
+
+When a set of existing phases is included in the seed, those phases represent work already \
+planned or completed. Do NOT re-plan or repeat them. Analyze the updated vision and stack to \
+determine what new functionality is needed beyond what the existing phases cover, then plan \
+only the additional phases required. Number new phases starting from the last existing phase \
+number + 1, and set `total_phases` to the combined count (existing + new).
+
+Brownfield — Existing Codebase, No Prior Phases (code review provided, no existing phases):
+
+When a code review of the existing codebase is included but no prior phases exist, the project \
+already has real code in place. Phase 1 must NOT scaffold the project from scratch. Instead, \
+Phase 1 is an integration/validation thread: its goal is to confirm the existing codebase \
+builds and runs correctly under the stack spec, resolve any conflicts identified in the code \
+review, and establish a clean baseline for the new phases that follow.
+
 User Review and Output:
 
-1. When the phases are defined, present them to the user in text and ask the user to review, \
-describe edits, or approve them — end the question with "(yes/no)". Any links in your \
-responses should open a new browser tab.
+1. When the phases are defined, present them to the user in text and ask the user to review and approve them — never phrase \
+it as "X or Y?", ask it directly, and end with "(yes/no — you're also welcome to ask questions, \
+describe edits, or share comments either way)". Any links in your responses should open a new \
+browser tab.
 2. When the user has approved the phases, immediately output ALL phase JSON blocks in a \
 single response — one fenced JSON code block per phase, in order. Do NOT announce that you \
 are about to output them, do not say "I will now output", do not add any explanation \
@@ -215,9 +234,12 @@ def run(
                     return
             return
 
-        # Opening turn: seed with vision + stack, then call LLM
+        # Opening turn: seed with vision + stack, plus context for brownfield scenarios
         vision = session.get("vision_statement")
         stack = session.get("stack_statement")
+        existing_phases = session.get("phases") or []
+        code_review = session.get("code_review")
+
         vision_block = (
             f"Here is the project vision statement:\n\n```json\n{json.dumps(vision, indent=2)}\n```\n\n"
             if vision else ""
@@ -226,11 +248,36 @@ def run(
             f"Here is the technology stack spec:\n\n```json\n{json.dumps(stack, indent=2)}\n```\n\n"
             if stack else ""
         )
-        seed = (
-            f"{vision_block}"
-            f"{stack_block}"
-            "Please analyze the vision and stack, then generate the full set of development phases."
-        )
+
+        if existing_phases:
+            phases_json = "\n\n".join(
+                f"```json\n{json.dumps(p, indent=2)}\n```" for p in existing_phases
+            )
+            extra_block = (
+                f"The following phases have already been planned (treat as completed work — "
+                f"do not re-plan them):\n\n{phases_json}\n\n"
+            )
+            instruction = (
+                "Please analyze the updated vision and stack, then generate only the new phases "
+                "needed to implement the changes, numbered from where the existing phases leave off."
+            )
+        elif code_review:
+            extra_block = (
+                f"Here is a code review of the existing codebase:\n\n"
+                f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
+            )
+            instruction = (
+                "Please analyze the vision, stack, and existing codebase, then generate the "
+                "development phases. Phase 1 must be an integration/validation thread for the "
+                "existing code — not a from-scratch scaffold."
+            )
+        else:
+            extra_block = ""
+            instruction = (
+                "Please analyze the vision and stack, then generate the full set of development phases."
+            )
+
+        seed = f"{vision_block}{stack_block}{extra_block}{instruction}"
         messages.append({"role": "user", "content": seed})
     else:
         messages.append({"role": "user", "content": user_input})

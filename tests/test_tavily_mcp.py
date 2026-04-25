@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from spec4 import tavily_mcp
 
@@ -27,14 +27,14 @@ class TestWebSearchToolSpec:
 
 class TestValidate:
     def test_success_returns_true_with_tools(self):
-        with patch("spec4.tavily_mcp._run_async", return_value=["search"]):
+        with patch("spec4.tavily_mcp._list_tools_async", new_callable=AsyncMock, return_value=["search"]):
             ok, tools, err = tavily_mcp.validate("valid-key")
         assert ok is True
         assert tools == ["search"]
         assert err == ""
 
     def test_failure_returns_false_with_message(self):
-        with patch("spec4.tavily_mcp._run_async", side_effect=Exception("Connection refused")):
+        with patch("spec4.tavily_mcp._list_tools_async", new_callable=AsyncMock, side_effect=Exception("Connection refused")):
             ok, tools, err = tavily_mcp.validate("bad-key")
         assert ok is False
         assert tools == []
@@ -43,11 +43,11 @@ class TestValidate:
 
 class TestSearch:
     def test_returns_result_text(self):
-        with patch("spec4.tavily_mcp._run_async", return_value="Search results here"):
+        with patch("spec4.tavily_mcp._call_search_async", new_callable=AsyncMock, return_value="Search results here"):
             assert tavily_mcp.search("query", "key") == "Search results here"
 
     def test_exception_returns_error_string(self):
-        with patch("spec4.tavily_mcp._run_async", side_effect=Exception("timeout")):
+        with patch("spec4.tavily_mcp._call_search_async", new_callable=AsyncMock, side_effect=Exception("timeout")):
             result = tavily_mcp.search("query", "key")
         assert result.startswith("Search failed:")
         assert "timeout" in result

@@ -80,7 +80,8 @@ options.  When the user suggests their own option you will evaluate the strength
 that option, and ask the user to confirm their answer. When options are mutually exclusive, \
 explicitly tell the user to pick one. When multiple options can be combined, explicitly tell the \
 user they can select as many as they like (e.g., "Pick one or more — you can combine them"). \
-When asking a yes/no confirmation question, end it with "(yes/no)". When presenting a numbered \
+When asking a yes/no confirmation question, never phrase it as "X or Y?" — ask it directly. \
+End it with "(yes/no — you're also welcome to ask questions or share comments either way)".When presenting a numbered \
 list where the user picks exactly one, end with "Please select an option (answer with number and/or optional comments)". \
 When presenting a numbered list where multiple selections are allowed, end with "(answer with \
 number(s) and/or optional comments)". You will \

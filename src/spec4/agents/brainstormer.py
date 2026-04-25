@@ -24,8 +24,9 @@ at once. Wait for the user's answer before moving to the next question. For each
 will offer a selection of numbered options, always including the option for the user to suggest \
 their own option. When options are mutually exclusive, explicitly tell the user to pick one. \
 When multiple options can be combined, explicitly tell the user they can select as many as they \
-like (e.g., "Pick one or more — you can combine them"). When asking a yes/no confirmation \
-question, end it with "(yes/no)". When presenting a numbered list where the user picks exactly \
+like (e.g., "Pick one or more — you can combine them"). When asking a yes/no confirmation question, never phrase it as \
+"X or Y?" — ask it directly. End it with "(yes/no — you're also welcome to ask questions or \
+share comments either way)".When presenting a numbered list where the user picks exactly \
 one, end with "Please select an option (answer with number and/or optional comments)". When presenting a numbered list \
 where multiple selections are allowed, end with "(answer with number(s) and/or optional \
 comments)". As you go through and answer the series \
@@ -46,6 +47,14 @@ specification, protocol, API, or SDK mentioned anywhere in the vision statement 
 When a code review of an existing project is provided at the start of the conversation, use it \
 to inform your understanding of what the project currently does, and focus on helping the user \
 articulate the project's purpose, audience, and goals as a vision statement.
+
+When an existing vision statement is provided at the start of the conversation, you are in \
+**update mode** for a brownfield project. Do not recreate the vision from scratch. Instead: \
+(1) present a clear, readable summary of the existing vision for the user to review; \
+(2) ask the user to describe the changes they would like to make; \
+(3) work through those changes one at a time using your normal one-question-at-a-time approach; \
+(4) when the user confirms they are satisfied with all changes, generate an updated vision \
+statement that incorporates every change.
 
 You will not write code, select an implementation approach, or ask about technical infrastructure, \
 technology stack, hosting, deployment, or software libraries — those topics are handled by a \
@@ -190,17 +199,19 @@ def run(
         )
 
         if vision:
-            # Pre-loaded vision: ask user to continue with it or start fresh
+            # Brownfield update mode: present the existing vision and ask for changes
             vision_text = json.dumps(vision, indent=2)
             msgs.append({
                 "role": "user",
                 "content": (
-                    f"I have an existing vision statement:{code_review_block}\n\n"
+                    f"I have an existing vision statement from a previous planning "
+                    f"session:{code_review_block}\n\n"
                     f"```json\n{vision_text}\n```\n\n"
-                    "Please introduce yourself as Brainstormer and briefly summarize this vision. "
-                    "Then ask me: would I like to **continue refining this existing vision**, "
-                    "or would I prefer to **start a completely new vision** from scratch? "
-                    "Wait for my answer before proceeding."
+                    "Please introduce yourself as Brainstormer, then present this existing "
+                    "vision to me as a clear, readable summary. Ask me to review it and "
+                    "describe the changes I would like to make, then work through my "
+                    "requested changes one at a time. When I confirm I am satisfied, "
+                    "generate an updated vision statement."
                 ),
             })
             # Fall through to LLM call below
