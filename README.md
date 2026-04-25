@@ -7,7 +7,7 @@
 Spec4 is a Dash app (using Dash Mantine Components) that guides you through three stages of project planning using a pipeline of specialised LLM agents. Start with a rough idea and finish with a set of structured, ordered development phases ready to hand to an AI coding agent like Claude Code.
 
 ### Quick Demo Video
-[![Spec4 Demo](https://github.com/robertcrowe/Spec4/raw/main/src/spec4/assets/thumb.png)](https://youtu.be/09zBmoNKzS0)
+[![Spec4 Demo](https://github.com/robertcrowe/Spec4/raw/main/src/spec4/assets/thumb.png)](https://youtu.be/vhIcx05FoUs)
 
 ---
 
