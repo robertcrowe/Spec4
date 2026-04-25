@@ -25,7 +25,7 @@ Spec4 is a Dash app (using Dash Mantine Components) that guides you through thre
 **Option 1 — Install from PyPI (recommended for most users):**
 
 ```bash
-uv tool install spec4
+uv tool install spec4 --refresh
 spec4
 ```
 
