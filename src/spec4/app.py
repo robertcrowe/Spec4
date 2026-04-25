@@ -236,7 +236,7 @@ def render_page(session, prefs, render_count):
     phase = session.get("phase", "landing")
     if phase == "working_dir":
         # If a directory was previously saved, start the browser there.
-        if prefs.get("working_dir") and session.get("browser_path", "") == str(pathlib.Path.home()):
+        if prefs.get("working_dir") and not session.get("browser_path"):
             session = {**session, "browser_path": prefs["working_dir"]}
             new_session = session
         content = _working_dir_layout(session)

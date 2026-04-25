@@ -13,7 +13,7 @@ from spec4.agents import brainstormer, phaser, reviewer, stack_advisor
 def _default_session() -> dict:
     return {
         "working_dir": None,
-        "browser_path": str(pathlib.Path.home()),
+        "browser_path": None,
         "specmem": None,
         "phase": "landing",
         "provider": None,
