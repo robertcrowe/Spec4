@@ -3,8 +3,15 @@ from __future__ import annotations
 import pathlib
 from typing import Any
 
-from spec4 import project_manager, providers, tavily_mcp  # noqa: F401 — providers kept for symmetry
+from spec4 import project_manager
 from spec4.agents import brainstormer, phaser, reviewer, stack_advisor
+from spec4.app_constants import (
+    STATE_IN_PROGRESS,
+    STATE_PHASES_COMPLETE,
+    STATE_REVIEW_COMPLETE,
+    STATE_STACK_COMPLETE,
+    STATE_VISION_COMPLETE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -28,14 +35,14 @@ def _default_session() -> dict[str, Any]:
         "llm_config": None,
         "messages": [],
         "active_agent": "brainstormer",
-        "reviewer_state": "in_progress",
+        "reviewer_state": STATE_IN_PROGRESS,
         "reviewer_messages": [],
         "code_review": None,
-        "brainstormer_state": "in_progress",
+        "brainstormer_state": STATE_IN_PROGRESS,
         "brainstormer_messages": [],
         "vision_statement": None,
         "stack_advisor_messages": [],
-        "stack_advisor_state": "in_progress",
+        "stack_advisor_state": STATE_IN_PROGRESS,
         "stack_statement": None,
         "phaser_state": None,
         "phaser_messages": [],
@@ -63,13 +70,13 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
         "llm_config": None,
         "setup_error": None,
         "vision_statement": None,
-        "brainstormer_state": "in_progress",
+        "brainstormer_state": STATE_IN_PROGRESS,
         "stack_statement": None,
-        "stack_advisor_state": "in_progress",
+        "stack_advisor_state": STATE_IN_PROGRESS,
         "phases": [],
         "phaser_state": None,
         "code_review": None,
-        "reviewer_state": "in_progress",
+        "reviewer_state": STATE_IN_PROGRESS,
         "specmem": None,
         "_warn_existing_content": False,
     }
@@ -79,16 +86,16 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
         artifacts = {}
     if artifacts.get("vision"):
         session["vision_statement"] = artifacts["vision"]
-        session["brainstormer_state"] = "vision_complete"
+        session["brainstormer_state"] = STATE_VISION_COMPLETE
     if artifacts.get("stack"):
         session["stack_statement"] = artifacts["stack"]
-        session["stack_advisor_state"] = "stack_complete"
+        session["stack_advisor_state"] = STATE_STACK_COMPLETE
     if artifacts.get("phases"):
         session["phases"] = artifacts["phases"]
-        session["phaser_state"] = "phases_complete"
+        session["phaser_state"] = STATE_PHASES_COMPLETE
     if artifacts.get("code_review"):
         session["code_review"] = artifacts["code_review"]
-        session["reviewer_state"] = "review_complete"
+        session["reviewer_state"] = STATE_REVIEW_COMPLETE
     specmem = project_manager.read_specmem(path)
     if specmem:
         session["specmem"] = specmem
@@ -120,8 +127,10 @@ def _run_agent_blocking(user_input: str | None, session: dict[str, Any]) -> str:
         gen = brainstormer.run(user_input, session, llm_config)
     elif active == "stack_advisor":
         gen = stack_advisor.run(user_input, session, llm_config)
-    else:
+    elif active == "phaser":
         gen = phaser.run(user_input, session, llm_config)
+    else:
+        raise ValueError(f"Unknown agent: {active!r}")
 
     return "".join(gen)
 
@@ -130,20 +139,23 @@ def _persist_artifacts(session: dict[str, Any]) -> None:
     working_dir = session.get("working_dir")
     if not working_dir:
         return
-    if session.get("reviewer_state") == "review_complete" and session.get(
+    if session.get("reviewer_state") == STATE_REVIEW_COMPLETE and session.get(
         "code_review"
     ):
         project_manager.save_code_review(working_dir, session["code_review"])
-    if session.get("brainstormer_state") == "vision_complete" and session.get(
+    needs_specmem = False
+    if session.get("brainstormer_state") == STATE_VISION_COMPLETE and session.get(
         "vision_statement"
     ):
         project_manager.save_vision(working_dir, session["vision_statement"])
-        project_manager.update_specmem_planning_state(working_dir, session)
-    if session.get("stack_advisor_state") == "stack_complete" and session.get(
+        needs_specmem = True
+    if session.get("stack_advisor_state") == STATE_STACK_COMPLETE and session.get(
         "stack_statement"
     ):
         project_manager.save_stack(working_dir, session["stack_statement"])
-        project_manager.update_specmem_planning_state(working_dir, session)
-    if session.get("phaser_state") == "phases_complete" and session.get("phases"):
+        needs_specmem = True
+    if session.get("phaser_state") == STATE_PHASES_COMPLETE and session.get("phases"):
         project_manager.save_phases(working_dir, session["phases"])
+        needs_specmem = True
+    if needs_specmem:
         project_manager.update_specmem_planning_state(working_dir, session)

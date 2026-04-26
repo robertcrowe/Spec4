@@ -121,3 +121,16 @@ def _fetch_models(provider_key: str, api_key: str) -> list[str]:
         ]
 
     return []
+
+
+def all_provider_labels() -> list[str]:
+    """Return display labels for all providers, in registry order."""
+    return [p["label"] for p in PROVIDERS.values()]
+
+
+def provider_key_for_label(label: str) -> str:
+    """Return the provider key for a display label, falling back to first."""
+    for key, info in PROVIDERS.items():
+        if info["label"] == label:
+            return key
+    return next(iter(PROVIDERS))

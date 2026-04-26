@@ -6,6 +6,8 @@ from collections.abc import Generator
 from typing import Any
 
 from spec4 import tavily_mcp
+from spec4.agents._utils import _last_assistant_text, _replay_last_assistant
+from spec4.app_constants import STATE_PHASES_COMPLETE
 
 
 SYSTEM_PROMPT = """\
@@ -218,7 +220,7 @@ def run(
 ) -> Generator[str, None, None]:
     """Phaser — decomposes vision + stack into executable coding phases.
 
-    Yields text chunks suitable for consumption by st.write_stream().
+    Yields text chunks consumed by session._run_agent_blocking.
     Mutates `session` to track state.
     """
     if "phaser_messages" not in session:
@@ -229,10 +231,7 @@ def run(
     if user_input is None:
         if messages:
             # Re-entry: replay last assistant response without calling LLM
-            for msg in reversed(messages):
-                if msg["role"] == "assistant":
-                    yield msg["content"]
-                    return
+            yield from _replay_last_assistant(messages)
             return
 
         # Opening turn: seed with vision + stack, plus context for brownfield scenarios
@@ -288,10 +287,7 @@ def run(
 
     yield from tavily_mcp.stream_turn(system, messages, llm_config, tavily_api_key)
 
-    full_text = next(
-        (m["content"] or "" for m in reversed(messages) if m["role"] == "assistant"), ""
-    )
-    phases = _extract_phases(full_text)
+    phases = _extract_phases(_last_assistant_text(messages))
     if phases:
-        session["phaser_state"] = "phases_complete"
+        session["phaser_state"] = STATE_PHASES_COMPLETE
         session["phases"] = phases

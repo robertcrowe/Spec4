@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Generator
 from typing import Any
 
 from spec4 import tavily_mcp
+from spec4.agents._utils import (
+    _extract_json_block,
+    _last_assistant_text,
+    _replay_last_assistant,
+)
+from spec4.app_constants import STATE_VISION_COMPLETE
 
 
 SYSTEM_PROMPT = """\
@@ -154,15 +159,8 @@ Output only the JSON code block when generating the final vision statement — n
 
 def _extract_vision_json(text: str) -> dict[str, Any] | None:
     """Extract a JSON vision statement from a fenced code block in the LLM response."""
-    match = re.search(r"```json\s*(\{.*\})\s*```", text, re.DOTALL)
-    if match:
-        try:
-            data: dict[str, Any] = json.loads(match.group(1))
-            if "vision_statement" in data:
-                return data
-        except json.JSONDecodeError:
-            pass
-    return None
+    data = _extract_json_block(text)
+    return data if data is not None and "vision_statement" in data else None
 
 
 def run(
@@ -172,7 +170,7 @@ def run(
 ) -> Generator[str, None, None]:
     """Brainstormer — collaborates with the user to develop a software project vision.
 
-    Yields text chunks suitable for consumption by st.write_stream().
+    Yields text chunks consumed by session._run_agent_blocking.
     Mutates `session` to track conversation state and vision output.
     """
     if "brainstormer_messages" not in session:
@@ -183,10 +181,7 @@ def run(
     if user_input is None:
         if msgs:
             # Re-entry: replay last assistant response without calling LLM
-            for msg in reversed(msgs):
-                if msg["role"] == "assistant":
-                    yield msg["content"]
-                    return
+            yield from _replay_last_assistant(msgs)
             return
 
         vision = session.get("vision_statement")
@@ -277,10 +272,7 @@ def run(
     yield from tavily_mcp.stream_turn(system, msgs, llm_config, tavily_api_key)
 
     # Detect if the LLM generated a final vision JSON (last assistant message).
-    full_text = next(
-        (m["content"] or "" for m in reversed(msgs) if m["role"] == "assistant"), ""
-    )
-    vision = _extract_vision_json(full_text)
+    vision = _extract_vision_json(_last_assistant_text(msgs))
     if vision:
-        session["brainstormer_state"] = "vision_complete"
+        session["brainstormer_state"] = STATE_VISION_COMPLETE
         session["vision_statement"] = vision

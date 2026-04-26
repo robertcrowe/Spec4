@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import io
 import json
 import pathlib
@@ -9,8 +8,12 @@ from typing import Any
 
 from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
-from spec4 import providers, tavily_mcp
-from spec4.app_constants import PATH_TO_PHASE
+from spec4 import project_manager, providers, tavily_mcp
+from spec4.app_constants import (
+    PATH_TO_PHASE,
+    STATE_STACK_COMPLETE,
+    STATE_VISION_COMPLETE,
+)
 from spec4.session import (
     _default_session,
     _load_working_dir,
@@ -20,37 +23,8 @@ from spec4.session import (
 
 
 # ---------------------------------------------------------------------------
-# Upload / file helpers
-# ---------------------------------------------------------------------------
-
-
-def _parse_upload(contents: str) -> dict[str, Any] | None:
-    try:
-        _, b64 = contents.split(",", 1)
-        result: dict[str, Any] = json.loads(base64.b64decode(b64))
-        return result
-    except Exception:
-        return None
-
-
-def _load_spec4_file(session: dict[str, Any], filename: str) -> dict[str, Any] | None:
-    working_dir = session.get("working_dir")
-    if not working_dir:
-        return None
-    try:
-        path = pathlib.Path(working_dir) / ".spec4" / filename
-        result: dict[str, Any] = json.loads(path.read_text())
-        return result
-    except Exception:
-        return None
-
-
-# ---------------------------------------------------------------------------
 # URL / browser history
 # ---------------------------------------------------------------------------
-
-# it via a module-level import at call time. To avoid a circular import we
-# import it lazily inside the callback.
 
 
 @callback(
@@ -202,7 +176,7 @@ def on_create_folder(n: Any, name: Any, session: Any) -> Any:
     State("prefs", "data"),
     prevent_initial_call=True,
 )
-def on_setup_connect(  # noqa: E501
+def on_setup_connect(
     n: Any, provider_label: Any, api_key: Any, save_prefs: Any, session: Any, prefs: Any
 ) -> Any:
     if not n:
@@ -210,13 +184,7 @@ def on_setup_connect(  # noqa: E501
     if not api_key or not api_key.strip():
         return {**session, "setup_error": "Please enter an API key."}, no_update
 
-    provider_keys = list(providers.PROVIDERS.keys())
-    provider_labels = [providers.PROVIDERS[k]["label"] for k in provider_keys]
-    provider_key = (
-        provider_keys[provider_labels.index(provider_label)]
-        if provider_label in provider_labels
-        else provider_keys[0]
-    )
+    provider_key = providers.provider_key_for_label(provider_label)
     models, err = providers.list_models(provider_key, api_key.strip())
     if models:
         new_session = {
@@ -383,21 +351,6 @@ def on_setup_tavily_skip(n: Any, session: Any) -> Any:
 
 @callback(
     Output("session", "data", allow_duplicate=True),
-    Input("btn-load-review", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def on_load_review(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update
-    data = _load_spec4_file(session, "code_review.json")
-    if data is None:
-        return no_update
-    return {**session, "code_review": data, "reviewer_state": "review_complete"}
-
-
-@callback(
-    Output("session", "data", allow_duplicate=True),
     Input("btn-load-vision", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
@@ -405,13 +358,16 @@ def on_load_review(n: Any, session: Any) -> Any:
 def on_load_vision(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    data = _load_spec4_file(session, "vision.json")
+    working_dir = session.get("working_dir")
+    if not working_dir:
+        return no_update
+    data = project_manager.load_single_artifact(working_dir, "vision.json")
     if data is None:
         return no_update
     return {
         **session,
         "vision_statement": data.get("vision_statement", data),
-        "brainstormer_state": "vision_complete",
+        "brainstormer_state": STATE_VISION_COMPLETE,
     }
 
 
@@ -424,19 +380,33 @@ def on_load_vision(n: Any, session: Any) -> Any:
 def on_load_stack(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    data = _load_spec4_file(session, "stack.json")
+    working_dir = session.get("working_dir")
+    if not working_dir:
+        return no_update
+    data = project_manager.load_single_artifact(working_dir, "stack.json")
     if data is None:
         return no_update
     return {
         **session,
         "stack_statement": data.get("stack_statement", data),
-        "stack_advisor_state": "stack_complete",
+        "stack_advisor_state": STATE_STACK_COMPLETE,
     }
 
 
 # ---------------------------------------------------------------------------
 # Agent select
 # ---------------------------------------------------------------------------
+
+
+def _validate_agent_preconditions(agent: str, session: dict[str, Any]) -> str | None:
+    """Return an error message if agent prerequisites are missing, else None."""
+    has_vision = session.get("vision_statement") is not None
+    has_stack = session.get("stack_statement") is not None
+    if agent in ("stack_advisor", "phaser") and not has_vision:
+        return "Requires a vision statement. Load or generate a vision.json first."
+    if agent == "phaser" and not has_stack:
+        return "Requires a stack spec. Load or generate a stack.json first."
+    return None
 
 
 @callback(
@@ -451,31 +421,9 @@ def on_agent_start(n: Any, agent_choice: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
 
-    has_vision = session.get("vision_statement") is not None
-    has_stack = session.get("stack_statement") is not None
-
-    if agent_choice == "stack_advisor" and not has_vision:
-        return {
-            **session,
-            "agent_select_error": (
-                "StackAdvisor requires a vision statement. Load or generate a vision.json first."  # noqa: E501
-            ),
-        }, no_update
-    if agent_choice == "phaser" and not has_vision:
-        return {
-            **session,
-            "agent_select_error": (
-                "Phaser requires a vision statement. Load or generate a vision.json first."  # noqa: E501
-            ),
-        }, no_update
-    if agent_choice == "phaser" and not has_stack:
-        return {
-            **session,
-            "agent_select_error": (
-                "Phaser requires a technology stack spec. Load or generate a stack.json first."  # noqa: E501
-            ),
-        }, no_update
-
+    err = _validate_agent_preconditions(agent_choice, session)
+    if err:
+        return {**session, "agent_select_error": err}, no_update
     return {
         **session,
         "agent_select_error": None,
@@ -558,6 +506,22 @@ def on_chat_submit(n_clicks: Any, n_submit: Any, user_input: Any, session: Any) 
 # ---------------------------------------------------------------------------
 
 
+def _switch_agent(
+    session: dict[str, Any],
+    target: str,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return a new session dict switching the active agent and clearing its messages."""
+    return {
+        **session,
+        "active_agent": target,
+        f"{target}_messages": [],
+        "messages": [],
+        "_initial_turn_done": False,
+        **(extra or {}),
+    }
+
+
 @callback(
     Output("session", "data", allow_duplicate=True),
     Input("btn-review-to-brainstormer", "n_clicks"),
@@ -567,13 +531,7 @@ def on_chat_submit(n_clicks: Any, n_submit: Any, user_input: Any, session: Any) 
 def on_review_to_brainstormer(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return {
-        **session,
-        "active_agent": "brainstormer",
-        "brainstormer_messages": [],
-        "messages": [],
-        "_initial_turn_done": False,
-    }
+    return _switch_agent(session, "brainstormer")
 
 
 @callback(
@@ -585,13 +543,7 @@ def on_review_to_brainstormer(n: Any, session: Any) -> Any:
 def on_brainstormer_to_stack(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return {
-        **session,
-        "active_agent": "stack_advisor",
-        "stack_advisor_messages": [],
-        "messages": [],
-        "_initial_turn_done": False,
-    }
+    return _switch_agent(session, "stack_advisor")
 
 
 @callback(
@@ -603,13 +555,7 @@ def on_brainstormer_to_stack(n: Any, session: Any) -> Any:
 def on_stack_to_brainstormer(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return {
-        **session,
-        "active_agent": "brainstormer",
-        "brainstormer_messages": [],
-        "messages": [],
-        "_initial_turn_done": False,
-    }
+    return _switch_agent(session, "brainstormer")
 
 
 @callback(
@@ -621,15 +567,7 @@ def on_stack_to_brainstormer(n: Any, session: Any) -> Any:
 def on_stack_to_phaser(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return {
-        **session,
-        "active_agent": "phaser",
-        "phaser_state": None,
-        "phases": [],
-        "phaser_messages": [],
-        "messages": [],
-        "_initial_turn_done": False,
-    }
+    return _switch_agent(session, "phaser", {"phaser_state": None, "phases": []})
 
 
 @callback(
@@ -641,18 +579,30 @@ def on_stack_to_phaser(n: Any, session: Any) -> Any:
 def on_phaser_to_stack(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return {
-        **session,
-        "active_agent": "stack_advisor",
-        "stack_advisor_messages": [],
-        "messages": [],
-        "_initial_turn_done": False,
-    }
+    return _switch_agent(session, "stack_advisor")
 
 
 # ---------------------------------------------------------------------------
 # Downloads
 # ---------------------------------------------------------------------------
+
+
+def _send_json(data: Any, filename: str) -> Any:
+    return dcc.send_string(  # type: ignore[attr-defined, no-untyped-call]
+        json.dumps(data or {}, indent=2), filename, type="application/json"
+    )
+
+
+def _build_phases_zip(session: dict[str, Any]) -> Any:
+    phases = session.get("phases", [])
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for phase in phases:
+            zf.writestr(
+                f"phase{phase['phase_number']}.json", json.dumps(phase, indent=2)
+            )
+    buf.seek(0)
+    return dcc.send_bytes(buf.read(), "phases.zip")  # type: ignore[attr-defined, no-untyped-call]
 
 
 @callback(
@@ -664,11 +614,7 @@ def on_phaser_to_stack(n: Any, session: Any) -> Any:
 def dl_vision(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return dcc.send_string(  # type: ignore[attr-defined, no-untyped-call]
-        json.dumps(session.get("vision_statement", {}), indent=2),
-        "vision.json",
-        type="application/json",
-    )
+    return _send_json(session.get("vision_statement"), "vision.json")
 
 
 @callback(
@@ -680,11 +626,7 @@ def dl_vision(n: Any, session: Any) -> Any:
 def dl_stack(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return dcc.send_string(  # type: ignore[attr-defined, no-untyped-call]
-        json.dumps(session.get("stack_statement", {}), indent=2),
-        "stack.json",
-        type="application/json",
-    )
+    return _send_json(session.get("stack_statement"), "stack.json")
 
 
 @callback(
@@ -696,11 +638,7 @@ def dl_stack(n: Any, session: Any) -> Any:
 def dl_code_review(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return dcc.send_string(  # type: ignore[attr-defined, no-untyped-call]
-        json.dumps(session.get("code_review", {}), indent=2),
-        "code_review.json",
-        type="application/json",
-    )
+    return _send_json(session.get("code_review"), "code_review.json")
 
 
 @callback(
@@ -712,15 +650,7 @@ def dl_code_review(n: Any, session: Any) -> Any:
 def dl_phases(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    phases = session.get("phases", [])
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        for phase in phases:
-            zf.writestr(
-                f"phase{phase['phase_number']}.json", json.dumps(phase, indent=2)
-            )
-    buf.seek(0)
-    return dcc.send_bytes(buf.read(), "phases.zip")  # type: ignore[attr-defined, no-untyped-call]
+    return _build_phases_zip(session)
 
 
 # ---------------------------------------------------------------------------
@@ -776,15 +706,7 @@ def on_done_new_project(n: Any, session: Any) -> Any:
 def dl_phases_done(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    phases = session.get("phases", [])
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as zf:
-        for phase in phases:
-            zf.writestr(
-                f"phase{phase['phase_number']}.json", json.dumps(phase, indent=2)
-            )
-    buf.seek(0)
-    return dcc.send_bytes(buf.read(), "phases.zip")  # type: ignore[attr-defined, no-untyped-call]
+    return _build_phases_zip(session)
 
 
 @callback(
@@ -796,11 +718,7 @@ def dl_phases_done(n: Any, session: Any) -> Any:
 def dl_vision_done(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return dcc.send_string(  # type: ignore[attr-defined, no-untyped-call]
-        json.dumps(session.get("vision_statement", {}), indent=2),
-        "vision.json",
-        type="application/json",
-    )
+    return _send_json(session.get("vision_statement"), "vision.json")
 
 
 @callback(
@@ -812,8 +730,4 @@ def dl_vision_done(n: Any, session: Any) -> Any:
 def dl_stack_done(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return dcc.send_string(  # type: ignore[attr-defined, no-untyped-call]
-        json.dumps(session.get("stack_statement", {}), indent=2),
-        "stack.json",
-        type="application/json",
-    )
+    return _send_json(session.get("stack_statement"), "stack.json")

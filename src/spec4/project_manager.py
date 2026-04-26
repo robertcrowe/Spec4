@@ -35,7 +35,7 @@ def ensure_spec4_dir(working_dir: str | Path) -> Path:
 def load_spec4_artifacts(working_dir: str | Path) -> dict[str, Any]:
     """Load vision.json, stack.json, code_review.json, and phases/*.json from .spec4/."""  # noqa: E501
     spec4_dir = get_spec4_dir(working_dir)
-    result: dict[str, Any] = {  # noqa: E501
+    result: dict[str, Any] = {
         "vision": None,
         "stack": None,
         "code_review": None,
@@ -63,6 +63,19 @@ def load_spec4_artifacts(working_dir: str | Path) -> dict[str, Any]:
                 pass
 
     return result
+
+
+def load_single_artifact(
+    working_dir: str | Path, filename: str
+) -> dict[str, Any] | None:
+    """Load and JSON-parse a single file from .spec4/, returning None on any error."""
+    try:
+        result: dict[str, Any] = json.loads(
+            (get_spec4_dir(working_dir) / filename).read_text()
+        )
+        return result
+    except Exception:
+        return None
 
 
 def save_vision(working_dir: str | Path, vision: dict[str, Any]) -> None:
@@ -115,7 +128,7 @@ def write_specmem(working_dir: str | Path, content: str) -> None:
     (spec4_dir / "SPECMEM.md").write_text(content, encoding="utf-8")
 
 
-def update_specmem_planning_state(  # noqa: E501
+def update_specmem_planning_state(
     working_dir: str | Path, session: dict[str, Any]
 ) -> None:
     """Append or replace the Spec4 Planning State section in SPECMEM.md."""

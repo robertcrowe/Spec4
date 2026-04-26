@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Generator
 from typing import Any
 
 from spec4 import tavily_mcp
+from spec4.agents._utils import (
+    _extract_json_block,
+    _last_assistant_text,
+    _replay_last_assistant,
+)
+from spec4.app_constants import STATE_STACK_COMPLETE
 
 
 SYSTEM_PROMPT = """\
@@ -162,21 +167,15 @@ Output only the JSON code block when generating the final stack spec — no addi
 
 
 def _extract_stack_json(text: str) -> dict[str, Any] | None:
-    """Extract a JSON stack spec from a fenced code block in the LLM response.
-
-    Accepts any fenced JSON block whose outermost keys suggest it is a finalized
-    stack spec (i.e. contains 'stack' or 'stack_spec' as a top-level key, or has
-    title == 'stack').  Uses a greedy match so nested objects are captured correctly.
-    """
-    match = re.search(r"```json\s*(\{.*\})\s*```", text, re.DOTALL)
-    if match:
-        try:
-            data: dict[str, Any] = json.loads(match.group(1))
-            if data.get("title") == "stack" or "stack" in data or "stack_spec" in data:
-                return data
-        except json.JSONDecodeError:
-            pass
-    return None
+    """Extract a JSON stack spec from a fenced code block in the LLM response."""
+    data = _extract_json_block(text)
+    if data is None:
+        return None
+    return (
+        data
+        if data.get("title") == "stack" or "stack" in data or "stack_spec" in data
+        else None
+    )
 
 
 def run(
@@ -186,7 +185,7 @@ def run(
 ) -> Generator[str, None, None]:
     """Stack Advisor — guides the user through technology stack selection.
 
-    Yields text chunks suitable for consumption by st.write_stream().
+    Yields text chunks consumed by session._run_agent_blocking.
     Mutates `session` to track conversation state and stack output.
     """
     if "stack_advisor_messages" not in session:
@@ -197,10 +196,7 @@ def run(
     if user_input is None:
         if messages:
             # Re-entry: replay last assistant response without calling LLM
-            for msg in reversed(messages):
-                if msg["role"] == "assistant":
-                    yield msg["content"]
-                    return
+            yield from _replay_last_assistant(messages)
             return
 
         # Opening turn: seed with vision and/or existing stack, then call LLM
@@ -274,10 +270,7 @@ def run(
 
     yield from tavily_mcp.stream_turn(system, messages, llm_config, tavily_api_key)
 
-    full_text = next(
-        (m["content"] or "" for m in reversed(messages) if m["role"] == "assistant"), ""
-    )
-    stack_spec = _extract_stack_json(full_text)
+    stack_spec = _extract_stack_json(_last_assistant_text(messages))
     if stack_spec:
-        session["stack_advisor_state"] = "stack_complete"
+        session["stack_advisor_state"] = STATE_STACK_COMPLETE
         session["stack_statement"] = stack_spec

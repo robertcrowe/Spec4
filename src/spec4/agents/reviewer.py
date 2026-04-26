@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-import json
 import pathlib
-import re
 from collections.abc import Generator
 from typing import Any
 
 from spec4 import tavily_mcp
+from spec4.agents._utils import (
+    _extract_json_block,
+    _last_assistant_text,
+    _replay_last_assistant,
+)
+from spec4.app_constants import STATE_REVIEW_COMPLETE
 
 
 _SKIP_DIRS = {
@@ -69,6 +73,13 @@ _MANIFEST_FILES = {
     "README.txt",
 }
 
+_MAX_TREE_FILES = 150
+_MAX_MANIFEST_CHARS = 10_000
+_MAX_MANIFEST_FILE_CHARS = 3_000
+_MAX_PRIORITY_SOURCE_FILES = 8
+_MAX_SOURCE_SAMPLE_CHARS = 8_000
+_MAX_SOURCE_SAMPLE_LINES = 80
+
 _SOURCE_EXTENSIONS = {
     ".py",
     ".ts",
@@ -113,18 +124,18 @@ def _gather_project_context(working_dir: str) -> str:
         return "\n".join(lines)
 
     lines.append("### File Tree\n```")
-    for f in all_files[:150]:
+    for f in all_files[:_MAX_TREE_FILES]:
         lines.append(str(f.relative_to(root)))
-    if len(all_files) > 150:
-        lines.append(f"... and {len(all_files) - 150} more files (truncated)")
+    if len(all_files) > _MAX_TREE_FILES:
+        lines.append(f"... and {len(all_files) - _MAX_TREE_FILES} more files (truncated)")
     lines.append("```\n")
 
     lines.append("### Config and Manifest Files\n")
     manifest_chars = 0
     for f in all_files:
-        if f.name in _MANIFEST_FILES and manifest_chars < 10000:
+        if f.name in _MANIFEST_FILES and manifest_chars < _MAX_MANIFEST_CHARS:
             try:
-                content = f.read_text(errors="replace")[:3000]
+                content = f.read_text(errors="replace")[:_MAX_MANIFEST_FILE_CHARS]
                 lines.append(f"#### `{f.relative_to(root)}`\n```\n{content}\n```\n")
                 manifest_chars += len(content)
             except OSError:
@@ -137,14 +148,14 @@ def _gather_project_context(working_dir: str) -> str:
         parts = [x.lower() for x in p.relative_to(root).parts]
         return any(x in ("test", "tests", "spec", "specs") for x in parts)
 
-    priority_files = [f for f in source_files if not _is_test(f)][:8]
+    priority_files = [f for f in source_files if not _is_test(f)][:_MAX_PRIORITY_SOURCE_FILES]
     source_chars = 0
     for f in priority_files:
-        if source_chars >= 8000:
+        if source_chars >= _MAX_SOURCE_SAMPLE_CHARS:
             break
         try:
             content = f.read_text(errors="replace")
-            sample_lines = content.splitlines()[:80]
+            sample_lines = content.splitlines()[:_MAX_SOURCE_SAMPLE_LINES]
             sample = "\n".join(sample_lines)
             lines.append(
                 f"#### `{f.relative_to(root)}` (first {len(sample_lines)} lines)\n"
@@ -239,15 +250,8 @@ Output only the JSON code block when generating the final code review — no add
 
 
 def _extract_review_json(text: str) -> dict[str, Any] | None:
-    match = re.search(r"```json\s*(\{.*\})\s*```", text, re.DOTALL)
-    if match:
-        try:
-            data: dict[str, Any] = json.loads(match.group(1))
-            if "code_review" in data:
-                return data
-        except json.JSONDecodeError:
-            pass
-    return None
+    data = _extract_json_block(text)
+    return data if data is not None and "code_review" in data else None
 
 
 def run(
@@ -257,7 +261,7 @@ def run(
 ) -> Generator[str, None, None]:
     """Reviewer — analyzes the project directory and creates a structured code review.
 
-    Yields text chunks suitable for consumption by st.write_stream().
+    Yields text chunks consumed by session._run_agent_blocking.
     Mutates `session` to track conversation state and review output.
     """
     if "reviewer_messages" not in session:
@@ -267,10 +271,8 @@ def run(
 
     if user_input is None:
         if msgs:
-            for msg in reversed(msgs):
-                if msg["role"] == "assistant":
-                    yield msg["content"]
-                    return
+            # Re-entry: replay last assistant response without calling LLM
+            yield from _replay_last_assistant(msgs)
             return
 
         working_dir = session.get("working_dir")
@@ -302,10 +304,7 @@ def run(
 
     yield from tavily_mcp.stream_turn(system, msgs, llm_config, tavily_api_key)
 
-    full_text = next(
-        (m["content"] or "" for m in reversed(msgs) if m["role"] == "assistant"), ""
-    )
-    review = _extract_review_json(full_text)
+    review = _extract_review_json(_last_assistant_text(msgs))
     if review:
-        session["reviewer_state"] = "review_complete"
+        session["reviewer_state"] = STATE_REVIEW_COMPLETE
         session["code_review"] = review

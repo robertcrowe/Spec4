@@ -1,6 +1,21 @@
+import json
 from unittest.mock import patch
 
-from spec4.session import _default_session, _persist_artifacts, _run_agent_blocking
+import pytest
+
+from spec4.app_constants import (
+    STATE_IN_PROGRESS,
+    STATE_PHASES_COMPLETE,
+    STATE_REVIEW_COMPLETE,
+    STATE_STACK_COMPLETE,
+    STATE_VISION_COMPLETE,
+)
+from spec4.session import (
+    _default_session,
+    _load_working_dir,
+    _persist_artifacts,
+    _run_agent_blocking,
+)
 
 
 class TestDefaultSession:
@@ -94,13 +109,18 @@ class TestRunAgentBlocking:
             _run_agent_blocking("hi", session)
         mock_run.assert_called_once()
 
-    def test_routes_to_phaser_for_unknown_agent(self):
+    def test_routes_to_phaser(self):
         session = self._session("phaser")
         with patch(
             "spec4.session.phaser.run", return_value=iter(["phase"])
         ) as mock_run:
             _run_agent_blocking("hi", session)
         mock_run.assert_called_once()
+
+    def test_raises_for_unknown_agent(self):
+        session = self._session("nonexistent_agent")
+        with pytest.raises(ValueError, match="Unknown agent"):
+            _run_agent_blocking("hi", session)
 
     def test_joins_generator_chunks(self):
         session = self._session("brainstormer")
@@ -121,13 +141,13 @@ class TestPersistArtifacts:
     def _base_session(self, **overrides):
         base = {
             "working_dir": "/some/dir",
-            "brainstormer_state": "in_progress",
+            "brainstormer_state": STATE_IN_PROGRESS,
             "vision_statement": None,
-            "stack_advisor_state": "in_progress",
+            "stack_advisor_state": STATE_IN_PROGRESS,
             "stack_statement": None,
             "phaser_state": None,
             "phases": [],
-            "reviewer_state": "in_progress",
+            "reviewer_state": STATE_IN_PROGRESS,
             "code_review": None,
         }
         base.update(overrides)
@@ -145,7 +165,7 @@ class TestPersistArtifacts:
     def test_saves_vision_when_complete(self):
         vision = {"name": "App"}
         session = self._base_session(
-            brainstormer_state="vision_complete", vision_statement=vision
+            brainstormer_state=STATE_VISION_COMPLETE, vision_statement=vision
         )
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
@@ -153,7 +173,7 @@ class TestPersistArtifacts:
 
     def test_does_not_save_vision_when_state_in_progress(self):
         session = self._base_session(
-            brainstormer_state="in_progress", vision_statement={"name": "App"}
+            brainstormer_state=STATE_IN_PROGRESS, vision_statement={"name": "App"}
         )
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
@@ -162,7 +182,7 @@ class TestPersistArtifacts:
     def test_saves_stack_when_complete(self):
         stack = {"language": "Python"}
         session = self._base_session(
-            stack_advisor_state="stack_complete", stack_statement=stack
+            stack_advisor_state=STATE_STACK_COMPLETE, stack_statement=stack
         )
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
@@ -170,7 +190,7 @@ class TestPersistArtifacts:
 
     def test_saves_phases_when_complete(self):
         phases = [{"phase_number": 1}]
-        session = self._base_session(phaser_state="phases_complete", phases=phases)
+        session = self._base_session(phaser_state=STATE_PHASES_COMPLETE, phases=phases)
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
         mock_pm.save_phases.assert_called_once_with("/some/dir", phases)
@@ -178,7 +198,7 @@ class TestPersistArtifacts:
     def test_saves_code_review_when_complete(self):
         review = {"code_review": {}}
         session = self._base_session(
-            reviewer_state="review_complete", code_review=review
+            reviewer_state=STATE_REVIEW_COMPLETE, code_review=review
         )
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
@@ -187,8 +207,61 @@ class TestPersistArtifacts:
     def test_updates_specmem_after_saving_vision(self):
         vision = {"name": "App"}
         session = self._base_session(
-            brainstormer_state="vision_complete", vision_statement=vision
+            brainstormer_state=STATE_VISION_COMPLETE, vision_statement=vision
         )
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
         mock_pm.update_specmem_planning_state.assert_called()
+
+
+class TestLoadWorkingDir:
+    def _base_session(self):
+        s = _default_session()
+        s["provider"] = "openai"
+        s["api_key"] = "sk-test"
+        return s
+
+    def test_sets_working_dir_and_phase(self, tmp_path):
+        session = _load_working_dir(str(tmp_path), self._base_session())
+        assert session["working_dir"] == str(tmp_path)
+        assert session["phase"] == "setup"
+
+    def test_empty_dir_has_no_content_flags(self, tmp_path):
+        session = _load_working_dir(str(tmp_path), self._base_session())
+        assert session["_dir_has_content"] is False
+        assert session["_warn_existing_content"] is False
+
+    def test_dir_with_file_sets_content_flags(self, tmp_path):
+        (tmp_path / "app.py").write_text("x = 1")
+        session = _load_working_dir(str(tmp_path), self._base_session())
+        assert session["_dir_has_content"] is True
+        assert session["_warn_existing_content"] is True
+
+    def test_dir_with_code_review_suppresses_warn(self, tmp_path):
+        (tmp_path / "app.py").write_text("x = 1")
+        spec4_dir = tmp_path / ".spec4"
+        spec4_dir.mkdir()
+        (spec4_dir / "code_review.json").write_text(
+            json.dumps({"code_review": {"is_software_project": True}})
+        )
+        session = _load_working_dir(str(tmp_path), self._base_session())
+        assert session["_warn_existing_content"] is False
+        assert session["reviewer_state"] == STATE_REVIEW_COMPLETE
+
+    def test_loads_vision_artifact(self, tmp_path):
+        vision = {"vision_statement": {"name": "App"}}
+        spec4_dir = tmp_path / ".spec4"
+        spec4_dir.mkdir()
+        (spec4_dir / "vision.json").write_text(json.dumps(vision))
+        session = _load_working_dir(str(tmp_path), self._base_session())
+        assert session["vision_statement"] == vision
+        assert session["brainstormer_state"] == STATE_VISION_COMPLETE
+
+    def test_artifact_exception_is_handled(self, tmp_path):
+        with patch(
+            "spec4.session.project_manager.load_spec4_artifacts",
+            side_effect=OSError("disk error"),
+        ):
+            session = _load_working_dir(str(tmp_path), self._base_session())
+        assert session["vision_statement"] is None
+        assert session["brainstormer_state"] == STATE_IN_PROGRESS

@@ -1,38 +1,40 @@
 from unittest.mock import MagicMock, patch
 
-
 from spec4.agents import brainstormer, phaser, reviewer, stack_advisor
+from spec4.app_constants import (
+    STATE_IN_PROGRESS,
+    STATE_PHASES_COMPLETE,
+    STATE_REVIEW_COMPLETE,
+    STATE_STACK_COMPLETE,
+    STATE_VISION_COMPLETE,
+)
 
 
-class FakeSession(dict):
-    """Minimal dict subclass simulating st.session_state."""
-
-    pass
-
-
-def make_session(**overrides) -> FakeSession:
+def make_session(**overrides) -> dict:
     defaults = {
         "phase": "chat",
         "active_agent": "brainstormer",
         "working_dir": None,
         "specmem": None,
         "code_review": None,
-        "brainstormer_state": "in_progress",
+        "brainstormer_state": STATE_IN_PROGRESS,
         "brainstormer_messages": [],
         "vision_statement": None,
         "stack_advisor_messages": [],
-        "stack_advisor_state": "in_progress",
+        "stack_advisor_state": STATE_IN_PROGRESS,
         "stack_statement": None,
         "phaser_messages": [],
         "phaser_state": None,
         "phases": [],
         "reviewer_messages": [],
-        "reviewer_state": "in_progress",
+        "reviewer_state": STATE_IN_PROGRESS,
         "llm_config": {"model": "gpt-4o-mini", "api_key": "sk-test"},
         "tavily_api_key": None,
+        "_warn_existing_content": False,
+        "_dir_has_content": False,
     }
     defaults.update(overrides)
-    return FakeSession(defaults)
+    return dict(defaults)
 
 
 def collect(gen) -> str:
@@ -113,7 +115,7 @@ class TestBrainstormer:
                 brainstormer.run("Yes, finalize it", session, session["llm_config"])
             )
 
-        assert session["brainstormer_state"] == "vision_complete"
+        assert session["brainstormer_state"] == STATE_VISION_COMPLETE
         assert session["vision_statement"] == {
             "vision_statement": {"name": "TodoApp", "vision": "A simple task manager"}
         }
@@ -125,7 +127,7 @@ class TestBrainstormer:
                 brainstormer.run("I want a todo app", session, session["llm_config"])
             )
 
-        assert session["brainstormer_state"] == "in_progress"
+        assert session["brainstormer_state"] == STATE_IN_PROGRESS
         assert session["vision_statement"] is None
 
     def test_llm_called_with_system_prompt_and_user_message(self):
@@ -254,7 +256,7 @@ class TestStackAdvisor:
             collect(
                 stack_advisor.run("Yes, finalize it", session, session["llm_config"])
             )
-        assert session["stack_advisor_state"] == "stack_complete"
+        assert session["stack_advisor_state"] == STATE_STACK_COMPLETE
         assert session["stack_statement"]["title"] == "stack"
 
     def test_re_entry_does_not_call_llm(self):
@@ -536,14 +538,14 @@ class TestReviewer:
         review_response = '```json\n{"code_review": {"is_software_project": true}}\n```'
         with mock_litellm_stream(review_response):
             collect(reviewer.run("Confirm", session, session["llm_config"]))
-        assert session["reviewer_state"] == "review_complete"
+        assert session["reviewer_state"] == STATE_REVIEW_COMPLETE
         assert session["code_review"] == {"code_review": {"is_software_project": True}}
 
     def test_non_review_response_stays_in_progress(self):
         session = make_session(reviewer_messages=[{"role": "user", "content": "seed"}])
         with mock_litellm_stream("Tell me about section 1."):
             collect(reviewer.run("Go on", session, session["llm_config"]))
-        assert session["reviewer_state"] == "in_progress"
+        assert session["reviewer_state"] == STATE_IN_PROGRESS
         assert session["code_review"] is None
 
     def test_extract_review_json_valid(self):
@@ -674,7 +676,7 @@ class TestPhaser:
         )
         with mock_litellm_stream(phase_response):
             collect(phaser.run("Approve", session, session["llm_config"]))
-        assert session["phaser_state"] == "phases_complete"
+        assert session["phaser_state"] == STATE_PHASES_COMPLETE
         assert len(session["phases"]) == 1
 
     def test_non_phase_response_stays_incomplete(self):

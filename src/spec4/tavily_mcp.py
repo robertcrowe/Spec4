@@ -97,9 +97,6 @@ def search(query: str, api_key: str) -> str:
     try:
         return str(_run_async(_call_search_async(query, api_key)))
     except Exception as exc:
-        import traceback
-
-        traceback.print_exc()
         return f"Search failed: {exc}"
 
 
@@ -111,7 +108,7 @@ def stream_turn(
 ) -> Generator[str, None, None]:
     """Stream one LLM conversation turn, handling tool calls transparently.
 
-    Yields text chunks for st.write_stream().
+    Yields text chunks consumed by session._run_agent_blocking.
     Mutates `messages` to record the full turn (assistant reply + tool calls/results).
     Loops internally until the LLM produces a final text response.
     """
@@ -186,7 +183,10 @@ def stream_turn(
                     except (json.JSONDecodeError, KeyError):
                         query = tc["arguments"]
                     yield f"\n\n*🔍 Searching: {query}*\n\n"
-                    assert tavily_api_key is not None  # guarded by `tools` check above
+                    if tavily_api_key is None:
+                        raise RuntimeError(
+                            "web_search tool called but tavily_api_key is None"
+                        )
                     result = search(query, tavily_api_key)
                     if result.startswith("Search failed:") or result.startswith(
                         "No search tool"

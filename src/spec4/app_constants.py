@@ -46,3 +46,10 @@ DARK_THEME = {
         ],
     },
 }
+
+# Agent state values
+STATE_IN_PROGRESS = "in_progress"
+STATE_VISION_COMPLETE = "vision_complete"
+STATE_STACK_COMPLETE = "stack_complete"
+STATE_PHASES_COMPLETE = "phases_complete"
+STATE_REVIEW_COMPLETE = "review_complete"
