@@ -2,7 +2,7 @@
 
 > AI-assisted software project planning — from idea to executable coding phases.
 
-[![PyPI version](https://badge.fury.io/py/spec4.svg?v=0.1.1)](https://badge.fury.io/py/spec4)
+![PyPI version](https://img.shields.io/pypi/v/spec4)
 
 Spec4 is a Dash app (using Dash Mantine Components) that guides you through three stages of project planning using a pipeline of specialised LLM agents. Start with a rough idea and finish with a set of structured, ordered development phases ready to hand to an AI coding agent like Claude Code.
 
