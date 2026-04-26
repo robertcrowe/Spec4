@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import json
-from collections.abc import Generator
+from collections.abc import Coroutine, Generator
+from typing import Any
 
 import litellm
 from mcp import ClientSession
@@ -11,7 +12,7 @@ from mcp.client.streamable_http import streamablehttp_client
 
 
 # Tool spec supplied to the LLM for web search.
-WEB_SEARCH_TOOL: dict = {
+WEB_SEARCH_TOOL: dict[str, Any] = {
     "type": "function",
     "function": {
         "name": "web_search",
@@ -42,7 +43,7 @@ def _url(api_key: str) -> str:
     return f"https://mcp.tavily.com/mcp/?tavilyApiKey={api_key}"
 
 
-def _run_async(coro):
+def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
     """Run an async coroutine from synchronous code.
 
     Always delegates to a fresh thread so it works regardless of whether
@@ -94,30 +95,31 @@ def validate(api_key: str) -> tuple[bool, list[str], str]:
 def search(query: str, api_key: str) -> str:
     """Run a web search via the Tavily MCP server. Returns the result text."""
     try:
-        return _run_async(_call_search_async(query, api_key))
+        return str(_run_async(_call_search_async(query, api_key)))
     except Exception as exc:
         import traceback
+
         traceback.print_exc()
         return f"Search failed: {exc}"
 
 
 def stream_turn(
     system_prompt: str,
-    messages: list[dict],
-    llm_config: dict,
+    messages: list[dict[str, Any]],
+    llm_config: dict[str, Any],
     tavily_api_key: str | None,
 ) -> Generator[str, None, None]:
     """Stream one LLM conversation turn, handling tool calls transparently.
 
     Yields text chunks for st.write_stream().
-    Mutates `messages` to record the full turn (assistant reply + any tool calls/results).
+    Mutates `messages` to record the full turn (assistant reply + tool calls/results).
     Loops internally until the LLM produces a final text response.
     """
     tools = [WEB_SEARCH_TOOL] if tavily_api_key else None
 
     while True:
         llm_messages = [{"role": "system", "content": system_prompt}] + messages
-        kwargs: dict = dict(
+        kwargs: dict[str, Any] = dict(
             model=llm_config["model"],
             messages=llm_messages,
             api_key=llm_config["api_key"],
@@ -129,7 +131,7 @@ def stream_turn(
         response = litellm.completion(**kwargs)
 
         full_text = ""
-        tool_call_acc: dict[int, dict] = {}
+        tool_call_acc: dict[int, dict[str, str]] = {}
         tool_call_started = False
 
         for chunk in response:
@@ -159,18 +161,23 @@ def stream_turn(
 
         if tool_call_acc:
             # Record assistant's tool-call request.
-            messages.append({
-                "role": "assistant",
-                "content": full_text or None,
-                "tool_calls": [
-                    {
-                        "id": tc["id"],
-                        "type": "function",
-                        "function": {"name": tc["name"], "arguments": tc["arguments"]},
-                    }
-                    for tc in tool_call_acc.values()
-                ],
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": full_text or None,
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {
+                                "name": tc["name"],
+                                "arguments": tc["arguments"],
+                            },
+                        }
+                        for tc in tool_call_acc.values()
+                    ],
+                }
+            )
             # Execute each tool call and add results.
             for tc in tool_call_acc.values():
                 if tc["name"] == "web_search":
@@ -179,14 +186,19 @@ def stream_turn(
                     except (json.JSONDecodeError, KeyError):
                         query = tc["arguments"]
                     yield f"\n\n*🔍 Searching: {query}*\n\n"
+                    assert tavily_api_key is not None  # guarded by `tools` check above
                     result = search(query, tavily_api_key)
-                    if result.startswith("Search failed:") or result.startswith("No search tool"):
+                    if result.startswith("Search failed:") or result.startswith(
+                        "No search tool"
+                    ):
                         yield f"\n\n> ⚠️ {result}\n\n"
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tc["id"],
-                        "content": result,
-                    })
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": result,
+                        }
+                    )
             # Loop to get LLM's response to the tool results.
             continue
 

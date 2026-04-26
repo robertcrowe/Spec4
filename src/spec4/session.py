@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pathlib
+from typing import Any
 
 from spec4 import project_manager, providers, tavily_mcp  # noqa: F401 — providers kept for symmetry
 from spec4.agents import brainstormer, phaser, reviewer, stack_advisor
@@ -10,7 +11,8 @@ from spec4.agents import brainstormer, phaser, reviewer, stack_advisor
 # Default session state
 # ---------------------------------------------------------------------------
 
-def _default_session() -> dict:
+
+def _default_session() -> dict[str, Any]:
     return {
         "working_dir": None,
         "browser_path": None,
@@ -48,8 +50,9 @@ def _default_session() -> dict:
 # Working directory loader
 # ---------------------------------------------------------------------------
 
-def _load_working_dir(path: str, session: dict) -> dict:
-    """Build a session dict for the given working directory, loading .spec4/ artifacts."""
+
+def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
+    """Build a session dict for the given working directory, loading .spec4/ artifacts."""  # noqa: E501
     session = {
         **session,
         "working_dir": path,
@@ -91,7 +94,9 @@ def _load_working_dir(path: str, session: dict) -> dict:
         session["specmem"] = specmem
     root = pathlib.Path(path)
     try:
-        has_content = any(True for item in root.iterdir() if not item.name.startswith("."))
+        has_content = any(
+            True for item in root.iterdir() if not item.name.startswith(".")
+        )
     except Exception:
         has_content = False
     session["_warn_existing_content"] = has_content and not artifacts.get("code_review")
@@ -103,7 +108,8 @@ def _load_working_dir(path: str, session: dict) -> dict:
 # Agent execution helpers
 # ---------------------------------------------------------------------------
 
-def _run_agent_blocking(user_input: str | None, session: dict) -> str:
+
+def _run_agent_blocking(user_input: str | None, session: dict[str, Any]) -> str:
     """Run one agent turn synchronously, returning the full response text."""
     llm_config = session["llm_config"]
     active = session["active_agent"]
@@ -120,16 +126,22 @@ def _run_agent_blocking(user_input: str | None, session: dict) -> str:
     return "".join(gen)
 
 
-def _persist_artifacts(session: dict) -> None:
+def _persist_artifacts(session: dict[str, Any]) -> None:
     working_dir = session.get("working_dir")
     if not working_dir:
         return
-    if session.get("reviewer_state") == "review_complete" and session.get("code_review"):
+    if session.get("reviewer_state") == "review_complete" and session.get(
+        "code_review"
+    ):
         project_manager.save_code_review(working_dir, session["code_review"])
-    if session.get("brainstormer_state") == "vision_complete" and session.get("vision_statement"):
+    if session.get("brainstormer_state") == "vision_complete" and session.get(
+        "vision_statement"
+    ):
         project_manager.save_vision(working_dir, session["vision_statement"])
         project_manager.update_specmem_planning_state(working_dir, session)
-    if session.get("stack_advisor_state") == "stack_complete" and session.get("stack_statement"):
+    if session.get("stack_advisor_state") == "stack_complete" and session.get(
+        "stack_statement"
+    ):
         project_manager.save_stack(working_dir, session["stack_statement"])
         project_manager.update_specmem_planning_state(working_dir, session)
     if session.get("phaser_state") == "phases_complete" and session.get("phases"):

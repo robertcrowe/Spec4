@@ -4,37 +4,43 @@ import base64
 import io
 import json
 import pathlib
-import re
 import zipfile
+from typing import Any
 
-from dash import ALL, Input, Output, State, callback, ctx, dcc, html, no_update
-import dash_mantine_components as dmc
+from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
-from spec4 import project_manager, providers, tavily_mcp
+from spec4 import providers, tavily_mcp
 from spec4.app_constants import PATH_TO_PHASE
-from spec4.session import _default_session, _load_working_dir, _run_agent_blocking, _persist_artifacts
+from spec4.session import (
+    _default_session,
+    _load_working_dir,
+    _run_agent_blocking,
+    _persist_artifacts,
+)
 
 
 # ---------------------------------------------------------------------------
 # Upload / file helpers
 # ---------------------------------------------------------------------------
 
-def _parse_upload(contents: str) -> dict | None:
+
+def _parse_upload(contents: str) -> dict[str, Any] | None:
     try:
         _, b64 = contents.split(",", 1)
-        return json.loads(base64.b64decode(b64))
+        result: dict[str, Any] = json.loads(base64.b64decode(b64))
+        return result
     except Exception:
         return None
 
 
-
-def _load_spec4_file(session: dict, filename: str) -> dict | None:
+def _load_spec4_file(session: dict[str, Any], filename: str) -> dict[str, Any] | None:
     working_dir = session.get("working_dir")
     if not working_dir:
         return None
     try:
         path = pathlib.Path(working_dir) / ".spec4" / filename
-        return json.loads(path.read_text())
+        result: dict[str, Any] = json.loads(path.read_text())
+        return result
     except Exception:
         return None
 
@@ -46,20 +52,20 @@ def _load_spec4_file(session: dict, filename: str) -> dict | None:
 # it via a module-level import at call time. To avoid a circular import we
 # import it lazily inside the callback.
 
+
 @callback(
     Output("session", "data", allow_duplicate=True),
     Input("url", "pathname"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_browser_navigate(pathname, session):
+def on_browser_navigate(pathname: Any, session: Any) -> Any:
     """Handle browser back/forward: sync URL → session phase."""
     new_phase = PATH_TO_PHASE.get(pathname, "landing")
     session = session or _default_session()
     if session.get("phase") == new_phase:
         return no_update
     return {**session, "phase": new_phase}
-
 
 
 @callback(
@@ -69,15 +75,21 @@ def on_browser_navigate(pathname, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_setup_back_to_dir(n, session):
+def on_setup_back_to_dir(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
-    return {**session, "phase": "working_dir", "available_models": None, "setup_error": None}, "/dir"
+    return {
+        **session,
+        "phase": "working_dir",
+        "available_models": None,
+        "setup_error": None,
+    }, "/dir"
 
 
 # ---------------------------------------------------------------------------
 # Landing
 # ---------------------------------------------------------------------------
+
 
 @callback(
     Output("session", "data", allow_duplicate=True),
@@ -86,7 +98,7 @@ def on_setup_back_to_dir(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_landing_start(n, session):
+def on_landing_start(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return {**session, "phase": "working_dir"}, "/dir"
@@ -95,6 +107,7 @@ def on_landing_start(n, session):
 # ---------------------------------------------------------------------------
 # Working directory
 # ---------------------------------------------------------------------------
+
 
 @callback(
     Output("session", "data", allow_duplicate=True),
@@ -105,7 +118,7 @@ def on_landing_start(n, session):
     State("prefs", "data"),
     prevent_initial_call=True,
 )
-def on_dir_select(n, session, prefs):
+def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
     if not n:
         return no_update, no_update, no_update
     path = session.get("browser_path", str(pathlib.Path.home()))
@@ -119,7 +132,7 @@ def on_dir_select(n, session, prefs):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_dir_up(n, session):
+def on_dir_up(n: Any, session: Any) -> Any:
     if not n:
         return no_update
     current = pathlib.Path(session.get("browser_path", str(pathlib.Path.home())))
@@ -133,7 +146,7 @@ def on_dir_up(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_dir_path_enter(n, value, session):
+def on_dir_path_enter(n: Any, value: Any, session: Any) -> Any:
     if not n or not value:
         return no_update
     p = pathlib.Path(value)
@@ -148,7 +161,7 @@ def on_dir_path_enter(n, value, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_subdir_click(n_clicks_list, session):
+def on_subdir_click(n_clicks_list: Any, session: Any) -> Any:
     if not ctx.triggered_id or not any(n for n in n_clicks_list if n):
         return no_update
     return {**session, "browser_path": ctx.triggered_id["path"]}
@@ -161,7 +174,7 @@ def on_subdir_click(n_clicks_list, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_create_folder(n, name, session):
+def on_create_folder(n: Any, name: Any, session: Any) -> Any:
     if not n or not name or not name.strip():
         return no_update
     current = pathlib.Path(session.get("browser_path", str(pathlib.Path.home())))
@@ -177,6 +190,7 @@ def on_create_folder(n, name, session):
 # Setup — step 1: provider + API key
 # ---------------------------------------------------------------------------
 
+
 @callback(
     Output("session", "data", allow_duplicate=True),
     Output("prefs", "data", allow_duplicate=True),
@@ -188,7 +202,9 @@ def on_create_folder(n, name, session):
     State("prefs", "data"),
     prevent_initial_call=True,
 )
-def on_setup_connect(n, provider_label, api_key, save_prefs, session, prefs):
+def on_setup_connect(  # noqa: E501
+    n: Any, provider_label: Any, api_key: Any, save_prefs: Any, session: Any, prefs: Any
+) -> Any:
     if not n:
         return no_update, no_update
     if not api_key or not api_key.strip():
@@ -210,10 +226,20 @@ def on_setup_connect(n, provider_label, api_key, save_prefs, session, prefs):
             "available_models": models,
             "setup_error": None,
         }
-        base = {"working_dir": prefs["working_dir"]} if prefs and prefs.get("working_dir") else {}
+        base = (
+            {"working_dir": prefs["working_dir"]}
+            if prefs and prefs.get("working_dir")
+            else {}
+        )
         new_prefs = (
-            {**prefs, "provider": provider_key, "api_key": api_key.strip(), "save_prefs": True}
-            if save_prefs else base
+            {
+                **prefs,
+                "provider": provider_key,
+                "api_key": api_key.strip(),
+                "save_prefs": True,
+            }
+            if save_prefs
+            else base
         )
         return new_session, new_prefs
     return {**session, "setup_error": f"Connection failed: {err}"}, no_update
@@ -225,10 +251,14 @@ def on_setup_connect(n, provider_label, api_key, save_prefs, session, prefs):
     State("prefs", "data"),
     prevent_initial_call=True,
 )
-def on_setup_clear(n, prefs):
+def on_setup_clear(n: Any, prefs: Any) -> Any:
     if not n:
         return no_update
-    preserved = {"working_dir": prefs["working_dir"]} if prefs and prefs.get("working_dir") else {}
+    preserved = (
+        {"working_dir": prefs["working_dir"]}
+        if prefs and prefs.get("working_dir")
+        else {}
+    )
     return preserved
 
 
@@ -238,7 +268,7 @@ def on_setup_clear(n, prefs):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_setup_back_provider(n, session):
+def on_setup_back_provider(n: Any, session: Any) -> Any:
     if not n:
         return no_update
     return {**session, "available_models": None, "setup_error": None}
@@ -247,6 +277,7 @@ def on_setup_back_provider(n, session):
 # ---------------------------------------------------------------------------
 # Setup — step 2: model
 # ---------------------------------------------------------------------------
+
 
 @callback(
     Output("session", "data", allow_duplicate=True),
@@ -257,7 +288,7 @@ def on_setup_back_provider(n, session):
     State("prefs", "data"),
     prevent_initial_call=True,
 )
-def on_setup_model_continue(n, model, session, prefs):
+def on_setup_model_continue(n: Any, model: Any, session: Any, prefs: Any) -> Any:
     if not n or not model:
         return no_update, no_update
     new_session = {
@@ -276,7 +307,7 @@ def on_setup_model_continue(n, model, session, prefs):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_setup_back_model(n, session):
+def on_setup_back_model(n: Any, session: Any) -> Any:
     if not n:
         return no_update
     return {**session, "model": None, "llm_config": None, "setup_error": None}
@@ -285,6 +316,7 @@ def on_setup_back_model(n, session):
 # ---------------------------------------------------------------------------
 # Setup — step 3: Tavily
 # ---------------------------------------------------------------------------
+
 
 @callback(
     Output("session", "data", allow_duplicate=True),
@@ -296,11 +328,15 @@ def on_setup_back_model(n, session):
     State("prefs", "data"),
     prevent_initial_call=True,
 )
-def on_setup_tavily_connect(n, tavily_key, session, prefs):
+def on_setup_tavily_connect(n: Any, tavily_key: Any, session: Any, prefs: Any) -> Any:
     if not n:
         return no_update, no_update, no_update
     if not tavily_key or not tavily_key.strip():
-        return {**session, "setup_error": "Please enter a Tavily API key."}, no_update, no_update
+        return (
+            {**session, "setup_error": "Please enter a Tavily API key."},
+            no_update,
+            no_update,
+        )
     ok, _, err = tavily_mcp.validate(tavily_key.strip())
     if ok:
         new_session = {
@@ -309,9 +345,17 @@ def on_setup_tavily_connect(n, tavily_key, session, prefs):
             "setup_error": None,
             "phase": "agent_select",
         }
-        new_prefs = {**prefs, "tavily_key": tavily_key.strip()} if prefs.get("save_prefs") else prefs
+        new_prefs = (
+            {**prefs, "tavily_key": tavily_key.strip()}
+            if prefs.get("save_prefs")
+            else prefs
+        )
         return new_session, new_prefs, "/agents"
-    return {**session, "setup_error": f"Tavily connection failed: {err}"}, no_update, no_update
+    return (
+        {**session, "setup_error": f"Tavily connection failed: {err}"},
+        no_update,
+        no_update,
+    )
 
 
 @callback(
@@ -321,15 +365,21 @@ def on_setup_tavily_connect(n, tavily_key, session, prefs):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_setup_tavily_skip(n, session):
+def on_setup_tavily_skip(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
-    return {**session, "tavily_api_key": None, "setup_error": None, "phase": "agent_select"}, "/agents"
+    return {
+        **session,
+        "tavily_api_key": None,
+        "setup_error": None,
+        "phase": "agent_select",
+    }, "/agents"
 
 
 # ---------------------------------------------------------------------------
 # Agent select — load files from .spec4/ directly
 # ---------------------------------------------------------------------------
+
 
 @callback(
     Output("session", "data", allow_duplicate=True),
@@ -337,7 +387,7 @@ def on_setup_tavily_skip(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_load_review(n, session):
+def on_load_review(n: Any, session: Any) -> Any:
     if not n:
         return no_update
     data = _load_spec4_file(session, "code_review.json")
@@ -352,7 +402,7 @@ def on_load_review(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_load_vision(n, session):
+def on_load_vision(n: Any, session: Any) -> Any:
     if not n:
         return no_update
     data = _load_spec4_file(session, "vision.json")
@@ -371,7 +421,7 @@ def on_load_vision(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_load_stack(n, session):
+def on_load_stack(n: Any, session: Any) -> Any:
     if not n:
         return no_update
     data = _load_spec4_file(session, "stack.json")
@@ -388,6 +438,7 @@ def on_load_stack(n, session):
 # Agent select
 # ---------------------------------------------------------------------------
 
+
 @callback(
     Output("session", "data", allow_duplicate=True),
     Output("url", "pathname", allow_duplicate=True),
@@ -396,7 +447,7 @@ def on_load_stack(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_agent_start(n, agent_choice, session):
+def on_agent_start(n: Any, agent_choice: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
 
@@ -404,17 +455,26 @@ def on_agent_start(n, agent_choice, session):
     has_stack = session.get("stack_statement") is not None
 
     if agent_choice == "stack_advisor" and not has_vision:
-        return {**session, "agent_select_error": (
-            "StackAdvisor requires a vision statement. Load or generate a vision.json first."
-        )}, no_update
+        return {
+            **session,
+            "agent_select_error": (
+                "StackAdvisor requires a vision statement. Load or generate a vision.json first."  # noqa: E501
+            ),
+        }, no_update
     if agent_choice == "phaser" and not has_vision:
-        return {**session, "agent_select_error": (
-            "Phaser requires a vision statement. Load or generate a vision.json first."
-        )}, no_update
+        return {
+            **session,
+            "agent_select_error": (
+                "Phaser requires a vision statement. Load or generate a vision.json first."  # noqa: E501
+            ),
+        }, no_update
     if agent_choice == "phaser" and not has_stack:
-        return {**session, "agent_select_error": (
-            "Phaser requires a technology stack spec. Load or generate a stack.json first."
-        )}, no_update
+        return {
+            **session,
+            "agent_select_error": (
+                "Phaser requires a technology stack spec. Load or generate a stack.json first."  # noqa: E501
+            ),
+        }, no_update
 
     return {
         **session,
@@ -430,6 +490,7 @@ def on_agent_start(n, agent_choice, session):
 # Chat — back to agent select
 # ---------------------------------------------------------------------------
 
+
 @callback(
     Output("session", "data", allow_duplicate=True),
     Output("url", "pathname", allow_duplicate=True),
@@ -437,7 +498,7 @@ def on_agent_start(n, agent_choice, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_chat_back(n, session):
+def on_chat_back(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return {**session, "phase": "agent_select"}, "/agents"
@@ -447,23 +508,29 @@ def on_chat_back(n, session):
 # Chat — initial turn
 # ---------------------------------------------------------------------------
 
+
 @callback(
     Output("session", "data", allow_duplicate=True),
     Input("init-turn-interval", "n_intervals"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_init_turn(n, session):
+def on_init_turn(n: Any, session: Any) -> Any:
     if not n or session.get("_initial_turn_done") or session.get("messages"):
         return no_update
     response = _run_agent_blocking(None, session)
     _persist_artifacts(session)
-    return {**session, "messages": [{"role": "assistant", "content": response}], "_initial_turn_done": True}
+    return {
+        **session,
+        "messages": [{"role": "assistant", "content": response}],
+        "_initial_turn_done": True,
+    }
 
 
 # ---------------------------------------------------------------------------
 # Chat — user message
 # ---------------------------------------------------------------------------
+
 
 @callback(
     Output("session", "data", allow_duplicate=True),
@@ -474,7 +541,7 @@ def on_init_turn(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_chat_submit(n_clicks, n_submit, user_input, session):
+def on_chat_submit(n_clicks: Any, n_submit: Any, user_input: Any, session: Any) -> Any:
     if not user_input or not user_input.strip():
         return no_update, no_update
     messages = list(session.get("messages", []))
@@ -490,16 +557,23 @@ def on_chat_submit(n_clicks, n_submit, user_input, session):
 # Chat — navigation
 # ---------------------------------------------------------------------------
 
+
 @callback(
     Output("session", "data", allow_duplicate=True),
     Input("btn-review-to-brainstormer", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_review_to_brainstormer(n, session):
+def on_review_to_brainstormer(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return {**session, "active_agent": "brainstormer", "brainstormer_messages": [], "messages": [], "_initial_turn_done": False}
+    return {
+        **session,
+        "active_agent": "brainstormer",
+        "brainstormer_messages": [],
+        "messages": [],
+        "_initial_turn_done": False,
+    }
 
 
 @callback(
@@ -508,10 +582,16 @@ def on_review_to_brainstormer(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_brainstormer_to_stack(n, session):
+def on_brainstormer_to_stack(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return {**session, "active_agent": "stack_advisor", "stack_advisor_messages": [], "messages": [], "_initial_turn_done": False}
+    return {
+        **session,
+        "active_agent": "stack_advisor",
+        "stack_advisor_messages": [],
+        "messages": [],
+        "_initial_turn_done": False,
+    }
 
 
 @callback(
@@ -520,10 +600,16 @@ def on_brainstormer_to_stack(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_stack_to_brainstormer(n, session):
+def on_stack_to_brainstormer(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return {**session, "active_agent": "brainstormer", "brainstormer_messages": [], "messages": [], "_initial_turn_done": False}
+    return {
+        **session,
+        "active_agent": "brainstormer",
+        "brainstormer_messages": [],
+        "messages": [],
+        "_initial_turn_done": False,
+    }
 
 
 @callback(
@@ -532,10 +618,18 @@ def on_stack_to_brainstormer(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_stack_to_phaser(n, session):
+def on_stack_to_phaser(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return {**session, "active_agent": "phaser", "phaser_state": None, "phases": [], "phaser_messages": [], "messages": [], "_initial_turn_done": False}
+    return {
+        **session,
+        "active_agent": "phaser",
+        "phaser_state": None,
+        "phases": [],
+        "phaser_messages": [],
+        "messages": [],
+        "_initial_turn_done": False,
+    }
 
 
 @callback(
@@ -544,15 +638,22 @@ def on_stack_to_phaser(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_phaser_to_stack(n, session):
+def on_phaser_to_stack(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return {**session, "active_agent": "stack_advisor", "stack_advisor_messages": [], "messages": [], "_initial_turn_done": False}
+    return {
+        **session,
+        "active_agent": "stack_advisor",
+        "stack_advisor_messages": [],
+        "messages": [],
+        "_initial_turn_done": False,
+    }
 
 
 # ---------------------------------------------------------------------------
 # Downloads
 # ---------------------------------------------------------------------------
+
 
 @callback(
     Output("dl-vision", "data"),
@@ -560,10 +661,10 @@ def on_phaser_to_stack(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_vision(n, session):
+def dl_vision(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return dcc.send_string(
+    return dcc.send_string(  # type: ignore[attr-defined, no-untyped-call]
         json.dumps(session.get("vision_statement", {}), indent=2),
         "vision.json",
         type="application/json",
@@ -576,10 +677,10 @@ def dl_vision(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_stack(n, session):
+def dl_stack(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return dcc.send_string(
+    return dcc.send_string(  # type: ignore[attr-defined, no-untyped-call]
         json.dumps(session.get("stack_statement", {}), indent=2),
         "stack.json",
         type="application/json",
@@ -592,10 +693,10 @@ def dl_stack(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_code_review(n, session):
+def dl_code_review(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return dcc.send_string(
+    return dcc.send_string(  # type: ignore[attr-defined, no-untyped-call]
         json.dumps(session.get("code_review", {}), indent=2),
         "code_review.json",
         type="application/json",
@@ -608,21 +709,24 @@ def dl_code_review(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_phases(n, session):
+def dl_phases(n: Any, session: Any) -> Any:
     if not n:
         return no_update
     phases = session.get("phases", [])
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         for phase in phases:
-            zf.writestr(f"phase{phase['phase_number']}.json", json.dumps(phase, indent=2))
+            zf.writestr(
+                f"phase{phase['phase_number']}.json", json.dumps(phase, indent=2)
+            )
     buf.seek(0)
-    return dcc.send_bytes(buf.read(), "phases.zip")
+    return dcc.send_bytes(buf.read(), "phases.zip")  # type: ignore[attr-defined, no-untyped-call]
 
 
 # ---------------------------------------------------------------------------
 # Done page
 # ---------------------------------------------------------------------------
+
 
 @callback(
     Output("session", "data", allow_duplicate=True),
@@ -631,7 +735,7 @@ def dl_phases(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_phaser_done(n, session):
+def on_phaser_done(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return {**session, "phase": "done"}, "/done"
@@ -644,7 +748,7 @@ def on_phaser_done(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_done_back_to_phaser(n, session):
+def on_done_back_to_phaser(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return {**session, "phase": "chat"}, "/chat"
@@ -657,7 +761,7 @@ def on_done_back_to_phaser(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_done_new_project(n, session):
+def on_done_new_project(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return {**session, "phase": "agent_select"}, "/agents"
@@ -669,16 +773,18 @@ def on_done_new_project(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_phases_done(n, session):
+def dl_phases_done(n: Any, session: Any) -> Any:
     if not n:
         return no_update
     phases = session.get("phases", [])
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
         for phase in phases:
-            zf.writestr(f"phase{phase['phase_number']}.json", json.dumps(phase, indent=2))
+            zf.writestr(
+                f"phase{phase['phase_number']}.json", json.dumps(phase, indent=2)
+            )
     buf.seek(0)
-    return dcc.send_bytes(buf.read(), "phases.zip")
+    return dcc.send_bytes(buf.read(), "phases.zip")  # type: ignore[attr-defined, no-untyped-call]
 
 
 @callback(
@@ -687,10 +793,10 @@ def dl_phases_done(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_vision_done(n, session):
+def dl_vision_done(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return dcc.send_string(
+    return dcc.send_string(  # type: ignore[attr-defined, no-untyped-call]
         json.dumps(session.get("vision_statement", {}), indent=2),
         "vision.json",
         type="application/json",
@@ -703,10 +809,10 @@ def dl_vision_done(n, session):
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_stack_done(n, session):
+def dl_stack_done(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return dcc.send_string(
+    return dcc.send_string(  # type: ignore[attr-defined, no-untyped-call]
         json.dumps(session.get("stack_statement", {}), indent=2),
         "stack.json",
         type="application/json",

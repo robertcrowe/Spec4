@@ -27,14 +27,22 @@ class TestWebSearchToolSpec:
 
 class TestValidate:
     def test_success_returns_true_with_tools(self):
-        with patch("spec4.tavily_mcp._list_tools_async", new_callable=AsyncMock, return_value=["search"]):
+        with patch(
+            "spec4.tavily_mcp._list_tools_async",
+            new_callable=AsyncMock,
+            return_value=["search"],
+        ):
             ok, tools, err = tavily_mcp.validate("valid-key")
         assert ok is True
         assert tools == ["search"]
         assert err == ""
 
     def test_failure_returns_false_with_message(self):
-        with patch("spec4.tavily_mcp._list_tools_async", new_callable=AsyncMock, side_effect=Exception("Connection refused")):
+        with patch(
+            "spec4.tavily_mcp._list_tools_async",
+            new_callable=AsyncMock,
+            side_effect=Exception("Connection refused"),
+        ):
             ok, tools, err = tavily_mcp.validate("bad-key")
         assert ok is False
         assert tools == []
@@ -43,11 +51,19 @@ class TestValidate:
 
 class TestSearch:
     def test_returns_result_text(self):
-        with patch("spec4.tavily_mcp._call_search_async", new_callable=AsyncMock, return_value="Search results here"):
+        with patch(
+            "spec4.tavily_mcp._call_search_async",
+            new_callable=AsyncMock,
+            return_value="Search results here",
+        ):
             assert tavily_mcp.search("query", "key") == "Search results here"
 
     def test_exception_returns_error_string(self):
-        with patch("spec4.tavily_mcp._call_search_async", new_callable=AsyncMock, side_effect=Exception("timeout")):
+        with patch(
+            "spec4.tavily_mcp._call_search_async",
+            new_callable=AsyncMock,
+            side_effect=Exception("timeout"),
+        ):
             result = tavily_mcp.search("query", "key")
         assert result.startswith("Search failed:")
         assert "timeout" in result
@@ -62,36 +78,64 @@ class TestStreamTurn:
         return chunk
 
     def test_yields_text_chunks(self):
-        chunks = [self._chunk("Hello "), self._chunk("world"), self._chunk("", finish_reason="stop")]
+        chunks = [
+            self._chunk("Hello "),
+            self._chunk("world"),
+            self._chunk("", finish_reason="stop"),
+        ]
         messages = []
         with patch("spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)):
-            output = "".join(tavily_mcp.stream_turn("sys", messages, {"model": "m", "api_key": "k"}, None))
+            output = "".join(
+                tavily_mcp.stream_turn(
+                    "sys", messages, {"model": "m", "api_key": "k"}, None
+                )
+            )
         assert output == "Hello world"
 
     def test_appends_assistant_message(self):
         chunks = [self._chunk("Hi"), self._chunk("", finish_reason="stop")]
         messages = []
         with patch("spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)):
-            list(tavily_mcp.stream_turn("sys", messages, {"model": "m", "api_key": "k"}, None))
+            list(
+                tavily_mcp.stream_turn(
+                    "sys", messages, {"model": "m", "api_key": "k"}, None
+                )
+            )
         assert messages[-1] == {"role": "assistant", "content": "Hi"}
 
     def test_no_tools_kwarg_when_no_tavily_key(self):
         chunks = [self._chunk("Hi"), self._chunk("", finish_reason="stop")]
-        with patch("spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)) as mock_llm:
-            list(tavily_mcp.stream_turn("sys", [], {"model": "m", "api_key": "k"}, None))
+        with patch(
+            "spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)
+        ) as mock_llm:
+            list(
+                tavily_mcp.stream_turn("sys", [], {"model": "m", "api_key": "k"}, None)
+            )
         assert "tools" not in mock_llm.call_args[1]
 
     def test_tools_kwarg_present_when_tavily_key_given(self):
         chunks = [self._chunk("Hi"), self._chunk("", finish_reason="stop")]
-        with patch("spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)) as mock_llm:
-            list(tavily_mcp.stream_turn("sys", [], {"model": "m", "api_key": "k"}, "tavily-key"))
+        with patch(
+            "spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)
+        ) as mock_llm:
+            list(
+                tavily_mcp.stream_turn(
+                    "sys", [], {"model": "m", "api_key": "k"}, "tavily-key"
+                )
+            )
         assert mock_llm.call_args[1]["tools"] == [tavily_mcp.WEB_SEARCH_TOOL]
 
     def test_system_prompt_prepended(self):
         chunks = [self._chunk("Hi"), self._chunk("", finish_reason="stop")]
         messages = [{"role": "user", "content": "Hello"}]
-        with patch("spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)) as mock_llm:
-            list(tavily_mcp.stream_turn("my-system", messages, {"model": "m", "api_key": "k"}, None))
+        with patch(
+            "spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)
+        ) as mock_llm:
+            list(
+                tavily_mcp.stream_turn(
+                    "my-system", messages, {"model": "m", "api_key": "k"}, None
+                )
+            )
         sent = mock_llm.call_args[1]["messages"]
         assert sent[0] == {"role": "system", "content": "my-system"}
         assert sent[1] == {"role": "user", "content": "Hello"}
@@ -115,9 +159,13 @@ class TestStreamTurn:
 
         messages = []
         with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
-            with patch("spec4.tavily_mcp.search", return_value="search results") as mock_search:
+            with patch(
+                "spec4.tavily_mcp.search", return_value="search results"
+            ) as mock_search:
                 output = "".join(
-                    tavily_mcp.stream_turn("sys", messages, {"model": "m", "api_key": "k"}, "tv-key")
+                    tavily_mcp.stream_turn(
+                        "sys", messages, {"model": "m", "api_key": "k"}, "tv-key"
+                    )
                 )
 
         mock_search.assert_called_once_with("test search", "tv-key")
@@ -137,13 +185,20 @@ class TestStreamTurn:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return iter([self._chunk(None, tool_calls=[tc]), self._chunk("", finish_reason="stop")])
+                return iter(
+                    [
+                        self._chunk(None, tool_calls=[tc]),
+                        self._chunk("", finish_reason="stop"),
+                    ]
+                )
             return iter([self._chunk("Done"), self._chunk("", finish_reason="stop")])
 
         with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
             with patch("spec4.tavily_mcp.search", return_value="results"):
                 chunks = list(
-                    tavily_mcp.stream_turn("sys", [], {"model": "m", "api_key": "k"}, "tv-key")
+                    tavily_mcp.stream_turn(
+                        "sys", [], {"model": "m", "api_key": "k"}, "tv-key"
+                    )
                 )
 
         combined = "".join(chunks)

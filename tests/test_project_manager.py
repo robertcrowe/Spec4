@@ -1,6 +1,5 @@
 import json
 
-import pytest
 
 from spec4 import project_manager
 
@@ -21,7 +20,12 @@ class TestDirHelpers:
 class TestLoadArtifacts:
     def test_missing_dir_returns_empty_result(self, tmp_path):
         result = project_manager.load_spec4_artifacts(tmp_path)
-        assert result == {"vision": None, "stack": None, "code_review": None, "phases": []}
+        assert result == {
+            "vision": None,
+            "stack": None,
+            "code_review": None,
+            "phases": [],
+        }
 
     def test_loads_vision(self, tmp_path):
         vision = {"name": "App", "vision": "desc"}
@@ -39,7 +43,10 @@ class TestLoadArtifacts:
         assert project_manager.load_spec4_artifacts(tmp_path)["code_review"] == review
 
     def test_loads_phases_in_order(self, tmp_path):
-        phases = [{"phase_number": 2, "phase_title": "Auth"}, {"phase_number": 1, "phase_title": "Steel Thread"}]
+        phases = [
+            {"phase_number": 2, "phase_title": "Auth"},
+            {"phase_number": 1, "phase_title": "Steel Thread"},
+        ]
         project_manager.save_phases(tmp_path, phases)
         result = project_manager.load_spec4_artifacts(tmp_path)["phases"]
         assert len(result) == 2
@@ -83,7 +90,10 @@ class TestSaveArtifacts:
         assert json.loads(path.read_text()) == review
 
     def test_save_phases_writes_individual_files(self, tmp_path):
-        phases = [{"phase_number": 1, "phase_title": "A"}, {"phase_number": 2, "phase_title": "B"}]
+        phases = [
+            {"phase_number": 1, "phase_title": "A"},
+            {"phase_number": 2, "phase_title": "B"},
+        ]
         project_manager.save_phases(tmp_path, phases)
         assert (tmp_path / ".spec4" / "phases" / "phase1.json").exists()
         assert (tmp_path / ".spec4" / "phases" / "phase2.json").exists()
@@ -102,7 +112,11 @@ class TestSpecmem:
         assert project_manager.read_specmem(tmp_path) == "# Notes\nContent here"
 
     def test_update_creates_planning_state_section(self, tmp_path):
-        session = {"vision_statement": {"name": "App"}, "stack_statement": None, "phases": []}
+        session = {
+            "vision_statement": {"name": "App"},
+            "stack_statement": None,
+            "phases": [],
+        }
         project_manager.update_specmem_planning_state(tmp_path, session)
         content = project_manager.read_specmem(tmp_path)
         assert "Spec4 Planning State" in content
@@ -110,7 +124,11 @@ class TestSpecmem:
 
     def test_update_preserves_existing_content(self, tmp_path):
         project_manager.write_specmem(tmp_path, "# My Notes\nKeep this.")
-        session = {"vision_statement": {"name": "App"}, "stack_statement": None, "phases": []}
+        session = {
+            "vision_statement": {"name": "App"},
+            "stack_statement": None,
+            "phases": [],
+        }
         project_manager.update_specmem_planning_state(tmp_path, session)
         assert "Keep this." in project_manager.read_specmem(tmp_path)
 
@@ -125,7 +143,11 @@ class TestSpecmem:
         assert "V1" not in content
 
     def test_update_includes_stack(self, tmp_path):
-        session = {"vision_statement": None, "stack_statement": {"language": "Python"}, "phases": []}
+        session = {
+            "vision_statement": None,
+            "stack_statement": {"language": "Python"},
+            "phases": [],
+        }
         project_manager.update_specmem_planning_state(tmp_path, session)
         assert "Python" in project_manager.read_specmem(tmp_path)
 

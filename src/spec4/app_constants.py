@@ -6,12 +6,12 @@ GOOGLE_FONTS = (
 )
 
 PATH_TO_PHASE = {
-    "/":       "landing",
-    "/dir":    "working_dir",
-    "/setup":  "setup",
+    "/": "landing",
+    "/dir": "working_dir",
+    "/setup": "setup",
     "/agents": "agent_select",
-    "/chat":   "chat",
-    "/done":   "done",
+    "/chat": "chat",
+    "/done": "done",
 }
 
 DARK_THEME = {

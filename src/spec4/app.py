@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import logging
-import pathlib
+from typing import Any
 
 import dash
 from dash import Input, Output, State, callback, dcc, html, no_update
 import dash_mantine_components as dmc
 
 from spec4 import __version__
-from spec4.app_constants import DARK_THEME, GOOGLE_FONTS, PATH_TO_PHASE
+from spec4.app_constants import DARK_THEME, GOOGLE_FONTS
 from spec4.session import _default_session, _load_working_dir
 from spec4.layouts import (
     _footer,
@@ -69,7 +69,6 @@ app.layout = dmc.MantineProvider(
     children=[
         # Blueprint grid background (sits behind everything)
         html.Div(id="blueprint-grid"),
-
         _nav_drawer(),
         dcc.Location(id="url", refresh=False),
         html.Div(id="_scroll-dummy", style={"display": "none"}),
@@ -83,30 +82,48 @@ app.layout = dmc.MantineProvider(
                 dmc.AppShellHeader(
                     dmc.Group(
                         [
-                            dmc.Group([
-                                html.A([
-                                    html.Span("Spec", className="logo-spec"),
-                                    html.Span("4", className="logo-4"),
-                                    html.Span(" AI", className="logo-spec"),
-                                ], href="/", className="logo-text", style={"textDecoration": "none"}),
-                                dmc.Text(
-                                    "AI Project Planning for Developers",
-                                    size="sm", c="dimmed",
-                                    visibleFrom="sm",
-                                ),
-                                dmc.Text(
-                                    __version__,
-                                    size="sm", c="dimmed",
-                                    visibleFrom="sm",
-                                    style={"opacity": 0.5},
-                                ),
-                            ], gap="md"),
-                            html.Button("☰", id="nav-burger", n_clicks=0, style={
-                                "background": "none", "border": "none",
-                                "color": "var(--mantine-color-text)",
-                                "cursor": "pointer", "fontSize": "1.25rem",
-                                "lineHeight": 1, "padding": "4px 8px",
-                            }),
+                            dmc.Group(
+                                [
+                                    html.A(
+                                        [
+                                            html.Span("Spec", className="logo-spec"),
+                                            html.Span("4", className="logo-4"),
+                                            html.Span(" AI", className="logo-spec"),
+                                        ],
+                                        href="/",
+                                        className="logo-text",
+                                        style={"textDecoration": "none"},
+                                    ),
+                                    dmc.Text(
+                                        "AI Project Planning for Developers",
+                                        size="sm",
+                                        c="dimmed",
+                                        visibleFrom="sm",
+                                    ),
+                                    dmc.Text(
+                                        __version__,
+                                        size="sm",
+                                        c="dimmed",
+                                        visibleFrom="sm",
+                                        style={"opacity": 0.5},
+                                    ),
+                                ],
+                                gap="md",
+                            ),
+                            html.Button(
+                                "☰",
+                                id="nav-burger",
+                                n_clicks=0,
+                                style={
+                                    "background": "none",
+                                    "border": "none",
+                                    "color": "var(--mantine-color-text)",
+                                    "cursor": "pointer",
+                                    "fontSize": "1.25rem",
+                                    "lineHeight": 1,
+                                    "padding": "4px 8px",
+                                },
+                            ),
                         ],
                         justify="space-between",
                         h="100%",
@@ -131,7 +148,7 @@ app.layout = dmc.MantineProvider(
 # Clientside callbacks
 # ---------------------------------------------------------------------------
 
-app.clientside_callback(
+app.clientside_callback(  # type: ignore[no-untyped-call]
     """
     function(n) {
         requestAnimationFrame(function() {
@@ -153,7 +170,7 @@ app.clientside_callback(
     Input("_last_render", "data"),
 )
 
-app.clientside_callback(
+app.clientside_callback(  # type: ignore[no-untyped-call]
     """
     function(burger_clicks, close_clicks, overlay_clicks, current_class) {
         var ctx = dash_clientside.callback_context;
@@ -178,7 +195,7 @@ app.clientside_callback(
     prevent_initial_call=True,
 )
 
-app.clientside_callback(
+app.clientside_callback(  # type: ignore[no-untyped-call]
     """
     function(n_clicks, n_submit, n_intervals) {
         var el = document.getElementById('chat-progress-container');
@@ -193,7 +210,7 @@ app.clientside_callback(
     prevent_initial_call=True,
 )
 
-app.clientside_callback(
+app.clientside_callback(  # type: ignore[no-untyped-call]
     """
     function(render_n) {
         var el = document.getElementById('chat-progress-container');
@@ -211,6 +228,7 @@ app.clientside_callback(
 # Page render
 # ---------------------------------------------------------------------------
 
+
 @callback(
     Output("page-content", "children"),
     Output("_last_render", "data"),
@@ -220,7 +238,7 @@ app.clientside_callback(
     State("_last_render", "data"),
     prevent_initial_call="initial_duplicate",
 )
-def render_page(session, prefs, render_count):
+def render_page(session: Any, prefs: Any, render_count: Any) -> Any:
     session = session or _default_session()
     prefs = prefs or {}
 
@@ -257,8 +275,10 @@ def render_page(session, prefs, render_count):
 # Entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     import sys
+
     if len(sys.argv) > 1 and sys.argv[1] in ("--version", "-V"):
         print(f"spec4 {__version__}")
         sys.exit(0)

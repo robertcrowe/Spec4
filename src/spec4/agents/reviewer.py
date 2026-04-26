@@ -4,32 +4,94 @@ import json
 import pathlib
 import re
 from collections.abc import Generator
+from typing import Any
 
 from spec4 import tavily_mcp
 
 
 _SKIP_DIRS = {
-    ".git", ".svn", ".hg", "__pycache__", ".pytest_cache", ".mypy_cache",
-    ".ruff_cache", "node_modules", ".venv", "venv", ".env", "env",
-    "dist", "build", ".next", ".nuxt", "target", ".cargo", ".spec4",
+    ".git",
+    ".svn",
+    ".hg",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "node_modules",
+    ".venv",
+    "venv",
+    ".env",
+    "env",
+    "dist",
+    "build",
+    ".next",
+    ".nuxt",
+    "target",
+    ".cargo",
+    ".spec4",
 }
 
 _MANIFEST_FILES = {
-    "pyproject.toml", "setup.py", "setup.cfg", "requirements.txt",
-    "requirements-dev.txt", "Pipfile", "package.json", "package-lock.json",
-    "Cargo.toml", "go.mod", "pom.xml", "build.gradle", "Makefile",
-    "Dockerfile", "docker-compose.yml", "docker-compose.yaml",
-    ".eslintrc", ".eslintrc.json", ".eslintrc.js", ".eslintrc.yaml",
-    ".prettierrc", ".prettierrc.json", "tsconfig.json", "babel.config.js",
-    "ruff.toml", ".ruff.toml", "mypy.ini", ".mypy.ini", "tox.ini",
-    ".flake8", "pylintrc", ".pylintrc",
-    "README.md", "README.rst", "README.txt",
+    "pyproject.toml",
+    "setup.py",
+    "setup.cfg",
+    "requirements.txt",
+    "requirements-dev.txt",
+    "Pipfile",
+    "package.json",
+    "package-lock.json",
+    "Cargo.toml",
+    "go.mod",
+    "pom.xml",
+    "build.gradle",
+    "Makefile",
+    "Dockerfile",
+    "docker-compose.yml",
+    "docker-compose.yaml",
+    ".eslintrc",
+    ".eslintrc.json",
+    ".eslintrc.js",
+    ".eslintrc.yaml",
+    ".prettierrc",
+    ".prettierrc.json",
+    "tsconfig.json",
+    "babel.config.js",
+    "ruff.toml",
+    ".ruff.toml",
+    "mypy.ini",
+    ".mypy.ini",
+    "tox.ini",
+    ".flake8",
+    "pylintrc",
+    ".pylintrc",
+    "README.md",
+    "README.rst",
+    "README.txt",
 }
 
 _SOURCE_EXTENSIONS = {
-    ".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".kt",
-    ".swift", ".cs", ".cpp", ".c", ".h", ".rb", ".php", ".scala",
-    ".r", ".R", ".lua", ".ex", ".exs",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".go",
+    ".rs",
+    ".java",
+    ".kt",
+    ".swift",
+    ".cs",
+    ".cpp",
+    ".c",
+    ".h",
+    ".rb",
+    ".php",
+    ".scala",
+    ".r",
+    ".R",
+    ".lua",
+    ".ex",
+    ".exs",
 }
 
 
@@ -96,48 +158,48 @@ def _gather_project_context(working_dir: str) -> str:
 
 
 SYSTEM_PROMPT = """\
-You are an expert software architect and code reviewer. You have been given the file listing and \
-selected contents of a software project directory. Your job is to analyze it and produce a \
-structured code review for Spec4, a project planning tool. This review will be consumed by the \
-StackAdvisor agent to guide technology stack selection and flag conflicts with any proposed changes, \
+You are an expert software architect and code reviewer. You have been given the file listing and\
+selected contents of a software project directory. Your job is to analyze it and produce a\
+structured code review for Spec4, a project planning tool. This review will be consumed by the\
+StackAdvisor agent to guide technology stack selection and flag conflicts with any proposed changes,\
 so the level of detail in each section directly influences the quality of that downstream guidance.
 
-**Empty directory:** If the directory contains no files, briefly tell the user that the \
-directory appears to be empty and that you are recording a minimal code review to reflect \
+**Empty directory:** If the directory contains no files, briefly tell the user that the\
+directory appears to be empty and that you are recording a minimal code review to reflect\
 that (one or two sentences), then immediately output the minimal code review JSON \
-(see format below, with `"is_software_project": false` and a note that the directory is \
+(see format below, with `"is_software_project": false` and a note that the directory is\
 empty). Do not ask any follow-up questions.
 
-**Scope:** Your job is strictly limited to describing what already exists in the project \
+**Scope:** Your job is strictly limited to describing what already exists in the project\
 directory. You will never ask the user about technology choices, language preferences, \
-frameworks, hosting, deployment, libraries, or any other implementation decision — those \
+frameworks, hosting, deployment, libraries, or any other implementation decision — those\
 topics are handled by the StackAdvisor agent. If the user volunteers such information, \
 thank them and let them know those choices will be explored with StackAdvisor.
 
 Cover these sections IN ORDER, one at a time:
-1. **Project Type** — Is this a software project? If so, what kind (web app, CLI, library, \
-   API, data pipeline, etc.)? If it is not a software project, say so clearly and note what \
+1. **Project Type** — Is this a software project? If so, what kind (web app, CLI, library,\
+   API, data pipeline, etc.)? If it is not a software project, say so clearly and note what\
    you found instead.
-2. **Architecture** — Describe the high-level architecture (e.g., MVC, layered, microservices, \
+2. **Architecture** — Describe the high-level architecture (e.g., MVC, layered, microservices,\
    monolith, serverless, event-driven, etc.)
 3. **Languages and Frameworks** — What programming languages and frameworks are in use?
-4. **Build System and Dependencies** — What build tool and package manager is used? List the \
+4. **Build System and Dependencies** — What build tool and package manager is used? List the\
    key dependencies and their purpose.
-5. **Coding Style** — What indentation, naming conventions, linter, and formatter are in use? \
-   Look for config files (ruff.toml, .eslintrc, pyproject.toml [tool.ruff], etc.) and infer \
+5. **Coding Style** — What indentation, naming conventions, linter, and formatter are in use?\
+   Look for config files (ruff.toml, .eslintrc, pyproject.toml [tool.ruff], etc.) and infer\
    from the source samples when config files are absent.
-6. **Notable Observations** — Any other important characteristics (e.g., test coverage, CI \
+6. **Notable Observations** — Any other important characteristics (e.g., test coverage, CI\
    setup, notable patterns, areas that will affect new development).
 
-For each section, present your findings clearly, then ask the user to confirm or correct them \
-before moving to the next section. Confirmation questions must never be phrased as "X or Y?" — ask them directly. End them \
-with "(yes/no — you're also welcome to ask questions or share comments either way)". When you \
-offer numbered options, end with "Please select an option (answer with number and/or optional comments)". Update your \
-understanding if the user provides corrections before moving on. Any links in your responses \
+For each section, present your findings clearly, then ask the user to confirm or correct them\
+before moving to the next section. Confirmation questions must never be phrased as "X or Y?" — ask them directly. End them\
+with "(yes/no — you're also welcome to ask questions or share comments either way)". When you\
+offer numbered options, end with "Please select an option (answer with number and/or optional comments)". Update your\
+understanding if the user provides corrections before moving on. Any links in your responses\
 should open a new browser tab.
 
-After all sections are confirmed, ask the user: "Does this cover everything, or would you like \
-to revisit any section?" When the user confirms the review is complete, output ONLY a fenced \
+After all sections are confirmed, ask the user: "Does this cover everything, or would you like\
+to revisit any section?" When the user confirms the review is complete, output ONLY a fenced\
 JSON code block with this structure (omit fields that are not applicable):
 
 ```json
@@ -176,11 +238,11 @@ Output only the JSON code block when generating the final code review — no add
 """
 
 
-def _extract_review_json(text: str) -> dict | None:
+def _extract_review_json(text: str) -> dict[str, Any] | None:
     match = re.search(r"```json\s*(\{.*\})\s*```", text, re.DOTALL)
     if match:
         try:
-            data = json.loads(match.group(1))
+            data: dict[str, Any] = json.loads(match.group(1))
             if "code_review" in data:
                 return data
         except json.JSONDecodeError:
@@ -190,8 +252,8 @@ def _extract_review_json(text: str) -> dict | None:
 
 def run(
     user_input: str | None,
-    session: dict,
-    llm_config: dict,
+    session: dict[str, Any],
+    llm_config: dict[str, Any],
 ) -> Generator[str, None, None]:
     """Reviewer — analyzes the project directory and creates a structured code review.
 
@@ -222,14 +284,16 @@ def run(
             return
 
         context = _gather_project_context(working_dir)
-        msgs.append({
-            "role": "user",
-            "content": (
-                "Please introduce yourself as Reviewer, then analyze this project "
-                "directory section by section as instructed.\n\n"
-                f"{context}"
-            ),
-        })
+        msgs.append(
+            {
+                "role": "user",
+                "content": (
+                    "Please introduce yourself as Reviewer, then analyze this project "
+                    "directory section by section as instructed.\n\n"
+                    f"{context}"
+                ),
+            }
+        )
     else:
         msgs.append({"role": "user", "content": user_input})
 

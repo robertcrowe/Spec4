@@ -105,7 +105,6 @@ src/spec4/
 ├── providers.py            # Provider/model registry, live model fetching
 ├── tavily_mcp.py           # Tavily web search integration
 ├── project_manager.py      # .spec4/ artifact persistence
-├── a2a_bus.py              # In-memory A2A task bus
 └── agents/
     ├── reviewer.py         # Code review agent
     ├── brainstormer.py     # Vision development agent

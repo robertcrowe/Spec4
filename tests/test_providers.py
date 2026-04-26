@@ -9,7 +9,13 @@ class TestProvidersRegistry:
         assert len(PROVIDERS) == 5
 
     def test_provider_keys(self):
-        assert set(PROVIDERS.keys()) == {"openai", "anthropic", "gemini", "cohere", "mistral"}
+        assert set(PROVIDERS.keys()) == {
+            "openai",
+            "anthropic",
+            "gemini",
+            "cohere",
+            "mistral",
+        }
 
     def test_each_provider_has_required_keys(self):
         for key, info in PROVIDERS.items():
@@ -21,11 +27,15 @@ class TestProvidersRegistry:
 
     def test_labels_are_strings(self):
         for key, info in PROVIDERS.items():
-            assert isinstance(info["label"], str) and info["label"], f"{key} label should be non-empty string"
+            assert isinstance(info["label"], str) and info["label"], (
+                f"{key} label should be non-empty string"
+            )
 
     def test_env_var_format(self):
         for key, info in PROVIDERS.items():
-            assert "_API_KEY" in info["env_var"], f"{key} env_var should contain _API_KEY"
+            assert "_API_KEY" in info["env_var"], (
+                f"{key} env_var should contain _API_KEY"
+            )
 
 
 class TestListModels:
@@ -52,7 +62,9 @@ class TestListModels:
         assert "401" in err
 
     def test_network_error_returns_empty_and_message(self):
-        with patch("spec4.providers._fetch_models", side_effect=Exception("connection refused")):
+        with patch(
+            "spec4.providers._fetch_models", side_effect=Exception("connection refused")
+        ):
             models, err = list_models("anthropic", "bad-key")
         assert models == []
         assert "connection refused" in err
@@ -78,8 +90,14 @@ class TestListModels:
     def test_gemini_adds_prefix_and_filters_capability(self):
         raw = {
             "models": [
-                {"name": "models/gemini-1.5-pro", "supportedGenerationMethods": ["generateContent"]},
-                {"name": "models/embedding-001", "supportedGenerationMethods": ["embedContent"]},
+                {
+                    "name": "models/gemini-1.5-pro",
+                    "supportedGenerationMethods": ["generateContent"],
+                },
+                {
+                    "name": "models/embedding-001",
+                    "supportedGenerationMethods": ["embedContent"],
+                },
             ]
         }
         with patch("spec4.providers._json_get", return_value=raw):

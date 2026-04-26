@@ -9,12 +9,12 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "a2a-sdk>=0.3.24",
-    "dash>=2.17.0",
-    "dash-iconify>=0.1.2",
-    "dash-mantine-components>=0.14.0",
-    "litellm>=1.82.0",
-    "mcp>=1.26.0",
+    "dash>=2.17.0,<5",
+    "dash-iconify>=0.1.2,<1",
+    "dash-mantine-components>=0.14.0,<3",
+    "gunicorn>=21.2,<26",
+    "litellm>=1.82.0,<2",
+    "mcp>=1.26.0,<2",
 ]
 
 [project.scripts]
@@ -26,9 +26,47 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "mypy>=1.20.2",
     "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
+    "ruff>=0.15.12",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# Long system-prompt strings in multi-line literals cannot use inline noqa
+"src/spec4/agents/*.py" = ["E501"]
+# Clientside-callback JavaScript strings contain long single lines
+"src/spec4/app.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[[tool.mypy.overrides]]
+module = [
+    "dash",
+    "dash.*",
+    "dash_mantine_components",
+    "dash_mantine_components.*",
+    "dash_iconify",
+    "dash_iconify.*",
+    "litellm",
+    "litellm.*",
+    "a2a_sdk",
+    "a2a_sdk.*",
+    "mcp",
+    "mcp.*",
+    "gunicorn",
+    "gunicorn.*",
+]
+ignore_missing_imports = true
 
 [tool.hatch.build.targets.sdist]
 exclude = [
