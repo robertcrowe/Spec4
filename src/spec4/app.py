@@ -77,6 +77,9 @@ app.layout = dmc.MantineProvider(
         dcc.Store(id="session", storage_type="session", data=_default_session()),
         dcc.Store(id="prefs", storage_type="local", data={}),
         dcc.Store(id="_last_render", data=0),
+        # Polling interval for streaming agent responses; enabled (max_intervals=-1)
+        # while a stream is active, disabled (max_intervals=0) otherwise.
+        dcc.Interval(id="stream-poll-interval", interval=500, max_intervals=0),
         dmc.AppShell(
             children=[
                 dmc.AppShellHeader(
@@ -212,7 +215,8 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
 
 app.clientside_callback(  # type: ignore[no-untyped-call]
     """
-    function(render_n) {
+    function(render_n, session) {
+        if (session && session._stream_id) return window.dash_clientside.no_update;
         var el = document.getElementById('chat-progress-container');
         if (el) el.style.display = 'none';
         return window.dash_clientside.no_update;
@@ -220,6 +224,7 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
     """,
     Output("_progress-dummy", "children"),
     Input("_last_render", "data"),
+    State("session", "data"),
     prevent_initial_call=True,
 )
 

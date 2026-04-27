@@ -8,7 +8,7 @@ from typing import Any
 
 from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
-from spec4 import project_manager, providers, tavily_mcp
+from spec4 import project_manager, providers, streaming, tavily_mcp
 from spec4.app_constants import (
     PATH_TO_PHASE,
     STATE_STACK_COMPLETE,
@@ -16,8 +16,8 @@ from spec4.app_constants import (
 )
 from spec4.session import (
     _default_session,
+    _get_agent_gen,
     _load_working_dir,
-    _run_agent_blocking,
     _persist_artifacts,
 )
 
@@ -459,20 +459,25 @@ def on_chat_back(n: Any, session: Any) -> Any:
 
 @callback(
     Output("session", "data", allow_duplicate=True),
+    Output("stream-poll-interval", "max_intervals"),
     Input("init-turn-interval", "n_intervals"),
     State("session", "data"),
     prevent_initial_call=True,
 )
 def on_init_turn(n: Any, session: Any) -> Any:
     if not n or session.get("_initial_turn_done") or session.get("messages"):
-        return no_update
-    response = _run_agent_blocking(None, session)
-    _persist_artifacts(session)
-    return {
-        **session,
-        "messages": [{"role": "assistant", "content": response}],
-        "_initial_turn_done": True,
-    }
+        return no_update, no_update
+    gen = _get_agent_gen(None, session)
+    stream_id = streaming.start(gen, session)
+    return (
+        {
+            **session,
+            "messages": [{"role": "assistant", "content": ""}],
+            "_stream_id": stream_id,
+            "_initial_turn_done": True,
+        },
+        -1,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -483,6 +488,7 @@ def on_init_turn(n: Any, session: Any) -> Any:
 @callback(
     Output("session", "data", allow_duplicate=True),
     Output("chat-input", "value"),
+    Output("stream-poll-interval", "max_intervals"),
     Input("btn-chat-submit", "n_clicks"),
     Input("chat-input", "n_submit"),
     State("chat-input", "value"),
@@ -491,14 +497,59 @@ def on_init_turn(n: Any, session: Any) -> Any:
 )
 def on_chat_submit(n_clicks: Any, n_submit: Any, user_input: Any, session: Any) -> Any:
     if not user_input or not user_input.strip():
-        return no_update, no_update
+        return no_update, no_update, no_update
+    if session.get("_stream_id"):
+        return no_update, no_update, no_update
     messages = list(session.get("messages", []))
     messages.append({"role": "user", "content": user_input.strip()})
-    session = {**session, "messages": messages}
-    response = _run_agent_blocking(user_input.strip(), session)
-    _persist_artifacts(session)
-    messages.append({"role": "assistant", "content": response})
-    return {**session, "messages": messages}, ""
+    messages.append({"role": "assistant", "content": ""})
+    gen = _get_agent_gen(user_input.strip(), session)
+    stream_id = streaming.start(gen, session)
+    return {**session, "messages": messages, "_stream_id": stream_id}, "", -1
+
+
+# ---------------------------------------------------------------------------
+# Chat — streaming poll
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Output("stream-poll-interval", "max_intervals", allow_duplicate=True),
+    Input("stream-poll-interval", "n_intervals"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_stream_poll(n: Any, session: Any) -> Any:
+    stream_id = session.get("_stream_id")
+    if not stream_id:
+        return no_update, 0
+
+    stream = streaming.get(stream_id)
+    if not stream:
+        return {**session, "_stream_id": None}, 0
+
+    text = stream["text"]
+    messages = list(session.get("messages", []))
+    if messages:
+        messages[-1] = {"role": "assistant", "content": text}
+
+    if not stream["done"]:
+        return {**session, "messages": messages}, no_update
+
+    # Stream complete — merge agent-mutated session and finalise
+    final = streaming.pop(stream_id)
+    agent_session = final["session"]
+    _persist_artifacts(agent_session)
+    return (
+        {
+            **agent_session,
+            "messages": messages,
+            "_stream_id": None,
+            "_initial_turn_done": True,
+        },
+        0,
+    )
 
 
 # ---------------------------------------------------------------------------

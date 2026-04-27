@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pathlib
+from collections.abc import Generator
 from typing import Any
 
 from spec4 import project_manager
@@ -50,6 +51,7 @@ def _default_session() -> dict[str, Any]:
         "_warn_existing_content": False,
         "_dir_has_content": False,
         "_initial_turn_done": False,
+        "_stream_id": None,
     }
 
 
@@ -116,23 +118,28 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def _run_agent_blocking(user_input: str | None, session: dict[str, Any]) -> str:
-    """Run one agent turn synchronously, returning the full response text."""
+def _get_agent_gen(
+    user_input: str | None, session: dict[str, Any]
+) -> Generator[str, None, None]:
+    """Return the generator for one agent turn without starting it."""
     llm_config = session["llm_config"]
     active = session["active_agent"]
 
     if active == "reviewer":
-        gen = reviewer.run(user_input, session, llm_config)
+        return reviewer.run(user_input, session, llm_config)
     elif active == "brainstormer":
-        gen = brainstormer.run(user_input, session, llm_config)
+        return brainstormer.run(user_input, session, llm_config)
     elif active == "stack_advisor":
-        gen = stack_advisor.run(user_input, session, llm_config)
+        return stack_advisor.run(user_input, session, llm_config)
     elif active == "phaser":
-        gen = phaser.run(user_input, session, llm_config)
+        return phaser.run(user_input, session, llm_config)
     else:
         raise ValueError(f"Unknown agent: {active!r}")
 
-    return "".join(gen)
+
+def _run_agent_blocking(user_input: str | None, session: dict[str, Any]) -> str:
+    """Run one agent turn synchronously, returning the full response text."""
+    return "".join(_get_agent_gen(user_input, session))
 
 
 def _persist_artifacts(session: dict[str, Any]) -> None:
