@@ -14,6 +14,7 @@ PATH_TO_PHASE = {
     "/agents": "agent_select",
     "/chat": "chat",
     "/done": "done",
+    "/design": "designer",
 }
 
 DARK_THEME: dict[str, Any] = {

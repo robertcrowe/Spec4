@@ -18,7 +18,10 @@ class TestPathToPhase:
         assert PATH_TO_PHASE["/chat"] == "chat"
 
     def test_all_phases_covered(self) -> None:
-        expected = {"landing", "working_dir", "setup", "agent_select", "chat", "done"}
+        expected = {
+            "landing", "working_dir", "setup", "agent_select",
+            "chat", "done", "designer",
+        }
         assert set(PATH_TO_PHASE.values()) == expected
 
 

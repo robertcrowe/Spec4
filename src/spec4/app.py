@@ -20,6 +20,7 @@ from spec4.layouts import (
     _chat_layout,
     _done_layout,
 )
+from spec4.layouts.designer import designer_layout
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -58,6 +59,7 @@ server = app.server  # expose Flask server for gunicorn
 
 # Register all callbacks (must come after app is created)
 import spec4.callbacks  # noqa: E402, F401
+import spec4.callbacks.designer  # noqa: E402, F401
 
 # ---------------------------------------------------------------------------
 # Root layout
@@ -77,6 +79,8 @@ app.layout = dmc.MantineProvider(
         dcc.Store(id="session", storage_type="session", data=_default_session()),
         dcc.Store(id="prefs", storage_type="local", data={}),
         dcc.Store(id="_last_render", data=0),
+        dcc.Store(id="image-support-store", storage_type="local", data=None),
+        html.Div(id="_designer-fs-dummy", style={"display": "none"}),
         # Polling interval for streaming agent responses; enabled (max_intervals=-1)
         # while a stream is active, disabled (max_intervals=0) otherwise.
         dcc.Interval(id="stream-poll-interval", interval=500, max_intervals=0),
@@ -228,6 +232,25 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
     prevent_initial_call=True,
 )
 
+app.clientside_callback(  # type: ignore[no-untyped-call]
+    """
+    function(n_clicks, store_data) {
+        if (!n_clicks || !store_data) return window.dash_clientside.no_update;
+        var html_content = store_data.mock_html || '';
+        var newWin = window.open('', '_blank');
+        if (newWin) {
+            newWin.document.write(html_content);
+            newWin.document.close();
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("_designer-fs-dummy", "children"),
+    Input("mock-fullscreen-btn", "n_clicks"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+
 
 # ---------------------------------------------------------------------------
 # Page render
@@ -271,6 +294,8 @@ def render_page(session: Any, prefs: Any, render_count: Any) -> Any:
         content = _chat_layout(session)
     elif phase == "done":
         content = _done_layout(session)
+    elif phase == "designer":
+        content = designer_layout(session)
     else:
         content = _landing_layout()
     return html.Div([content, _footer()]), (render_count or 0) + 1, new_session
