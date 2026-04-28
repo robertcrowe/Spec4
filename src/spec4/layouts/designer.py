@@ -216,29 +216,36 @@ def _step4_content(
     for idx, shot in enumerate(screenshots):
         children.append(_screenshot_card(idx, shot))
 
-    children.append(
-        dmc.Button("Generate Mock →", id="btn-designer-generate-mock")
-    )
+    children.append(dmc.Button("Generate Mock →", id="btn-designer-generate-mock"))
     return dmc.Stack(children, gap="sm")
 
 
-def _step5_content() -> Any:
+def _step5_content(buffer_data: dict[str, Any] | None = None) -> Any:
+    bd = buffer_data or {}
+    error: str | None = bd.get("error")
+    tokens: int = bd.get("tokens", 0)
+    progress_val: int = bd.get("progress", 0)
+    alert: Any = (
+        dmc.Alert(error, color="red", variant="light", title="Generation Error")
+        if error
+        else dmc.Alert(
+            "Generating your mock — this may take several minutes.",
+            color="blue",
+            variant="light",
+        )
+    )
     return dmc.Stack(
         [
-            dmc.Alert(
-                "Generating your mock — this may take several minutes.",
-                color="blue",
-                variant="light",
-            ),
+            alert,
             dmc.Progress(
-                value=0,
+                value=progress_val,
                 id="mock-progress",
                 animated=True,
                 striped=True,
                 color="blue",
             ),
             dmc.Text(
-                "Tokens received: 0",
+                f"Tokens received: {tokens}",
                 id="mock-token-count",
                 c="dimmed",
                 size="sm",
@@ -383,6 +390,16 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
                 id="designer-session-store",
                 storage_type="memory",
                 data=initial_store,
+            ),
+            dcc.Store(
+                id="mock-stream-buffer",
+                storage_type="memory",
+                data={"text": "", "tokens": 0, "progress": 0, "error": None},
+            ),
+            dcc.Interval(
+                id="mock-stream-interval",
+                interval=250,
+                disabled=True,
             ),
             dmc.Title("Designer", order=3, mb="sm"),
             dmc.Text(

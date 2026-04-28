@@ -2,8 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+from collections.abc import Iterator
 from pathlib import Path
-from typing import TypedDict
+from typing import Any, TypedDict
+
+import litellm
+
+from spec4.tavily_mcp import WEB_SEARCH_TOOL
 
 logger = logging.getLogger(__name__)
 
@@ -137,3 +143,83 @@ def build_mock_prompt(
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": parts},
     ]
+
+
+_UI_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".html",
+        ".htm",
+        ".css",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".jinja",
+        ".jinja2",
+        ".j2",
+        ".svelte",
+        ".vue",
+    }
+)
+_EXCLUDED_DIRS: frozenset[str] = frozenset(
+    {".spec4", ".git", "__pycache__", "node_modules", "dist", ".venv"}
+)
+_MAX_UI_FILES = 20
+
+
+def collect_ui_source_files(
+    project_root: Path,
+    max_chars_per_file: int = 8000,
+) -> list[str]:
+    result: list[str] = []
+    for root, dirs, files in project_root.walk():
+        dirs[:] = sorted(d for d in dirs if d not in _EXCLUDED_DIRS)
+        for fname in sorted(files):
+            if Path(fname).suffix.lower() not in _UI_EXTENSIONS:
+                continue
+            fpath = root / fname
+            try:
+                content = fpath.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if len(content) > max_chars_per_file:
+                content = content[:max_chars_per_file] + "\n# [truncated]"
+            rel = fpath.relative_to(project_root)
+            result.append(f"# --- {rel} ---\n{content}")
+            if len(result) >= _MAX_UI_FILES:
+                return result
+    return result
+
+
+def generate_mock_streaming(
+    session: DesignerSession,
+    model: str,
+    api_key: str,
+    ui_source_snippets: list[str],
+    image_support: bool,
+    tavily_api_key: str | None = None,
+    stop_event: threading.Event | None = None,
+) -> Iterator[str]:
+    messages = build_mock_prompt(session, ui_source_snippets, image_support)
+    try:
+        tools: list[dict[str, Any]] | None = (
+            [WEB_SEARCH_TOOL] if tavily_api_key else None
+        )
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "api_key": api_key,
+            "stream": True,
+        }
+        if tools:
+            kwargs["tools"] = tools
+        response = litellm.completion(**kwargs)
+        for chunk in response:
+            if stop_event is not None and stop_event.is_set():
+                return
+            delta = chunk.choices[0].delta.content or ""
+            if delta:
+                yield delta
+        yield "__DONE__"
+    except Exception as exc:
+        yield f"__GENERATION_ERROR__: {exc}"

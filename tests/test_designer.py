@@ -1,11 +1,16 @@
+import threading
 from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 from spec4.agents.designer import (
     DesignerSession,
     build_mock_prompt,
     clear_session,
+    collect_ui_source_files,
     detect_greenfield,
     detect_no_ui,
+    generate_mock_streaming,
     load_session,
     save_mock,
     save_session,
@@ -288,3 +293,171 @@ class TestBuildMockPrompt:
         assert isinstance(parts, list)
         image_parts = [p for p in parts if p["type"] == "image_url"]
         assert len(image_parts) == 2
+
+
+# ---------------------------------------------------------------------------
+# collect_ui_source_files
+# ---------------------------------------------------------------------------
+
+
+def _make_stream_chunk(content: str, finish_reason: str | None = None) -> MagicMock:
+    chunk = MagicMock()
+    chunk.choices[0].delta.content = content
+    chunk.choices[0].delta.tool_calls = None
+    chunk.choices[0].finish_reason = finish_reason
+    return chunk
+
+
+def _mock_designer_stream(text: str) -> Any:
+    chunks = [_make_stream_chunk(c) for c in text]
+    chunks.append(_make_stream_chunk("", finish_reason="stop"))
+    return patch(
+        "spec4.agents.designer.litellm.completion",
+        return_value=iter(chunks),
+    )
+
+
+class TestCollectUiSourceFiles:
+    def test_collects_html_files(self, tmp_path: Path) -> None:
+        (tmp_path / "index.html").write_text("<html/>")
+        result = collect_ui_source_files(tmp_path)
+        assert len(result) == 1
+
+    def test_collects_css_and_js(self, tmp_path: Path) -> None:
+        for ext in [".html", ".css", ".js", ".jsx", ".ts", ".tsx"]:
+            (tmp_path / f"file{ext}").write_text("content")
+        result = collect_ui_source_files(tmp_path)
+        assert len(result) == 6
+
+    def test_excludes_non_ui_files(self, tmp_path: Path) -> None:
+        (tmp_path / "main.py").write_text("x = 1")
+        (tmp_path / "README.md").write_text("# readme")
+        result = collect_ui_source_files(tmp_path)
+        assert result == []
+
+    def test_excludes_git_dir(self, tmp_path: Path) -> None:
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        (git_dir / "index.html").write_text("<html/>")
+        result = collect_ui_source_files(tmp_path)
+        assert result == []
+
+    def test_excludes_node_modules(self, tmp_path: Path) -> None:
+        nm = tmp_path / "node_modules"
+        nm.mkdir()
+        (nm / "style.css").write_text("body{}")
+        result = collect_ui_source_files(tmp_path)
+        assert result == []
+
+    def test_excludes_venv_and_pycache(self, tmp_path: Path) -> None:
+        for d in [".venv", "__pycache__"]:
+            dpath = tmp_path / d
+            dpath.mkdir()
+            (dpath / "app.js").write_text("x=1")
+        result = collect_ui_source_files(tmp_path)
+        assert result == []
+
+    def test_truncates_long_files(self, tmp_path: Path) -> None:
+        (tmp_path / "big.html").write_text("x" * 9000)
+        result = collect_ui_source_files(tmp_path)
+        assert len(result) == 1
+        assert "# [truncated]" in result[0]
+        # header + 8000 chars + marker — total well under 9000+header
+        assert len(result[0]) < 9000
+
+    def test_no_truncation_for_small_files(self, tmp_path: Path) -> None:
+        (tmp_path / "small.html").write_text("x" * 100)
+        result = collect_ui_source_files(tmp_path)
+        assert "# [truncated]" not in result[0]
+
+    def test_twenty_file_cap(self, tmp_path: Path) -> None:
+        for i in range(25):
+            (tmp_path / f"file{i:02d}.html").write_text("<html/>")
+        result = collect_ui_source_files(tmp_path)
+        assert len(result) == 20
+
+    def test_format_includes_filename(self, tmp_path: Path) -> None:
+        (tmp_path / "app.css").write_text("body { color: red; }")
+        result = collect_ui_source_files(tmp_path)
+        assert result[0].startswith("# ---")
+        assert "app.css" in result[0]
+
+    def test_empty_dir_returns_empty_list(self, tmp_path: Path) -> None:
+        assert collect_ui_source_files(tmp_path) == []
+
+
+# ---------------------------------------------------------------------------
+# generate_mock_streaming
+# ---------------------------------------------------------------------------
+
+
+def _gen_session() -> DesignerSession:
+    return {
+        "step": 5,
+        "preference_text": "dark theme",
+        "screenshots": [],
+        "mock_html": "",
+        "finalized": False,
+    }
+
+
+class TestGenerateMockStreaming:
+    def test_yields_streamed_chunks(self) -> None:
+        with _mock_designer_stream("Hello World"):
+            chunks = list(
+                generate_mock_streaming(_gen_session(), "gpt-4o", "sk-test", [], True)
+            )
+        text = "".join(c for c in chunks if not c.startswith("__"))
+        assert text == "Hello World"
+
+    def test_yields_done_sentinel_last(self) -> None:
+        with _mock_designer_stream("Hi"):
+            chunks = list(
+                generate_mock_streaming(_gen_session(), "gpt-4o", "sk-test", [], True)
+            )
+        assert chunks[-1] == "__DONE__"
+
+    def test_yields_error_on_exception(self) -> None:
+        with patch(
+            "spec4.agents.designer.litellm.completion",
+            side_effect=Exception("timeout"),
+        ):
+            chunks = list(
+                generate_mock_streaming(_gen_session(), "gpt-4o", "sk-test", [], True)
+            )
+        assert len(chunks) == 1
+        assert chunks[0].startswith("__GENERATION_ERROR__:")
+        assert "timeout" in chunks[0]
+
+    def test_stop_event_prevents_done(self) -> None:
+        ev = threading.Event()
+        ev.set()
+        with _mock_designer_stream("A" * 100):
+            chunks = list(
+                generate_mock_streaming(
+                    _gen_session(), "gpt-4o", "sk-test", [], True, stop_event=ev
+                )
+            )
+        assert "__DONE__" not in chunks
+
+    def test_includes_source_snippets_in_prompt(self) -> None:
+        captured: list[object] = []
+
+        def fake_completion(**kwargs: object) -> object:
+            captured.append(kwargs)
+            return iter([_make_stream_chunk("", finish_reason="stop")])
+
+        with patch(
+            "spec4.agents.designer.litellm.completion", side_effect=fake_completion
+        ):
+            list(
+                generate_mock_streaming(
+                    _gen_session(), "gpt-4o", "sk-test", ["<nav>nav</nav>"], False
+                )
+            )
+        msgs = captured[0]["messages"]  # type: ignore[index]
+        content_parts = msgs[1]["content"]
+        combined = " ".join(
+            str(p.get("text", "")) for p in content_parts if isinstance(p, dict)
+        )
+        assert "<nav>nav</nav>" in combined
