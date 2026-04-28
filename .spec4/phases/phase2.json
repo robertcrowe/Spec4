@@ -1,0 +1,72 @@
+{
+  "phase_number": 2,
+  "total_phases": 6,
+  "phase_title": "Designer Agent \u2014 Core Logic & Session Persistence",
+  "phase_summary": "Build the pure-Python business logic for the Designer agent as a fully tested standalone module. No Dash UI is introduced in this phase \u2014 only the functional core. This covers: the DesignerSession state schema, no-UI detection, greenfield/existing-project detection, session load/save to `.spec4/design/`, and the pure function that constructs the LLM message payload (without making any LLM call). All logic is unit-tested, typed, and passes all quality gates.",
+  "tech_stack_spec": {
+    "dependencies": [
+      "pytest",
+      "pytest-cov",
+      "ruff",
+      "mypy"
+    ],
+    "configurations": "No new env vars. All Designer state is persisted to `.spec4/design/` on the local filesystem. The `.spec4/design/` directory is created by `save_session` if it does not exist. No LLM provider credentials are needed for this phase."
+  },
+  "instructions": [
+    "Create `agents/designer.py`. Add `from __future__ import annotations` at the top, consistent with the other agent modules.",
+    "Define a `DesignerSession` TypedDict (or `@dataclass`) with the following fields: `step: int` (current wizard step, 1-indexed), `preference_text: str` (user's free-text description of desired look and feel), `screenshots: list[dict[str, str]]` (each entry has keys `data` for base64-encoded image data URI and `annotation` for the user's like/dislike notes), `mock_html: str` (the generated HTML string, empty until generated), `finalized: bool` (True once the user has approved the mock). Use `TypedDict` from `typing` for full mypy strict-mode compatibility.",
+    "Implement `detect_no_ui(vision: dict[str, object], code_review: dict[str, object]) -> bool`. This pure function returns `True` if either the vision statement or the code review indicates the project has no graphical UI (e.g. project_type contains 'cli', 'command-line', or 'no ui'; or the vision purpose contains similar indicators). Use case-insensitive substring matching. Return `False` (has UI) when uncertain.",
+    "Implement `detect_greenfield(project_root: Path) -> bool`. Returns `True` if the only entry inside `project_root` is the `.spec4/` directory (i.e. `project_root` contains no other files or directories at the top level). Returns `False` otherwise.",
+    "Implement `load_session(design_dir: Path) -> DesignerSession | None`. Reads `design_dir / 'session.json'` if it exists and deserialises it into a `DesignerSession`. Returns `None` if the file does not exist or is malformed (log a warning on malformed JSON, do not raise).",
+    "Implement `save_session(session: DesignerSession, design_dir: Path) -> None`. Creates `design_dir` if needed (`design_dir.mkdir(parents=True, exist_ok=True)`), then serialises the session to `design_dir / 'session.json'` as UTF-8 JSON with `indent=2`.",
+    "Implement `save_mock(html: str, design_dir: Path) -> None`. Writes the HTML string to `design_dir / 'mock.html'` as UTF-8. Creates `design_dir` if needed.",
+    "Implement `clear_session(design_dir: Path) -> None`. Deletes `design_dir / 'session.json'` and `design_dir / 'mock.html'` if they exist. Does NOT delete screenshot files if any have been persisted \u2014 those are cleared separately in Phase 4.",
+    "Implement `build_mock_prompt(session: DesignerSession, ui_source_snippets: list[str], image_support: bool) -> list[dict[str, object]]`. This is a pure function that constructs the LiteLLM-compatible `messages` list for the mock-generation LLM call. It must: (a) include a system message establishing Designer's role as an expert UI/UX designer; (b) include the user's `preference_text`; (c) if `image_support` is True and `session['screenshots']` is non-empty, include each screenshot as an `image_url` content part using the base64 data URI from `screenshot['data']`, followed by the annotation text; (d) if `ui_source_snippets` is non-empty (existing project), include them as context with a clear instruction to use the existing UI as a starting point; (e) end with a clear instruction to output a single self-contained HTML file with all CSS in a `<style>` block and all JS in a `<script>` block, covering only the landing page or starting screen.",
+    "Create `tests/test_designer.py`. Write unit tests covering: `detect_no_ui` (True for CLI vision, False for web app vision), `detect_greenfield` (True when only `.spec4/` present, False when other files exist), `load_session` (returns None for missing file, returns session for valid JSON, returns None for malformed JSON), `save_session` then `load_session` round-trip (data survives serialisation), `save_mock` (file is written with correct content), `clear_session` (files are deleted, no error if already absent), `build_mock_prompt` (correct structure with and without images, with and without source snippets). Use `tmp_path` pytest fixture for all filesystem operations.",
+    "Run `uv run ruff check agents/designer.py tests/test_designer.py`, `uv run ruff format --check agents/designer.py tests/test_designer.py`, and `uv run mypy agents/designer.py` \u2014 all must pass cleanly.",
+    "Run `uv run pytest tests/test_designer.py --cov=agents/designer --cov-report=term-missing` and confirm 100% coverage of `agents/designer.py`."
+  ],
+  "risk_assessment": {
+    "potential_bottlenecks": "mypy strict mode requires every dict key and value type to be precisely annotated; `dict[str, object]` is intentionally broad for the vision/code_review parameters but mypy may still require explicit casts when accessing nested keys. `TypedDict` total=True is the default \u2014 any optional fields must be declared with `total=False` or as a separate partial TypedDict.",
+    "mitigation_strategy": "Use `typing.cast` sparingly and only where necessary when accessing nested dict values whose types cannot be inferred. For optional `DesignerSession` fields (e.g. `mock_html` which starts empty), prefer `str` with an empty-string sentinel over `str | None` to avoid unnecessary Optional handling. Test `detect_greenfield` carefully: `Path.iterdir()` includes hidden directories, so `.spec4` must be the only entry \u2014 filter with `p.name` comparison, not `p.is_dir()` alone."
+  },
+  "verification": "Run `uv run pytest tests/test_designer.py --cov=agents/designer --cov-report=term-missing` \u2014 all tests pass and coverage for `agents/designer.py` is 100%. Run `uv run ruff check .` and `uv run mypy .` \u2014 both exit 0 with no new violations.",
+  "references": [
+    {
+      "standard": "Plotly Dash",
+      "url": "https://dash.plotly.com/"
+    },
+    {
+      "standard": "LiteLLM",
+      "url": "https://docs.litellm.ai/docs/"
+    },
+    {
+      "standard": "LiteLLM \u2014 Vision / Multimodal",
+      "url": "https://docs.litellm.ai/docs/completion/vision"
+    },
+    {
+      "standard": "MCP Python SDK",
+      "url": "https://github.com/modelcontextprotocol/python-sdk"
+    },
+    {
+      "standard": "Model Context Protocol (MCP)",
+      "url": "https://modelcontextprotocol.io/docs/getting-started/intro"
+    },
+    {
+      "standard": "pytest",
+      "url": "https://docs.pytest.org/"
+    },
+    {
+      "standard": "pytest-cov",
+      "url": "https://pytest-cov.readthedocs.io/"
+    },
+    {
+      "standard": "Ruff",
+      "url": "https://docs.astral.sh/ruff/"
+    },
+    {
+      "standard": "mypy",
+      "url": "https://mypy.readthedocs.io/en/stable/"
+    }
+  ]
+}

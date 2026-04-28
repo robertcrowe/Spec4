@@ -1,0 +1,127 @@
+{
+  "stack_spec": {
+    "name": "Spec4",
+    "languages": [
+      "Python 3.12+",
+      "JavaScript (inline/embedded in Dash clientside callbacks only)",
+      "CSS"
+    ],
+    "deployment": {
+      "platforms": [
+        "Locally-run web app (Dash on localhost)",
+        "PyPI package"
+      ],
+      "hosting": "Self-hosted (user's local machine)",
+      "distribution": "GitHub repository + PyPI",
+      "build": "uv / pyproject.toml / uv_build"
+    },
+    "libraries": {
+      "web_framework_and_ui": [
+        {
+          "name": "dash",
+          "purpose": "Core web framework \u2014 Flask-based reactive UI via callbacks, dcc.Store for client-side credential storage in browser localStorage"
+        },
+        {
+          "name": "dash-mantine-components",
+          "purpose": "React/Mantine-based UI component library \u2014 rich, polished components with theming support"
+        },
+        {
+          "name": "dash-iconify",
+          "purpose": "Icon integration for Dash via the Iconify icon set ecosystem"
+        }
+      ],
+      "llm_abstraction": [
+        {
+          "name": "litellm",
+          "purpose": "Unified multi-provider LLM abstraction \u2014 single API for OpenAI, Anthropic, Gemini, Cohere, Mistral and 100+ other providers; handles streaming, image inputs, and model capability metadata"
+        }
+      ],
+      "web_search_integration": [
+        {
+          "name": "mcp",
+          "purpose": "MCP Python SDK \u2014 integrates Tavily web search tool into all five agents via the Model Context Protocol"
+        }
+      ],
+      "wsgi_server": [
+        {
+          "name": "gunicorn",
+          "purpose": "Production WSGI server for serving the Dash/Flask app when run locally after PyPI install"
+        }
+      ],
+      "testing": [
+        {
+          "name": "pytest",
+          "purpose": "Test runner \u2014 simple, expressive, widely adopted Python testing framework"
+        },
+        {
+          "name": "pytest-cov",
+          "purpose": "Test coverage reporting integrated with pytest"
+        }
+      ],
+      "quality_tooling": [
+        {
+          "name": "ruff",
+          "purpose": "Linter and formatter \u2014 replaces Flake8 and Black in a single tool"
+        },
+        {
+          "name": "mypy",
+          "purpose": "Static type checker in strict mode \u2014 enforces full annotation coverage across the codebase"
+        }
+      ]
+    },
+    "coding_style": {
+      "linter": "Ruff (rule sets E and F; E501 suppressed per-file for agents/*.py and app.py where long strings are unavoidable)",
+      "formatter": "Ruff format",
+      "type_checker": "mypy (strict = true)",
+      "indentation": "4 spaces",
+      "line_length": 88,
+      "quotes": "double",
+      "naming_conventions": {
+        "variables": "snake_case",
+        "functions": "snake_case",
+        "classes": "PascalCase",
+        "constants": "UPPER_SNAKE_CASE",
+        "private_helpers": "single underscore prefix (e.g. _utils.py, _extract_json_block)",
+        "files": "snake_case"
+      },
+      "other_rules": [
+        "trailing commas in multi-line expressions",
+        "no unused imports",
+        "from __future__ import annotations in all agent modules for deferred annotation evaluation"
+      ],
+      "patterns": [
+        "layered architecture (presentation / business logic / session & persistence)",
+        "sequential pipeline (Reviewer \u2192 Brainstormer \u2192 Designer \u2192 StackAdvisor \u2192 Phaser) \u2014 each stage consumes prior output as input",
+        "functional core / imperative shell \u2014 pure functions for data transformation and agent logic; side effects (filesystem I/O, LLM calls, HTTP) pushed to the edges",
+        "dependency injection \u2014 agents receive dependencies (LLM client, session state, filesystem paths) rather than constructing them internally",
+        "single underscore prefix for private helpers at both function and module level"
+      ]
+    },
+    "references": [
+      {
+        "standard": "Model Context Protocol (MCP)",
+        "url": "https://modelcontextprotocol.io/docs/getting-started/intro"
+      },
+      {
+        "standard": "MCP Python SDK",
+        "url": "https://github.com/modelcontextprotocol/python-sdk"
+      },
+      {
+        "standard": "LiteLLM",
+        "url": "https://docs.litellm.ai/docs/"
+      },
+      {
+        "standard": "Tavily Search API",
+        "url": "https://docs.tavily.com/documentation/about"
+      },
+      {
+        "standard": "Tavily MCP Server",
+        "url": "https://github.com/tavily-ai/tavily-mcp"
+      },
+      {
+        "standard": "Plotly Dash",
+        "url": "https://dash.plotly.com/"
+      }
+    ]
+  }
+}

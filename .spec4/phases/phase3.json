@@ -1,0 +1,86 @@
+{
+  "phase_number": 3,
+  "total_phases": 6,
+  "phase_title": "Designer Agent \u2014 UI Layout, Screenshot Upload & Mock Preview",
+  "phase_summary": "Build the complete Dash UI for the Designer agent's multi-step wizard covering steps 1 through 6 of the workflow: no-UI gate, resume-or-start detection, reading vision, preference text entry, screenshot upload with per-screenshot like/dislike annotation, the soft >5 screenshot warning, and the 'screenshots disabled' notice. Also build the iframe mock preview panel with a full-screen overlay button. Mock generation is wired as a placeholder stub \u2014 the real LLM call is added in Phase 4. All UI logic is driven by callbacks that read/write session state via `dcc.Store`.",
+  "tech_stack_spec": {
+    "dependencies": [
+      "dash",
+      "dash-mantine-components",
+      "dash-iconify",
+      "pytest",
+      "pytest-cov",
+      "ruff",
+      "mypy"
+    ],
+    "configurations": "No new env vars. A `dcc.Store(id='designer-session-store', storage_type='memory')` holds in-memory wizard state during the session (step index, accumulated screenshots, preference text). A `dcc.Store(id='image-support-store', storage_type='local')` is added to the root app layout (if not already present from Phase 5 planning) as a placeholder \u2014 its value is `None` until Phase 5 wires the probe result into it."
+  },
+  "instructions": [
+    "Create `layouts/designer.py`. This module exports a single function `designer_layout() -> dash.development.base_component.Component` that returns the full Designer panel as a DMC component tree.",
+    "The layout must contain: (a) a `dmc.Stepper` or equivalent step-indicator showing the current step (steps: No-UI Check \u2192 Start/Resume \u2192 Preferences \u2192 Screenshots \u2192 Generate \u2192 Preview \u2192 Approve); (b) a `dmc.Stack` content area whose children are swapped by callbacks based on the current step; (c) a `dcc.Store(id='designer-session-store', storage_type='memory')` for in-session wizard state; (d) a hidden `dcc.Store(id='image-support-store', storage_type='local')` placeholder if not already in the root layout.",
+    "Step 1 \u2014 No-UI gate: Render a `dmc.Alert` (informational) if `detect_no_ui` returns True, with two `dmc.Button` components: 'Add a GUI' (proceeds to step 2) and 'Skip Designer' (creates empty `.spec4/design/` and navigates to StackAdvisor). If `detect_no_ui` returns False, auto-advance to step 2 without showing the gate.",
+    "Step 2 \u2014 Resume or Start: Check `load_session(design_dir)` on layout initialisation. If a saved session exists with a non-empty `mock_html`, advance directly to the preview step (step 6) and pre-populate the store from the saved session. Otherwise, render two `dmc.Button` components: 'Modify existing look and feel' and 'Create new design'. A third option 'Skip Designer' creates an empty `.spec4/design/` directory and navigates to StackAdvisor. Phaser will later note that UI design decisions are left to the developer's discretion.",
+    "Step 3 \u2014 Preferences text: Render a `dmc.Textarea` (label: 'Describe the look and feel you have in mind') and a `dmc.Button` ('Next'). Store the textarea value in `designer-session-store` on Next click.",
+    "Step 4 \u2014 Screenshot upload: Render a `dcc.Upload` component (accept='image/*', multiple=False) with a styled drop zone. Each successfully uploaded image is decoded from its base64 data URI and added to the screenshots list in `designer-session-store`. For each screenshot in the store, render a `dmc.Card` containing: a thumbnail `html.Img` (max-height: 120px), a `dmc.Textarea` for like/dislike notes (label: 'What do you like or dislike about this?'), and a `dmc.ActionIcon` delete button to remove it. When the screenshot count exceeds 5, display a `dmc.Alert` (color='yellow', variant='light') with the soft warning: 'You have supplied more than 5 screenshots \u2014 too many examples may produce conflicting guidance.' When `image-support-store` is `False`, hide the `dcc.Upload` zone entirely and display a `dmc.Alert` (color='orange'): 'The selected model does not support image input \u2014 screenshot upload is disabled. You can still proceed using your text description.' Render a `dmc.Button` ('Generate Mock') to advance to step 5.",
+    "Step 5 \u2014 Generate (placeholder): Render a `dmc.Progress` bar (value=0, id='mock-progress') and a `dmc.Text` token counter (id='mock-token-count', children='Tokens received: 0'). Render a `dmc.Alert` (color='blue'): 'Generating your mock \u2014 this may take several minutes.' This step's real logic is wired in Phase 4. For now, the 'Generate Mock' button from step 4 sets the store step to 5 and immediately sets it back to 6 with a placeholder HTML string so the preview is reachable during testing.",
+    "Step 6 \u2014 Preview and Approve/Refine/Start Over: Render an `html.Iframe` (id='mock-iframe', style={'width': '100%', 'height': '600px', 'border': 'none'}) whose `srcDoc` is set to `session['mock_html']`. Render a `dmc.Button` ('Full Screen', id='mock-fullscreen-btn') that triggers a clientside callback opening the mock HTML in a new browser tab via `window.open('about:blank')` with the HTML written via `document.write`. Render three `dmc.Button` components side by side: 'Approve' (green), 'Refine' (blue), 'Start Over' (red, variant='outline').",
+    "Implement all step-navigation callbacks in `callbacks/designer.py`. Each callback reads/writes `designer-session-store`. Use `dcc.Store` data as the single source of truth for wizard state \u2014 never store step state in component `children` directly.",
+    "Implement the clientside callback for the full-screen button in `callbacks/designer.py` using `app.clientside_callback`. The JS body must: get the `mock_html` value from the store, open a new window via `window.open()`, write the HTML via `newWin.document.write(html)`, and call `newWin.document.close()`.",
+    "Wire the 'Approve' button: call `save_session` and `save_mock` from `agents/designer.py` (with the current store contents), then set a navigation signal to advance to the StackAdvisor stage.",
+    "Wire the 'Start Over' button: call `clear_session` from `agents/designer.py`, reset `designer-session-store` to a fresh `DesignerSession` with `step=2`, and re-render the layout from step 2.",
+    "Wire the 'Refine' button: render a `dmc.Textarea` for the user to describe specific changes, an optional additional `dcc.Upload`, and a 'Regenerate' button. The Regenerate button appends the refinement text to `preference_text` in the store and advances to step 5 (placeholder in this phase, real generation in Phase 4).",
+    "Run `uv run ruff check layouts/designer.py callbacks/designer.py` and `uv run mypy layouts/designer.py callbacks/designer.py` \u2014 both must pass.",
+    "Run the full test suite `uv run pytest --cov` and confirm no regressions in existing tests."
+  ],
+  "risk_assessment": {
+    "potential_bottlenecks": "The `html.Iframe` `srcDoc` property renders untrusted HTML in the same origin as the Dash app. Large generated mocks (potentially hundreds of kB) written directly into `srcDoc` can cause browser layout thrash. The clientside full-screen callback must handle the case where `window.open` is blocked by the browser's popup blocker. Dash callback chains that update a `dcc.Store` and then immediately read it back can create timing issues if two callbacks depend on the same store within one interaction.",
+    "mitigation_strategy": "Set `sandbox=''` on the `html.Iframe` to isolate the mock's JS from the parent page. Cap the `srcDoc` value at 512 kB in the callback \u2014 log a warning and truncate with a visible comment if exceeded (this edge case is unlikely but guards against runaway generation). For the full-screen button, fall back to displaying the HTML in a `dmc.Modal` overlay (full viewport width) if `window.open` returns null (popup blocked). Avoid chained store reads by consolidating all step-transition logic into a single callback with multiple `Output` targets rather than separate callbacks."
+  },
+  "verification": "Run `uv run pytest --cov` \u2014 all existing tests pass, no regressions. Run `uv run ruff check .` and `uv run mypy .` \u2014 both exit 0. Launch the app, navigate to the Designer stage, and manually verify: (1) the stepper renders, (2) uploading an image creates a thumbnail card with an annotation field, (3) uploading a 6th image shows the soft warning, (4) clicking 'Start Over' resets the UI to step 2, (5) the placeholder mock renders in the iframe, (6) the full-screen button opens a new tab containing the mock HTML.",
+  "references": [
+    {
+      "standard": "Plotly Dash",
+      "url": "https://dash.plotly.com/"
+    },
+    {
+      "standard": "Dash \u2014 dcc.Upload",
+      "url": "https://dash.plotly.com/dash-core-components/upload"
+    },
+    {
+      "standard": "Dash \u2014 dcc.Store",
+      "url": "https://dash.plotly.com/dash-core-components/store"
+    },
+    {
+      "standard": "Dash \u2014 dcc.Interval",
+      "url": "https://dash.plotly.com/dash-core-components/interval"
+    },
+    {
+      "standard": "Dash Mantine Components",
+      "url": "https://www.dash-mantine-components.com/"
+    },
+    {
+      "standard": "dash-iconify",
+      "url": "https://github.com/snehilvj/dash-iconify"
+    },
+    {
+      "standard": "LiteLLM",
+      "url": "https://docs.litellm.ai/docs/"
+    },
+    {
+      "standard": "pytest",
+      "url": "https://docs.pytest.org/"
+    },
+    {
+      "standard": "pytest-cov",
+      "url": "https://pytest-cov.readthedocs.io/"
+    },
+    {
+      "standard": "Ruff",
+      "url": "https://docs.astral.sh/ruff/"
+    },
+    {
+      "standard": "mypy",
+      "url": "https://mypy.readthedocs.io/en/stable/"
+    }
+  ]
+}

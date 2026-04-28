@@ -1,0 +1,99 @@
+{
+  "phase_number": 1,
+  "total_phases": 6,
+  "phase_title": "Integration & Validation Baseline",
+  "phase_summary": "This phase does NOT scaffold anything from scratch. The codebase already exists. The goal is to confirm the project installs cleanly, all quality gates pass, the one known stale config artefact is removed, the full existing test suite runs green, and the Dash app launches and renders in a browser. This establishes a clean, verified baseline before any new feature work begins. If any quality gate fails here, it must be fixed before moving to Phase 2.",
+  "tech_stack_spec": {
+    "dependencies": [
+      "dash",
+      "dash-mantine-components",
+      "dash-iconify",
+      "litellm",
+      "mcp",
+      "gunicorn",
+      "pytest",
+      "pytest-cov",
+      "ruff",
+      "mypy"
+    ],
+    "configurations": "No new env vars introduced in this phase. Existing env vars (e.g. LLM provider API keys, TAVILY_API_KEY) must be present for the app to run interactively, but are NOT required for the quality-gate checks. uv is used as the package manager; all commands are run via `uv run`."
+  },
+  "instructions": [
+    "Run `uv sync` from the project root to install all dependencies into the managed virtual environment and confirm no resolution errors.",
+    "Open `pyproject.toml`. Locate and remove the `[tool.hatch.build.targets.sdist]` table entirely \u2014 it has no effect with the `uv_build` build backend and is a known stale artefact. Save the file.",
+    "Run `uv run ruff check .` and resolve every reported violation. Pay special attention to the E501 per-file suppressions already in place for `agents/*.py` and `app.py` \u2014 do not remove those suppressions.",
+    "Run `uv run ruff format --check .` and resolve any formatting inconsistencies by running `uv run ruff format .`.",
+    "Run `uv run mypy .` in strict mode (as configured in `pyproject.toml`). Resolve every type error reported. Do not relax any mypy settings.",
+    "Run `uv run pytest --cov --cov-report=term-missing` and confirm all existing tests pass. Record the baseline coverage percentage for each module in a comment at the top of `tests/README.md` (create this file if it does not exist). Note explicitly which modules have zero coverage (expected: app.py, layouts.py, callbacks.py, streaming.py).",
+    "Launch the app using the project's configured entry point (e.g. `uv run python -m spec4` or the script defined in `pyproject.toml [project.scripts]`). Open `http://localhost:<port>` in a browser and confirm the Dash UI renders without JavaScript console errors.",
+    "Confirm `uv build` completes without error, producing both a `.tar.gz` sdist and a `.whl` wheel in the `dist/` directory.",
+    "Commit all changes (pyproject.toml cleanup, any ruff/mypy fixes, tests/README.md) with the message `chore: phase 1 \u2014 integration baseline`."
+  ],
+  "risk_assessment": {
+    "potential_bottlenecks": "mypy strict mode may surface latent type errors in modules that have not been recently checked. ruff rule-set changes between versions may introduce new violations not present when the code was written. The stale `[tool.hatch.build.targets.sdist]` removal is safe but must not accidentally delete the adjacent `[tool.uv_build]` or `[build-system]` tables.",
+    "mitigation_strategy": "Run each quality tool independently and fix issues one tool at a time \u2014 do not attempt to fix ruff and mypy simultaneously. When editing `pyproject.toml`, remove only the `[tool.hatch.build.targets.sdist]` table and its contents; leave all other tables untouched. If mypy reports errors only in third-party stubs (e.g. litellm, mcp), add a targeted `[[tool.mypy.overrides]]` entry with `ignore_missing_imports = true` for that specific module rather than disabling strict mode globally."
+  },
+  "verification": "All four of the following commands must exit with code 0: `uv run ruff check .` / `uv run ruff format --check .` / `uv run mypy .` / `uv run pytest --cov`. Additionally, the Dash app must load at its local URL and display the pipeline UI without browser console errors. `uv build` must produce artefacts in `dist/`.",
+  "references": [
+    {
+      "standard": "Plotly Dash",
+      "url": "https://dash.plotly.com/"
+    },
+    {
+      "standard": "Dash Mantine Components",
+      "url": "https://www.dash-mantine-components.com/"
+    },
+    {
+      "standard": "dash-iconify",
+      "url": "https://github.com/snehilvj/dash-iconify"
+    },
+    {
+      "standard": "LiteLLM",
+      "url": "https://docs.litellm.ai/docs/"
+    },
+    {
+      "standard": "MCP Python SDK",
+      "url": "https://github.com/modelcontextprotocol/python-sdk"
+    },
+    {
+      "standard": "Tavily Search API",
+      "url": "https://docs.tavily.com/documentation/about"
+    },
+    {
+      "standard": "Tavily MCP Server",
+      "url": "https://github.com/tavily-ai/tavily-mcp"
+    },
+    {
+      "standard": "Model Context Protocol (MCP)",
+      "url": "https://modelcontextprotocol.io/docs/getting-started/intro"
+    },
+    {
+      "standard": "pytest",
+      "url": "https://docs.pytest.org/"
+    },
+    {
+      "standard": "pytest-cov",
+      "url": "https://pytest-cov.readthedocs.io/"
+    },
+    {
+      "standard": "Ruff",
+      "url": "https://docs.astral.sh/ruff/"
+    },
+    {
+      "standard": "mypy",
+      "url": "https://mypy.readthedocs.io/en/stable/"
+    },
+    {
+      "standard": "uv \u2014 Working on projects",
+      "url": "https://docs.astral.sh/uv/guides/projects/"
+    },
+    {
+      "standard": "uv \u2014 Building and publishing a package",
+      "url": "https://docs.astral.sh/uv/guides/package/"
+    },
+    {
+      "standard": "Gunicorn",
+      "url": "https://gunicorn.org/"
+    }
+  ]
+}

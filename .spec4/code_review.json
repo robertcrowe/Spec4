@@ -1,0 +1,90 @@
+{
+  "code_review": {
+    "is_software_project": true,
+    "project_type": "web application \u2014 AI-assisted software project planning tool; locally-run Dash app also published as a standalone PyPI package",
+    "architecture": "layered (presentation / business logic / session & persistence) with a sequential pipeline pattern across four AI agents (Reviewer \u2192 Brainstormer \u2192 StackAdvisor \u2192 Phaser); loose coupling between pipeline stages allows users to jump in at any stage by uploading prior output; client-side credential storage via Dash dcc.Store (browser localStorage)",
+    "languages": [
+      "Python 3.12+",
+      "JavaScript (embedded inline strings in Dash clientside callbacks only)",
+      "CSS"
+    ],
+    "frameworks": [
+      "Dash",
+      "Dash Mantine Components",
+      "Dash Iconify",
+      "LiteLLM",
+      "MCP (Model Context Protocol)",
+      "Gunicorn"
+    ],
+    "build_system": "uv / pyproject.toml (build backend: uv_build)",
+    "dependencies": [
+      {
+        "name": "dash",
+        "purpose": "core web framework (Flask-based, reactive UI via callbacks)"
+      },
+      {
+        "name": "dash-mantine-components",
+        "purpose": "React/Mantine-based UI component library for Dash"
+      },
+      {
+        "name": "dash-iconify",
+        "purpose": "icon library integration for Dash"
+      },
+      {
+        "name": "litellm",
+        "purpose": "unified multi-provider LLM abstraction (OpenAI, Anthropic, Gemini, Cohere, Mistral)"
+      },
+      {
+        "name": "mcp",
+        "purpose": "Model Context Protocol \u2014 integrates Tavily web search tool into agents"
+      },
+      {
+        "name": "gunicorn",
+        "purpose": "production WSGI server"
+      },
+      {
+        "name": "pytest",
+        "purpose": "test runner"
+      },
+      {
+        "name": "pytest-cov",
+        "purpose": "test coverage reporting"
+      },
+      {
+        "name": "ruff",
+        "purpose": "linter and formatter"
+      },
+      {
+        "name": "mypy",
+        "purpose": "static type checker (strict mode)"
+      }
+    ],
+    "coding_style": {
+      "linter": "ruff (rule sets E and F)",
+      "formatter": "ruff format",
+      "type_checker": "mypy (strict = true)",
+      "indentation": "4 spaces",
+      "quotes": "double",
+      "line_length": 88,
+      "naming_conventions": {
+        "functions": "snake_case",
+        "classes": "PascalCase",
+        "variables": "snake_case",
+        "constants": "UPPER_SNAKE_CASE",
+        "private_helpers": "single underscore prefix (e.g. _utils.py, _extract_json_block)"
+      }
+    },
+    "notes": [
+      "test coverage exists for 6 modules (agents, app_constants, project_manager, providers, session, tavily_mcp) but presentation and streaming layers (app.py, layouts.py, callbacks.py, streaming.py) have no direct test coverage",
+      "single test_agents.py covers all four agent modules \u2014 coverage may be partial",
+      "no CI/CD pipeline detected (.github/workflows or equivalent); all quality gates are manual via make targets despite CONTRIBUTING.md and CLA.md suggesting external contributions are anticipated",
+      "py.typed marker present and mypy strict mode enabled \u2014 package declares itself fully typed",
+      "all four agents can invoke outbound HTTP requests via Tavily/MCP web search \u2014 relevant for latency, error handling, and future sandboxing",
+      "planning artifacts (code_review.json, vision.json, etc.) are written to a .spec4/ folder on the local filesystem \u2014 relevant for multi-user or containerised deployments",
+      "leftover [tool.hatch.build.targets.sdist] config in pyproject.toml has no effect with uv_build backend \u2014 minor inconsistency",
+      "from __future__ import annotations used across agent modules for deferred annotation evaluation",
+      ".vscode/launch.json present \u2014 project is actively developed in VS Code with a configured debug launcher",
+      "E501 (line-too-long) suppressed per-file for agents/*.py (long system prompt strings) and app.py (inline JavaScript strings)"
+    ]
+  }
+}
