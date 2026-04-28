@@ -67,9 +67,3 @@ module = [
     "gunicorn.*",
 ]
 ignore_missing_imports = true
-
-[tool.hatch.build.targets.sdist]
-exclude = [
-    "Makefile.publish",
-    "dist/",
-]

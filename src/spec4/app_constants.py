@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 GOOGLE_FONTS = (
     "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700"
     "&family=JetBrains+Mono:wght@400;500&display=swap"
@@ -14,7 +16,7 @@ PATH_TO_PHASE = {
     "/done": "done",
 }
 
-DARK_THEME = {
+DARK_THEME: dict[str, Any] = {
     "primaryColor": "blue",
     "primaryShade": {"dark": 5, "light": 6},
     "fontFamily": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",

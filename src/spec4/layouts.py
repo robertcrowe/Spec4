@@ -975,7 +975,10 @@ def _done_layout(session: dict[str, Any]) -> html.Div:
         dmc.Text(
             f"Phase {p.get('phase_number')}: {p.get('phase_title', '')}",
             size="sm",
-            style={"paddingLeft": "0.5rem", "borderLeft": "2px solid var(--mantine-color-blue-5)"},
+            style={
+                "paddingLeft": "0.5rem",
+                "borderLeft": "2px solid var(--mantine-color-blue-5)",
+            },
             mb="xs",
         )
         for p in sorted(phases, key=lambda x: x.get("phase_number", 0))
@@ -1020,7 +1023,7 @@ def _done_layout(session: dict[str, Any]) -> html.Div:
                     "so your agent installs dependencies in an isolated, reproducible way:\n\n"  # noqa: E501
                     "```bash\n"
                     "uv init\n"
-                    "uv venv\n"
+                    "uv sync\n"
                     "source .venv/bin/activate\n"
                     "```\n\n"
                     "On Windows use `.venv\\Scripts\\activate` instead of `source .venv/bin/activate`.",  # noqa: E501

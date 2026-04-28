@@ -539,6 +539,8 @@ def on_stream_poll(n: Any, session: Any) -> Any:
 
     # Stream complete — merge agent-mutated session and finalise
     final = streaming.pop(stream_id)
+    if final is None:
+        return {**session, "_stream_id": None}, 0
     agent_session = final["session"]
     _persist_artifacts(agent_session)
     return (
@@ -562,7 +564,7 @@ def _switch_agent(
     target: str,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return a new session dict switching the active agent and clearing its messages."""
+    """Switch active_agent and reset its message history in a session dict copy."""
     return {
         **session,
         "active_agent": target,

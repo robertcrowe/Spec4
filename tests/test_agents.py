@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 from spec4.agents import brainstormer, phaser, reviewer, stack_advisor
@@ -10,8 +12,8 @@ from spec4.app_constants import (
 )
 
 
-def make_session(**overrides) -> dict:
-    defaults = {
+def make_session(**overrides: Any) -> dict[str, Any]:
+    defaults: dict[str, Any] = {
         "phase": "chat",
         "active_agent": "brainstormer",
         "working_dir": None,
@@ -37,11 +39,11 @@ def make_session(**overrides) -> dict:
     return dict(defaults)
 
 
-def collect(gen) -> str:
+def collect(gen: Iterable[str]) -> str:
     return "".join(gen)
 
 
-def make_stream_chunk(content: str, finish_reason=None):
+def make_stream_chunk(content: str, finish_reason: str | None = None) -> MagicMock:
     chunk = MagicMock()
     chunk.choices[0].delta.content = content
     chunk.choices[0].delta.tool_calls = None
@@ -49,7 +51,7 @@ def make_stream_chunk(content: str, finish_reason=None):
     return chunk
 
 
-def mock_litellm_stream(text: str):
+def mock_litellm_stream(text: str) -> Any:
     """Return a context that mocks litellm.completion to stream the given text."""
     chunks = [make_stream_chunk(c) for c in text]
     chunks.append(make_stream_chunk("", finish_reason="stop"))
@@ -63,7 +65,7 @@ def mock_litellm_stream(text: str):
 
 
 class TestBrainstormer:
-    def test_opening_asks_for_idea(self):
+    def test_opening_asks_for_idea(self) -> None:
         session = make_session()
         output = collect(brainstormer.run(None, session, session["llm_config"]))
         assert (
@@ -72,13 +74,13 @@ class TestBrainstormer:
             or "brainstorm" in output.lower()
         )
 
-    def test_opening_does_not_call_llm(self):
+    def test_opening_does_not_call_llm(self) -> None:
         session = make_session()
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             collect(brainstormer.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
 
-    def test_user_input_streams_llm_output(self):
+    def test_user_input_streams_llm_output(self) -> None:
         session = make_session()
         with mock_litellm_stream("Great idea! Let me ask some questions."):
             output = collect(
@@ -88,7 +90,7 @@ class TestBrainstormer:
             )
         assert "Great idea!" in output
 
-    def test_conversation_history_accumulated(self):
+    def test_conversation_history_accumulated(self) -> None:
         session = make_session()
         with mock_litellm_stream("Interesting!"):
             collect(
@@ -103,7 +105,7 @@ class TestBrainstormer:
         assert session["brainstormer_messages"][1]["role"] == "assistant"
         assert "Interesting!" in session["brainstormer_messages"][1]["content"]
 
-    def test_vision_json_sets_state_complete(self):
+    def test_vision_json_sets_state_complete(self) -> None:
         session = make_session()
         vision_response = (
             "Great vision!\n\n```json\n"
@@ -120,7 +122,7 @@ class TestBrainstormer:
             "vision_statement": {"name": "TodoApp", "vision": "A simple task manager"}
         }
 
-    def test_non_vision_response_stays_in_progress(self):
+    def test_non_vision_response_stays_in_progress(self) -> None:
         session = make_session()
         with mock_litellm_stream("What type of users will use this app?"):
             collect(
@@ -130,7 +132,7 @@ class TestBrainstormer:
         assert session["brainstormer_state"] == STATE_IN_PROGRESS
         assert session["vision_statement"] is None
 
-    def test_llm_called_with_system_prompt_and_user_message(self):
+    def test_llm_called_with_system_prompt_and_user_message(self) -> None:
         session = make_session()
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             mock_llm.return_value = iter(
@@ -146,7 +148,7 @@ class TestBrainstormer:
         assert messages[0]["role"] == "system"
         assert messages[1] == {"role": "user", "content": "My idea"}
 
-    def test_llm_called_with_full_history_on_second_turn(self):
+    def test_llm_called_with_full_history_on_second_turn(self) -> None:
         session = make_session(
             brainstormer_messages=[
                 {"role": "user", "content": "first message"},
@@ -168,7 +170,7 @@ class TestBrainstormer:
         assert len(messages) == 4
         assert messages[-1] == {"role": "user", "content": "second message"}
 
-    def test_initialises_brainstormer_messages_if_missing(self):
+    def test_initialises_brainstormer_messages_if_missing(self) -> None:
         session = make_session()
         del session["brainstormer_messages"]
         with mock_litellm_stream("Hello!"):
@@ -182,7 +184,7 @@ class TestBrainstormer:
 
 
 class TestStackAdvisor:
-    def test_opening_calls_llm(self):
+    def test_opening_calls_llm(self) -> None:
         vision = {"name": "TodoApp", "vision": "A simple task manager"}
         session = make_session(active_agent="stack_advisor", vision_statement=vision)
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
@@ -195,7 +197,7 @@ class TestStackAdvisor:
             collect(stack_advisor.run(None, session, session["llm_config"]))
         mock_llm.assert_called_once()
 
-    def test_opening_includes_vision_in_messages(self):
+    def test_opening_includes_vision_in_messages(self) -> None:
         vision = {"name": "TodoApp", "vision": "A simple task manager"}
         session = make_session(active_agent="stack_advisor", vision_statement=vision)
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
@@ -207,7 +209,7 @@ class TestStackAdvisor:
         messages = call_kwargs["messages"]
         assert any("TodoApp" in m["content"] for m in messages)
 
-    def test_opening_no_vision_still_calls_llm(self):
+    def test_opening_no_vision_still_calls_llm(self) -> None:
         session = make_session(active_agent="stack_advisor", vision_statement=None)
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             mock_llm.return_value = iter(
@@ -216,7 +218,7 @@ class TestStackAdvisor:
             collect(stack_advisor.run(None, session, session["llm_config"]))
         mock_llm.assert_called_once()
 
-    def test_user_input_streams_llm_output(self):
+    def test_user_input_streams_llm_output(self) -> None:
         vision = {"name": "App", "vision": "desc"}
         session = make_session(active_agent="stack_advisor", vision_statement=vision)
         with mock_litellm_stream("Python is a great choice."):
@@ -227,7 +229,7 @@ class TestStackAdvisor:
             )
         assert "Python is a great choice." in output
 
-    def test_conversation_history_accumulated(self):
+    def test_conversation_history_accumulated(self) -> None:
         session = make_session(
             active_agent="stack_advisor",
             vision_statement={"name": "App", "vision": "v"},
@@ -241,7 +243,7 @@ class TestStackAdvisor:
             "content": "Great!",
         }
 
-    def test_stack_spec_json_sets_state_complete(self):
+    def test_stack_spec_json_sets_state_complete(self) -> None:
         session = make_session(
             active_agent="stack_advisor",
             vision_statement={"name": "App", "vision": "v"},
@@ -259,7 +261,7 @@ class TestStackAdvisor:
         assert session["stack_advisor_state"] == STATE_STACK_COMPLETE
         assert session["stack_statement"]["title"] == "stack"
 
-    def test_re_entry_does_not_call_llm(self):
+    def test_re_entry_does_not_call_llm(self) -> None:
         session = make_session(
             active_agent="stack_advisor",
             vision_statement={"name": "App", "vision": "v"},
@@ -273,7 +275,7 @@ class TestStackAdvisor:
         mock_llm.assert_not_called()
         assert "Which language do you prefer?" in output
 
-    def test_llm_called_with_system_prompt(self):
+    def test_llm_called_with_system_prompt(self) -> None:
         session = make_session(
             active_agent="stack_advisor",
             vision_statement={"name": "App", "vision": "v"},
@@ -294,7 +296,7 @@ class TestStackAdvisor:
 
 
 class TestBrainstormerBranches:
-    def test_extract_vision_json_valid(self):
+    def test_extract_vision_json_valid(self) -> None:
         from spec4.agents.brainstormer import _extract_vision_json
 
         text = '```json\n{"vision_statement": {"name": "App", "vision": "desc"}}\n```'
@@ -302,17 +304,17 @@ class TestBrainstormerBranches:
             "vision_statement": {"name": "App", "vision": "desc"}
         }
 
-    def test_extract_vision_json_invalid_json_returns_none(self):
+    def test_extract_vision_json_invalid_json_returns_none(self) -> None:
         from spec4.agents.brainstormer import _extract_vision_json
 
         assert _extract_vision_json("```json\n{invalid}\n```") is None
 
-    def test_extract_vision_json_no_block_returns_none(self):
+    def test_extract_vision_json_no_block_returns_none(self) -> None:
         from spec4.agents.brainstormer import _extract_vision_json
 
         assert _extract_vision_json("no json here") is None
 
-    def test_reentry_replays_last_assistant_message(self):
+    def test_reentry_replays_last_assistant_message(self) -> None:
         session = make_session(
             brainstormer_messages=[
                 {"role": "user", "content": "hi"},
@@ -324,7 +326,7 @@ class TestBrainstormerBranches:
         mock_llm.assert_not_called()
         assert "Existing response" in output
 
-    def test_reentry_no_assistant_message_yields_nothing(self):
+    def test_reentry_no_assistant_message_yields_nothing(self) -> None:
         session = make_session(
             brainstormer_messages=[{"role": "user", "content": "hi"}]
         )
@@ -333,7 +335,7 @@ class TestBrainstormerBranches:
         mock_llm.assert_not_called()
         assert output == ""
 
-    def test_preloaded_vision_calls_llm(self):
+    def test_preloaded_vision_calls_llm(self) -> None:
         vision = {"name": "MyApp", "vision": "desc"}
         session = make_session(vision_statement=vision)
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
@@ -347,7 +349,7 @@ class TestBrainstormerBranches:
         mock_llm.assert_called_once()
         assert "Summary" in output
 
-    def test_preloaded_vision_seed_contains_vision_name(self):
+    def test_preloaded_vision_seed_contains_vision_name(self) -> None:
         vision = {"name": "MyApp", "vision": "desc"}
         session = make_session(vision_statement=vision)
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
@@ -360,7 +362,7 @@ class TestBrainstormerBranches:
             "MyApp" in m["content"] for m in sent_messages if m["role"] != "system"
         )
 
-    def test_code_review_seed_calls_llm(self):
+    def test_code_review_seed_calls_llm(self) -> None:
         review = {"code_review": {"is_software_project": True}}
         session = make_session(code_review=review, vision_statement=None)
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
@@ -373,7 +375,7 @@ class TestBrainstormerBranches:
             collect(brainstormer.run(None, session, session["llm_config"]))
         mock_llm.assert_called_once()
 
-    def test_specmem_seed_calls_llm(self):
+    def test_specmem_seed_calls_llm(self) -> None:
         session = make_session(
             specmem="# Notes\nSome project notes",
             vision_statement=None,
@@ -393,36 +395,36 @@ class TestBrainstormerBranches:
 
 
 class TestStackAdvisorBranches:
-    def test_extract_stack_json_with_stack_spec_key(self):
+    def test_extract_stack_json_with_stack_spec_key(self) -> None:
         from spec4.agents.stack_advisor import _extract_stack_json
 
         text = '```json\n{"stack_spec": {"languages": ["Python"]}}\n```'
         result = _extract_stack_json(text)
         assert result is not None and "stack_spec" in result
 
-    def test_extract_stack_json_with_stack_key(self):
+    def test_extract_stack_json_with_stack_key(self) -> None:
         from spec4.agents.stack_advisor import _extract_stack_json
 
         text = '```json\n{"stack": {"languages": ["Python"]}}\n```'
         assert _extract_stack_json(text) is not None
 
-    def test_extract_stack_json_with_title_stack(self):
+    def test_extract_stack_json_with_title_stack(self) -> None:
         from spec4.agents.stack_advisor import _extract_stack_json
 
         text = '```json\n{"title": "stack", "properties": {}}\n```'
         assert _extract_stack_json(text) is not None
 
-    def test_extract_stack_json_no_stack_key_returns_none(self):
+    def test_extract_stack_json_no_stack_key_returns_none(self) -> None:
         from spec4.agents.stack_advisor import _extract_stack_json
 
         assert _extract_stack_json('```json\n{"name": "App"}\n```') is None
 
-    def test_extract_stack_json_invalid_json_returns_none(self):
+    def test_extract_stack_json_invalid_json_returns_none(self) -> None:
         from spec4.agents.stack_advisor import _extract_stack_json
 
         assert _extract_stack_json("```json\n{invalid}\n```") is None
 
-    def test_initialises_messages_if_missing(self):
+    def test_initialises_messages_if_missing(self) -> None:
         session = make_session(
             active_agent="stack_advisor",
             vision_statement={"name": "App", "vision": "v"},
@@ -432,7 +434,7 @@ class TestStackAdvisorBranches:
             collect(stack_advisor.run(None, session, session["llm_config"]))
         assert "stack_advisor_messages" in session
 
-    def test_reentry_no_assistant_message_yields_nothing(self):
+    def test_reentry_no_assistant_message_yields_nothing(self) -> None:
         session = make_session(
             active_agent="stack_advisor",
             vision_statement={"name": "App", "vision": "v"},
@@ -443,7 +445,7 @@ class TestStackAdvisorBranches:
         mock_llm.assert_not_called()
         assert output == ""
 
-    def test_existing_stack_seed_contains_stack_info(self):
+    def test_existing_stack_seed_contains_stack_info(self) -> None:
         vision = {"name": "App", "vision": "v"}
         stack = {"stack_spec": {"languages": ["Python"]}}
         session = make_session(
@@ -457,7 +459,7 @@ class TestStackAdvisorBranches:
         sent = mock_llm.call_args[1]["messages"]
         assert any("Python" in m["content"] for m in sent if m["role"] != "system")
 
-    def test_code_review_seed_calls_llm(self):
+    def test_code_review_seed_calls_llm(self) -> None:
         review = {"code_review": {"languages": ["Python"]}}
         session = make_session(
             active_agent="stack_advisor",
@@ -472,7 +474,7 @@ class TestStackAdvisorBranches:
             collect(stack_advisor.run(None, session, session["llm_config"]))
         mock_llm.assert_called_once()
 
-    def test_specmem_seed_calls_llm(self):
+    def test_specmem_seed_calls_llm(self) -> None:
         session = make_session(
             active_agent="stack_advisor",
             vision_statement={"name": "App", "vision": "v"},
@@ -494,7 +496,7 @@ class TestStackAdvisorBranches:
 
 
 class TestReviewer:
-    def test_no_working_dir_yields_warning(self):
+    def test_no_working_dir_yields_warning(self) -> None:
         session = make_session(working_dir=None)
         output = collect(reviewer.run(None, session, session["llm_config"]))
         assert (
@@ -502,13 +504,13 @@ class TestReviewer:
             or "no project directory" in output.lower()
         )
 
-    def test_no_working_dir_does_not_call_llm(self):
+    def test_no_working_dir_does_not_call_llm(self) -> None:
         session = make_session(working_dir=None)
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             collect(reviewer.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
 
-    def test_reentry_replays_last_assistant_message(self):
+    def test_reentry_replays_last_assistant_message(self) -> None:
         session = make_session(
             reviewer_messages=[
                 {"role": "user", "content": "hi"},
@@ -520,20 +522,20 @@ class TestReviewer:
         mock_llm.assert_not_called()
         assert "Reviewer response" in output
 
-    def test_reentry_no_assistant_yields_nothing(self):
+    def test_reentry_no_assistant_yields_nothing(self) -> None:
         session = make_session(reviewer_messages=[{"role": "user", "content": "hi"}])
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             output = collect(reviewer.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
         assert output == ""
 
-    def test_user_input_calls_llm(self):
+    def test_user_input_calls_llm(self) -> None:
         session = make_session(reviewer_messages=[{"role": "user", "content": "seed"}])
         with mock_litellm_stream("Here is my review."):
             output = collect(reviewer.run("Looks good", session, session["llm_config"]))
         assert "Here is my review." in output
 
-    def test_review_json_sets_state_complete(self):
+    def test_review_json_sets_state_complete(self) -> None:
         session = make_session(reviewer_messages=[{"role": "user", "content": "seed"}])
         review_response = '```json\n{"code_review": {"is_software_project": true}}\n```'
         with mock_litellm_stream(review_response):
@@ -541,14 +543,14 @@ class TestReviewer:
         assert session["reviewer_state"] == STATE_REVIEW_COMPLETE
         assert session["code_review"] == {"code_review": {"is_software_project": True}}
 
-    def test_non_review_response_stays_in_progress(self):
+    def test_non_review_response_stays_in_progress(self) -> None:
         session = make_session(reviewer_messages=[{"role": "user", "content": "seed"}])
         with mock_litellm_stream("Tell me about section 1."):
             collect(reviewer.run("Go on", session, session["llm_config"]))
         assert session["reviewer_state"] == STATE_IN_PROGRESS
         assert session["code_review"] is None
 
-    def test_extract_review_json_valid(self):
+    def test_extract_review_json_valid(self) -> None:
         from spec4.agents.reviewer import _extract_review_json
 
         text = '```json\n{"code_review": {"is_software_project": true}}\n```'
@@ -556,17 +558,17 @@ class TestReviewer:
             "code_review": {"is_software_project": True}
         }
 
-    def test_extract_review_json_no_code_review_key_returns_none(self):
+    def test_extract_review_json_no_code_review_key_returns_none(self) -> None:
         from spec4.agents.reviewer import _extract_review_json
 
         assert _extract_review_json('```json\n{"name": "App"}\n```') is None
 
-    def test_extract_review_json_invalid_json_returns_none(self):
+    def test_extract_review_json_invalid_json_returns_none(self) -> None:
         from spec4.agents.reviewer import _extract_review_json
 
         assert _extract_review_json("```json\n{bad}\n```") is None
 
-    def test_initialises_reviewer_messages_if_missing(self):
+    def test_initialises_reviewer_messages_if_missing(self) -> None:
         session = make_session(reviewer_messages=[{"role": "user", "content": "seed"}])
         del session["reviewer_messages"]
         with mock_litellm_stream("Ok"):
@@ -580,20 +582,20 @@ class TestReviewer:
 
 
 class TestGatherProjectContext:
-    def test_empty_dir_reports_empty(self, tmp_path):
+    def test_empty_dir_reports_empty(self, tmp_path: Any) -> None:
         from spec4.agents.reviewer import _gather_project_context
 
         result = _gather_project_context(str(tmp_path))
         assert "empty" in result.lower()
 
-    def test_source_files_appear_in_tree(self, tmp_path):
+    def test_source_files_appear_in_tree(self, tmp_path: Any) -> None:
         from spec4.agents.reviewer import _gather_project_context
 
         (tmp_path / "main.py").write_text("print('hello')")
         result = _gather_project_context(str(tmp_path))
         assert "main.py" in result
 
-    def test_git_dir_is_skipped(self, tmp_path):
+    def test_git_dir_is_skipped(self, tmp_path: Any) -> None:
         from spec4.agents.reviewer import _gather_project_context
 
         git_dir = tmp_path / ".git"
@@ -602,14 +604,14 @@ class TestGatherProjectContext:
         result = _gather_project_context(str(tmp_path))
         assert "config" not in result
 
-    def test_readme_content_included(self, tmp_path):
+    def test_readme_content_included(self, tmp_path: Any) -> None:
         from spec4.agents.reviewer import _gather_project_context
 
         (tmp_path / "README.md").write_text("# My Project\nA cool app.")
         result = _gather_project_context(str(tmp_path))
         assert "My Project" in result
 
-    def test_source_file_sample_included(self, tmp_path):
+    def test_source_file_sample_included(self, tmp_path: Any) -> None:
         from spec4.agents.reviewer import _gather_project_context
 
         (tmp_path / "app.py").write_text("def main():\n    pass\n")
@@ -623,24 +625,24 @@ class TestGatherProjectContext:
 
 
 class TestPhaser:
-    def test_extract_phases_finds_phase_objects(self):
+    def test_extract_phases_finds_phase_objects(self) -> None:
         from spec4.agents.phaser import _extract_phases
 
         text = '```json\n{"phase_number": 1, "phase_title": "Steel Thread"}\n```'
         phases = _extract_phases(text)
         assert len(phases) == 1 and phases[0]["phase_number"] == 1
 
-    def test_extract_phases_ignores_non_phase_json(self):
+    def test_extract_phases_ignores_non_phase_json(self) -> None:
         from spec4.agents.phaser import _extract_phases
 
         assert _extract_phases('```json\n{"name": "App"}\n```') == []
 
-    def test_extract_phases_ignores_invalid_json(self):
+    def test_extract_phases_ignores_invalid_json(self) -> None:
         from spec4.agents.phaser import _extract_phases
 
         assert _extract_phases("```json\n{bad json}\n```") == []
 
-    def test_extract_phases_finds_multiple_phases(self):
+    def test_extract_phases_finds_multiple_phases(self) -> None:
         from spec4.agents.phaser import _extract_phases
 
         text = (
@@ -649,7 +651,7 @@ class TestPhaser:
         )
         assert len(_extract_phases(text)) == 2
 
-    def test_opening_seeds_vision_and_stack(self):
+    def test_opening_seeds_vision_and_stack(self) -> None:
         vision = {"name": "App", "vision": "desc"}
         stack = {"stack_spec": {"languages": ["Python"]}}
         session = make_session(vision_statement=vision, stack_statement=stack)
@@ -665,7 +667,7 @@ class TestPhaser:
         user_content = " ".join(m["content"] for m in sent if m["role"] == "user")
         assert "App" in user_content and "Python" in user_content
 
-    def test_phases_json_sets_state_complete(self):
+    def test_phases_json_sets_state_complete(self) -> None:
         session = make_session(phaser_messages=[{"role": "user", "content": "seed"}])
         phase_response = (
             '```json\n{"phase_number": 1, "phase_title": "Steel Thread", '
@@ -679,14 +681,14 @@ class TestPhaser:
         assert session["phaser_state"] == STATE_PHASES_COMPLETE
         assert len(session["phases"]) == 1
 
-    def test_non_phase_response_stays_incomplete(self):
+    def test_non_phase_response_stays_incomplete(self) -> None:
         session = make_session(phaser_messages=[{"role": "user", "content": "seed"}])
         with mock_litellm_stream("Here is a text description."):
             collect(phaser.run("Go ahead", session, session["llm_config"]))
         assert session["phaser_state"] is None
         assert session["phases"] == []
 
-    def test_reentry_replays_last_assistant_message(self):
+    def test_reentry_replays_last_assistant_message(self) -> None:
         session = make_session(
             phaser_messages=[
                 {"role": "user", "content": "hi"},
@@ -698,14 +700,14 @@ class TestPhaser:
         mock_llm.assert_not_called()
         assert "Phaser response" in output
 
-    def test_reentry_no_assistant_yields_nothing(self):
+    def test_reentry_no_assistant_yields_nothing(self) -> None:
         session = make_session(phaser_messages=[{"role": "user", "content": "hi"}])
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             output = collect(phaser.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
         assert output == ""
 
-    def test_user_input_appended_to_messages(self):
+    def test_user_input_appended_to_messages(self) -> None:
         session = make_session(
             phaser_messages=[
                 {"role": "user", "content": "seed"},
@@ -719,7 +721,7 @@ class TestPhaser:
             "content": "Looks good",
         }
 
-    def test_initialises_phaser_messages_if_missing(self):
+    def test_initialises_phaser_messages_if_missing(self) -> None:
         session = make_session(vision_statement={"name": "App"}, stack_statement=None)
         del session["phaser_messages"]
         with mock_litellm_stream("Ok"):

@@ -127,7 +127,9 @@ def _gather_project_context(working_dir: str) -> str:
     for f in all_files[:_MAX_TREE_FILES]:
         lines.append(str(f.relative_to(root)))
     if len(all_files) > _MAX_TREE_FILES:
-        lines.append(f"... and {len(all_files) - _MAX_TREE_FILES} more files (truncated)")
+        lines.append(
+            f"... and {len(all_files) - _MAX_TREE_FILES} more files (truncated)"
+        )
     lines.append("```\n")
 
     lines.append("### Config and Manifest Files\n")
@@ -148,7 +150,9 @@ def _gather_project_context(working_dir: str) -> str:
         parts = [x.lower() for x in p.relative_to(root).parts]
         return any(x in ("test", "tests", "spec", "specs") for x in parts)
 
-    priority_files = [f for f in source_files if not _is_test(f)][:_MAX_PRIORITY_SOURCE_FILES]
+    priority_files = [f for f in source_files if not _is_test(f)][
+        :_MAX_PRIORITY_SOURCE_FILES
+    ]
     source_chars = 0
     for f in priority_files:
         if source_chars >= _MAX_SOURCE_SAMPLE_CHARS:
