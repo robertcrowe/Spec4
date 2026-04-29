@@ -561,7 +561,29 @@ def _setup_tavily_layout(
     session: dict[str, Any],
     prefs: dict[str, Any],
     setup_error: str | None,
+    image_support: bool | None = None,
 ) -> html.Div:
+    if image_support is True:
+        image_alert: Any = dmc.Alert(
+            "This model supports image input — screenshot examples are available "
+            "in the Designer step.",
+            title="Image Support",
+            color="green",
+            variant="light",
+            mb="md",
+        )
+    elif image_support is False:
+        image_alert = dmc.Alert(
+            "This model does not support image input — screenshot upload will be "
+            "disabled in the Designer step. Go back to choose a different model if "
+            "you need image support.",
+            title="No Image Support",
+            color="orange",
+            variant="light",
+            mb="md",
+        )
+    else:
+        image_alert = html.Div()
     return html.Div(
         [
             dmc.Title("Connect to Tavily Web Search", order=3, mb="sm"),
@@ -574,6 +596,7 @@ def _setup_tavily_layout(
             ),
             _card(
                 dmc.Alert(f"LLM: {session['model']}", color="green", mb="md"),
+                image_alert,
                 dmc.Text(
                     "Enables all agents to search the web for current information. "
                     "Optional — skip if you don't have a Tavily key.",
@@ -608,14 +631,18 @@ def _setup_tavily_layout(
     )
 
 
-def _setup_layout(session: dict[str, Any], prefs: dict[str, Any]) -> html.Div:
+def _setup_layout(
+    session: dict[str, Any],
+    prefs: dict[str, Any],
+    image_support: bool | None = None,
+) -> html.Div:
     labels = providers.all_provider_labels()
     setup_error = session.get("setup_error")
     if session.get("available_models") is None:
         return _setup_provider_layout(session, prefs, labels, setup_error)
     if session.get("model") is None:
         return _setup_model_layout(session, prefs, setup_error)
-    return _setup_tavily_layout(session, prefs, setup_error)
+    return _setup_tavily_layout(session, prefs, setup_error, image_support)
 
 
 def _agent_select_layout(session: dict[str, Any]) -> html.Div:
@@ -690,6 +717,51 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
             )
         )
 
+    children.append(
+        dmc.Accordion(
+            dmc.AccordionItem(
+                [
+                    dmc.AccordionControl(
+                        "📎 Upload an existing design mock to skip Designer"
+                    ),
+                    dmc.AccordionPanel(
+                        dmc.Stack(
+                            [
+                                dmc.Text(
+                                    "If you already have a mock.html from a previous "
+                                    "session or an external tool, upload it here to "
+                                    "proceed directly to StackAdvisor.",
+                                    size="sm",
+                                    c="dimmed",
+                                ),
+                                dcc.Upload(
+                                    id="mock-html-upload",
+                                    accept=".html,text/html",
+                                    multiple=False,
+                                    children=dmc.Text(
+                                        "Drag & drop a mock.html, or click to upload",
+                                        ta="center",
+                                        c="dimmed",
+                                        py="sm",
+                                    ),
+                                    style={
+                                        "border": "2px dashed "
+                                        "var(--mantine-color-dark-4)",
+                                        "borderRadius": "8px",
+                                        "cursor": "pointer",
+                                    },
+                                ),
+                            ],
+                            gap="xs",
+                        )
+                    ),
+                ],
+                value="upload-mock",
+            ),
+            mb="md",
+        )
+    )
+
     if session.get("specmem"):
         children.append(
             dmc.Accordion(
@@ -720,6 +792,10 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
                         dmc.Radio(
                             label="🧠 Brainstormer — develop or refine a project vision",  # noqa: E501
                             value="brainstormer",
+                        ),
+                        dmc.Radio(
+                            label="🎨 Designer — create a visual mock-up for your application's starting screen",  # noqa: E501
+                            value="designer",
                         ),
                         dmc.Radio(
                             label="⚙️ StackAdvisor — select or refine a technology stack",  # noqa: E501
@@ -821,7 +897,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
             dmc.Button(
                 "💾 Download vision.json", id="btn-dl-vision", variant="outline"
             ),
-            dmc.Button("Send to Stack Advisor →", id="btn-brainstormer-to-stack"),
+            dmc.Button("Continue to Designer →", id="btn-brainstormer-to-designer"),
         ]
     elif active == "stack_advisor":
         back = dmc.Button(

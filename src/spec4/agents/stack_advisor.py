@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 
 from spec4 import tavily_mcp
@@ -166,6 +167,17 @@ Output only the JSON code block when generating the final stack spec — no addi
 """
 
 
+def _load_design_context(design_dir: Path) -> str:
+    """Return a context note about the design mock when one exists, else empty string."""
+    if not (design_dir / "mock.html").exists():
+        return ""
+    return (
+        "A UI design mock has been produced by the Designer agent and saved to "
+        ".spec4/design/mock.html. You may reference this file as a concrete visual "
+        "specification when evaluating technology stack options for frontend rendering."
+    )
+
+
 def _extract_stack_json(text: str) -> dict[str, Any] | None:
     """Extract a JSON stack spec from a fenced code block in the LLM response."""
     data = _extract_json_block(text)
@@ -205,6 +217,11 @@ def run(
         specmem = session.get("specmem")
         code_review = session.get("code_review")
 
+        working_dir = session.get("working_dir")
+        design_dir = Path(working_dir) / ".spec4" / "design" if working_dir else None
+        design_ctx = _load_design_context(design_dir) if design_dir else ""
+        design_block = f"{design_ctx}\n\n" if design_ctx else ""
+
         vision_block = (
             f"Here is my project vision statement:\n\n```json\n{json.dumps(vision, indent=2)}\n```\n\n"
             if vision
@@ -225,6 +242,7 @@ def run(
         if stack:
             seed = (
                 f"{vision_block}"
+                f"{design_block}"
                 f"{code_review_block}"
                 f"I also have an existing stack spec:\n\n"
                 f"```json\n{json.dumps(stack, indent=2)}\n```\n\n"
@@ -236,6 +254,7 @@ def run(
         elif code_review:
             seed = (
                 f"{vision_block}"
+                f"{design_block}"
                 f"{code_review_block}"
                 "Please introduce yourself as StackAdvisor. Briefly describe what you understand "
                 "about the project's existing technology from the code review, then offer me two "
@@ -246,6 +265,7 @@ def run(
         elif specmem:
             seed = (
                 f"{vision_block}"
+                f"{design_block}"
                 "Here is a summary of the current project state:\n\n"
                 f"{specmem}\n\n"
                 "Please introduce yourself as StackAdvisor. Briefly describe what you understand "
@@ -257,6 +277,7 @@ def run(
         else:
             seed = (
                 f"{vision_block}"
+                f"{design_block}"
                 "Please introduce yourself as StackAdvisor, greet the user, and begin guiding "
                 "me through the technology stack selection."
             )

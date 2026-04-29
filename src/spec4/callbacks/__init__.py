@@ -8,7 +8,13 @@ from typing import Any
 
 from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
+import base64
+
+import dash_mantine_components as dmc
+
 from spec4 import project_manager, providers, streaming, tavily_mcp
+from spec4.agents._image_probe import probe_image_support
+from spec4.agents.designer import DesignerSession, save_mock, save_session
 from spec4.app_constants import (
     PATH_TO_PHASE,
     STATE_STACK_COMPLETE,
@@ -250,6 +256,8 @@ def on_setup_back_provider(n: Any, session: Any) -> Any:
 @callback(
     Output("session", "data", allow_duplicate=True),
     Output("prefs", "data", allow_duplicate=True),
+    Output("image-support-store", "data", allow_duplicate=True),
+    Output("notifications-container", "children", allow_duplicate=True),
     Input("btn-setup-model-continue", "n_clicks"),
     State("setup-model", "value"),
     State("session", "data"),
@@ -258,7 +266,7 @@ def on_setup_back_provider(n: Any, session: Any) -> Any:
 )
 def on_setup_model_continue(n: Any, model: Any, session: Any, prefs: Any) -> Any:
     if not n or not model:
-        return no_update, no_update
+        return no_update, no_update, no_update, no_update
     new_session = {
         **session,
         "model": model,
@@ -266,7 +274,14 @@ def on_setup_model_continue(n: Any, model: Any, session: Any, prefs: Any) -> Any
         "setup_error": None,
     }
     new_prefs = {**prefs, "model": model} if prefs.get("save_prefs") else prefs
-    return new_session, new_prefs
+
+    image_support: bool | None = None
+    try:
+        image_support = probe_image_support(model, session.get("api_key") or "")
+    except Exception:
+        image_support = None
+
+    return new_session, new_prefs, image_support, no_update
 
 
 @callback(
@@ -351,6 +366,45 @@ def on_setup_tavily_skip(n: Any, session: Any) -> Any:
 
 @callback(
     Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("mock-html-upload", "contents"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_mock_html_upload(contents: Any, session: Any) -> Any:
+    if not contents or not session:
+        return no_update, no_update
+    working_dir: str | None = (session or {}).get("working_dir")
+    if not working_dir:
+        return no_update, no_update
+    _, data = contents.split(",", 1) if "," in contents else ("", contents)
+    try:
+        html_content = base64.b64decode(data).decode("utf-8", errors="replace")
+    except Exception:
+        html_content = data
+    design_dir = pathlib.Path(working_dir) / ".spec4" / "design"
+    ds: DesignerSession = {
+        "step": 6,
+        "preference_text": "",
+        "screenshots": [],
+        "mock_html": html_content,
+        "finalized": True,
+    }
+    save_session(ds, design_dir)
+    save_mock(html_content, design_dir)
+    new_session = {
+        **session,
+        "phase": "chat",
+        "active_agent": "stack_advisor",
+        "stack_advisor_messages": [],
+        "messages": [],
+        "_initial_turn_done": False,
+    }
+    return new_session, "/chat"
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
     Input("btn-load-vision", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
@@ -424,6 +478,8 @@ def on_agent_start(n: Any, agent_choice: Any, session: Any) -> Any:
     err = _validate_agent_preconditions(agent_choice, session)
     if err:
         return {**session, "agent_select_error": err}, no_update
+    if agent_choice == "designer":
+        return {**session, "agent_select_error": None, "phase": "designer"}, "/design"
     return {
         **session,
         "agent_select_error": None,
@@ -589,14 +645,15 @@ def on_review_to_brainstormer(n: Any, session: Any) -> Any:
 
 @callback(
     Output("session", "data", allow_duplicate=True),
-    Input("btn-brainstormer-to-stack", "n_clicks"),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("btn-brainstormer-to-designer", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_brainstormer_to_stack(n: Any, session: Any) -> Any:
+def on_brainstormer_to_designer(n: Any, session: Any) -> Any:
     if not n:
-        return no_update
-    return _switch_agent(session, "stack_advisor")
+        return no_update, no_update
+    return {**session, "phase": "designer"}, "/design"
 
 
 @callback(

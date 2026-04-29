@@ -69,6 +69,8 @@ app.layout = dmc.MantineProvider(
     theme=DARK_THEME,
     forceColorScheme="dark",
     children=[
+        dmc.NotificationProvider(),
+        html.Div(id="notifications-container", style={"display": "none"}),
         # Blueprint grid background (sits behind everything)
         html.Div(id="blueprint-grid"),
         _nav_drawer(),
@@ -235,19 +237,39 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
 app.clientside_callback(  # type: ignore[no-untyped-call]
     """
     function(n_clicks, store_data) {
-        if (!n_clicks || !store_data) return window.dash_clientside.no_update;
-        var html_content = store_data.mock_html || '';
-        var newWin = window.open('', '_blank');
-        if (newWin) {
-            newWin.document.write(html_content);
-            newWin.document.close();
-        }
+        if (!n_clicks || !store_data || !store_data.mock_html) return window.dash_clientside.no_update;
+        var blob = new Blob([store_data.mock_html], {type: 'text/html'});
+        var url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
         return window.dash_clientside.no_update;
     }
     """,
     Output("_designer-fs-dummy", "children"),
     Input("mock-fullscreen-btn", "n_clicks"),
     State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+
+app.clientside_callback(  # type: ignore[no-untyped-call]
+    """
+    (function() {
+        var _lastCount = 0;
+        return function(bufferData) {
+            if (!bufferData || !bufferData._debug_events) {
+                _lastCount = 0;
+                return window.dash_clientside.no_update;
+            }
+            var events = bufferData._debug_events;
+            for (var i = _lastCount; i < events.length; i++) {
+                console.log('[Designer]', events[i]);
+            }
+            _lastCount = events.length;
+            return window.dash_clientside.no_update;
+        };
+    })()
+    """,
+    Output("_designer-fs-dummy", "children", allow_duplicate=True),
+    Input("mock-stream-buffer", "data"),
     prevent_initial_call=True,
 )
 
@@ -264,9 +286,10 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
     Input("session", "data"),
     Input("prefs", "data"),
     State("_last_render", "data"),
+    State("image-support-store", "data"),
     prevent_initial_call="initial_duplicate",
 )
-def render_page(session: Any, prefs: Any, render_count: Any) -> Any:
+def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any) -> Any:
     session = session or _default_session()
     prefs = prefs or {}
 
@@ -287,7 +310,7 @@ def render_page(session: Any, prefs: Any, render_count: Any) -> Any:
             new_session = session
         content = _working_dir_layout(session)
     elif phase == "setup":
-        content = _setup_layout(session, prefs)
+        content = _setup_layout(session, prefs, image_support)
     elif phase == "agent_select":
         content = _agent_select_layout(session)
     elif phase == "chat":

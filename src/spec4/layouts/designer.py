@@ -256,13 +256,12 @@ def _step5_content(buffer_data: dict[str, Any] | None = None) -> Any:
 
 
 def _step6_content(store: dict[str, Any]) -> Any:
-    mock_html: str = store.get("mock_html", "")
     return dmc.Stack(
         [
             html.Iframe(
                 id="mock-iframe",
-                srcDoc=mock_html,
-                sandbox="",
+                srcDoc=store.get("mock_html", ""),
+                sandbox="allow-scripts",
                 style={
                     "width": "100%",
                     "height": "600px",
@@ -307,51 +306,92 @@ def _step6_content(store: dict[str, Any]) -> Any:
     )
 
 
-def _step7_content() -> Any:
-    return dmc.Stack(
-        [
-            dmc.Textarea(
-                id="designer-refine-input",
-                label="Describe the changes you'd like",
-                placeholder=(
-                    "e.g. Make the hero section larger, use a warmer color palette..."
+def _refine_image_row(idx: int, filename: str) -> Any:
+    return dmc.Paper(
+        dmc.Group(
+            [
+                dmc.Text(filename, size="sm", style={"flex": 1}, truncate="end"),
+                dmc.ActionIcon(
+                    "✕",
+                    id={"type": "designer-refine-image-delete", "index": idx},
+                    color="red",
+                    variant="subtle",
+                    size="sm",
                 ),
-                minRows=3,
-                autosize=True,
-            ),
-            dcc.Upload(
-                id="designer-refine-upload",
-                accept="image/*",
-                multiple=False,
-                children=dmc.Text(
-                    "Drag & drop an additional reference image (optional)",
-                    ta="center",
-                    c="dimmed",
-                    py="sm",
-                ),
-                style={
-                    "border": "2px dashed var(--mantine-color-dark-4)",
-                    "borderRadius": "8px",
-                    "cursor": "pointer",
-                },
-            ),
-            dmc.Group(
-                [
-                    dmc.Button(
-                        "↺ Cancel",
-                        id="btn-designer-refine-cancel",
-                        variant="outline",
-                        color="gray",
-                    ),
-                    dmc.Button(
-                        "Regenerate Mock →",
-                        id="btn-designer-regenerate",
-                    ),
-                ]
-            ),
-        ],
-        gap="sm",
+            ],
+            justify="space-between",
+            wrap="nowrap",
+        ),
+        withBorder=True,
+        p="xs",
+        radius="sm",
     )
+
+
+def _step7_content(store: dict[str, Any]) -> Any:
+    refine_images: list[dict[str, str]] = store.get("refine_images", [])
+    children: list[Any] = [
+        html.Iframe(
+            id="mock-iframe",
+            srcDoc=store.get("mock_html", ""),
+            sandbox="allow-scripts",
+            style={
+                "width": "100%",
+                "height": "600px",
+                "border": "none",
+                "borderRadius": "8px",
+            },
+        ),
+        dmc.Textarea(
+            id="designer-refine-input",
+            label="Describe the changes you'd like",
+            placeholder=(
+                "e.g. Make the hero section larger, use a warmer color palette..."
+            ),
+            minRows=3,
+            autosize=True,
+        ),
+        dcc.Upload(
+            id="designer-refine-upload",
+            accept="image/*",
+            multiple=False,
+            children=dmc.Text(
+                "Drag & drop a reference image (optional)",
+                ta="center",
+                c="dimmed",
+                py="sm",
+            ),
+            style={
+                "border": "2px dashed var(--mantine-color-dark-4)",
+                "borderRadius": "8px",
+                "cursor": "pointer",
+            },
+        ),
+    ]
+    if refine_images:
+        children.append(
+            dmc.Stack(
+                [_refine_image_row(i, img["filename"]) for i, img in enumerate(refine_images)],
+                gap="xs",
+            )
+        )
+    children.append(
+        dmc.Group(
+            [
+                dmc.Button(
+                    "↺ Cancel",
+                    id="btn-designer-refine-cancel",
+                    variant="outline",
+                    color="gray",
+                ),
+                dmc.Button(
+                    "Regenerate Mock →",
+                    id="btn-designer-regenerate",
+                ),
+            ]
+        )
+    )
+    return dmc.Stack(children, gap="sm")
 
 
 def designer_layout(session: dict[str, Any] | None = None) -> Any:

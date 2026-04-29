@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pathlib
-import queue
 import re
 import threading
 import uuid
@@ -29,6 +28,8 @@ from spec4.layouts.designer import (
 )
 
 # keyed by gen_id stored in designer-session-store["_gen_id"]
+# _run() is the sole writer of buf["text"]; poll callbacks only read it.
+# CPython's GIL makes this single-writer pattern safe without a lock.
 _MOCK_BUFFERS: dict[str, dict[str, Any]] = {}
 
 
@@ -56,6 +57,7 @@ def _start_gen(
     api_key: str,
     tavily_key: str | None,
     image_support: bool,
+    planning_context: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
     """Launch generation in a background thread.
 
@@ -63,8 +65,8 @@ def _start_gen(
     """
     gen_id = str(uuid.uuid4())
     stop_ev = threading.Event()
-    q: queue.Queue[str] = queue.Queue()
-    _MOCK_BUFFERS[gen_id] = {"queue": q, "done": False, "stop": stop_ev}
+    buf_entry: dict[str, Any] = {"done": False, "stop": stop_ev, "text": ""}
+    _MOCK_BUFFERS[gen_id] = buf_entry
 
     ds: DesignerSession = {
         "step": store.get("step", 5),
@@ -79,9 +81,10 @@ def _start_gen(
         if working_dir:
             snippets = collect_ui_source_files(pathlib.Path(working_dir))
         for chunk in generate_mock_streaming(
-            ds, model, api_key, snippets, image_support, tavily_key, stop_ev
+            ds, model, api_key, snippets, image_support, tavily_key, stop_ev,
+            planning_context=planning_context,
         ):
-            q.put(chunk)
+            buf_entry["text"] += chunk
         if gen_id in _MOCK_BUFFERS:
             _MOCK_BUFFERS[gen_id]["done"] = True
 
@@ -93,6 +96,7 @@ def _start_gen(
         "tokens": 0,
         "progress": 0,
         "error": None,
+        "_debug_events": ["Generation started"],
     }
     return updated_store, cleared_buffer, False  # False = not disabled
 
@@ -123,7 +127,7 @@ def render_designer_step(store: Any, buffer_data: Any, image_support: Any) -> An
     elif step == 6:
         content = _step6_content(store)
     elif step == 7:
-        content = _step7_content()
+        content = _step7_content(store)
     else:
         content = _step2_content()
     stepper_active = max(0, min(step - 1, 5))
@@ -142,19 +146,42 @@ def on_designer_add_gui(n: Any, store: Any) -> Any:
     return {**store, "step": 2}
 
 
+def _skip_to_stack_advisor(session: Any) -> Any:
+    session = session or {}
+    return {
+        **session,
+        "phase": "chat",
+        "active_agent": "stack_advisor",
+        "stack_advisor_messages": [],
+        "messages": [],
+        "_initial_turn_done": False,
+    }, "/chat"
+
+
 @callback(
     Output("session", "data", allow_duplicate=True),
     Output("url", "pathname", allow_duplicate=True),
     Input("btn-designer-skip-1", "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_skip_1(n: Any, session: Any) -> Any:
+    if not n:
+        return no_update, no_update
+    return _skip_to_stack_advisor(session)
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
     Input("btn-designer-skip-2", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_skip(n1: Any, n2: Any, session: Any) -> Any:
-    if not n1 and not n2:
+def on_designer_skip_2(n: Any, session: Any) -> Any:
+    if not n:
         return no_update, no_update
-    session = session or {}
-    return {**session, "phase": "agent_select"}, "/agents"
+    return _skip_to_stack_advisor(session)
 
 
 @callback(
@@ -247,8 +274,11 @@ def on_designer_generate_mock(
     tavily_key: str | None = sess.get("tavily_api_key")
     wd: str | None = sess.get("working_dir")
     support: bool = bool(image_support) if image_support is not None else True
+    planning_ctx: dict[str, Any] = {
+        "vision_statement": sess.get("vision_statement"),
+    } if sess.get("vision_statement") else {}
     new_store, buf, disabled = _start_gen(
-        updated, wd, model, api_key, tavily_key, support
+        updated, wd, model, api_key, tavily_key, support, planning_ctx or None
     )
     return new_store, buf, disabled
 
@@ -274,33 +304,46 @@ def on_mock_stream_poll(
         return no_update, no_update, True  # disable interval
 
     buf_entry = _MOCK_BUFFERS[gen_id]
-    q: queue.Queue[str] = buf_entry["queue"]
-    new_chunks: list[str] = []
-    while True:
-        try:
-            new_chunks.append(q.get_nowait())
-        except queue.Empty:
-            break
+    accumulated = buf_entry["text"]
 
     cb: dict[str, Any] = current_buffer or {
         "text": "",
         "tokens": 0,
         "progress": 0,
         "error": None,
+        "_debug_events": [],
     }
-    accumulated = cb["text"] + "".join(new_chunks)
+    debug_events: list[str] = list(cb.get("_debug_events") or [])
+
+    _SENTINELS = {
+        "__DBG_INPUT_START__": "Sending input to model...",
+        "__DBG_INPUT_END__": "Input sent — awaiting first output token",
+        "__DBG_OUTPUT_START__": "First output token received",
+    }
+    for sentinel, label in _SENTINELS.items():
+        if sentinel in accumulated:
+            accumulated = accumulated.replace(sentinel, "")
+            if label not in debug_events:
+                debug_events.append(label)
 
     if "__GENERATION_ERROR__:" in accumulated:
         idx = accumulated.index("__GENERATION_ERROR__:")
         error_msg = accumulated[idx + len("__GENERATION_ERROR__:") :].strip()
+        debug_events.append(f"Error: {error_msg}")
         _MOCK_BUFFERS.pop(gen_id, None)
         return (
-            {**cb, "text": accumulated, "error": error_msg},
+            {
+                **cb,
+                "text": accumulated,
+                "error": error_msg,
+                "_debug_events": debug_events,
+            },
             no_update,
             True,
         )
 
     if "__DONE__" in accumulated:
+        debug_events.append("Output complete")
         html_text = accumulated.replace("__DONE__", "").strip()
         extracted = _extract_html(html_text)
         if len(extracted) > 512_000:
@@ -328,12 +371,19 @@ def on_mock_stream_poll(
             "tokens": len(extracted),
             "progress": 100,
             "error": None,
+            "_debug_events": debug_events,
         }
         return final_buf, updated_store, True
 
     tokens = len(accumulated)
     progress = min(95, tokens // 50)
-    updated_buf = {**cb, "text": accumulated, "tokens": tokens, "progress": progress}
+    updated_buf = {
+        **cb,
+        "text": accumulated,
+        "tokens": tokens,
+        "progress": progress,
+        "_debug_events": debug_events,
+    }
     return updated_buf, no_update, no_update
 
 
@@ -363,8 +413,12 @@ def on_designer_approve(n: Any, store: Any, session: Any) -> Any:
         save_mock(ds["mock_html"], design_dir)
     return {
         **session,
-        "phase": "agent_select",
-    }, "/agents"
+        "phase": "chat",
+        "active_agent": "stack_advisor",
+        "stack_advisor_messages": [],
+        "messages": [],
+        "_initial_turn_done": False,
+    }, "/chat"
 
 
 @callback(
@@ -418,7 +472,41 @@ def on_designer_refine(n: Any, store: Any) -> Any:
 def on_designer_refine_cancel(n: Any, store: Any) -> Any:
     if not n or not store:
         return no_update
-    return {**store, "step": 6}
+    return {**store, "step": 6, "refine_images": []}
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input("designer-refine-upload", "contents"),
+    State("designer-refine-upload", "filename"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_refine_upload(contents: Any, filename: Any, store: Any) -> Any:
+    if not contents or not store:
+        return no_update
+    images: list[dict[str, str]] = list(store.get("refine_images", []))
+    images.append({"data": contents, "filename": filename or "image"})
+    return {**store, "refine_images": images}
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input({"type": "designer-refine-image-delete", "index": ALL}, "n_clicks"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_refine_image_delete(n_clicks_list: Any, store: Any) -> Any:
+    if not any(n for n in (n_clicks_list or []) if n):
+        return no_update
+    triggered = ctx.triggered_id
+    if not isinstance(triggered, dict):
+        return no_update
+    idx: int = triggered["index"]
+    images: list[dict[str, str]] = list((store or {}).get("refine_images", []))
+    if 0 <= idx < len(images):
+        images.pop(idx)
+    return {**(store or {}), "refine_images": images}
 
 
 @callback(
@@ -427,7 +515,6 @@ def on_designer_refine_cancel(n: Any, store: Any) -> Any:
     Output("mock-stream-interval", "disabled", allow_duplicate=True),
     Input("btn-designer-regenerate", "n_clicks"),
     State("designer-refine-input", "value"),
-    State("designer-refine-upload", "contents"),
     State("designer-session-store", "data"),
     State("session", "data"),
     State("image-support-store", "data"),
@@ -436,7 +523,6 @@ def on_designer_refine_cancel(n: Any, store: Any) -> Any:
 def on_designer_regenerate(
     n: Any,
     refine_text: Any,
-    refine_contents: Any,
     store: Any,
     session: Any,
     image_support: Any,
@@ -447,10 +533,8 @@ def on_designer_regenerate(
     if refine_text and refine_text.strip():
         pref = f"{pref}\n\n--- Refinement ---\n{refine_text.strip()}"
     screenshots: list[dict[str, str]] = list(store.get("screenshots", []))
-    if refine_contents:
-        screenshots.append(
-            {"data": refine_contents, "annotation": "Refinement reference"}
-        )
+    for img in store.get("refine_images", []):
+        screenshots.append({"data": img["data"], "annotation": img["filename"]})
     updated = {**store, "preference_text": pref, "screenshots": screenshots}
     sess = session or {}
     model: str = sess.get("model") or ""
@@ -458,7 +542,10 @@ def on_designer_regenerate(
     tavily_key: str | None = sess.get("tavily_api_key")
     wd: str | None = sess.get("working_dir")
     support: bool = bool(image_support) if image_support is not None else True
+    planning_ctx: dict[str, Any] = {
+        "vision_statement": sess.get("vision_statement"),
+    } if sess.get("vision_statement") else {}
     new_store, buf, disabled = _start_gen(
-        updated, wd, model, api_key, tavily_key, support
+        updated, wd, model, api_key, tavily_key, support, planning_ctx or None
     )
     return new_store, buf, disabled

@@ -9,7 +9,7 @@ from typing import Any, TypedDict
 
 import litellm
 
-from spec4.tavily_mcp import WEB_SEARCH_TOOL
+from spec4.tavily_mcp import WEB_SEARCH_TOOL, search as tavily_search
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,9 @@ _HTML_INSTRUCTION = (
     "Generate a single self-contained HTML file for the landing page or "
     "starting screen. Place all CSS inside a <style> block in <head> and all "
     "JavaScript inside a <script> block at the bottom of <body>. Do not use "
-    "external CDN links or import statements."
+    "external CDN links or import statements. "
+    "Output ONLY the HTML document — no introduction, no explanation, no "
+    "recap, no markdown commentary before or after the code."
 )
 
 
@@ -116,11 +118,27 @@ def build_mock_prompt(
     session: DesignerSession,
     ui_source_snippets: list[str],
     image_support: bool,
+    planning_context: dict[str, Any] | None = None,
 ) -> list[dict[str, object]]:
     """Construct the LiteLLM messages list for mock generation."""
-    parts: list[dict[str, object]] = [
-        {"type": "text", "text": session["preference_text"]},
-    ]
+    parts: list[dict[str, object]] = []
+
+    if planning_context:
+        ctx_sections: list[str] = []
+        if planning_context.get("vision_statement"):
+            parts.append({
+                "type": "text",
+                "text": (
+                    "## Project Vision\n\n"
+                    "Use the following project vision to inform the UI design "
+                    "(purpose, audience, and key features):\n\n"
+                    + json.dumps(planning_context["vision_statement"], indent=2)
+                    + "\n\n---"
+                ),
+            })
+
+    if session["preference_text"]:
+        parts.append({"type": "text", "text": session["preference_text"]})
     if image_support and session["screenshots"]:
         for shot in session["screenshots"]:
             parts.append({"type": "image_url", "image_url": {"url": shot["data"]}})
@@ -199,27 +217,127 @@ def generate_mock_streaming(
     image_support: bool,
     tavily_api_key: str | None = None,
     stop_event: threading.Event | None = None,
+    planning_context: dict[str, Any] | None = None,
 ) -> Iterator[str]:
-    messages = build_mock_prompt(session, ui_source_snippets, image_support)
+    messages: list[dict[str, Any]] = build_mock_prompt(session, ui_source_snippets, image_support, planning_context)
+    tools: list[dict[str, Any]] | None = [WEB_SEARCH_TOOL] if tavily_api_key else None
+
+    print("[Designer] Sending input to model...", flush=True)
+    yield "__DBG_INPUT_START__"
+
+    first_call = True
+    first_token = True
+
     try:
-        tools: list[dict[str, Any]] | None = (
-            [WEB_SEARCH_TOOL] if tavily_api_key else None
-        )
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "api_key": api_key,
-            "stream": True,
-        }
-        if tools:
-            kwargs["tools"] = tools
-        response = litellm.completion(**kwargs)
-        for chunk in response:
-            if stop_event is not None and stop_event.is_set():
-                return
-            delta = chunk.choices[0].delta.content or ""
-            if delta:
-                yield delta
+        while True:
+            kwargs: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "api_key": api_key,
+                "stream": True,
+            }
+            if tools:
+                kwargs["tools"] = tools
+
+            response = litellm.completion(**kwargs)
+
+            if first_call:
+                print("[Designer] Input sent — awaiting first output token", flush=True)
+                yield "__DBG_INPUT_END__"
+                first_call = False
+
+            full_text = ""
+            tool_call_acc: dict[int, dict[str, str]] = {}
+            chunk_count = 0
+            last_finish_reason = None
+
+            for chunk in response:
+                chunk_count += 1
+                if stop_event is not None and stop_event.is_set():
+                    return
+
+                choice = chunk.choices[0] if chunk.choices else None
+                if choice is None:
+                    print(f"[Designer] Chunk {chunk_count}: no choices", flush=True)
+                    continue
+
+                last_finish_reason = getattr(choice, "finish_reason", None)
+                delta = choice.delta
+                content = getattr(delta, "content", None) or ""
+                tc_deltas = getattr(delta, "tool_calls", None)
+
+                if chunk_count <= 3 or tc_deltas:
+                    print(
+                        f"[Designer] Chunk {chunk_count}: content={content!r} "
+                        f"tool_calls={bool(tc_deltas)} finish_reason={last_finish_reason}",
+                        flush=True,
+                    )
+
+                if content:
+                    if first_token:
+                        print("[Designer] First output token received", flush=True)
+                        yield "__DBG_OUTPUT_START__"
+                        first_token = False
+                    full_text += content
+                    print(content, end="", flush=True)
+                    yield content
+
+                if tc_deltas:
+                    for tc in tc_deltas:
+                        i = tc.index
+                        if i not in tool_call_acc:
+                            tool_call_acc[i] = {"id": "", "name": "", "arguments": ""}
+                        if tc.id:
+                            tool_call_acc[i]["id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                tool_call_acc[i]["name"] += tc.function.name
+                            if tc.function.arguments:
+                                tool_call_acc[i]["arguments"] += tc.function.arguments
+
+            print(
+                f"[Designer] Iteration complete — {chunk_count} chunks, "
+                f"finish_reason={last_finish_reason}",
+                flush=True,
+            )
+
+            if tool_call_acc:
+                messages.append({
+                    "role": "assistant",
+                    "content": full_text or None,
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                        }
+                        for tc in tool_call_acc.values()
+                    ],
+                })
+                for tc in tool_call_acc.values():
+                    print(
+                        f"[Designer] Tool call: {tc['name']} args={tc['arguments']}",
+                        flush=True,
+                    )
+                    if tc["name"] == "web_search":
+                        try:
+                            query = json.loads(tc["arguments"]).get("query", "")
+                        except (json.JSONDecodeError, KeyError):
+                            query = tc["arguments"]
+                        print(f"[Designer] Web search: {query!r}", flush=True)
+                        result = tavily_search(query, tavily_api_key or "")
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": result,
+                        })
+                continue
+
+            break
+
+        print("[Designer] Output complete", flush=True)
         yield "__DONE__"
+
     except Exception as exc:
+        print(f"[Designer] Generation error: {exc}", flush=True)
         yield f"__GENERATION_ERROR__: {exc}"

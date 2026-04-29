@@ -727,3 +727,89 @@ class TestPhaser:
         with mock_litellm_stream("Ok"):
             collect(phaser.run(None, session, session["llm_config"]))
         assert "phaser_messages" in session
+
+
+# ---------------------------------------------------------------------------
+# _load_design_context (stack_advisor)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadDesignContext:
+    def test_returns_empty_when_no_mock(self, tmp_path: Any) -> None:
+        from spec4.agents.stack_advisor import _load_design_context
+
+        assert _load_design_context(tmp_path) == ""
+
+    def test_returns_empty_when_dir_has_no_mock_html(self, tmp_path: Any) -> None:
+        from spec4.agents.stack_advisor import _load_design_context
+
+        (tmp_path / "session.json").write_text("{}")
+        assert _load_design_context(tmp_path) == ""
+
+    def test_returns_context_string_when_mock_exists(self, tmp_path: Any) -> None:
+        from spec4.agents.stack_advisor import _load_design_context
+
+        (tmp_path / "mock.html").write_text("<!DOCTYPE html><html></html>")
+        result = _load_design_context(tmp_path)
+        assert "mock.html" in result
+        assert len(result) < 500
+
+    def test_context_string_mentions_designer_agent(self, tmp_path: Any) -> None:
+        from spec4.agents.stack_advisor import _load_design_context
+
+        (tmp_path / "mock.html").write_text("<html/>")
+        result = _load_design_context(tmp_path)
+        assert "Designer" in result
+
+    def test_context_string_mentions_frontend_rendering(self, tmp_path: Any) -> None:
+        from spec4.agents.stack_advisor import _load_design_context
+
+        (tmp_path / "mock.html").write_text("<html/>")
+        result = _load_design_context(tmp_path)
+        assert "frontend" in result.lower() or "rendering" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# _load_phaser_design_note (phaser)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadPhaserDesignNote:
+    def test_returns_mock_reference_when_mock_exists(self, tmp_path: Any) -> None:
+        from spec4.agents.phaser import _load_phaser_design_note
+
+        (tmp_path / "mock.html").write_text("<!DOCTYPE html><html></html>")
+        result = _load_phaser_design_note(tmp_path)
+        assert "mock.html" in result
+
+    def test_mock_reference_under_500_chars(self, tmp_path: Any) -> None:
+        from spec4.agents.phaser import _load_phaser_design_note
+
+        (tmp_path / "mock.html").write_text("<html/>")
+        assert len(_load_phaser_design_note(tmp_path)) < 500
+
+    def test_returns_no_mock_note_when_absent(self, tmp_path: Any) -> None:
+        from spec4.agents.phaser import _load_phaser_design_note
+
+        result = _load_phaser_design_note(tmp_path)
+        assert "no ui design mock" in result.lower()
+
+    def test_returns_no_mock_note_when_file_empty(self, tmp_path: Any) -> None:
+        from spec4.agents.phaser import _load_phaser_design_note
+
+        (tmp_path / "mock.html").write_text("  \n  ")
+        result = _load_phaser_design_note(tmp_path)
+        assert "no ui design mock" in result.lower()
+
+    def test_mock_note_mentions_coding_agent(self, tmp_path: Any) -> None:
+        from spec4.agents.phaser import _load_phaser_design_note
+
+        (tmp_path / "mock.html").write_text("<html/>")
+        result = _load_phaser_design_note(tmp_path)
+        assert "coding agent" in result.lower() or "implementat" in result.lower()
+
+    def test_no_mock_note_mentions_discretion(self, tmp_path: Any) -> None:
+        from spec4.agents.phaser import _load_phaser_design_note
+
+        result = _load_phaser_design_note(tmp_path)
+        assert "discretion" in result.lower()

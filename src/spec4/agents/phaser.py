@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 
 from spec4 import tavily_mcp
@@ -200,6 +201,21 @@ memory, and present a download button — you do not need to do anything else.
 """
 
 
+def _load_phaser_design_note(design_dir: Path) -> str:
+    """Return a note about the UI design mock for inclusion in the Phaser seed."""
+    mock_path = design_dir / "mock.html"
+    if mock_path.exists() and mock_path.read_text(encoding="utf-8").strip():
+        return (
+            "A finalized UI design mock is available at .spec4/design/mock.html. "
+            "Direct the coding agent to reference this file during implementation "
+            "to match the intended visual design."
+        )
+    return (
+        "No UI design mock was produced. UI design decisions are left to the "
+        "developer's discretion."
+    )
+
+
 def _extract_phases(text: str) -> list[dict[str, Any]]:
     """Extract all JSON phase objects from fenced code blocks in the LLM response."""
     phases: list[dict[str, Any]] = []
@@ -240,6 +256,11 @@ def run(
         existing_phases = session.get("phases") or []
         code_review = session.get("code_review")
 
+        working_dir = session.get("working_dir")
+        design_dir = Path(working_dir) / ".spec4" / "design" if working_dir else None
+        design_note = _load_phaser_design_note(design_dir) if design_dir else ""
+        design_note_block = f"{design_note}\n\n" if design_note else ""
+
         vision_block = (
             f"Here is the project vision statement:\n\n```json\n{json.dumps(vision, indent=2)}\n```\n\n"
             if vision
@@ -277,7 +298,9 @@ def run(
             extra_block = ""
             instruction = "Please analyze the vision and stack, then generate the full set of development phases."
 
-        seed = f"{vision_block}{stack_block}{extra_block}{instruction}"
+        seed = (
+            f"{vision_block}{stack_block}{extra_block}{design_note_block}{instruction}"
+        )
         messages.append({"role": "user", "content": seed})
     else:
         messages.append({"role": "user", "content": user_input})

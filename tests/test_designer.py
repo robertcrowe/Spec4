@@ -425,9 +425,9 @@ class TestGenerateMockStreaming:
             chunks = list(
                 generate_mock_streaming(_gen_session(), "gpt-4o", "sk-test", [], True)
             )
-        assert len(chunks) == 1
-        assert chunks[0].startswith("__GENERATION_ERROR__:")
-        assert "timeout" in chunks[0]
+        error_chunks = [c for c in chunks if c.startswith("__GENERATION_ERROR__:")]
+        assert len(error_chunks) == 1
+        assert "timeout" in error_chunks[0]
 
     def test_stop_event_prevents_done(self) -> None:
         ev = threading.Event()
