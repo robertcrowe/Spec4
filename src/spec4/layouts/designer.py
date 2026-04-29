@@ -225,34 +225,33 @@ def _step5_content(buffer_data: dict[str, Any] | None = None) -> Any:
     error: str | None = bd.get("error")
     tokens: int = bd.get("tokens", 0)
     progress_val: int = bd.get("progress", 0)
-    alert: Any = (
+    children: list[Any] = [
         dmc.Alert(error, color="red", variant="light", title="Generation Error")
         if error
         else dmc.Alert(
             "Generating your mock — this may take several minutes.",
             color="blue",
             variant="light",
+        ),
+        dmc.Progress(
+            value=progress_val,
+            id="mock-progress",
+            animated=not error,
+            striped=True,
+            color="red" if error else "blue",
+        ),
+        dmc.Text(
+            f"Tokens received: {tokens}",
+            id="mock-token-count",
+            c="dimmed",
+            size="sm",
+        ),
+    ]
+    if error:
+        children.append(
+            dmc.Button("↺ Retry", id="btn-designer-retry", variant="outline")
         )
-    )
-    return dmc.Stack(
-        [
-            alert,
-            dmc.Progress(
-                value=progress_val,
-                id="mock-progress",
-                animated=True,
-                striped=True,
-                color="blue",
-            ),
-            dmc.Text(
-                f"Tokens received: {tokens}",
-                id="mock-token-count",
-                c="dimmed",
-                size="sm",
-            ),
-        ],
-        gap="sm",
-    )
+    return dmc.Stack(children, gap="sm")
 
 
 def _step6_content(store: dict[str, Any]) -> Any:

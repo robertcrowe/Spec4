@@ -10,7 +10,6 @@ from dash import ALL, Input, Output, State, callback, ctx, no_update
 
 from spec4.agents.designer import (
     DesignerSession,
-    clear_session,
     collect_ui_source_files,
     generate_mock_streaming,
     save_mock,
@@ -92,7 +91,7 @@ def _start_gen(
 
     threading.Thread(target=_run, daemon=True).start()
 
-    updated_store = {**store, "step": 5, "_gen_id": gen_id}
+    updated_store = {**store, "step": 5, "_gen_id": gen_id, "_existing_html": existing_html}
     cleared_buffer: dict[str, Any] = {
         "text": "",
         "tokens": 0,
@@ -196,7 +195,8 @@ def on_designer_skip_2(n: Any, session: Any) -> Any:
 def on_designer_step2_choice(n_modify: Any, n_create: Any, store: Any) -> Any:
     if not ctx.triggered_id or not (n_modify or n_create):
         return no_update
-    return {**(store or {}), "step": 3}
+    step = 7 if ctx.triggered_id == "btn-designer-modify-existing" else 3
+    return {**(store or {}), "step": step}
 
 
 @callback(
@@ -429,10 +429,9 @@ def on_designer_approve(n: Any, store: Any, session: Any) -> Any:
     Output("mock-stream-interval", "disabled", allow_duplicate=True),
     Input("btn-designer-start-over", "n_clicks"),
     State("designer-session-store", "data"),
-    State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_start_over(n: Any, store: Any, session: Any) -> Any:
+def on_designer_start_over(n: Any, store: Any) -> Any:
     if not n:
         return no_update, no_update, no_update
     gen_id: str | None = (store or {}).get("_gen_id")
@@ -440,10 +439,6 @@ def on_designer_start_over(n: Any, store: Any, session: Any) -> Any:
         entry = _MOCK_BUFFERS.pop(gen_id, None)
         if entry:
             entry["stop"].set()
-    working_dir: str | None = (session or {}).get("working_dir")
-    if working_dir:
-        design_dir = pathlib.Path(working_dir) / ".spec4" / "design"
-        clear_session(design_dir)
     cleared_buffer: dict[str, Any] = {
         "text": "",
         "tokens": 0,
@@ -547,6 +542,39 @@ def on_designer_regenerate(
     support: bool = bool(image_support) if image_support is not None else True
     new_store, buf, disabled = _start_gen(
         updated, wd, model, api_key, tavily_key, support,
+        existing_html=existing_html,
+    )
+    return new_store, buf, disabled
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-stream-buffer", "data", allow_duplicate=True),
+    Output("mock-stream-interval", "disabled", allow_duplicate=True),
+    Input("btn-designer-retry", "n_clicks"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    State("image-support-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> Any:
+    if not n or not store:
+        return no_update, no_update, no_update
+    sess = session or {}
+    model: str = sess.get("model") or ""
+    api_key: str = sess.get("api_key") or ""
+    tavily_key: str | None = sess.get("tavily_api_key")
+    wd: str | None = sess.get("working_dir")
+    support: bool = bool(image_support) if image_support is not None else True
+    existing_html: str | None = store.get("_existing_html")
+    planning_ctx: dict[str, Any] = (
+        {"vision_statement": sess.get("vision_statement")}
+        if not existing_html and sess.get("vision_statement")
+        else {}
+    )
+    new_store, buf, disabled = _start_gen(
+        store, wd, model, api_key, tavily_key, support,
+        planning_ctx or None,
         existing_html=existing_html,
     )
     return new_store, buf, disabled
