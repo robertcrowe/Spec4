@@ -33,6 +33,15 @@ _SYSTEM_PROMPT = (
     "document."
 )
 
+_SYSTEM_PROMPT_REFINE = (
+    "You are an expert UI/UX designer. Your task is to modify an existing "
+    "self-contained HTML mock-up based on the feedback provided. You write "
+    "HTML, CSS, and JavaScript directly — no frameworks, no external assets, "
+    "no CDN links. All CSS goes inside a <style> block in the <head> and all "
+    "JavaScript goes inside a <script> block at the end of <body>. The output "
+    "must be a single complete HTML document."
+)
+
 _HTML_INSTRUCTION = (
     "Generate a single self-contained HTML file for the landing page or "
     "starting screen. Place all CSS inside a <style> block in <head> and all "
@@ -40,6 +49,15 @@ _HTML_INSTRUCTION = (
     "external CDN links or import statements. "
     "Output ONLY the HTML document — no introduction, no explanation, no "
     "recap, no markdown commentary before or after the code."
+)
+
+_HTML_REFINEMENT_INSTRUCTION = (
+    "Apply the requested changes to the existing mock shown above. Preserve "
+    "everything not explicitly changed. Place all CSS inside a <style> block "
+    "in <head> and all JavaScript inside a <script> block at the bottom of "
+    "<body>. Do not use external CDN links or import statements. "
+    "Output ONLY the complete updated HTML document — no introduction, no "
+    "explanation, no recap, no markdown commentary before or after the code."
 )
 
 
@@ -119,23 +137,32 @@ def build_mock_prompt(
     ui_source_snippets: list[str],
     image_support: bool,
     planning_context: dict[str, Any] | None = None,
+    existing_html: str | None = None,
 ) -> list[dict[str, object]]:
-    """Construct the LiteLLM messages list for mock generation."""
+    """Construct the LiteLLM messages list for mock generation or refinement."""
     parts: list[dict[str, object]] = []
 
-    if planning_context:
-        ctx_sections: list[str] = []
-        if planning_context.get("vision_statement"):
-            parts.append({
-                "type": "text",
-                "text": (
-                    "## Project Vision\n\n"
-                    "Use the following project vision to inform the UI design "
-                    "(purpose, audience, and key features):\n\n"
-                    + json.dumps(planning_context["vision_statement"], indent=2)
-                    + "\n\n---"
-                ),
-            })
+    if existing_html:
+        parts.append({
+            "type": "text",
+            "text": (
+                "## Existing Mock\n\n"
+                "Below is the current HTML. Apply the requested changes to it — "
+                "preserve everything not explicitly changed.\n\n"
+                "```html\n" + existing_html + "\n```\n\n---"
+            ),
+        })
+    elif planning_context and planning_context.get("vision_statement"):
+        parts.append({
+            "type": "text",
+            "text": (
+                "## Project Vision\n\n"
+                "Use the following project vision to inform the UI design "
+                "(purpose, audience, and key features):\n\n"
+                + json.dumps(planning_context["vision_statement"], indent=2)
+                + "\n\n---"
+            ),
+        })
 
     if session["preference_text"]:
         parts.append({"type": "text", "text": session["preference_text"]})
@@ -143,22 +170,17 @@ def build_mock_prompt(
         for shot in session["screenshots"]:
             parts.append({"type": "image_url", "image_url": {"url": shot["data"]}})
             parts.append({"type": "text", "text": f"Note: {shot['annotation']}"})
-    if ui_source_snippets:
+    if not existing_html and ui_source_snippets:
         combined = "\n\n".join(
             f"--- UI Source Snippet ---\n{s}" for s in ui_source_snippets
         )
-        parts.append(
-            {
-                "type": "text",
-                "text": (
-                    "Existing UI code for reference (use as starting point):\n\n"
-                    + combined
-                ),
-            }
-        )
-    parts.append({"type": "text", "text": _HTML_INSTRUCTION})
+        parts.append({
+            "type": "text",
+            "text": "Existing UI code for reference (use as starting point):\n\n" + combined,
+        })
+    parts.append({"type": "text", "text": _HTML_REFINEMENT_INSTRUCTION if existing_html else _HTML_INSTRUCTION})
     return [
-        {"role": "system", "content": _SYSTEM_PROMPT},
+        {"role": "system", "content": _SYSTEM_PROMPT_REFINE if existing_html else _SYSTEM_PROMPT},
         {"role": "user", "content": parts},
     ]
 
@@ -218,8 +240,11 @@ def generate_mock_streaming(
     tavily_api_key: str | None = None,
     stop_event: threading.Event | None = None,
     planning_context: dict[str, Any] | None = None,
+    existing_html: str | None = None,
 ) -> Iterator[str]:
-    messages: list[dict[str, Any]] = build_mock_prompt(session, ui_source_snippets, image_support, planning_context)
+    messages: list[dict[str, Any]] = build_mock_prompt(
+        session, ui_source_snippets, image_support, planning_context, existing_html
+    )
     tools: list[dict[str, Any]] | None = [WEB_SEARCH_TOOL] if tavily_api_key else None
 
     print("[Designer] Sending input to model...", flush=True)

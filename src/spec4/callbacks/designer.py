@@ -58,6 +58,7 @@ def _start_gen(
     tavily_key: str | None,
     image_support: bool,
     planning_context: dict[str, Any] | None = None,
+    existing_html: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
     """Launch generation in a background thread.
 
@@ -78,11 +79,12 @@ def _start_gen(
 
     def _run() -> None:
         snippets: list[str] = []
-        if working_dir:
+        if not existing_html and working_dir:
             snippets = collect_ui_source_files(pathlib.Path(working_dir))
         for chunk in generate_mock_streaming(
             ds, model, api_key, snippets, image_support, tavily_key, stop_ev,
             planning_context=planning_context,
+            existing_html=existing_html,
         ):
             buf_entry["text"] += chunk
         if gen_id in _MOCK_BUFFERS:
@@ -535,6 +537,7 @@ def on_designer_regenerate(
     screenshots: list[dict[str, str]] = list(store.get("screenshots", []))
     for img in store.get("refine_images", []):
         screenshots.append({"data": img["data"], "annotation": img["filename"]})
+    existing_html: str | None = store.get("mock_html") or None
     updated = {**store, "preference_text": pref, "screenshots": screenshots}
     sess = session or {}
     model: str = sess.get("model") or ""
@@ -542,10 +545,8 @@ def on_designer_regenerate(
     tavily_key: str | None = sess.get("tavily_api_key")
     wd: str | None = sess.get("working_dir")
     support: bool = bool(image_support) if image_support is not None else True
-    planning_ctx: dict[str, Any] = {
-        "vision_statement": sess.get("vision_statement"),
-    } if sess.get("vision_statement") else {}
     new_store, buf, disabled = _start_gen(
-        updated, wd, model, api_key, tavily_key, support, planning_ctx or None
+        updated, wd, model, api_key, tavily_key, support,
+        existing_html=existing_html,
     )
     return new_store, buf, disabled
