@@ -12,6 +12,9 @@ wheels/
 # Virtual environments
 .venv
 
+# Spec4 artifacts
+.spec4/
+
 # My stuff
 prd.md
 prd2.md
