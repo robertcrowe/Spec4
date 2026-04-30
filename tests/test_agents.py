@@ -749,10 +749,10 @@ class TestLoadDesignContext:
     def test_returns_context_string_when_mock_exists(self, tmp_path: Any) -> None:
         from spec4.agents.stack_advisor import _load_design_context
 
-        (tmp_path / "mock.html").write_text("<!DOCTYPE html><html></html>")
+        html = "<!DOCTYPE html><html></html>"
+        (tmp_path / "mock.html").write_text(html)
         result = _load_design_context(tmp_path)
-        assert "mock.html" in result
-        assert len(result) < 500
+        assert html in result
 
     def test_context_string_mentions_designer_agent(self, tmp_path: Any) -> None:
         from spec4.agents.stack_advisor import _load_design_context

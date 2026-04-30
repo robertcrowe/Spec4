@@ -168,13 +168,19 @@ Output only the JSON code block when generating the final stack spec — no addi
 
 
 def _load_design_context(design_dir: Path) -> str:
-    """Return a context note about the design mock when one exists, else empty string."""
-    if not (design_dir / "mock.html").exists():
+    """Return the full mock HTML when one exists, else empty string."""
+    mock_path = design_dir / "mock.html"
+    if not mock_path.exists():
+        return ""
+    try:
+        html = mock_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
         return ""
     return (
-        "A UI design mock has been produced by the Designer agent and saved to "
-        ".spec4/design/mock.html. You may reference this file as a concrete visual "
-        "specification when evaluating technology stack options for frontend rendering."
+        "A UI design mock has been produced by the Designer agent. "
+        "Use it as a concrete visual specification when evaluating technology "
+        "stack options for frontend rendering:\n\n"
+        "```html\n" + html + "\n```"
     )
 
 
