@@ -247,11 +247,7 @@ def generate_mock_streaming(
     )
     tools: list[dict[str, Any]] | None = [WEB_SEARCH_TOOL] if tavily_api_key else None
 
-    print("[Designer] Sending input to model...", flush=True)
-    yield "__DBG_INPUT_START__"
-
-    first_call = True
-    first_token = True
+    logger.debug("Sending input to model...")
 
     try:
         while True:
@@ -265,11 +261,7 @@ def generate_mock_streaming(
                 kwargs["tools"] = tools
 
             response = litellm.completion(**kwargs)
-
-            if first_call:
-                print("[Designer] Input sent — awaiting first output token", flush=True)
-                yield "__DBG_INPUT_END__"
-                first_call = False
+            logger.debug("Awaiting first output token")
 
             full_text = ""
             tool_call_acc: dict[int, dict[str, str]] = {}
@@ -283,7 +275,7 @@ def generate_mock_streaming(
 
                 choice = chunk.choices[0] if chunk.choices else None
                 if choice is None:
-                    print(f"[Designer] Chunk {chunk_count}: no choices", flush=True)
+                    logger.debug("Chunk %d: no choices", chunk_count)
                     continue
 
                 last_finish_reason = getattr(choice, "finish_reason", None)
@@ -292,19 +284,13 @@ def generate_mock_streaming(
                 tc_deltas = getattr(delta, "tool_calls", None)
 
                 if chunk_count <= 3 or tc_deltas:
-                    print(
-                        f"[Designer] Chunk {chunk_count}: content={content!r} "
-                        f"tool_calls={bool(tc_deltas)} finish_reason={last_finish_reason}",
-                        flush=True,
+                    logger.debug(
+                        "Chunk %d: content=%r tool_calls=%s finish_reason=%s",
+                        chunk_count, content, bool(tc_deltas), last_finish_reason,
                     )
 
                 if content:
-                    if first_token:
-                        print("[Designer] First output token received", flush=True)
-                        yield "__DBG_OUTPUT_START__"
-                        first_token = False
                     full_text += content
-                    print(content, end="", flush=True)
                     yield content
 
                 if tc_deltas:
@@ -320,10 +306,9 @@ def generate_mock_streaming(
                             if tc.function.arguments:
                                 tool_call_acc[i]["arguments"] += tc.function.arguments
 
-            print(
-                f"[Designer] Iteration complete — {chunk_count} chunks, "
-                f"finish_reason={last_finish_reason}",
-                flush=True,
+            logger.debug(
+                "Iteration complete — %d chunks, finish_reason=%s",
+                chunk_count, last_finish_reason,
             )
 
             if tool_call_acc:
@@ -340,16 +325,13 @@ def generate_mock_streaming(
                     ],
                 })
                 for tc in tool_call_acc.values():
-                    print(
-                        f"[Designer] Tool call: {tc['name']} args={tc['arguments']}",
-                        flush=True,
-                    )
+                    logger.debug("Tool call: %s args=%s", tc["name"], tc["arguments"])
                     if tc["name"] == "web_search":
                         try:
                             query = json.loads(tc["arguments"]).get("query", "")
                         except (json.JSONDecodeError, KeyError):
                             query = tc["arguments"]
-                        print(f"[Designer] Web search: {query!r}", flush=True)
+                        logger.debug("Web search: %r", query)
                         result = tavily_search(query, tavily_api_key or "")
                         messages.append({
                             "role": "tool",
@@ -360,9 +342,9 @@ def generate_mock_streaming(
 
             break
 
-        print("[Designer] Output complete", flush=True)
+        logger.debug("Output complete")
         yield "__DONE__"
 
     except Exception as exc:
-        print(f"[Designer] Generation error: {exc}", flush=True)
+        logger.debug("Generation error: %s", exc)
         yield f"__GENERATION_ERROR__: {exc}"

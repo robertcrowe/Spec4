@@ -91,13 +91,11 @@ def _start_gen(
 
     threading.Thread(target=_run, daemon=True).start()
 
-    updated_store = {**store, "step": 5, "_gen_id": gen_id, "_existing_html": existing_html}
+    updated_store = {
+        **store, "step": 5, "_gen_id": gen_id, "_existing_html": existing_html
+    }
     cleared_buffer: dict[str, Any] = {
-        "text": "",
-        "tokens": 0,
-        "progress": 0,
-        "error": None,
-        "_debug_events": ["Generation started"],
+        "text": "", "tokens": 0, "progress": 0, "error": None
     }
     return updated_store, cleared_buffer, False  # False = not disabled
 
@@ -309,43 +307,20 @@ def on_mock_stream_poll(
     accumulated = buf_entry["text"]
 
     cb: dict[str, Any] = current_buffer or {
-        "text": "",
-        "tokens": 0,
-        "progress": 0,
-        "error": None,
-        "_debug_events": [],
+        "text": "", "tokens": 0, "progress": 0, "error": None
     }
-    debug_events: list[str] = list(cb.get("_debug_events") or [])
-
-    _SENTINELS = {
-        "__DBG_INPUT_START__": "Sending input to model...",
-        "__DBG_INPUT_END__": "Input sent — awaiting first output token",
-        "__DBG_OUTPUT_START__": "First output token received",
-    }
-    for sentinel, label in _SENTINELS.items():
-        if sentinel in accumulated:
-            accumulated = accumulated.replace(sentinel, "")
-            if label not in debug_events:
-                debug_events.append(label)
 
     if "__GENERATION_ERROR__:" in accumulated:
         idx = accumulated.index("__GENERATION_ERROR__:")
-        error_msg = accumulated[idx + len("__GENERATION_ERROR__:") :].strip()
-        debug_events.append(f"Error: {error_msg}")
+        error_msg = accumulated[idx + len("__GENERATION_ERROR__:"):].strip()
         _MOCK_BUFFERS.pop(gen_id, None)
         return (
-            {
-                **cb,
-                "text": accumulated,
-                "error": error_msg,
-                "_debug_events": debug_events,
-            },
+            {**cb, "text": accumulated, "error": error_msg},
             no_update,
             True,
         )
 
     if "__DONE__" in accumulated:
-        debug_events.append("Output complete")
         html_text = accumulated.replace("__DONE__", "").strip()
         extracted = _extract_html(html_text)
         if len(extracted) > 512_000:
@@ -373,20 +348,16 @@ def on_mock_stream_poll(
             "tokens": len(extracted),
             "progress": 100,
             "error": None,
-            "_debug_events": debug_events,
         }
         return final_buf, updated_store, True
 
     tokens = len(accumulated)
     progress = min(95, tokens // 50)
-    updated_buf = {
-        **cb,
-        "text": accumulated,
-        "tokens": tokens,
-        "progress": progress,
-        "_debug_events": debug_events,
-    }
-    return updated_buf, no_update, no_update
+    return (
+        {**cb, "text": accumulated, "tokens": tokens, "progress": progress},
+        no_update,
+        no_update,
+    )
 
 
 @callback(
@@ -439,13 +410,11 @@ def on_designer_start_over(n: Any, store: Any) -> Any:
         entry = _MOCK_BUFFERS.pop(gen_id, None)
         if entry:
             entry["stop"].set()
-    cleared_buffer: dict[str, Any] = {
-        "text": "",
-        "tokens": 0,
-        "progress": 0,
-        "error": None,
-    }
-    return _default_designer_session(step=2), cleared_buffer, True
+    return (
+        _default_designer_session(step=2),
+        {"text": "", "tokens": 0, "progress": 0, "error": None},
+        True,
+    )
 
 
 @callback(

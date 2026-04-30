@@ -370,7 +370,10 @@ def _step7_content(store: dict[str, Any]) -> Any:
     if refine_images:
         children.append(
             dmc.Stack(
-                [_refine_image_row(i, img["filename"]) for i, img in enumerate(refine_images)],
+                [
+                    _refine_image_row(i, img["filename"])
+                    for i, img in enumerate(refine_images)
+                ],
                 gap="xs",
             )
         )

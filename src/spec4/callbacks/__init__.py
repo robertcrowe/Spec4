@@ -6,11 +6,9 @@ import pathlib
 import zipfile
 from typing import Any
 
-from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
-
 import base64
 
-import dash_mantine_components as dmc
+from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
 from spec4 import project_manager, providers, streaming, tavily_mcp
 from spec4.agents._image_probe import probe_image_support
