@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import logging
+import os
 import pathlib
 import re
+import sys
 import threading
 import uuid
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+_DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
 
 from dash import ALL, Input, Output, State, callback, ctx, no_update
 
@@ -58,6 +65,7 @@ def _start_gen(
     image_support: bool,
     planning_context: dict[str, Any] | None = None,
     existing_html: str | None = None,
+    capture_mode: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
     """Launch generation in a background thread.
 
@@ -80,12 +88,19 @@ def _start_gen(
         snippets: list[str] = []
         if not existing_html and working_dir:
             snippets = collect_ui_source_files(pathlib.Path(working_dir))
+        if _DEV_MODE:
+            print("\n[Designer] Generating mock...", flush=True)
         for chunk in generate_mock_streaming(
             ds, model, api_key, snippets, image_support, tavily_key, stop_ev,
             planning_context=planning_context,
             existing_html=existing_html,
+            capture_mode=capture_mode,
         ):
             buf_entry["text"] += chunk
+            if _DEV_MODE and not chunk.startswith("__"):
+                print(chunk, end="", flush=True, file=sys.stdout)
+        if _DEV_MODE:
+            print("\n[Designer] Done.", flush=True)
         if gen_id in _MOCK_BUFFERS:
             _MOCK_BUFFERS[gen_id]["done"] = True
 
@@ -185,16 +200,33 @@ def on_designer_skip_2(n: Any, session: Any) -> Any:
 
 @callback(
     Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-stream-buffer", "data", allow_duplicate=True),
+    Output("mock-stream-interval", "disabled", allow_duplicate=True),
     Input("btn-designer-modify-existing", "n_clicks"),
     Input("btn-designer-create-new", "n_clicks"),
     State("designer-session-store", "data"),
+    State("session", "data"),
+    State("image-support-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_step2_choice(n_modify: Any, n_create: Any, store: Any) -> Any:
+def on_designer_step2_choice(
+    n_modify: Any, n_create: Any, store: Any, session: Any, image_support: Any
+) -> Any:
     if not ctx.triggered_id or not (n_modify or n_create):
-        return no_update
-    step = 7 if ctx.triggered_id == "btn-designer-modify-existing" else 3
-    return {**(store or {}), "step": step}
+        return no_update, no_update, no_update
+    if ctx.triggered_id == "btn-designer-create-new":
+        return {**(store or {}), "step": 3}, no_update, no_update
+    # "Modify existing" — capture the project's current look and feel
+    sess = session or {}
+    model: str = sess.get("model") or ""
+    api_key: str = sess.get("api_key") or ""
+    tavily_key: str | None = sess.get("tavily_api_key")
+    wd: str | None = sess.get("working_dir")
+    support: bool = bool(image_support) if image_support is not None else True
+    new_store, buf, disabled = _start_gen(
+        store or {}, wd, model, api_key, tavily_key, support, capture_mode=True
+    )
+    return new_store, buf, disabled
 
 
 @callback(
@@ -213,13 +245,17 @@ def on_designer_preferences_next(n: Any, pref_text: Any, store: Any) -> Any:
 @callback(
     Output("designer-session-store", "data", allow_duplicate=True),
     Input("designer-screenshot-upload", "contents"),
+    State({"type": "designer-screenshot-annotation", "index": ALL}, "value"),
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_screenshot_upload(contents: Any, store: Any) -> Any:
+def on_designer_screenshot_upload(contents: Any, annotations: Any, store: Any) -> Any:
     if not contents or not store:
         return no_update
     screenshots: list[dict[str, str]] = list(store.get("screenshots", []))
+    for i, ann in enumerate(annotations or []):
+        if i < len(screenshots):
+            screenshots[i] = {**screenshots[i], "annotation": ann or ""}
     screenshots.append({"data": contents, "annotation": ""})
     return {**store, "screenshots": screenshots}
 
@@ -313,6 +349,9 @@ def on_mock_stream_poll(
     if "__GENERATION_ERROR__:" in accumulated:
         idx = accumulated.index("__GENERATION_ERROR__:")
         error_msg = accumulated[idx + len("__GENERATION_ERROR__:"):].strip()
+        # Empty error_msg (e.g. exception with no message) must still surface as an
+        # error so the user sees the retry button instead of a frozen progress bar.
+        error_msg = error_msg or "Generation failed — check the server log for details."
         _MOCK_BUFFERS.pop(gen_id, None)
         return (
             {**cb, "text": accumulated, "error": error_msg},
@@ -338,8 +377,11 @@ def on_mock_stream_poll(
                 "mock_html": extracted,
                 "finalized": False,
             }
-            save_session(ds, design_dir)
-            save_mock(extracted, design_dir)
+            try:
+                save_session(ds, design_dir)
+                save_mock(extracted, design_dir)
+            except Exception as exc:
+                logger.warning("Designer: could not persist session to disk: %s", exc)
         _MOCK_BUFFERS.pop(gen_id, None)
         updated_store = {**(store or {}), "step": 6, "mock_html": extracted}
         final_buf = {
@@ -351,8 +393,16 @@ def on_mock_stream_poll(
         }
         return final_buf, updated_store, True
 
+    # Generator finished (done flag set) but yielded no recognised sentinel.
+    # This happens when the stop-event fires mid-stream.  Disable the interval
+    # cleanly rather than polling forever.
+    if buf_entry.get("done"):
+        _MOCK_BUFFERS.pop(gen_id, None)
+        return no_update, no_update, True
+
     tokens = len(accumulated)
-    progress = min(95, tokens // 50)
+    # 80k tokens × ~4 chars/token = 320k chars for a typical mock; scale to 95%.
+    progress = min(95, tokens * 95 // 320_000)
     return (
         {**cb, "text": accumulated, "tokens": tokens, "progress": progress},
         no_update,

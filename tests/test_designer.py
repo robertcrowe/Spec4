@@ -294,6 +294,32 @@ class TestBuildMockPrompt:
         image_parts = [p for p in parts if p["type"] == "image_url"]
         assert len(image_parts) == 2
 
+    def test_capture_mode_uses_different_system_prompt(self) -> None:
+        normal = build_mock_prompt(_session(), [], False)
+        capture = build_mock_prompt(_session(), [], False, capture_mode=True)
+        assert normal[0]["content"] != capture[0]["content"]
+
+    def test_capture_mode_instruction_emphasises_preservation(self) -> None:
+        messages = build_mock_prompt(_session(), ["<nav/>"], False, capture_mode=True)
+        parts = messages[1]["content"]
+        assert isinstance(parts, list)
+        last_text = str(parts[-1].get("text", ""))
+        assert "baseline" in last_text.lower() or "faithfully" in last_text.lower()
+
+    def test_capture_mode_snippet_label_differs_from_normal(self) -> None:
+        normal = build_mock_prompt(_session(), ["<nav/>"], False)
+        capture = build_mock_prompt(_session(), ["<nav/>"], False, capture_mode=True)
+        normal_combined = " ".join(
+            str(p.get("text", "")) for p in normal[1]["content"]  # type: ignore[index]
+            if isinstance(p, dict)
+        )
+        capture_combined = " ".join(
+            str(p.get("text", "")) for p in capture[1]["content"]  # type: ignore[index]
+            if isinstance(p, dict)
+        )
+        assert "starting point" in normal_combined
+        assert "look and feel" in capture_combined
+
 
 # ---------------------------------------------------------------------------
 # collect_ui_source_files

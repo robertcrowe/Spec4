@@ -51,6 +51,18 @@ _HTML_INSTRUCTION = (
     "recap, no markdown commentary before or after the code."
 )
 
+_SYSTEM_PROMPT_CAPTURE = (
+    "You are an expert UI/UX designer. Your task is to create a self-contained "
+    "HTML mock-up that faithfully captures the current look and feel of an "
+    "existing web application based on its source code. Match the colour scheme, "
+    "typography, layout, component shapes, and visual style as closely as "
+    "possible — this is a reference baseline, not a redesign. You write HTML, "
+    "CSS, and JavaScript directly — no frameworks, no external assets, no CDN "
+    "links. All CSS goes inside a <style> block in the <head> and all JavaScript "
+    "goes inside a <script> block at the end of <body>. The output must be a "
+    "single complete HTML document."
+)
+
 _HTML_REFINEMENT_INSTRUCTION = (
     "Apply the requested changes to the existing mock shown above. Preserve "
     "everything not explicitly changed. Place all CSS inside a <style> block "
@@ -58,6 +70,18 @@ _HTML_REFINEMENT_INSTRUCTION = (
     "<body>. Do not use external CDN links or import statements. "
     "Output ONLY the complete updated HTML document — no introduction, no "
     "explanation, no recap, no markdown commentary before or after the code."
+)
+
+_HTML_CAPTURE_INSTRUCTION = (
+    "Generate a single self-contained HTML file that faithfully recreates the "
+    "landing page or starting screen from the source code above. Preserve the "
+    "existing colour scheme, typography, spacing, and layout — this is a "
+    "baseline reference, not a redesign. "
+    "Place all CSS inside a <style> block in <head> and all JavaScript inside "
+    "a <script> block at the bottom of <body>. Do not use external CDN links "
+    "or import statements. "
+    "Output ONLY the HTML document — no introduction, no explanation, no "
+    "recap, no markdown commentary before or after the code."
 )
 
 
@@ -138,6 +162,7 @@ def build_mock_prompt(
     image_support: bool,
     planning_context: dict[str, Any] | None = None,
     existing_html: str | None = None,
+    capture_mode: bool = False,
 ) -> list[dict[str, object]]:
     """Construct the LiteLLM messages list for mock generation or refinement."""
     parts: list[dict[str, object]] = []
@@ -174,13 +199,24 @@ def build_mock_prompt(
         combined = "\n\n".join(
             f"--- UI Source Snippet ---\n{s}" for s in ui_source_snippets
         )
-        parts.append({
-            "type": "text",
-            "text": "Existing UI code for reference (use as starting point):\n\n" + combined,
-        })
-    parts.append({"type": "text", "text": _HTML_REFINEMENT_INSTRUCTION if existing_html else _HTML_INSTRUCTION})
+        label = (
+            "Existing UI source code — recreate its look and feel:\n\n"
+            if capture_mode
+            else "Existing UI code for reference (use as starting point):\n\n"
+        )
+        parts.append({"type": "text", "text": label + combined})
+    if existing_html:
+        instruction = _HTML_REFINEMENT_INSTRUCTION
+        system = _SYSTEM_PROMPT_REFINE
+    elif capture_mode:
+        instruction = _HTML_CAPTURE_INSTRUCTION
+        system = _SYSTEM_PROMPT_CAPTURE
+    else:
+        instruction = _HTML_INSTRUCTION
+        system = _SYSTEM_PROMPT
+    parts.append({"type": "text", "text": instruction})
     return [
-        {"role": "system", "content": _SYSTEM_PROMPT_REFINE if existing_html else _SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {"role": "user", "content": parts},
     ]
 
@@ -241,9 +277,11 @@ def generate_mock_streaming(
     stop_event: threading.Event | None = None,
     planning_context: dict[str, Any] | None = None,
     existing_html: str | None = None,
+    capture_mode: bool = False,
 ) -> Iterator[str]:
     messages: list[dict[str, Any]] = build_mock_prompt(
-        session, ui_source_snippets, image_support, planning_context, existing_html
+        session, ui_source_snippets, image_support, planning_context, existing_html,
+        capture_mode,
     )
     tools: list[dict[str, Any]] | None = [WEB_SEARCH_TOOL] if tavily_api_key else None
 
