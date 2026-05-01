@@ -51,7 +51,7 @@ The app will be available at [http://localhost:8050](http://localhost:8050) in b
 
 ## Features
 
-- **Four-stage planning pipeline** — Reviewer (optional) → Brainstormer → StackAdvisor → Phaser
+- **Four-stage planning pipeline** — CodeScanner (optional) → Brainstormer → StackAdvisor → Phaser
 - **Any LLM provider** — works with OpenAI, Anthropic, Google Gemini, Cohere, and Mistral via LiteLLM
 - **Web search grounding** — all agents can search the web via Tavily to find canonical documentation
 - **Saved credentials** — optionally remember your provider, model, and API keys in the browser (localStorage via `dcc.Store` — never sent to or stored on the server)
@@ -63,7 +63,7 @@ The app will be available at [http://localhost:8050](http://localhost:8050) in b
 
 ## Agents
 
-### 🔍 Reviewer *(optional)*
+### 🔍 CodeScanner *(optional)*
 Analyzes an existing project directory to understand its architecture, technology stack, and coding style. Results inform Brainstormer and StackAdvisor when working on brownfield projects. Produces `code_review.json`.
 
 ### 🧠 Brainstormer
@@ -110,7 +110,7 @@ src/spec4/
 ├── tavily_mcp.py           # Tavily web search integration
 ├── project_manager.py      # .spec4/ artifact persistence
 └── agents/
-    ├── reviewer.py         # Code review agent
+    ├── code_scanner.py     # Code review agent
     ├── brainstormer.py     # Vision development agent
     ├── stack_advisor.py    # Technology stack recommendation agent
     └── phaser.py           # Incremental phase planning agent

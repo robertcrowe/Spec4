@@ -5,7 +5,7 @@ from collections.abc import Generator
 from typing import Any
 
 from spec4 import project_manager
-from spec4.agents import brainstormer, phaser, reviewer, stack_advisor
+from spec4.agents import brainstormer, code_scanner, phaser, stack_advisor
 from spec4.app_constants import (
     STATE_IN_PROGRESS,
     STATE_PHASES_COMPLETE,
@@ -36,8 +36,8 @@ def _default_session() -> dict[str, Any]:
         "llm_config": None,
         "messages": [],
         "active_agent": "brainstormer",
-        "reviewer_state": STATE_IN_PROGRESS,
-        "reviewer_messages": [],
+        "code_scanner_state": STATE_IN_PROGRESS,
+        "code_scanner_messages": [],
         "code_review": None,
         "brainstormer_state": STATE_IN_PROGRESS,
         "brainstormer_messages": [],
@@ -78,7 +78,7 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
         "phases": [],
         "phaser_state": None,
         "code_review": None,
-        "reviewer_state": STATE_IN_PROGRESS,
+        "code_scanner_state": STATE_IN_PROGRESS,
         "specmem": None,
         "_warn_existing_content": False,
     }
@@ -97,7 +97,7 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
         session["phaser_state"] = STATE_PHASES_COMPLETE
     if artifacts.get("code_review"):
         session["code_review"] = artifacts["code_review"]
-        session["reviewer_state"] = STATE_REVIEW_COMPLETE
+        session["code_scanner_state"] = STATE_REVIEW_COMPLETE
     specmem = project_manager.read_specmem(path)
     if specmem:
         session["specmem"] = specmem
@@ -125,8 +125,8 @@ def _get_agent_gen(
     llm_config = session["llm_config"]
     active = session["active_agent"]
 
-    if active == "reviewer":
-        return reviewer.run(user_input, session, llm_config)
+    if active == "code_scanner":
+        return code_scanner.run(user_input, session, llm_config)
     elif active == "brainstormer":
         return brainstormer.run(user_input, session, llm_config)
     elif active == "stack_advisor":
@@ -146,7 +146,7 @@ def _persist_artifacts(session: dict[str, Any]) -> None:
     working_dir = session.get("working_dir")
     if not working_dir:
         return
-    if session.get("reviewer_state") == STATE_REVIEW_COMPLETE and session.get(
+    if session.get("code_scanner_state") == STATE_REVIEW_COMPLETE and session.get(
         "code_review"
     ):
         project_manager.save_code_review(working_dir, session["code_review"])

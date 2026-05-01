@@ -10,7 +10,7 @@ Total: **96%** (1435 statements, 64 missed)
 | `spec4/agents/_utils.py` | 100% | |
 | `spec4/agents/brainstormer.py` | 100% | |
 | `spec4/agents/phaser.py` | 90% | lines 255-262, 267-271 |
-| `spec4/agents/reviewer.py` | 91% | lines 130, 143-144, 159, 169-170, 292-293 |
+| `spec4/agents/code_scanner.py` | 91% | lines 130, 143-144, 159, 169-170, 292-293 |
 | `spec4/agents/stack_advisor.py` | 100% | |
 | `spec4/app_constants.py` | 100% | |
 | `spec4/project_manager.py` | 91% | lines 72-78, 121-122 |

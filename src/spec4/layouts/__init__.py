@@ -123,7 +123,7 @@ def _landing_layout() -> html.Div:
                         _feature_card(
                             dmc.Group(
                                 [
-                                    dmc.Title("🔍 Reviewer", order=4),
+                                    dmc.Title("🔍 CodeScanner", order=4),
                                     dmc.Text("(optional)", size="xs", c="dimmed"),
                                 ],
                                 gap="xs",
@@ -344,8 +344,8 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
         dmc.Title("Where Should We Begin?", order=3, mb="sm"),
         dcc.Markdown(
             "If you're just starting to work on your plan you should probably begin with either "  # noqa: E501
-            "Reviewer or Brainstormer.\n\n"
-            "* Start with **Reviewer** if you're modifying an existing project, so that Spec4 can "  # noqa: E501
+            "CodeScanner or Brainstormer.\n\n"
+            "* Start with **CodeScanner** if you're modifying an existing project, so that Spec4 can "  # noqa: E501
             "understand the current state of your code.\n"
             "* Start with **Brainstormer** if you're starting an entirely new project, and Spec4 "  # noqa: E501
             "will help you refine and complete your vision.",
@@ -357,7 +357,7 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
         children.append(
             dmc.Alert(
                 "This project directory appears to contain existing files. "
-                "Consider running Reviewer first to help Spec4 understand the current state of your project.",  # noqa: E501
+                "Consider running CodeScanner first to help Spec4 understand the current state of your project.",  # noqa: E501
                 color="yellow",
                 mb="md",
             )
@@ -365,7 +365,7 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
     elif working_dir and not session.get("_dir_has_content"):
         children.append(
             dmc.Alert(
-                "Your project directory is empty. You can still run Reviewer if you'd like, "  # noqa: E501
+                "Your project directory is empty. You can still run CodeScanner if you'd like, "  # noqa: E501
                 "but it's optional — feel free to skip ahead to Brainstormer.",
                 color="blue",
                 mb="md",
@@ -376,7 +376,7 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
             dmc.Alert(
                 "This project directory appears to contain existing files. "
                 "The previous code review has been loaded, but you might want to consider running "  # noqa: E501
-                "Reviewer again just to make sure that Spec4 understands the current state of your "  # noqa: E501
+                "CodeScanner again just to make sure that Spec4 understands the current state of your "  # noqa: E501
                 "project. Purely optional.",
                 color="yellow",
                 mb="md",
@@ -456,13 +456,13 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
             dmc.RadioGroup(
                 id="agent-select-radio",
                 label="Start with:",
-                value="reviewer" if session.get("_dir_has_content") else "brainstormer",
+                value="code_scanner" if session.get("_dir_has_content") else "brainstormer",
                 mb="md",
                 children=dmc.Stack(
                     [
                         dmc.Radio(
-                            label="🔍 Reviewer — analyze the existing project directory (optional)",  # noqa: E501
-                            value="reviewer",
+                            label="🔍 CodeScanner — analyze the existing project directory (optional)",  # noqa: E501
+                            value="code_scanner",
                         ),
                         dmc.Radio(
                             label="🧠 Brainstormer — develop or refine a project vision",  # noqa: E501

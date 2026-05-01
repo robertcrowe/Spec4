@@ -802,7 +802,7 @@ def on_done_back_to_phaser(n: Any, session: Any) -> Any:
 def on_done_new_project(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
-    return {**session, "phase": "agent_select"}, "/agents"
+    return {**session, "phase": "landing"}, "/"
 
 
 @callback(

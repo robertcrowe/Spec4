@@ -17,7 +17,7 @@ from spec4.layouts._shared import _render_message
 def _agent_status_bar(session: dict[str, Any]) -> html.Div:
     active = session.get("active_agent", "brainstormer")
     agents = [
-        ("reviewer", "🔍 Reviewer", session.get("code_review") is not None),
+        ("code_scanner", "🔍 CodeScanner", session.get("code_review") is not None),
         (
             "brainstormer",
             "🧠 Brainstormer",
@@ -63,7 +63,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
     active = session.get("active_agent")
     buttons = []
 
-    if active == "reviewer" and session.get("reviewer_state") == STATE_REVIEW_COMPLETE:
+    if active == "code_scanner" and session.get("code_scanner_state") == STATE_REVIEW_COMPLETE:
         buttons = [
             dmc.Button(
                 "💾 Download code_review.json", id="btn-dl-review", variant="outline"

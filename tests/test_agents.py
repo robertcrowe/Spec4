@@ -2,7 +2,7 @@ from collections.abc import Iterable
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from spec4.agents import brainstormer, phaser, reviewer, stack_advisor
+from spec4.agents import brainstormer, code_scanner, phaser, stack_advisor
 from spec4.app_constants import (
     STATE_IN_PROGRESS,
     STATE_PHASES_COMPLETE,
@@ -28,8 +28,8 @@ def make_session(**overrides: Any) -> dict[str, Any]:
         "phaser_messages": [],
         "phaser_state": None,
         "phases": [],
-        "reviewer_messages": [],
-        "reviewer_state": STATE_IN_PROGRESS,
+        "code_scanner_messages": [],
+        "code_scanner_state": STATE_IN_PROGRESS,
         "llm_config": {"model": "gpt-4o-mini", "api_key": "sk-test"},
         "tavily_api_key": None,
         "_warn_existing_content": False,
@@ -491,14 +491,14 @@ class TestStackAdvisorBranches:
 
 
 # ---------------------------------------------------------------------------
-# Reviewer tests
+# CodeScanner tests
 # ---------------------------------------------------------------------------
 
 
-class TestReviewer:
+class TestCodeScanner:
     def test_no_working_dir_yields_warning(self) -> None:
         session = make_session(working_dir=None)
-        output = collect(reviewer.run(None, session, session["llm_config"]))
+        output = collect(code_scanner.run(None, session, session["llm_config"]))
         assert (
             "working directory" in output.lower()
             or "no project directory" in output.lower()
@@ -507,51 +507,51 @@ class TestReviewer:
     def test_no_working_dir_does_not_call_llm(self) -> None:
         session = make_session(working_dir=None)
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
-            collect(reviewer.run(None, session, session["llm_config"]))
+            collect(code_scanner.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
 
     def test_reentry_replays_last_assistant_message(self) -> None:
         session = make_session(
-            reviewer_messages=[
+            code_scanner_messages=[
                 {"role": "user", "content": "hi"},
-                {"role": "assistant", "content": "Reviewer response"},
+                {"role": "assistant", "content": "CodeScanner response"},
             ]
         )
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
-            output = collect(reviewer.run(None, session, session["llm_config"]))
+            output = collect(code_scanner.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
-        assert "Reviewer response" in output
+        assert "CodeScanner response" in output
 
     def test_reentry_no_assistant_yields_nothing(self) -> None:
-        session = make_session(reviewer_messages=[{"role": "user", "content": "hi"}])
+        session = make_session(code_scanner_messages=[{"role": "user", "content": "hi"}])
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
-            output = collect(reviewer.run(None, session, session["llm_config"]))
+            output = collect(code_scanner.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
         assert output == ""
 
     def test_user_input_calls_llm(self) -> None:
-        session = make_session(reviewer_messages=[{"role": "user", "content": "seed"}])
+        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}])
         with mock_litellm_stream("Here is my review."):
-            output = collect(reviewer.run("Looks good", session, session["llm_config"]))
+            output = collect(code_scanner.run("Looks good", session, session["llm_config"]))
         assert "Here is my review." in output
 
     def test_review_json_sets_state_complete(self) -> None:
-        session = make_session(reviewer_messages=[{"role": "user", "content": "seed"}])
+        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}])
         review_response = '```json\n{"code_review": {"is_software_project": true}}\n```'
         with mock_litellm_stream(review_response):
-            collect(reviewer.run("Confirm", session, session["llm_config"]))
-        assert session["reviewer_state"] == STATE_REVIEW_COMPLETE
+            collect(code_scanner.run("Confirm", session, session["llm_config"]))
+        assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
         assert session["code_review"] == {"code_review": {"is_software_project": True}}
 
     def test_non_review_response_stays_in_progress(self) -> None:
-        session = make_session(reviewer_messages=[{"role": "user", "content": "seed"}])
+        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}])
         with mock_litellm_stream("Tell me about section 1."):
-            collect(reviewer.run("Go on", session, session["llm_config"]))
-        assert session["reviewer_state"] == STATE_IN_PROGRESS
+            collect(code_scanner.run("Go on", session, session["llm_config"]))
+        assert session["code_scanner_state"] == STATE_IN_PROGRESS
         assert session["code_review"] is None
 
     def test_extract_review_json_valid(self) -> None:
-        from spec4.agents.reviewer import _extract_review_json
+        from spec4.agents.code_scanner import _extract_review_json
 
         text = '```json\n{"code_review": {"is_software_project": true}}\n```'
         assert _extract_review_json(text) == {
@@ -559,21 +559,21 @@ class TestReviewer:
         }
 
     def test_extract_review_json_no_code_review_key_returns_none(self) -> None:
-        from spec4.agents.reviewer import _extract_review_json
+        from spec4.agents.code_scanner import _extract_review_json
 
         assert _extract_review_json('```json\n{"name": "App"}\n```') is None
 
     def test_extract_review_json_invalid_json_returns_none(self) -> None:
-        from spec4.agents.reviewer import _extract_review_json
+        from spec4.agents.code_scanner import _extract_review_json
 
         assert _extract_review_json("```json\n{bad}\n```") is None
 
-    def test_initialises_reviewer_messages_if_missing(self) -> None:
-        session = make_session(reviewer_messages=[{"role": "user", "content": "seed"}])
-        del session["reviewer_messages"]
+    def test_initialises_code_scanner_messages_if_missing(self) -> None:
+        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}])
+        del session["code_scanner_messages"]
         with mock_litellm_stream("Ok"):
-            collect(reviewer.run("Hi", session, session["llm_config"]))
-        assert "reviewer_messages" in session
+            collect(code_scanner.run("Hi", session, session["llm_config"]))
+        assert "code_scanner_messages" in session
 
 
 # ---------------------------------------------------------------------------
@@ -583,20 +583,20 @@ class TestReviewer:
 
 class TestGatherProjectContext:
     def test_empty_dir_reports_empty(self, tmp_path: Any) -> None:
-        from spec4.agents.reviewer import _gather_project_context
+        from spec4.agents.code_scanner import _gather_project_context
 
         result = _gather_project_context(str(tmp_path))
         assert "empty" in result.lower()
 
     def test_source_files_appear_in_tree(self, tmp_path: Any) -> None:
-        from spec4.agents.reviewer import _gather_project_context
+        from spec4.agents.code_scanner import _gather_project_context
 
         (tmp_path / "main.py").write_text("print('hello')")
         result = _gather_project_context(str(tmp_path))
         assert "main.py" in result
 
     def test_git_dir_is_skipped(self, tmp_path: Any) -> None:
-        from spec4.agents.reviewer import _gather_project_context
+        from spec4.agents.code_scanner import _gather_project_context
 
         git_dir = tmp_path / ".git"
         git_dir.mkdir()
@@ -605,14 +605,14 @@ class TestGatherProjectContext:
         assert "config" not in result
 
     def test_readme_content_included(self, tmp_path: Any) -> None:
-        from spec4.agents.reviewer import _gather_project_context
+        from spec4.agents.code_scanner import _gather_project_context
 
         (tmp_path / "README.md").write_text("# My Project\nA cool app.")
         result = _gather_project_context(str(tmp_path))
         assert "My Project" in result
 
     def test_source_file_sample_included(self, tmp_path: Any) -> None:
-        from spec4.agents.reviewer import _gather_project_context
+        from spec4.agents.code_scanner import _gather_project_context
 
         (tmp_path / "app.py").write_text("def main():\n    pass\n")
         result = _gather_project_context(str(tmp_path))

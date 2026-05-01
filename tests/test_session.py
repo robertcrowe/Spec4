@@ -38,8 +38,8 @@ class TestDefaultSession:
             "llm_config",
             "messages",
             "active_agent",
-            "reviewer_state",
-            "reviewer_messages",
+            "code_scanner_state",
+            "code_scanner_messages",
             "code_review",
             "brainstormer_state",
             "brainstormer_messages",
@@ -95,10 +95,10 @@ class TestRunAgentBlocking:
         mock_run.assert_called_once()
         assert result == "hello"
 
-    def test_routes_to_reviewer(self) -> None:
-        session = self._session("reviewer")
+    def test_routes_to_code_scanner(self) -> None:
+        session = self._session("code_scanner")
         with patch(
-            "spec4.session.reviewer.run", return_value=iter(["review"])
+            "spec4.session.code_scanner.run", return_value=iter(["review"])
         ) as mock_run:
             _run_agent_blocking("hi", session)
         mock_run.assert_called_once()
@@ -149,7 +149,7 @@ class TestPersistArtifacts:
             "stack_statement": None,
             "phaser_state": None,
             "phases": [],
-            "reviewer_state": STATE_IN_PROGRESS,
+            "code_scanner_state": STATE_IN_PROGRESS,
             "code_review": None,
         }
         base.update(overrides)
@@ -200,7 +200,7 @@ class TestPersistArtifacts:
     def test_saves_code_review_when_complete(self) -> None:
         review: dict[str, Any] = {"code_review": {}}
         session = self._base_session(
-            reviewer_state=STATE_REVIEW_COMPLETE, code_review=review
+            code_scanner_state=STATE_REVIEW_COMPLETE, code_review=review
         )
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
@@ -248,7 +248,7 @@ class TestLoadWorkingDir:
         )
         session = _load_working_dir(str(tmp_path), self._base_session())
         assert session["_warn_existing_content"] is False
-        assert session["reviewer_state"] == STATE_REVIEW_COMPLETE
+        assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
 
     def test_loads_vision_artifact(self, tmp_path: pathlib.Path) -> None:
         vision = {"vision_statement": {"name": "App"}}

@@ -263,15 +263,15 @@ def run(
     session: dict[str, Any],
     llm_config: dict[str, Any],
 ) -> Generator[str, None, None]:
-    """Reviewer — analyzes the project directory and creates a structured code review.
+    """CodeScanner — analyzes the project directory and creates a structured code review.
 
     Yields text chunks consumed by session._run_agent_blocking.
     Mutates `session` to track conversation state and review output.
     """
-    if "reviewer_messages" not in session:
-        session["reviewer_messages"] = []
+    if "code_scanner_messages" not in session:
+        session["code_scanner_messages"] = []
 
-    msgs = session["reviewer_messages"]
+    msgs = session["code_scanner_messages"]
 
     if user_input is None:
         if msgs:
@@ -282,7 +282,7 @@ def run(
         working_dir = session.get("working_dir")
         if not working_dir:
             yield (
-                "I'm the **Reviewer**. I analyze your project directory to understand "
+                "I'm the **CodeScanner**. I analyze your project directory to understand "
                 "the existing codebase.\n\n"
                 "⚠️ No project directory has been selected. Please go back and select "
                 "a working directory first."
@@ -294,7 +294,7 @@ def run(
             {
                 "role": "user",
                 "content": (
-                    "Please introduce yourself as Reviewer, then analyze this project "
+                    "Please introduce yourself as CodeScanner, then analyze this project "
                     "directory section by section as instructed.\n\n"
                     f"{context}"
                 ),
@@ -310,5 +310,5 @@ def run(
 
     review = _extract_review_json(_last_assistant_text(msgs))
     if review:
-        session["reviewer_state"] = STATE_REVIEW_COMPLETE
+        session["code_scanner_state"] = STATE_REVIEW_COMPLETE
         session["code_review"] = review
