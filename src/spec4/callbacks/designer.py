@@ -38,6 +38,12 @@ from spec4.layouts.designer import (
 # CPython's GIL makes this single-writer pattern safe without a lock.
 _MOCK_BUFFERS: dict[str, dict[str, Any]] = {}
 
+# Final HTML keyed by gen_id.  Written by _run() before setting done=True;
+# read and popped by on_mock_done (triggered via mock-done-store signal).
+# Kept separate from _MOCK_BUFFERS so the large payload never travels through
+# the poll callback response, which would race with the next interval tick.
+_FINAL_HTML: dict[str, str] = {}
+
 
 def _extract_html(text: str) -> str:
     """Extract an HTML document from model output, falling back to raw text."""
@@ -101,8 +107,38 @@ def _start_gen(
                 print(chunk, end="", flush=True, file=sys.stdout)
         if _DEV_MODE:
             print("\n[Designer] Done.", flush=True)
-        if gen_id in _MOCK_BUFFERS:
-            _MOCK_BUFFERS[gen_id]["done"] = True
+        if gen_id not in _MOCK_BUFFERS:
+            return
+        # Do the slow work (HTML extraction + disk save) here in the background
+        # thread so the poll callback returns instantly and can't race itself.
+        accumulated = buf_entry["text"]
+        if "__DONE__" in accumulated and "__GENERATION_ERROR__:" not in accumulated:
+            html_text = accumulated.replace("__DONE__", "").strip()
+            extracted = _extract_html(html_text)
+            if len(extracted) > 512_000:
+                extracted = (
+                    extracted[:512_000]
+                    + "\n<!-- Designer: output truncated at 512 kB -->"
+                )
+            if working_dir:
+                design_dir_path = pathlib.Path(working_dir) / ".spec4" / "design"
+                save_ds: DesignerSession = {
+                    "step": 6,
+                    "preference_text": ds["preference_text"],
+                    "screenshots": ds["screenshots"],
+                    "mock_html": extracted,
+                    "finalized": False,
+                }
+                try:
+                    save_session(save_ds, design_dir_path)
+                    save_mock(extracted, design_dir_path)
+                except Exception as exc:
+                    logger.warning(
+                        "Designer: could not persist session to disk: %s", exc
+                    )
+            _FINAL_HTML[gen_id] = extracted
+            buf_entry["final_html"] = extracted
+        _MOCK_BUFFERS[gen_id]["done"] = True
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -321,7 +357,7 @@ def on_designer_generate_mock(
 
 @callback(
     Output("mock-stream-buffer", "data", allow_duplicate=True),
-    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-done-store", "data", allow_duplicate=True),
     Output("mock-stream-interval", "disabled", allow_duplicate=True),
     Input("mock-stream-interval", "n_intervals"),
     State("mock-stream-buffer", "data"),
@@ -359,39 +395,22 @@ def on_mock_stream_poll(
             True,
         )
 
-    if "__DONE__" in accumulated:
-        html_text = accumulated.replace("__DONE__", "").strip()
-        extracted = _extract_html(html_text)
-        if len(extracted) > 512_000:
-            extracted = (
-                extracted[:512_000] + "\n<!-- Designer: output truncated at 512 kB -->"
-            )
-        sess = session or {}
-        working_dir: str | None = sess.get("working_dir")
-        if working_dir:
-            design_dir = pathlib.Path(working_dir) / ".spec4" / "design"
-            ds: DesignerSession = {
-                "step": 6,
-                "preference_text": (store or {}).get("preference_text", ""),
-                "screenshots": (store or {}).get("screenshots", []),
-                "mock_html": extracted,
-                "finalized": False,
-            }
-            try:
-                save_session(ds, design_dir)
-                save_mock(extracted, design_dir)
-            except Exception as exc:
-                logger.warning("Designer: could not persist session to disk: %s", exc)
+    # _run() pre-computes final_html (extraction + disk save) before setting done.
+    # Emit a tiny signal to mock-done-store rather than including the full HTML in
+    # this response: the poll callback fires every 250 ms, so a large response risks
+    # losing a Dash "latest-trigger-wins" race with the next interval tick.
+    # on_mock_done picks up the signal and delivers the HTML in a one-shot response.
+    final_html: str | None = buf_entry.get("final_html")
+    if final_html is not None:
         _MOCK_BUFFERS.pop(gen_id, None)
-        updated_store = {**(store or {}), "step": 6, "mock_html": extracted}
         final_buf = {
             **cb,
-            "text": extracted,
-            "tokens": len(extracted),
+            "text": "",
+            "tokens": len(final_html),
             "progress": 100,
             "error": None,
         }
-        return final_buf, updated_store, True
+        return final_buf, {"gen_id": gen_id}, True
 
     # Generator finished (done flag set) but yielded no recognised sentinel.
     # This happens when the stop-event fires mid-stream.  Disable the interval
@@ -408,6 +427,29 @@ def on_mock_stream_poll(
         no_update,
         no_update,
     )
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input("mock-done-store", "data"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_mock_done(signal: Any, store: Any) -> Any:
+    """Deliver the completed mock HTML to the session store.
+
+    Triggered by the tiny completion signal emitted by on_mock_stream_poll,
+    this callback is the sole writer of step=6 + mock_html.  Because it fires
+    from a unique store-change event (not the recurring interval), it has no
+    concurrent racing sibling that could discard its response.
+    """
+    if not signal or not store:
+        return no_update
+    gen_id: str | None = signal.get("gen_id")
+    if not gen_id or gen_id not in _FINAL_HTML:
+        return no_update
+    final_html = _FINAL_HTML.pop(gen_id)
+    return {**(store or {}), "step": 6, "mock_html": final_html}
 
 
 @callback(

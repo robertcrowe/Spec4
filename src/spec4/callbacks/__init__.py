@@ -6,13 +6,11 @@ import pathlib
 import zipfile
 from typing import Any
 
-import base64
 
 from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
 from spec4 import project_manager, providers, streaming, tavily_mcp
 from spec4.agents._image_probe import probe_image_support
-from spec4.agents.designer import DesignerSession, save_mock, save_session
 from spec4.app_constants import (
     PATH_TO_PHASE,
     STATE_STACK_COMPLETE,
@@ -360,45 +358,6 @@ def on_setup_tavily_skip(n: Any, session: Any) -> Any:
 # ---------------------------------------------------------------------------
 # Agent select — load files from .spec4/ directly
 # ---------------------------------------------------------------------------
-
-
-@callback(
-    Output("session", "data", allow_duplicate=True),
-    Output("url", "pathname", allow_duplicate=True),
-    Input("mock-html-upload", "contents"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def on_mock_html_upload(contents: Any, session: Any) -> Any:
-    if not contents or not session:
-        return no_update, no_update
-    working_dir: str | None = (session or {}).get("working_dir")
-    if not working_dir:
-        return no_update, no_update
-    _, data = contents.split(",", 1) if "," in contents else ("", contents)
-    try:
-        html_content = base64.b64decode(data).decode("utf-8", errors="replace")
-    except Exception:
-        html_content = data
-    design_dir = pathlib.Path(working_dir) / ".spec4" / "design"
-    ds: DesignerSession = {
-        "step": 6,
-        "preference_text": "",
-        "screenshots": [],
-        "mock_html": html_content,
-        "finalized": True,
-    }
-    save_session(ds, design_dir)
-    save_mock(html_content, design_dir)
-    new_session = {
-        **session,
-        "phase": "chat",
-        "active_agent": "stack_advisor",
-        "stack_advisor_messages": [],
-        "messages": [],
-        "_initial_turn_done": False,
-    }
-    return new_session, "/chat"
 
 
 @callback(

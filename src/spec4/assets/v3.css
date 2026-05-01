@@ -285,3 +285,10 @@ code, pre, kbd {
 [class*="Accordion-control"] {
   border-radius: 8px;
 }
+
+/* Designer upload drop zone */
+.designer-upload-zone {
+  border: 2px dashed var(--mantine-color-dark-4);
+  border-radius: 8px;
+  cursor: pointer;
+}

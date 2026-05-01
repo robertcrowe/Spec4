@@ -392,51 +392,6 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
             )
         )
 
-    children.append(
-        dmc.Accordion(
-            dmc.AccordionItem(
-                [
-                    dmc.AccordionControl(
-                        "📎 Upload an existing design mock to skip Designer"
-                    ),
-                    dmc.AccordionPanel(
-                        dmc.Stack(
-                            [
-                                dmc.Text(
-                                    "If you already have a mock.html from a previous "
-                                    "session or an external tool, upload it here to "
-                                    "proceed directly to StackAdvisor.",
-                                    size="sm",
-                                    c="dimmed",
-                                ),
-                                dcc.Upload(
-                                    id="mock-html-upload",
-                                    accept=".html,text/html",
-                                    multiple=False,
-                                    children=dmc.Text(
-                                        "Drag & drop a mock.html, or click to upload",
-                                        ta="center",
-                                        c="dimmed",
-                                        py="sm",
-                                    ),
-                                    style={
-                                        "border": "2px dashed "
-                                        "var(--mantine-color-dark-4)",
-                                        "borderRadius": "8px",
-                                        "cursor": "pointer",
-                                    },
-                                ),
-                            ],
-                            gap="xs",
-                        )
-                    ),
-                ],
-                value="upload-mock",
-            ),
-            mb="md",
-        )
-    )
-
     if session.get("specmem"):
         children.append(
             dmc.Accordion(
@@ -456,7 +411,11 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
             dmc.RadioGroup(
                 id="agent-select-radio",
                 label="Start with:",
-                value="code_scanner" if session.get("_dir_has_content") else "brainstormer",
+                value=(
+                    "code_scanner"
+                    if session.get("_dir_has_content")
+                    else "brainstormer"
+                ),
                 mb="md",
                 children=dmc.Stack(
                     [

@@ -195,11 +195,7 @@ def _step4_content(
                     align="center",
                     py="md",
                 ),
-                style={
-                    "border": "2px dashed var(--mantine-color-dark-4)",
-                    "borderRadius": "8px",
-                    "cursor": "pointer",
-                },
+                className="designer-upload-zone",
             )
         )
 
@@ -254,20 +250,19 @@ def _step5_content(buffer_data: dict[str, Any] | None = None) -> Any:
     return dmc.Stack(children, gap="sm")
 
 
+_MOCK_DISCLAIMER = dmc.Alert(
+    "This mock-up illustrates the intended look and feel only. "
+    "It is not intended to represent or match the final application UI.",
+    title="Design Mock-up — Look & Feel Reference Only",
+    color="yellow",
+    variant="filled",
+    styles={"title": {"color": "#212121"}, "message": {"color": "#212121"}},
+)
+
+
 def _step6_content(store: dict[str, Any]) -> Any:
     return dmc.Stack(
         [
-            html.Iframe(
-                id="mock-iframe",
-                srcDoc=store.get("mock_html", ""),
-                sandbox="allow-scripts",
-                style={
-                    "width": "100%",
-                    "height": "600px",
-                    "border": "none",
-                    "borderRadius": "8px",
-                },
-            ),
             dmc.Group(
                 [
                     dmc.Button(
@@ -278,6 +273,18 @@ def _step6_content(store: dict[str, Any]) -> Any:
                     ),
                 ],
                 justify="flex-end",
+            ),
+            _MOCK_DISCLAIMER,
+            html.Iframe(
+                id="mock-iframe",
+                srcDoc=store.get("mock_html", ""),
+                sandbox="allow-scripts",
+                style={
+                    "width": "100%",
+                    "height": "600px",
+                    "border": "none",
+                    "borderRadius": "8px",
+                },
             ),
             dmc.Group(
                 [
@@ -330,6 +337,7 @@ def _refine_image_row(idx: int, filename: str) -> Any:
 def _step7_content(store: dict[str, Any]) -> Any:
     refine_images: list[dict[str, str]] = store.get("refine_images", [])
     children: list[Any] = [
+        _MOCK_DISCLAIMER,
         html.Iframe(
             id="mock-iframe",
             srcDoc=store.get("mock_html", ""),
@@ -360,11 +368,7 @@ def _step7_content(store: dict[str, Any]) -> Any:
                 c="dimmed",
                 py="sm",
             ),
-            style={
-                "border": "2px dashed var(--mantine-color-dark-4)",
-                "borderRadius": "8px",
-                "cursor": "pointer",
-            },
+            className="designer-upload-zone",
         ),
     ]
     if refine_images:
@@ -437,6 +441,11 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
                 id="mock-stream-buffer",
                 storage_type="memory",
                 data={"text": "", "tokens": 0, "progress": 0, "error": None},
+            ),
+            dcc.Store(
+                id="mock-done-store",
+                storage_type="memory",
+                data=None,
             ),
             dcc.Interval(
                 id="mock-stream-interval",

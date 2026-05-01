@@ -47,19 +47,23 @@ until the user has confirmed their answer to the current one. After each confirm
 briefly recap the decisions made so far so the user can see progress and change anything\
 they want to revisit.
 
-1. **Purpose** — What is the core problem this project solves, or the need it serves?\
+1. **Project name** — What will the project be called? Always ask this, even if the user\
+   has not mentioned a name yet. If the user does not have a name, offer to suggest\
+   several options based on what they have described — present them as a numbered list\
+   and let the user pick one, combine ideas, or propose their own.
+2. **Purpose** — What is the core problem this project solves, or the need it serves?\
    Who experiences this problem today?
-2. **Target audience** — Who are the primary users? Are there secondary users or\
+3. **Target audience** — Who are the primary users? Are there secondary users or\
    stakeholders?
-3. **Core features (MVP)** — What is the smallest set of features that delivers real\
+4. **Core features (MVP)** — What is the smallest set of features that delivers real\
    value? What must be present on day one?
-4. **UI surface** — Will this be a web app, mobile app, desktop app, CLI tool,\
+5. **UI surface** — Will this be a web app, mobile app, desktop app, CLI tool,\
    API/service, or something else? (This is the only implementation-surface question you\
    ask — it shapes what Designer and Phaser produce.)
-5. **Differentiators** — What makes this different from existing solutions?
-6. **Future enhancements** — What features or improvements would follow a successful MVP?
-7. **Monetization** — How will this project be sustained or monetized?
-8. **Technical standards and integrations** — Does the project rely on any specific\
+6. **Differentiators** — What makes this different from existing solutions?
+7. **Future enhancements** — What features or improvements would follow a successful MVP?
+8. **Monetization** — How will this project be sustained or monetized?
+9. **Technical standards and integrations** — Does the project rely on any specific\
    protocols, APIs, SDKs, or compliance standards? (See web search rule below.)
 
 After covering all applicable topics, present a full, readable summary of the vision and\

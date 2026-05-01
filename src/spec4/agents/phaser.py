@@ -306,8 +306,9 @@ def run(
                 f"do not re-plan them):\n\n{phases_json}\n\n"
             )
             instruction = (
-                "Please analyze the updated vision and stack, then generate only the new phases "
-                "needed to implement the changes, numbered from where the existing phases leave off."
+                "Please introduce yourself as Phaser, then analyze the updated vision and stack "
+                "and generate only the new phases needed to implement the changes, numbered from "
+                "where the existing phases leave off."
             )
         elif code_review:
             extra_block = (
@@ -315,13 +316,16 @@ def run(
                 f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
             )
             instruction = (
-                "Please analyze the vision, stack, and existing codebase, then generate the "
-                "development phases. Phase 1 must be an integration/validation thread for the "
-                "existing code — not a from-scratch scaffold."
+                "Please introduce yourself as Phaser, then analyze the vision, stack, and "
+                "existing codebase and generate the development phases. Phase 1 must be an "
+                "integration/validation thread for the existing code — not a from-scratch scaffold."
             )
         else:
             extra_block = ""
-            instruction = "Please analyze the vision and stack, then generate the full set of development phases."
+            instruction = (
+                "Please introduce yourself as Phaser, then analyze the vision and stack "
+                "and generate the full set of development phases."
+            )
 
         seed = (
             f"{vision_block}{stack_block}{extra_block}{design_note_block}{instruction}"

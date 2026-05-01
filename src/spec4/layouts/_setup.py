@@ -151,8 +151,10 @@ def _setup_tavily_layout(
             "disabled in the Designer step. Go back to choose a different model if "
             "you need image support.",
             title="No Image Support",
-            color="orange",
-            variant="light",
+            icon="⚠️",
+            color="yellow",
+            variant="filled",
+            styles={"title": {"color": "#212121"}, "message": {"color": "#212121"}},
             mb="md",
         )
     else:
