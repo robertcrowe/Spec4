@@ -8,7 +8,6 @@ build/
 dist/
 wheels/
 *.egg-info
-.vscode/
 
 # Virtual environments
 .venv
@@ -20,4 +19,6 @@ wheels/
 NOTES.txt
 CLAUDE.md
 PROMPTS.md
+v3-design/*
 PACKAGING.md
+.vscode/
