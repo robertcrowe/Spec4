@@ -8,26 +8,7 @@ from collections.abc import Generator
 from typing import Any
 
 _STREAMS: dict[str, dict[str, Any]] = {}
-
-
-def _format_error(exc: BaseException) -> str:
-    msg = str(exc)
-    # litellm wraps API error bodies as b'{"..."}' — extract and pretty-print the JSON.
-    m = re.search(r"b'(\{.*\})'", msg, re.DOTALL)
-    if m:
-        try:
-            pretty = json.dumps(json.loads(m.group(1)), indent=2)
-            prefix = msg[: m.start()].rstrip(" -")
-            return f"**Error:** {prefix}\n\n```json\n{pretty}\n```"
-        except json.JSONDecodeError:
-            pass
-    # Fallback: try the whole message as JSON.
-    try:
-        pretty = json.dumps(json.loads(msg), indent=2)
-        return f"**Error:**\n\n```json\n{pretty}\n```"
-    except json.JSONDecodeError:
-        pass
-    return f"**Error:** {msg}"
+_lock = threading.Lock()
 
 
 def _format_error(exc: BaseException) -> str:
