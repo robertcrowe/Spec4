@@ -135,6 +135,18 @@ def detect_greenfield(project_root: Path) -> bool:
     return len(entries) == 1 and entries[0].name == ".spec4"
 
 
+def detect_has_ui_source(project_root: Path, design_dir: Path | None = None) -> bool:
+    """Return True if mock.html exists or the project contains UI source files."""
+    if design_dir is not None and (design_dir / "mock.html").exists():
+        return True
+    for root, dirs, files in project_root.walk():
+        dirs[:] = sorted(d for d in dirs if d not in _EXCLUDED_DIRS)
+        for fname in files:
+            if Path(fname).suffix.lower() in _UI_EXTENSIONS:
+                return True
+    return False
+
+
 def load_session(design_dir: Path) -> DesignerSession | None:
     """Load a DesignerSession from design_dir/session.json, or return None."""
     path = design_dir / "session.json"

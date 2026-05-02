@@ -6,7 +6,7 @@ from typing import Any
 from dash import dcc, html
 import dash_mantine_components as dmc
 
-from spec4.agents.designer import detect_no_ui, load_session
+from spec4.agents.designer import detect_has_ui_source, detect_no_ui, load_session
 
 _PLACEHOLDER_HTML = (
     "<!DOCTYPE html><html><head><meta charset='utf-8'>"
@@ -63,25 +63,24 @@ def _step1_content() -> Any:
     )
 
 
-def _step2_content() -> Any:
+def _step2_content(has_existing_ui: bool = True) -> Any:
+    prompt = (
+        "Would you like to modify an existing look and feel, or create a brand-new design?"
+        if has_existing_ui
+        else "Would you like to create a brand-new design for your application?"
+    )
     return dmc.Stack(
         [
-            dmc.Text(
-                "Would you like to modify an existing look and feel, "
-                "or create a brand-new design?",
-                c="dimmed",
-            ),
+            dmc.Text(prompt, c="dimmed"),
             dmc.Group(
                 [
                     dmc.Button(
                         "Modify existing look and feel",
                         id="btn-designer-modify-existing",
                         variant="outline",
+                        style={"display": "none"} if not has_existing_ui else {},
                     ),
-                    dmc.Button(
-                        "Create new design",
-                        id="btn-designer-create-new",
-                    ),
+                    dmc.Button("Create new design", id="btn-designer-create-new"),
                     dmc.Button(
                         "Skip Designer",
                         id="btn-designer-skip-2",
@@ -407,6 +406,9 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
     code_review: dict[str, Any] = session.get("code_review") or {}
     design_dir = _design_dir(working_dir)
     saved = load_session(design_dir) if working_dir else None
+    has_existing_ui = (
+        detect_has_ui_source(pathlib.Path(working_dir), design_dir) if working_dir else False
+    )
 
     if saved and saved["mock_html"]:
         initial_step = 6
@@ -429,6 +431,8 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
                 "preference_text": saved["preference_text"],
                 "screenshots": saved["screenshots"],
             }
+
+    initial_store["_has_existing_ui"] = has_existing_ui
 
     return html.Div(
         [
@@ -454,8 +458,66 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
             ),
             dmc.Title("Designer", order=3, mb="sm"),
             dmc.Text(
-                "Create a visual mock-up for your application's starting screen.",
+                [
+                    "Hello! I'm the ",
+                    html.Strong("Designer"),
+                    ". I'll generate a self-contained HTML mock-up of your "
+                    "application's starting screen — a visual design reference "
+                    "ready to hand off to your coding agent.",
+                ],
                 c="dimmed",
+                mb="md",
+            ),
+            dmc.Accordion(
+                dmc.AccordionItem(
+                    [
+                        dmc.AccordionControl(
+                            dmc.Text(
+                                "ℹ️ How to use Designer",
+                                fw=600,
+                                c="blue.4",
+                            )
+                        ),
+                        dmc.AccordionPanel(
+                            dcc.Markdown(
+                                "Designer works in a few short steps:\n\n"
+                                "1. **Choose your starting point** — create a fresh design, "
+                                "or let Designer scan your existing project files and capture "
+                                "their current look and feel.\n"
+                                "2. **Describe the style** — enter your visual preferences: "
+                                "theme (light/dark), colors, layout style, mood, typography, "
+                                "or any other design direction you have in mind.\n"
+                                "3. **Add reference screenshots** *(optional)* — upload images "
+                                "of designs you like. For each one you can add a note describing "
+                                "what you want to take from it or avoid.\n"
+                                "4. **Review the mock** — Designer generates a complete, "
+                                "self-contained HTML file. You can **Approve** it to move on, "
+                                "**Refine** it with a description of changes (and optional "
+                                "reference images), or **Start Over** from scratch.\n\n"
+                                "The finished mock is saved to `.spec4/design/mock.html` in "
+                                "your project directory. Phaser will direct your coding agent "
+                                "to reference it during implementation.\n\n"
+                                "**Tips for better results:**\n"
+                                "- Be specific — *\"dark navy background, orange accent, "
+                                "card-based layout\"* produces better output than *\"modern\"*.\n"
+                                "- The mock covers the starting screen only, not every page.\n"
+                                "- Use the Refine step rather than Start Over when you just "
+                                "want to tweak details.",
+                                style={"color": "var(--mantine-color-dark-1)"},
+                            )
+                        ),
+                    ],
+                    value="how-to",
+                ),
+                variant="contained",
+                radius="md",
+                styles={
+                    "item": {"border": "1px solid var(--mantine-color-blue-4)"},
+                    "control": {
+                        "borderRadius": "var(--mantine-radius-md)",
+                        "borderLeft": "3px solid var(--mantine-color-blue-4)",
+                    },
+                },
                 mb="lg",
             ),
             dmc.Stepper(

@@ -45,8 +45,8 @@ _MOCK_BUFFERS: dict[str, dict[str, Any]] = {}
 _FINAL_HTML: dict[str, str] = {}
 
 
-def _extract_html(text: str) -> str:
-    """Extract an HTML document from model output, falling back to raw text."""
+def _extract_html(text: str) -> str | None:
+    """Extract an HTML document from model output, returning None if not found."""
     match = re.search(
         r"(<!DOCTYPE html>.*?</html>|<html[\s>].*?</html>)",
         text,
@@ -59,7 +59,7 @@ def _extract_html(text: str) -> str:
         inner = code_match.group(1).strip()
         if "<html" in inner.lower() or "<!doctype" in inner.lower():
             return inner
-    return f"<!-- Designer: raw output, no HTML wrapper detected -->\n{text.strip()}"
+    return None
 
 
 def _start_gen(
@@ -115,29 +115,35 @@ def _start_gen(
         if "__DONE__" in accumulated and "__GENERATION_ERROR__:" not in accumulated:
             html_text = accumulated.replace("__DONE__", "").strip()
             extracted = _extract_html(html_text)
-            if len(extracted) > 512_000:
-                extracted = (
-                    extracted[:512_000]
-                    + "\n<!-- Designer: output truncated at 512 kB -->"
+            if extracted is None:
+                buf_entry["text"] += (
+                    "__GENERATION_ERROR__: The model did not return a valid HTML "
+                    "document. Please retry or refine your style description."
                 )
-            if working_dir:
-                design_dir_path = pathlib.Path(working_dir) / ".spec4" / "design"
-                save_ds: DesignerSession = {
-                    "step": 6,
-                    "preference_text": ds["preference_text"],
-                    "screenshots": ds["screenshots"],
-                    "mock_html": extracted,
-                    "finalized": False,
-                }
-                try:
-                    save_session(save_ds, design_dir_path)
-                    save_mock(extracted, design_dir_path)
-                except Exception as exc:
-                    logger.warning(
-                        "Designer: could not persist session to disk: %s", exc
+            else:
+                if len(extracted) > 512_000:
+                    extracted = (
+                        extracted[:512_000]
+                        + "\n<!-- Designer: output truncated at 512 kB -->"
                     )
-            _FINAL_HTML[gen_id] = extracted
-            buf_entry["final_html"] = extracted
+                if working_dir:
+                    design_dir_path = pathlib.Path(working_dir) / ".spec4" / "design"
+                    save_ds: DesignerSession = {
+                        "step": 6,
+                        "preference_text": ds["preference_text"],
+                        "screenshots": ds["screenshots"],
+                        "mock_html": extracted,
+                        "finalized": False,
+                    }
+                    try:
+                        save_session(save_ds, design_dir_path)
+                        save_mock(extracted, design_dir_path)
+                    except Exception as exc:
+                        logger.warning(
+                            "Designer: could not persist session to disk: %s", exc
+                        )
+                _FINAL_HTML[gen_id] = extracted
+                buf_entry["final_html"] = extracted
         _MOCK_BUFFERS[gen_id]["done"] = True
 
     threading.Thread(target=_run, daemon=True).start()
@@ -166,7 +172,7 @@ def render_designer_step(store: Any, buffer_data: Any, image_support: Any) -> An
     if step == 1:
         content = _step1_content()
     elif step == 2:
-        content = _step2_content()
+        content = _step2_content(bool(store.get("_has_existing_ui", True)))
     elif step == 3:
         content = _step3_content()
     elif step == 4:
@@ -179,7 +185,7 @@ def render_designer_step(store: Any, buffer_data: Any, image_support: Any) -> An
     elif step == 7:
         content = _step7_content(store)
     else:
-        content = _step2_content()
+        content = _step2_content(bool(store.get("_has_existing_ui", True)))
     stepper_active = max(0, min(step - 1, 5))
     return content, stepper_active
 
@@ -503,7 +509,10 @@ def on_designer_start_over(n: Any, store: Any) -> Any:
         if entry:
             entry["stop"].set()
     return (
-        _default_designer_session(step=2),
+        {
+            **_default_designer_session(step=2),
+            "_has_existing_ui": (store or {}).get("_has_existing_ui", False),
+        },
         {"text": "", "tokens": 0, "progress": 0, "error": None},
         True,
     )

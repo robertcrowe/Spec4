@@ -9,6 +9,7 @@ from spec4.agents.designer import (
     clear_session,
     collect_ui_source_files,
     detect_greenfield,
+    detect_has_ui_source,
     detect_no_ui,
     generate_mock_streaming,
     load_session,
@@ -82,6 +83,50 @@ class TestDetectGreenfield:
     def test_false_when_only_non_spec4_dir(self, tmp_path: Path) -> None:
         (tmp_path / "src").mkdir()
         assert detect_greenfield(tmp_path) is False
+
+
+# ---------------------------------------------------------------------------
+# detect_has_ui_source
+# ---------------------------------------------------------------------------
+
+
+class TestDetectHasUiSource:
+    def test_true_when_mock_html_exists(self, tmp_path: Path) -> None:
+        design_dir = tmp_path / ".spec4" / "design"
+        design_dir.mkdir(parents=True)
+        (design_dir / "mock.html").write_text("<html></html>")
+        assert detect_has_ui_source(tmp_path, design_dir) is True
+
+    def test_true_when_html_file_in_project(self, tmp_path: Path) -> None:
+        (tmp_path / "index.html").write_text("<html></html>")
+        assert detect_has_ui_source(tmp_path) is True
+
+    def test_true_when_css_file_in_project(self, tmp_path: Path) -> None:
+        (tmp_path / "styles.css").write_text("body { margin: 0; }")
+        assert detect_has_ui_source(tmp_path) is True
+
+    def test_true_when_tsx_file_in_project(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "App.tsx").write_text("export default function App() {}")
+        assert detect_has_ui_source(tmp_path) is True
+
+    def test_false_when_no_ui_files_and_no_mock(self, tmp_path: Path) -> None:
+        (tmp_path / "main.py").write_text("x = 1")
+        assert detect_has_ui_source(tmp_path) is False
+
+    def test_false_when_empty_project(self, tmp_path: Path) -> None:
+        assert detect_has_ui_source(tmp_path) is False
+
+    def test_ui_files_in_excluded_dirs_not_counted(self, tmp_path: Path) -> None:
+        node_modules = tmp_path / "node_modules"
+        node_modules.mkdir()
+        (node_modules / "index.html").write_text("<html></html>")
+        assert detect_has_ui_source(tmp_path) is False
+
+    def test_no_mock_html_without_design_dir(self, tmp_path: Path) -> None:
+        (tmp_path / "main.py").write_text("x = 1")
+        assert detect_has_ui_source(tmp_path, None) is False
 
 
 # ---------------------------------------------------------------------------
