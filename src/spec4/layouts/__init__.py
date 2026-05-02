@@ -7,7 +7,6 @@ from dash import dcc, html
 import dash_mantine_components as dmc
 
 from spec4.layouts._chat import _agent_status_bar, _chat_action_buttons, _chat_layout
-from spec4.layouts._done import _done_layout
 from spec4.layouts._setup import _setup_layout
 from spec4.layouts._shared import (
     _card,
@@ -30,7 +29,6 @@ __all__ = [
     "_agent_status_bar",
     "_chat_action_buttons",
     "_chat_layout",
-    "_done_layout",
     "_setup_layout",
     "_landing_layout",
     "_working_dir_layout",
@@ -61,7 +59,7 @@ def _landing_layout() -> html.Div:
                     html.H1(
                         [
                             "From idea to ",
-                            html.Span("executable phases", className="text-gradient"),
+                            html.Span("deployed application", className="text-gradient"),  # noqa: E501
                         ],
                         style={
                             "fontSize": "clamp(2.25rem, 5vw, 3.5rem)",
@@ -75,8 +73,8 @@ def _landing_layout() -> html.Div:
                     # Subtitle
                     dmc.Text(
                         "A pipeline of specialised LLM agents guides you from a rough idea to "  # noqa: E501
-                        "a set of structured, ordered development phases — ready to hand off to "  # noqa: E501
-                        "Claude Code, Cursor, or any AI coding agent.",
+                        "structured development phases and a concrete deployment plan — "  # noqa: E501
+                        "ready to hand off to Claude Code, Cursor, or any AI coding agent.",  # noqa: E501
                         size="lg",
                         c="dimmed",
                         style={
@@ -115,7 +113,7 @@ def _landing_layout() -> html.Div:
             ),
             # Agent feature cards
             dmc.SimpleGrid(
-                cols={"base": 1, "sm": 2, "lg": 4},
+                cols={"base": 1, "sm": 2, "lg": 3},
                 spacing="md",
                 mb="xl",
                 children=[
@@ -159,6 +157,17 @@ def _landing_layout() -> html.Div:
                         target="_blank",
                         style={"textDecoration": "none", "color": "inherit"},
                     ),
+                    _feature_card(
+                        dmc.Title("🎨 Designer", order=4, mb="sm"),
+                        dmc.Text(
+                            "Generates a self-contained HTML mock-up of your starting screen "  # noqa: E501
+                            "from a style description and optional reference screenshots.",  # noqa: E501
+                            size="sm",
+                            mb="md",
+                            c="dimmed",
+                        ),
+                        html.Span("mock.html", className="output-badge"),
+                    ),
                     html.A(
                         _feature_card(
                             dmc.Title("⚙️ StackAdvisor", order=4, mb="sm"),
@@ -191,12 +200,23 @@ def _landing_layout() -> html.Div:
                         target="_blank",
                         style={"textDecoration": "none", "color": "inherit"},
                     ),
+                    _feature_card(
+                        dmc.Title("🚀 Deployer", order=4, mb="sm"),
+                        dmc.Text(
+                            "Guides you through coding-agent workflow and designs a deployment "  # noqa: E501
+                            "plan tailored to your stack — cloud, PaaS, containers, CI/CD.",  # noqa: E501
+                            size="sm",
+                            mb="md",
+                            c="dimmed",
+                        ),
+                        html.Span("deployment.json", className="output-badge"),
+                    ),
                 ],
             ),
             dmc.Divider(mb="md"),
             dmc.Text(
                 "You can start at any stage. StackAdvisor requires a saved vision; "
-                "Phaser requires both a vision and a stack.",
+                "Phaser requires both a vision and a stack; Deployer requires phases.",
                 size="lg",
                 mb="lg",
                 ta="center",
@@ -328,8 +348,6 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
 
     working_dir = session.get("working_dir")
     spec4_dir = pathlib.Path(working_dir) / ".spec4" if working_dir else None
-    vision_in_spec4 = bool(spec4_dir and (spec4_dir / "vision.json").exists())
-    stack_in_spec4 = bool(spec4_dir and (spec4_dir / "stack.json").exists())
     review_in_spec4 = bool(spec4_dir and (spec4_dir / "code_review.json").exists())
 
     loaded_items = []
@@ -439,25 +457,13 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
                             label="📋 Phaser — break your project into executable coding phases",  # noqa: E501
                             value="phaser",
                         ),
+                        dmc.Radio(
+                            label="🚀 Deployer — plan coding-agent workflow and deployment strategy",  # noqa: E501
+                            value="deployer",
+                        ),
                     ],
                     gap="xs",
                 ),
-            ),
-            dmc.Button(
-                "Load existing vision.json",
-                id="btn-load-vision",
-                variant="outline",
-                size="sm",
-                mb="xs",
-                style={"display": "none"} if not vision_in_spec4 else {},
-            ),
-            dmc.Button(
-                "Load existing stack.json",
-                id="btn-load-stack",
-                variant="outline",
-                size="sm",
-                mb="xs",
-                style={"display": "none"} if not stack_in_spec4 else {},
             ),
             _error(error) if error else html.Div(),
             dmc.Button("Start →", id="btn-agent-start", mt="md"),

@@ -9,13 +9,9 @@ from typing import Any
 
 from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
-from spec4 import project_manager, providers, streaming, tavily_mcp
+from spec4 import providers, streaming, tavily_mcp
 from spec4.agents._image_probe import probe_image_support
-from spec4.app_constants import (
-    PATH_TO_PHASE,
-    STATE_STACK_COMPLETE,
-    STATE_VISION_COMPLETE,
-)
+from spec4.app_constants import PATH_TO_PHASE
 from spec4.session import (
     _default_session,
     _get_agent_gen,
@@ -354,55 +350,6 @@ def on_setup_tavily_skip(n: Any, session: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Agent select — load files from .spec4/ directly
-# ---------------------------------------------------------------------------
-
-
-@callback(
-    Output("session", "data", allow_duplicate=True),
-    Input("btn-load-vision", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def on_load_vision(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update
-    working_dir = session.get("working_dir")
-    if not working_dir:
-        return no_update
-    data = project_manager.load_single_artifact(working_dir, "vision.json")
-    if data is None:
-        return no_update
-    return {
-        **session,
-        "vision_statement": data.get("vision_statement", data),
-        "brainstormer_state": STATE_VISION_COMPLETE,
-    }
-
-
-@callback(
-    Output("session", "data", allow_duplicate=True),
-    Input("btn-load-stack", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def on_load_stack(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update
-    working_dir = session.get("working_dir")
-    if not working_dir:
-        return no_update
-    data = project_manager.load_single_artifact(working_dir, "stack.json")
-    if data is None:
-        return no_update
-    return {
-        **session,
-        "stack_statement": data.get("stack_statement", data),
-        "stack_advisor_state": STATE_STACK_COMPLETE,
-    }
-
-
-# ---------------------------------------------------------------------------
 # Agent select
 # ---------------------------------------------------------------------------
 
@@ -411,10 +358,13 @@ def _validate_agent_preconditions(agent: str, session: dict[str, Any]) -> str | 
     """Return an error message if agent prerequisites are missing, else None."""
     has_vision = session.get("vision_statement") is not None
     has_stack = session.get("stack_statement") is not None
+    has_phases = bool(session.get("phases"))
     if agent in ("stack_advisor", "phaser") and not has_vision:
         return "Requires a vision statement. Load or generate a vision.json first."
     if agent == "phaser" and not has_stack:
         return "Requires a stack spec. Load or generate a stack.json first."
+    if agent == "deployer" and not has_phases:
+        return "Requires phases. Run Phaser first to generate the development phases."
     return None
 
 
@@ -554,12 +504,16 @@ def on_stream_poll(n: Any, session: Any) -> Any:
         return {**session, "_stream_id": None}, 0
     agent_session = final["session"]
     _persist_artifacts(agent_session)
+    # Allow an agent to replace the last displayed message (e.g. Deployer strips its JSON block)
+    if agent_session.get("_display_override") is not None and messages:
+        messages[-1] = {"role": "assistant", "content": agent_session["_display_override"]}
     return (
         {
             **agent_session,
             "messages": messages,
             "_stream_id": None,
             "_initial_turn_done": True,
+            "_display_override": None,
         },
         0,
     )
@@ -719,80 +673,142 @@ def dl_phases(n: Any, session: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Done page
+# Deployer navigation
 # ---------------------------------------------------------------------------
 
 
 @callback(
     Output("session", "data", allow_duplicate=True),
-    Output("url", "pathname", allow_duplicate=True),
-    Input("btn-phaser-done", "n_clicks"),
+    Input("btn-phaser-to-deployer", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_phaser_done(n: Any, session: Any) -> Any:
+def on_phaser_to_deployer(n: Any, session: Any) -> Any:
     if not n:
-        return no_update, no_update
-    return {**session, "phase": "done"}, "/done"
+        return no_update
+    return _switch_agent(session, "deployer")
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Input("btn-deployer-to-phaser", "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_deployer_to_phaser(n: Any, session: Any) -> Any:
+    if not n:
+        return no_update
+    return _switch_agent(session, "phaser")
 
 
 @callback(
     Output("session", "data", allow_duplicate=True),
     Output("url", "pathname", allow_duplicate=True),
-    Input("btn-done-back-to-phaser", "n_clicks"),
+    Input("btn-deployer-new-project", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_done_back_to_phaser(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update, no_update
-    return {**session, "phase": "chat"}, "/chat"
-
-
-@callback(
-    Output("session", "data", allow_duplicate=True),
-    Output("url", "pathname", allow_duplicate=True),
-    Input("btn-done-new-project", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def on_done_new_project(n: Any, session: Any) -> Any:
+def on_deployer_new_project(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return {**session, "phase": "landing"}, "/"
 
 
-@callback(
-    Output("dl-phases-done", "data"),
-    Input("btn-dl-phases-done", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def dl_phases_done(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update
-    return _build_phases_zip(session)
+def _deployment_plan_to_markdown(plan: dict[str, Any]) -> str:
+    lines: list[str] = ["# Deployment Plan", ""]
+
+    if guidance := plan.get("coding_agent_guidance"):
+        lines += ["## Coding Agent Guidance", ""]
+        if v := guidance.get("agent"):
+            lines += [f"**Agent:** {v}", ""]
+        if v := guidance.get("setup"):
+            lines += ["**Setup:**", "", v, ""]
+        if v := guidance.get("spec4_files"):
+            lines += ["**Spec4 files:**", "", v, ""]
+        if v := guidance.get("loading_phases"):
+            lines += ["**Loading phases:**", "", v, ""]
+        if v := guidance.get("workflow"):
+            lines += ["**Workflow:**", "", v, ""]
+        if tips := guidance.get("tips"):
+            lines += ["**Tips:**", ""]
+            for tip in tips:
+                lines.append(f"- {tip}")
+            lines.append("")
+
+    if agent := plan.get("coding_agent"):
+        lines += [f"**Coding agent:** {agent}", ""]
+
+    if target := plan.get("target"):
+        lines += ["## Target", ""]
+        _target_fields = [("type", "Type"), ("provider", "Provider"), ("service", "Service"), ("region", "Region")]  # noqa: E501
+        for key, label in _target_fields:
+            if v := target.get(key):
+                lines.append(f"- **{label}:** {v}")
+        lines.append("")
+
+    if container := plan.get("containerization"):
+        lines += ["## Containerization", ""]
+        enabled = container.get("enabled")
+        lines.append(f"- **Enabled:** {'Yes' if enabled else 'No'}")
+        if enabled:
+            if v := container.get("base_image"):
+                lines.append(f"- **Base image:** `{v}`")
+            if v := container.get("registry"):
+                lines.append(f"- **Registry:** {v}")
+        lines.append("")
+
+    if ci_cd := plan.get("ci_cd"):
+        lines += ["## CI/CD", ""]
+        enabled = ci_cd.get("enabled")
+        lines.append(f"- **Enabled:** {'Yes' if enabled else 'No'}")
+        if enabled:
+            if v := ci_cd.get("platform"):
+                lines.append(f"- **Platform:** {v}")
+            if v := ci_cd.get("trigger_branch"):
+                lines.append(f"- **Trigger branch:** `{v}`")
+            if stages := ci_cd.get("stages"):
+                lines.append(f"- **Stages:** {', '.join(str(s) for s in stages)}")
+        lines.append("")
+
+    if env := plan.get("environment"):
+        lines += ["## Environment", ""]
+        if required := env.get("required_vars"):
+            lines.append("**Required variables:**")
+            for var in required:
+                lines.append(f"- `{var}`")
+            lines.append("")
+        if v := env.get("secrets_management"):
+            lines += [f"**Secrets management:** {v}", ""]
+
+    if monitoring := plan.get("monitoring"):
+        lines += ["## Monitoring", ""]
+        if v := monitoring.get("error_tracking"):
+            lines.append(f"- **Error tracking:** {v}")
+        if v := monitoring.get("metrics"):
+            lines.append(f"- **Metrics:** {v}")
+        lines.append("")
+
+    if steps := plan.get("deployment_steps"):
+        lines += ["## Deployment Steps", ""]
+        for i, step in enumerate(steps, 1):
+            lines.append(f"{i}. {step}")
+        lines.append("")
+
+    if notes := plan.get("notes"):
+        lines += ["## Notes", "", str(notes), ""]
+
+    return "\n".join(lines)
 
 
 @callback(
-    Output("dl-vision-done", "data"),
-    Input("btn-dl-vision-done", "n_clicks"),
+    Output("dl-deployment", "data"),
+    Input("btn-dl-deployment", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_vision_done(n: Any, session: Any) -> Any:
+def dl_deployment(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return _send_json(session.get("vision_statement"), "vision.json")
-
-
-@callback(
-    Output("dl-stack-done", "data"),
-    Input("btn-dl-stack-done", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def dl_stack_done(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update
-    return _send_json(session.get("stack_statement"), "stack.json")
+    plan = session.get("deployment_plan") or {}
+    md = _deployment_plan_to_markdown(plan)
+    return dcc.send_string(md, "deployment-plan.md", type="text/markdown")  # type: ignore[attr-defined, no-untyped-call]

@@ -13,7 +13,6 @@ PATH_TO_PHASE = {
     "/setup": "setup",
     "/agents": "agent_select",
     "/chat": "chat",
-    "/done": "done",
     "/design": "designer",
 }
 
@@ -56,3 +55,4 @@ STATE_VISION_COMPLETE = "vision_complete"
 STATE_STACK_COMPLETE = "stack_complete"
 STATE_PHASES_COMPLETE = "phases_complete"
 STATE_REVIEW_COMPLETE = "review_complete"
+STATE_DEPLOYER_COMPLETE = "deployer_complete"

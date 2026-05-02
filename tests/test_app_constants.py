@@ -24,7 +24,6 @@ class TestPathToPhase:
             "setup",
             "agent_select",
             "chat",
-            "done",
             "designer",
         }
         assert set(PATH_TO_PHASE.values()) == expected

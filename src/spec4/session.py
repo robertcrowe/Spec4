@@ -5,8 +5,9 @@ from collections.abc import Generator
 from typing import Any
 
 from spec4 import project_manager
-from spec4.agents import brainstormer, code_scanner, phaser, stack_advisor
+from spec4.agents import brainstormer, code_scanner, deployer, phaser, stack_advisor
 from spec4.app_constants import (
+    STATE_DEPLOYER_COMPLETE,
     STATE_IN_PROGRESS,
     STATE_PHASES_COMPLETE,
     STATE_REVIEW_COMPLETE,
@@ -48,6 +49,9 @@ def _default_session() -> dict[str, Any]:
         "phaser_state": None,
         "phaser_messages": [],
         "phases": [],
+        "deployer_state": STATE_IN_PROGRESS,
+        "deployer_messages": [],
+        "deployment_plan": None,
         "_warn_existing_content": False,
         "_dir_has_content": False,
         "_initial_turn_done": False,
@@ -80,6 +84,8 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
         "code_review": None,
         "code_scanner_state": STATE_IN_PROGRESS,
         "specmem": None,
+        "deployment_plan": None,
+        "deployer_state": STATE_IN_PROGRESS,
         "_warn_existing_content": False,
     }
     try:
@@ -98,6 +104,9 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
     if artifacts.get("code_review"):
         session["code_review"] = artifacts["code_review"]
         session["code_scanner_state"] = STATE_REVIEW_COMPLETE
+    if artifacts.get("deployment"):
+        session["deployment_plan"] = artifacts["deployment"]
+        session["deployer_state"] = STATE_DEPLOYER_COMPLETE
     specmem = project_manager.read_specmem(path)
     if specmem:
         session["specmem"] = specmem
@@ -133,6 +142,8 @@ def _get_agent_gen(
         return stack_advisor.run(user_input, session, llm_config)
     elif active == "phaser":
         return phaser.run(user_input, session, llm_config)
+    elif active == "deployer":
+        return deployer.run(user_input, session, llm_config)
     else:
         raise ValueError(f"Unknown agent: {active!r}")
 
@@ -164,5 +175,9 @@ def _persist_artifacts(session: dict[str, Any]) -> None:
     if session.get("phaser_state") == STATE_PHASES_COMPLETE and session.get("phases"):
         project_manager.save_phases(working_dir, session["phases"])
         needs_specmem = True
+    if session.get("deployer_state") == STATE_DEPLOYER_COMPLETE and session.get(
+        "deployment_plan"
+    ):
+        project_manager.save_deployment(working_dir, session["deployment_plan"])
     if needs_specmem:
         project_manager.update_specmem_planning_state(working_dir, session)

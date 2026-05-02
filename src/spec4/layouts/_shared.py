@@ -50,8 +50,10 @@ _NAV_LINKS: list[tuple[str, list[tuple[str, str]]]] = [
         [
             ("CodeScanner", "https://spec4.ai/agents/reviewer/"),
             ("Brainstormer", "https://spec4.ai/agents/brainstormer/"),
+            ("Designer", "#"),
             ("StackAdvisor", "https://spec4.ai/agents/stackadvisor/"),
             ("Phaser", "https://spec4.ai/agents/phaser/"),
+            ("Deployer", "#"),
         ],
     ),
     (

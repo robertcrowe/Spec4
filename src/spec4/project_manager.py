@@ -40,12 +40,14 @@ def load_spec4_artifacts(working_dir: str | Path) -> dict[str, Any]:
         "stack": None,
         "code_review": None,
         "phases": [],
+        "deployment": None,
     }
 
     for key, filename in (
         ("vision", "vision.json"),
         ("stack", "stack.json"),
         ("code_review", "code_review.json"),
+        ("deployment", "deployment.json"),
     ):
         path = spec4_dir / filename
         if path.exists():
@@ -94,6 +96,14 @@ def save_code_review(working_dir: str | Path, review: dict[str, Any]) -> None:
     spec4_dir = ensure_spec4_dir(working_dir)
     (spec4_dir / "code_review.json").write_text(
         json.dumps(review, indent=2), encoding="utf-8"
+    )
+
+
+def save_deployment(working_dir: str | Path, deployment: dict[str, Any]) -> None:
+    spec4_dir = ensure_spec4_dir(working_dir)
+    data = {k: v for k, v in deployment.items() if k != "coding_agent_guidance"}
+    (spec4_dir / "deployment.json").write_text(
+        json.dumps(data, indent=2), encoding="utf-8"
     )
 
 

@@ -18,7 +18,6 @@ from spec4.layouts import (
     _setup_layout,
     _agent_select_layout,
     _chat_layout,
-    _done_layout,
 )
 from spec4.layouts.designer import designer_layout
 
@@ -315,8 +314,6 @@ def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any)
         content = _agent_select_layout(session)
     elif phase == "chat":
         content = _chat_layout(session)
-    elif phase == "done":
-        content = _done_layout(session)
     elif phase == "designer":
         content = designer_layout(session)
     else:

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import pathlib
 from typing import Any
 
 from dash import dcc, html
 import dash_mantine_components as dmc
 
 from spec4.app_constants import (
+    STATE_DEPLOYER_COMPLETE,
     STATE_PHASES_COMPLETE,
     STATE_REVIEW_COMPLETE,
     STATE_STACK_COMPLETE,
@@ -16,6 +18,13 @@ from spec4.layouts._shared import _render_message
 
 def _agent_status_bar(session: dict[str, Any]) -> html.Div:
     active = session.get("active_agent", "brainstormer")
+    working_dir = session.get("working_dir", "")
+    _mock = (
+        pathlib.Path(working_dir) / ".spec4" / "design" / "mock.html"
+        if working_dir
+        else None
+    )
+    designer_done = bool(_mock and _mock.exists())
     agents = [
         ("code_scanner", "🔍 CodeScanner", session.get("code_review") is not None),
         (
@@ -23,8 +32,10 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
             "🧠 Brainstormer",
             session.get("vision_statement") is not None,
         ),
+        ("designer", "🎨 Designer", designer_done),
         ("stack_advisor", "⚙️ StackAdvisor", session.get("stack_statement") is not None),
         ("phaser", "📋 Phaser", session.get("phaser_state") == STATE_PHASES_COMPLETE),
+        ("deployer", "🚀 Deployer", session.get("deployer_state") == STATE_DEPLOYER_COMPLETE),  # noqa: E501
     ]
     items = []
     for i, (key, label, done) in enumerate(agents):
@@ -110,7 +121,28 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
                 dmc.Button(
                     "💾 Download phases.zip", id="btn-dl-phases", variant="outline"
                 ),
-                dmc.Button("Done →", id="btn-phaser-done"),
+                dmc.Button("Continue to Deployer →", id="btn-phaser-to-deployer"),
+            ]
+        else:
+            buttons = [back]
+    elif active == "deployer":
+        back = dmc.Button(
+            "← Back to Phaser",
+            id="btn-deployer-to-phaser",
+            variant="outline",
+            color="gray",
+        )
+        if session.get("deployer_state") == STATE_DEPLOYER_COMPLETE:
+            buttons = [
+                back,
+                dmc.Button(
+                    "💾 Download deployment plan (Markdown)",
+                    id="btn-dl-deployment",
+                    variant="outline",
+                ),
+                dmc.Button(
+                    "Start New Project", id="btn-deployer-new-project", variant="light"
+                ),
             ]
         else:
             buttons = [back]
@@ -144,6 +176,7 @@ def _chat_layout(session: dict[str, Any]) -> html.Div:
             dcc.Download(id="dl-stack"),
             dcc.Download(id="dl-code-review"),
             dcc.Download(id="dl-phases"),
+            dcc.Download(id="dl-deployment"),
             _agent_status_bar(session),
             html.Div(
                 html.Div(
