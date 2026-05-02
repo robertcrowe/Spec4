@@ -5,7 +5,7 @@ description = "AI-assisted software project planning — from idea to executable
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [
-    { name = "Robert Crowe", email = "crowe3555@gmail.com" }
+    { name = "Robert Crowe", email = "please-post-in-github@gmail.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
