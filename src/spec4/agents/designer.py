@@ -274,12 +274,10 @@ _EXCLUDED_DIRS: frozenset[str] = frozenset(
     {".spec4", ".git", "__pycache__", "node_modules", "dist", ".venv"}
 )
 _MAX_UI_FILES = 20
+_MAX_UI_FILE_CHARS = 8_000
 
 
-def collect_ui_source_files(
-    project_root: Path,
-    max_chars_per_file: int = 8000,
-) -> list[str]:
+def collect_ui_source_files(project_root: Path) -> list[str]:
     result: list[str] = []
     for root, dirs, files in project_root.walk():
         dirs[:] = sorted(d for d in dirs if d not in _EXCLUDED_DIRS)
@@ -291,8 +289,8 @@ def collect_ui_source_files(
                 content = fpath.read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            if len(content) > max_chars_per_file:
-                content = content[:max_chars_per_file] + "\n# [truncated]"
+            if len(content) > _MAX_UI_FILE_CHARS:
+                content = content[:_MAX_UI_FILE_CHARS] + "\n# [truncated]"
             rel = fpath.relative_to(project_root)
             result.append(f"# --- {rel} ---\n{content}")
             if len(result) >= _MAX_UI_FILES:

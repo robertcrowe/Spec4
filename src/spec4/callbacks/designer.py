@@ -4,7 +4,6 @@ import logging
 import os
 import pathlib
 import re
-import sys
 import threading
 import uuid
 from typing import Any
@@ -43,6 +42,21 @@ _MOCK_BUFFERS: dict[str, dict[str, Any]] = {}
 # Kept separate from _MOCK_BUFFERS so the large payload never travels through
 # the poll callback response, which would race with the next interval tick.
 _FINAL_HTML: dict[str, str] = {}
+
+_MAX_HTML_BYTES = 512_000
+
+
+def _llm_params(
+    session: dict[str, Any], image_support: Any
+) -> tuple[str, str, str | None, str | None, bool]:
+    """Extract LLM connection parameters from the main session dict."""
+    return (
+        session.get("model") or "",
+        session.get("api_key") or "",
+        session.get("tavily_api_key"),
+        session.get("working_dir"),
+        bool(image_support) if image_support is not None else True,
+    )
 
 
 def _extract_html(text: str) -> str | None:
@@ -104,7 +118,7 @@ def _start_gen(
         ):
             buf_entry["text"] += chunk
             if _DEV_MODE and not chunk.startswith("__"):
-                print(chunk, end="", flush=True, file=sys.stdout)
+                print(chunk, end="", flush=True)
         if _DEV_MODE:
             print("\n[Designer] Done.", flush=True)
         if gen_id not in _MOCK_BUFFERS:
@@ -121,9 +135,9 @@ def _start_gen(
                     "document. Please retry or refine your style description."
                 )
             else:
-                if len(extracted) > 512_000:
+                if len(extracted) > _MAX_HTML_BYTES:
                     extracted = (
-                        extracted[:512_000]
+                        extracted[:_MAX_HTML_BYTES]
                         + "\n<!-- Designer: output truncated at 512 kB -->"
                     )
                 if working_dir:
@@ -259,12 +273,7 @@ def on_designer_step2_choice(
     if ctx.triggered_id == "btn-designer-create-new":
         return {**(store or {}), "step": 3}, no_update, no_update
     # "Modify existing" — capture the project's current look and feel
-    sess = session or {}
-    model: str = sess.get("model") or ""
-    api_key: str = sess.get("api_key") or ""
-    tavily_key: str | None = sess.get("tavily_api_key")
-    wd: str | None = sess.get("working_dir")
-    support: bool = bool(image_support) if image_support is not None else True
+    model, api_key, tavily_key, wd, support = _llm_params(session or {}, image_support)
     new_store, buf, disabled = _start_gen(
         store or {}, wd, model, api_key, tavily_key, support, capture_mode=True
     )
@@ -347,16 +356,14 @@ def on_designer_generate_mock(
             screenshots[i] = {**screenshots[i], "annotation": ann or ""}
     updated = {**store, "screenshots": screenshots}
     sess = session or {}
-    model: str = sess.get("model") or ""
-    api_key: str = sess.get("api_key") or ""
-    tavily_key: str | None = sess.get("tavily_api_key")
-    wd: str | None = sess.get("working_dir")
-    support: bool = bool(image_support) if image_support is not None else True
-    planning_ctx: dict[str, Any] = {
-        "vision_statement": sess.get("vision_statement"),
-    } if sess.get("vision_statement") else {}
+    model, api_key, tavily_key, wd, support = _llm_params(sess, image_support)
+    planning_ctx: dict[str, Any] | None = (
+        {"vision_statement": sess.get("vision_statement")}
+        if sess.get("vision_statement")
+        else None
+    )
     new_store, buf, disabled = _start_gen(
-        updated, wd, model, api_key, tavily_key, support, planning_ctx or None
+        updated, wd, model, api_key, tavily_key, support, planning_ctx
     )
     return new_store, buf, disabled
 
@@ -604,12 +611,7 @@ def on_designer_regenerate(
         screenshots.append({"data": img["data"], "annotation": img["filename"]})
     existing_html: str | None = store.get("mock_html") or None
     updated = {**store, "preference_text": pref, "screenshots": screenshots}
-    sess = session or {}
-    model: str = sess.get("model") or ""
-    api_key: str = sess.get("api_key") or ""
-    tavily_key: str | None = sess.get("tavily_api_key")
-    wd: str | None = sess.get("working_dir")
-    support: bool = bool(image_support) if image_support is not None else True
+    model, api_key, tavily_key, wd, support = _llm_params(session or {}, image_support)
     new_store, buf, disabled = _start_gen(
         updated, wd, model, api_key, tavily_key, support,
         existing_html=existing_html,
@@ -631,20 +633,16 @@ def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> A
     if not n or not store:
         return no_update, no_update, no_update
     sess = session or {}
-    model: str = sess.get("model") or ""
-    api_key: str = sess.get("api_key") or ""
-    tavily_key: str | None = sess.get("tavily_api_key")
-    wd: str | None = sess.get("working_dir")
-    support: bool = bool(image_support) if image_support is not None else True
+    model, api_key, tavily_key, wd, support = _llm_params(sess, image_support)
     existing_html: str | None = store.get("_existing_html")
-    planning_ctx: dict[str, Any] = (
+    planning_ctx: dict[str, Any] | None = (
         {"vision_statement": sess.get("vision_statement")}
         if not existing_html and sess.get("vision_statement")
-        else {}
+        else None
     )
     new_store, buf, disabled = _start_gen(
         store, wd, model, api_key, tavily_key, support,
-        planning_ctx or None,
+        planning_ctx,
         existing_html=existing_html,
     )
     return new_store, buf, disabled

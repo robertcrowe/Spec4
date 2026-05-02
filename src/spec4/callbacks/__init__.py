@@ -23,6 +23,13 @@ from spec4.session import (
     _persist_artifacts,
 )
 
+_HOME = str(pathlib.Path.home())
+
+
+def _prefs_keep_working_dir(prefs: Any) -> dict[str, Any]:
+    """Return a prefs dict retaining only working_dir, or empty dict."""
+    return {"working_dir": prefs["working_dir"]} if prefs and prefs.get("working_dir") else {}
+
 
 # ---------------------------------------------------------------------------
 # URL / browser history
@@ -97,7 +104,7 @@ def on_landing_start(n: Any, session: Any) -> Any:
 def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
     if not n:
         return no_update, no_update, no_update
-    path = session.get("browser_path") or str(pathlib.Path.home())
+    path = session.get("browser_path") or _HOME
     new_prefs = {**(prefs or {}), "working_dir": path}
     return _load_working_dir(path, session), "/setup", new_prefs
 
@@ -111,7 +118,7 @@ def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
 def on_dir_up(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    current = pathlib.Path(session.get("browser_path") or str(pathlib.Path.home()))
+    current = pathlib.Path(session.get("browser_path") or _HOME)
     return {**session, "browser_path": str(current.parent)}
 
 
@@ -153,7 +160,7 @@ def on_subdir_click(n_clicks_list: Any, session: Any) -> Any:
 def on_create_folder(n: Any, name: Any, session: Any) -> Any:
     if not n or not name or not name.strip():
         return no_update
-    current = pathlib.Path(session.get("browser_path") or str(pathlib.Path.home()))
+    current = pathlib.Path(session.get("browser_path") or _HOME)
     new_path = current / name.strip()
     try:
         new_path.mkdir(parents=True, exist_ok=True)
@@ -196,11 +203,7 @@ def on_setup_connect(
             "available_models": models,
             "setup_error": None,
         }
-        base = (
-            {"working_dir": prefs["working_dir"]}
-            if prefs and prefs.get("working_dir")
-            else {}
-        )
+        base = _prefs_keep_working_dir(prefs)
         new_prefs = (
             {
                 **prefs,
@@ -224,12 +227,7 @@ def on_setup_connect(
 def on_setup_clear(n: Any, prefs: Any) -> Any:
     if not n:
         return no_update
-    preserved = (
-        {"working_dir": prefs["working_dir"]}
-        if prefs and prefs.get("working_dir")
-        else {}
-    )
-    return preserved
+    return _prefs_keep_working_dir(prefs)
 
 
 @callback(
