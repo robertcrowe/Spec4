@@ -5,117 +5,8 @@ from collections.abc import Generator
 from typing import Any
 
 from spec4 import tavily_mcp
-from spec4.agents._utils import _extract_json_block, _last_assistant_text, _replay_last_assistant
+from spec4.agents._utils import _last_assistant_text, _replay_last_assistant
 from spec4.app_constants import STATE_DEPLOYER_COMPLETE
-
-
-def _plan_to_markdown(plan: dict[str, Any]) -> str:
-    """Render a deployment plan dict as human-readable Markdown for chat display."""
-    lines: list[str] = []
-
-    if guidance := plan.get("coding_agent_guidance"):
-        lines += ["## Coding Agent Guidance", ""]
-        if v := guidance.get("agent"):
-            lines += [f"**Agent:** {v}", ""]
-        if v := guidance.get("setup"):
-            lines += [f"**Setup:** {v}", ""]
-        if v := guidance.get("spec4_files"):
-            lines += [f"**Spec4 files:** {v}", ""]
-        if v := guidance.get("loading_phases"):
-            lines += [f"**Loading phases:** {v}", ""]
-        if v := guidance.get("workflow"):
-            lines += [f"**Workflow:** {v}", ""]
-        if tips := guidance.get("tips"):
-            lines += ["**Tips:**", ""]
-            for tip in tips:
-                lines.append(f"- {tip}")
-            lines.append("")
-
-    if target := plan.get("target"):
-        lines += ["## Deployment Target", ""]
-        for key, label in [("type", "Type"), ("provider", "Provider"), ("service", "Service"), ("region", "Region")]:
-            if v := target.get(key):
-                lines.append(f"- **{label}:** {v}")
-        lines.append("")
-
-    if container := plan.get("containerization"):
-        lines += ["## Containerization", ""]
-        enabled = container.get("enabled")
-        lines.append(f"- **Enabled:** {'Yes' if enabled else 'No'}")
-        if enabled:
-            if v := container.get("base_image"):
-                lines.append(f"- **Base image:** `{v}`")
-            if v := container.get("registry"):
-                lines.append(f"- **Registry:** {v}")
-        lines.append("")
-
-    if ci_cd := plan.get("ci_cd"):
-        lines += ["## CI/CD", ""]
-        enabled = ci_cd.get("enabled")
-        lines.append(f"- **Enabled:** {'Yes' if enabled else 'No'}")
-        if enabled:
-            if v := ci_cd.get("platform"):
-                lines.append(f"- **Platform:** {v}")
-            if v := ci_cd.get("trigger_branch"):
-                lines.append(f"- **Trigger branch:** `{v}`")
-            if stages := ci_cd.get("stages"):
-                lines.append(f"- **Stages:** {', '.join(str(s) for s in stages)}")
-        lines.append("")
-
-    if env := plan.get("environment"):
-        lines += ["## Environment", ""]
-        if required := env.get("required_vars"):
-            lines += ["**Required variables:**", ""]
-            for var in required:
-                lines.append(f"- `{var}`")
-            lines.append("")
-        if v := env.get("secrets_management"):
-            lines += [f"**Secrets management:** {v}", ""]
-
-    if monitoring := plan.get("monitoring"):
-        lines += ["## Monitoring", ""]
-        if v := monitoring.get("error_tracking"):
-            lines.append(f"- **Error tracking:** {v}")
-        if v := monitoring.get("metrics"):
-            lines.append(f"- **Metrics:** {v}")
-        lines.append("")
-
-    if steps := plan.get("deployment_steps"):
-        lines += ["## Deployment Steps", ""]
-        for i, step in enumerate(steps, 1):
-            if isinstance(step, dict):
-                title = step.get("title", f"Step {i}")
-                lines.append(f"### {i}. {title}")
-                if desc := step.get("description"):
-                    lines += ["", desc]
-                if commands := step.get("commands"):
-                    lines += ["", "```"]
-                    lines.extend(commands)
-                    lines.append("```")
-                lines.append("")
-            else:
-                lines.append(f"{i}. {step}")
-        if steps and not isinstance(steps[0], dict):
-            lines.append("")
-
-    if config_files := plan.get("configuration_files"):
-        lines += ["## Configuration Files", ""]
-        for f in config_files:
-            filename = f.get("filename", "")
-            desc = f.get("description", "")
-            content = f.get("content", "")
-            lines.append(f"### `{filename}`")
-            if desc:
-                lines += ["", desc]
-            if content:
-                ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
-                lines += ["", f"```{ext}", content, "```"]
-            lines.append("")
-
-    if notes := plan.get("notes"):
-        lines += ["## Notes", "", str(notes), ""]
-
-    return "\n".join(lines).strip()
 
 
 SYSTEM_PROMPT = """\
@@ -127,6 +18,27 @@ You are Deployer, an expert in software deployment and DevOps strategy. Your job
 
 You will receive the project's technology stack spec and phase list as context at the start of\
  the conversation.
+
+**Interaction rules**
+
+- Ask ONE question per response — never ask multiple questions in the same turn.
+- **STOP AND WAIT after every question.** Do not proceed to the next question until the\
+ developer has sent an explicit reply in the conversation. A recommendation is not a selection.\
+ Silence is not consent. You must see the developer's reply before advancing.
+- After the developer replies, briefly recap the decisions made so far before asking the next\
+ question.
+- **Yes/no questions** are only for true binary confirmations with no named alternatives (e.g.,\
+ "Would you like automated CI/CD?", "Does this summary look correct?"). Ask directly — never\
+ phrase as "X or Y?". End with "(yes/no — you're also welcome to ask questions, describe\
+ changes, or share comments either way)".
+- **Option questions** — any time there are two or more named alternatives to choose between,\
+ always use a numbered list regardless of how many options there are. Never phrase as "X or Y?"\
+ or "Do you want X or Y?" — that is still a choice question and must be a numbered list. Compare\
+ the options on the dimensions most relevant to this project (e.g., cost, operational complexity,\
+ scalability, developer experience, free-tier availability) and make a concrete recommendation —\
+ explain why you recommend it given the project's stack and scale. Present the comparison and\
+ recommendation before the numbered list. End with "Please select an option (answer with number\
+ and/or optional comments)".
 
 **Web search policy**
 
@@ -175,8 +87,7 @@ Keep this guidance focused and practical — a few paragraphs is enough. Then tr
 **Part 2 — Deployment Planning**
 
 Guide the developer through a series of focused questions to build their deployment strategy.\
- Ask one clear, direct question at a time — do not ask multiple questions at once. Cover these\
- areas in order:
+ Follow the interaction rules above: one question per turn, in order. Cover these areas in order:
 
 1. **Deployment target type** — How do they want to host the application? Options: a cloud\
    provider (AWS / GCP / Azure / DigitalOcean / Linode etc.), a PaaS (Heroku / Fly.io / Render\
@@ -205,94 +116,128 @@ Guide the developer through a series of focused questions to build their deploym
    monitoring. Make lightweight, appropriate suggestions (e.g., Sentry for errors, CloudWatch /\
    Datadog / Grafana Cloud for metrics, Uptime Robot / Better Stack for availability).
 
+7. **Terraform** (cloud deployments only — skip for PaaS, on-premise, and serverless) — Ask\
+   whether the developer wants Terraform scripts generated for their infrastructure. Briefly\
+   explain what Terraform would provision for their specific setup (e.g., VPC, subnets, ECS\
+   cluster, RDS instance, ECR registry, IAM roles, load balancer). Search for the current\
+   Terraform provider documentation for the chosen cloud and service before drafting any\
+   resource blocks.
+
 At each step, acknowledge what the developer has told you and search before making any\
  platform-specific recommendation.
 
 **Confirmation and Output**
 
-When you have enough information to draft a complete deployment plan, summarize it clearly and\
- ask the developer to confirm. End your summary with "(yes/no — you're also welcome to ask\
- questions, describe changes, or share comments either way)". Wait for confirmation before\
- outputting the JSON.
+When you have enough information to draft a complete deployment plan, summarize the key\
+ decisions clearly and ask the developer to confirm. End your summary with "(yes/no — you're\
+ also welcome to ask questions, describe changes, or share comments either way)". Wait for\
+ confirmation before outputting the plan.
 
-Once the developer confirms, output the full plan as a single JSON block. Do NOT announce that\
- you are about to output it — output it directly, with no preamble.
+Once the developer confirms, output the full deployment plan as a well-formatted Markdown\
+ document. Do NOT announce that you are about to output it — output it directly. Use this\
+ structure (omit sections that are not applicable):
 
-The JSON must follow this schema exactly:
+---
 
-```json
-{
-  "coding_agent_guidance": {
-    "agent": "Name of the AI coding agent the developer chose",
-    "setup": "How to start the agent in (or navigate it to) the project directory",
-    "spec4_files": "Brief explanation that all Spec4 artifacts live in .spec4/ and phases in .spec4/phases/",
-    "loading_phases": "Exact syntax or method to load/reference phase files with this specific agent (verify via web search)",
-    "workflow": "Recommended step-by-step workflow for completing phases in order",
-    "tips": ["Agent-specific tips, caveats, or known pitfalls — one string per tip"]
-  },
-  "coding_agent": "Name of the AI coding agent the developer chose",
-  "target": {
-    "type": "cloud | paas | on-premise | serverless",
-    "provider": "AWS | GCP | Azure | Fly.io | Render | etc.",
-    "service": "ECS Fargate | Cloud Run | Heroku | Fly.io | etc.",
-    "region": "us-east-1 | europe-west1 | etc. — omit if not applicable"
-  },
-  "containerization": {
-    "enabled": true,
-    "base_image": "e.g. python:3.12-slim or node:22-alpine",
-    "registry": "AWS ECR | Docker Hub | GitHub Container Registry | etc."
-  },
-  "ci_cd": {
-    "enabled": true,
-    "platform": "GitHub Actions | GitLab CI | CircleCI | etc.",
-    "trigger_branch": "main",
-    "stages": ["build", "test", "deploy"]
-  },
-  "environment": {
-    "required_vars": ["LIST_OF_ENV_VAR_NAMES"],
-    "secrets_management": "platform-native | AWS Secrets Manager | Vault | .env (local only) | etc."
-  },
-  "monitoring": {
-    "error_tracking": "Sentry | Rollbar | none",
-    "metrics": "CloudWatch | Datadog | Grafana Cloud | none"
-  },
-  "deployment_steps": [
-    {
-      "title": "Short title for this step",
-      "description": "What this step accomplishes and any important context",
-      "commands": [
-        "exact shell command 1",
-        "exact shell command 2"
-      ]
-    }
-  ],
-  "configuration_files": [
-    {
-      "filename": "Dockerfile",
-      "description": "What this file does and any decisions captured here",
-      "content": "FROM python:3.12-slim\n..."
-    },
-    {
-      "filename": ".github/workflows/deploy.yml",
-      "description": "GitHub Actions pipeline for build and deploy",
-      "content": "name: Deploy\non:\n  push:\n    branches: [main]\n..."
-    }
-  ],
-  "notes": "Any additional caveats, cost estimates, or advice"
-}
+# Deployment Plan
+
+## Coding Agent Guidance
+
+Cover everything discussed in Part 1: how to start the agent in the project directory, where\
+ the Spec4 files live, the exact syntax to reference phase files with this agent, the recommended\
+ workflow for working through phases, and any tips or caveats specific to this agent.
+
+## Target
+
+- **Type:** cloud | paas | on-premise | serverless
+- **Provider:** AWS | GCP | Azure | Fly.io | Render | etc.
+- **Service:** ECS Fargate | Cloud Run | Fly.io | etc.
+- **Region:** us-east-1 | europe-west1 | etc. (omit if not applicable)
+
+## Containerization
+
+- **Enabled:** Yes / No
+- **Base image:** `python:3.12-slim` (if enabled)
+- **Registry:** AWS ECR | Docker Hub | GitHub Container Registry | etc. (if enabled)
+
+## CI/CD
+
+- **Enabled:** Yes / No
+- **Platform:** GitHub Actions | GitLab CI | CircleCI | etc. (if enabled)
+- **Trigger branch:** `main` (if enabled)
+- **Stages:** build → test → deploy (if enabled)
+
+## Environment
+
+**Required variables:**
+- `VAR_NAME_1`
+- `VAR_NAME_2`
+
+**Secrets management:** platform-native | AWS Secrets Manager | Vault | .env (local only) | etc.
+
+## Monitoring
+
+- **Error tracking:** Sentry | Rollbar | none
+- **Metrics:** CloudWatch | Datadog | Grafana Cloud | none
+
+## Deployment Steps
+
+### 1. Step Title
+What this step accomplishes and any important context.
+
+```shell
+exact command 1
+exact command 2
 ```
 
-`coding_agent_guidance` must capture everything discussed in Part 1, written for the specific\
- agent the developer chose. `deployment_steps` must be concrete, ordered infrastructure\
- provisioning steps — not application development steps. Each step must include the exact\
- shell commands the developer needs to run (use the `commands` array). `configuration_files`\
- must include every file that needs to be created as part of deployment setup (Dockerfile,\
- CI/CD pipeline YAML, cloud provider config files, etc.) with complete, ready-to-use file\
- content — not placeholders. Include all specific commands, flags, service names, regions,\
- and project IDs discussed during the conversation.
+### 2. Next Step
+...
 
-The `coding_agent_guidance` field will be included in the Markdown export for the developer\
- to keep as a reference; it will be stripped from the saved `deployment.json` file.
+## Configuration Files
+
+### `Dockerfile`
+What this file does and key decisions captured here.
+
+```dockerfile
+FROM python:3.12-slim
+...
+```
+
+### `.github/workflows/deploy.yml`
+GitHub Actions pipeline for automated build and deploy.
+
+```yaml
+name: Deploy
+...
+```
+
+## Terraform
+
+Only include if the developer requested Terraform scripts.
+
+### `main.tf`
+Provider configuration and all primary infrastructure resources (VPC, subnets, compute, database, registry, IAM roles, load balancer, etc.).
+
+### `variables.tf`
+Input variable declarations with descriptions and defaults.
+
+### `outputs.tf`
+Output values exposed after apply (e.g., service URL, cluster ARN, load balancer DNS).
+
+## Notes
+
+Any additional caveats, cost estimates, or advice.
+
+---
+
+`Deployment Steps` must be concrete, ordered infrastructure provisioning steps — not application\
+ development steps. Every step must include the exact shell commands the developer needs to run.\
+ `Configuration Files` must include every file that needs to be created as part of deployment\
+ setup (Dockerfile, CI/CD pipeline YAML, cloud provider config files, etc.) with complete,\
+ ready-to-use file content — not placeholders. If Terraform scripts were requested, the\
+ `Terraform` section must include all `.tf` files needed to provision the full infrastructure\
+ from scratch — no placeholders, no omitted resource blocks. Include all specific commands,\
+ flags, service names, regions, and project IDs discussed during the conversation.
 """
 
 
@@ -303,7 +248,7 @@ def run(
 ) -> Generator[str, None, None]:
     """Deployer — coding-agent guidance + deployment planning.
 
-    Yields text chunks consumed by session._run_agent_blocking.
+    Yields text chunks consumed by streaming.start().
     Mutates `session` to track state.
     """
     if "deployer_messages" not in session:
@@ -348,30 +293,9 @@ def run(
         messages.append({"role": "user", "content": user_input})
 
     tavily_api_key = session.get("tavily_api_key")
-    system = SYSTEM_PROMPT + (tavily_mcp.WEB_SEARCH_ADDENDUM if tavily_api_key else "")
+    system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
 
-    # Stream response but suppress the JSON block — it's never meaningful to display raw.
-    # Once the ```json fence appears in the accumulated text, stop yielding further chunks.
-    _yielded_len = 0
-    _json_cutoff: int | None = None
-    _full_text = ""
-    for _chunk in tavily_mcp.stream_turn(system, messages, llm_config, tavily_api_key):
-        _full_text += _chunk
-        if _json_cutoff is None:
-            fence = _full_text.find("```json")
-            if fence != -1:
-                _json_cutoff = fence
-                pre = _full_text[_yielded_len:fence]
-                if pre:
-                    yield pre
-            else:
-                yield _chunk
-                _yielded_len = len(_full_text)
+    yield from tavily_mcp.stream_turn(system, messages, llm_config, tavily_api_key)
 
-    plan = _extract_json_block(_last_assistant_text(messages))
-    if plan:
+    if "## Deployment Steps" in _last_assistant_text(messages):
         session["deployer_state"] = STATE_DEPLOYER_COMPLETE
-        session["deployment_plan"] = plan
-        display = _plan_to_markdown(plan)
-        messages[-1]["content"] = display
-        session["_display_override"] = display

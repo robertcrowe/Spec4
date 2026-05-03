@@ -275,7 +275,7 @@ def run(
 ) -> Generator[str, None, None]:
     """CodeScanner — analyzes the project directory and creates a structured code review.
 
-    Yields text chunks consumed by session._run_agent_blocking.
+    Yields text chunks consumed by streaming.start().
     Mutates `session` to track conversation state and review output.
     """
     if "code_scanner_messages" not in session:
@@ -314,7 +314,7 @@ def run(
         msgs.append({"role": "user", "content": user_input})
 
     tavily_api_key = session.get("tavily_api_key")
-    system = SYSTEM_PROMPT + (tavily_mcp.WEB_SEARCH_ADDENDUM if tavily_api_key else "")
+    system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
 
     yield from tavily_mcp.stream_turn(system, msgs, llm_config, tavily_api_key)
 

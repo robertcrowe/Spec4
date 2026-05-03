@@ -39,6 +39,11 @@ WEB_SEARCH_ADDENDUM = (
 )
 
 
+def build_system_prompt(base: str, tavily_api_key: str | None) -> str:
+    """Append the web-search addendum to base when a Tavily key is present."""
+    return base + (WEB_SEARCH_ADDENDUM if tavily_api_key else "")
+
+
 def _url(api_key: str) -> str:
     return f"https://mcp.tavily.com/mcp/?tavilyApiKey={api_key}"
 
@@ -108,7 +113,7 @@ def stream_turn(
 ) -> Generator[str, None, None]:
     """Stream one LLM conversation turn, handling tool calls transparently.
 
-    Yields text chunks consumed by session._run_agent_blocking.
+    Yields text chunks consumed by streaming.start() via the agent run() generators.
     Mutates `messages` to record the full turn (assistant reply + tool calls/results).
     Loops internally until the LLM produces a final text response.
     """

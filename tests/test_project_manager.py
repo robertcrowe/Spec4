@@ -27,7 +27,6 @@ class TestLoadArtifacts:
             "stack": None,
             "code_review": None,
             "phases": [],
-            "deployment": None,
         }
 
     def test_loads_vision(self, tmp_path: Path) -> None:

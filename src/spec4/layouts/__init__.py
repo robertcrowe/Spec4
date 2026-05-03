@@ -261,7 +261,7 @@ def _working_dir_layout(session: dict[str, Any]) -> html.Div:
             dmc.Text(
                 "Where do you want to work? Spec4 needs a project directory. "
                 "If you're starting a new project, the project directory will probably start out empty. "  # noqa: E501
-                "If you're working on an existing project, Spec4 will review your current code using the Reviewer.",  # noqa: E501
+                "If you're working on an existing project, Spec4 will review your current code using CodeScanner.",  # noqa: E501
                 c="dimmed",
                 mb="lg",
             ),

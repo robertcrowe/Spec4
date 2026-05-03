@@ -188,7 +188,7 @@ def run(
 ) -> Generator[str, None, None]:
     """Brainstormer — collaborates with the user to develop a software project vision.
 
-    Yields text chunks consumed by session._run_agent_blocking.
+    Yields text chunks consumed by streaming.start().
     Mutates `session` to track conversation state and vision output.
     """
     if "brainstormer_messages" not in session:
@@ -283,9 +283,8 @@ def run(
     else:
         msgs.append({"role": "user", "content": user_input})
 
-    # Build system prompt, adding web search note when Tavily is configured.
     tavily_api_key = session.get("tavily_api_key")
-    system = SYSTEM_PROMPT + (tavily_mcp.WEB_SEARCH_ADDENDUM if tavily_api_key else "")
+    system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
 
     yield from tavily_mcp.stream_turn(system, msgs, llm_config, tavily_api_key)
 

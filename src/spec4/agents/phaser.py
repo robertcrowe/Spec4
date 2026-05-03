@@ -261,7 +261,7 @@ def run(
 ) -> Generator[str, None, None]:
     """Phaser — decomposes vision + stack into executable coding phases.
 
-    Yields text chunks consumed by session._run_agent_blocking.
+    Yields text chunks consumed by streaming.start().
     Mutates `session` to track state.
     """
     if "phaser_messages" not in session:
@@ -335,7 +335,7 @@ def run(
         messages.append({"role": "user", "content": user_input})
 
     tavily_api_key = session.get("tavily_api_key")
-    system = SYSTEM_PROMPT + (tavily_mcp.WEB_SEARCH_ADDENDUM if tavily_api_key else "")
+    system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
 
     yield from tavily_mcp.stream_turn(system, messages, llm_config, tavily_api_key)
 

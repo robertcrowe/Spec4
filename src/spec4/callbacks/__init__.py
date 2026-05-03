@@ -504,7 +504,6 @@ def on_stream_poll(n: Any, session: Any) -> Any:
         return {**session, "_stream_id": None}, 0
     agent_session = final["session"]
     _persist_artifacts(agent_session)
-    # Allow an agent to replace the last displayed message (e.g. Deployer strips its JSON block)
     if agent_session.get("_display_override") is not None and messages:
         messages[-1] = {"role": "assistant", "content": agent_session["_display_override"]}
     return (
@@ -698,7 +697,12 @@ def on_phaser_to_deployer(n: Any, session: Any) -> Any:
 def on_deployer_to_phaser(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return _switch_agent(session, "phaser")
+    return {
+        **session,
+        "active_agent": "phaser",
+        "messages": [],
+        "_initial_turn_done": False,
+    }
 
 
 @callback(
@@ -714,92 +718,6 @@ def on_deployer_new_project(n: Any, session: Any) -> Any:
     return {**session, "phase": "landing"}, "/"
 
 
-def _deployment_plan_to_markdown(plan: dict[str, Any]) -> str:
-    lines: list[str] = ["# Deployment Plan", ""]
-
-    if guidance := plan.get("coding_agent_guidance"):
-        lines += ["## Coding Agent Guidance", ""]
-        if v := guidance.get("agent"):
-            lines += [f"**Agent:** {v}", ""]
-        if v := guidance.get("setup"):
-            lines += ["**Setup:**", "", v, ""]
-        if v := guidance.get("spec4_files"):
-            lines += ["**Spec4 files:**", "", v, ""]
-        if v := guidance.get("loading_phases"):
-            lines += ["**Loading phases:**", "", v, ""]
-        if v := guidance.get("workflow"):
-            lines += ["**Workflow:**", "", v, ""]
-        if tips := guidance.get("tips"):
-            lines += ["**Tips:**", ""]
-            for tip in tips:
-                lines.append(f"- {tip}")
-            lines.append("")
-
-    if agent := plan.get("coding_agent"):
-        lines += [f"**Coding agent:** {agent}", ""]
-
-    if target := plan.get("target"):
-        lines += ["## Target", ""]
-        _target_fields = [("type", "Type"), ("provider", "Provider"), ("service", "Service"), ("region", "Region")]  # noqa: E501
-        for key, label in _target_fields:
-            if v := target.get(key):
-                lines.append(f"- **{label}:** {v}")
-        lines.append("")
-
-    if container := plan.get("containerization"):
-        lines += ["## Containerization", ""]
-        enabled = container.get("enabled")
-        lines.append(f"- **Enabled:** {'Yes' if enabled else 'No'}")
-        if enabled:
-            if v := container.get("base_image"):
-                lines.append(f"- **Base image:** `{v}`")
-            if v := container.get("registry"):
-                lines.append(f"- **Registry:** {v}")
-        lines.append("")
-
-    if ci_cd := plan.get("ci_cd"):
-        lines += ["## CI/CD", ""]
-        enabled = ci_cd.get("enabled")
-        lines.append(f"- **Enabled:** {'Yes' if enabled else 'No'}")
-        if enabled:
-            if v := ci_cd.get("platform"):
-                lines.append(f"- **Platform:** {v}")
-            if v := ci_cd.get("trigger_branch"):
-                lines.append(f"- **Trigger branch:** `{v}`")
-            if stages := ci_cd.get("stages"):
-                lines.append(f"- **Stages:** {', '.join(str(s) for s in stages)}")
-        lines.append("")
-
-    if env := plan.get("environment"):
-        lines += ["## Environment", ""]
-        if required := env.get("required_vars"):
-            lines.append("**Required variables:**")
-            for var in required:
-                lines.append(f"- `{var}`")
-            lines.append("")
-        if v := env.get("secrets_management"):
-            lines += [f"**Secrets management:** {v}", ""]
-
-    if monitoring := plan.get("monitoring"):
-        lines += ["## Monitoring", ""]
-        if v := monitoring.get("error_tracking"):
-            lines.append(f"- **Error tracking:** {v}")
-        if v := monitoring.get("metrics"):
-            lines.append(f"- **Metrics:** {v}")
-        lines.append("")
-
-    if steps := plan.get("deployment_steps"):
-        lines += ["## Deployment Steps", ""]
-        for i, step in enumerate(steps, 1):
-            lines.append(f"{i}. {step}")
-        lines.append("")
-
-    if notes := plan.get("notes"):
-        lines += ["## Notes", "", str(notes), ""]
-
-    return "\n".join(lines)
-
-
 @callback(
     Output("dl-deployment", "data"),
     Input("btn-dl-deployment", "n_clicks"),
@@ -809,6 +727,9 @@ def _deployment_plan_to_markdown(plan: dict[str, Any]) -> str:
 def dl_deployment(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    plan = session.get("deployment_plan") or {}
-    md = _deployment_plan_to_markdown(plan)
+    messages = session.get("deployer_messages") or []
+    md = next(
+        (m["content"] for m in reversed(messages) if m.get("role") == "assistant"),
+        "",
+    )
     return dcc.send_string(md, "deployment-plan.md", type="text/markdown")  # type: ignore[attr-defined, no-untyped-call]
