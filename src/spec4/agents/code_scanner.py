@@ -322,3 +322,10 @@ def run(
     if review:
         session["code_scanner_state"] = STATE_REVIEW_COMPLETE
         session["code_review"] = review
+        display = (
+            "Here is the finalized code review in JSON format. "
+            "This will be used by the downstream agents to understand your current code.\n\n"
+            + _last_assistant_text(msgs)
+        )
+        msgs[-1]["content"] = display
+        session["_display_override"] = display

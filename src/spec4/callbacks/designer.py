@@ -197,7 +197,7 @@ def render_designer_step(store: Any, buffer_data: Any, image_support: Any) -> An
     elif step == 6:
         content = _step6_content(store)
     elif step == 7:
-        content = _step7_content(store)
+        content = _step7_content(store, image_support)
     else:
         content = _step2_content(bool(store.get("_has_existing_ui", True)))
     stepper_active = max(0, min(step - 1, 5))

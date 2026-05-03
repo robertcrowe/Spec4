@@ -343,3 +343,12 @@ def run(
     if phases:
         session["phaser_state"] = STATE_PHASES_COMPLETE
         session["phases"] = phases
+        display = (
+            "**Your phases are ready.** Each phase is a structured prompt you will hand "
+            "to your AI coding agent — one at a time, in order. The next step, "
+            "**Deployer**, will show you exactly how to load and use these phases with "
+            "your chosen coding agent.\n\n"
+            + _last_assistant_text(messages)
+        )
+        messages[-1]["content"] = display
+        session["_display_override"] = display

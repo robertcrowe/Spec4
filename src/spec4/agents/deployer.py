@@ -83,8 +83,34 @@ def _plan_to_markdown(plan: dict[str, Any]) -> str:
     if steps := plan.get("deployment_steps"):
         lines += ["## Deployment Steps", ""]
         for i, step in enumerate(steps, 1):
-            lines.append(f"{i}. {step}")
-        lines.append("")
+            if isinstance(step, dict):
+                title = step.get("title", f"Step {i}")
+                lines.append(f"### {i}. {title}")
+                if desc := step.get("description"):
+                    lines += ["", desc]
+                if commands := step.get("commands"):
+                    lines += ["", "```"]
+                    lines.extend(commands)
+                    lines.append("```")
+                lines.append("")
+            else:
+                lines.append(f"{i}. {step}")
+        if steps and not isinstance(steps[0], dict):
+            lines.append("")
+
+    if config_files := plan.get("configuration_files"):
+        lines += ["## Configuration Files", ""]
+        for f in config_files:
+            filename = f.get("filename", "")
+            desc = f.get("description", "")
+            content = f.get("content", "")
+            lines.append(f"### `{filename}`")
+            if desc:
+                lines += ["", desc]
+            if content:
+                ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
+                lines += ["", f"```{ext}", content, "```"]
+            lines.append("")
 
     if notes := plan.get("notes"):
         lines += ["## Notes", "", str(notes), ""]
@@ -231,7 +257,26 @@ The JSON must follow this schema exactly:
     "metrics": "CloudWatch | Datadog | Grafana Cloud | none"
   },
   "deployment_steps": [
-    "Ordered, actionable steps the developer must complete to set up the deployment infrastructure"
+    {
+      "title": "Short title for this step",
+      "description": "What this step accomplishes and any important context",
+      "commands": [
+        "exact shell command 1",
+        "exact shell command 2"
+      ]
+    }
+  ],
+  "configuration_files": [
+    {
+      "filename": "Dockerfile",
+      "description": "What this file does and any decisions captured here",
+      "content": "FROM python:3.12-slim\n..."
+    },
+    {
+      "filename": ".github/workflows/deploy.yml",
+      "description": "GitHub Actions pipeline for build and deploy",
+      "content": "name: Deploy\non:\n  push:\n    branches: [main]\n..."
+    }
   ],
   "notes": "Any additional caveats, cost estimates, or advice"
 }
@@ -239,7 +284,12 @@ The JSON must follow this schema exactly:
 
 `coding_agent_guidance` must capture everything discussed in Part 1, written for the specific\
  agent the developer chose. `deployment_steps` must be concrete, ordered infrastructure\
- provisioning steps — not application development steps.
+ provisioning steps — not application development steps. Each step must include the exact\
+ shell commands the developer needs to run (use the `commands` array). `configuration_files`\
+ must include every file that needs to be created as part of deployment setup (Dockerfile,\
+ CI/CD pipeline YAML, cloud provider config files, etc.) with complete, ready-to-use file\
+ content — not placeholders. Include all specific commands, flags, service names, regions,\
+ and project IDs discussed during the conversation.
 
 The `coding_agent_guidance` field will be included in the Markdown export for the developer\
  to keep as a reference; it will be stripped from the saved `deployment.json` file.

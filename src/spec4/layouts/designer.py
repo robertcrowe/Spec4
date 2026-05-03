@@ -333,7 +333,7 @@ def _refine_image_row(idx: int, filename: str) -> Any:
     )
 
 
-def _step7_content(store: dict[str, Any]) -> Any:
+def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> Any:
     refine_images: list[dict[str, str]] = store.get("refine_images", [])
     children: list[Any] = [
         _MOCK_DISCLAIMER,
@@ -357,19 +357,26 @@ def _step7_content(store: dict[str, Any]) -> Any:
             minRows=3,
             autosize=True,
         ),
-        dcc.Upload(
-            id="designer-refine-upload",
-            accept="image/*",
-            multiple=False,
-            children=dmc.Text(
-                "Drag & drop a reference image (optional)",
-                ta="center",
-                c="dimmed",
-                py="sm",
-            ),
-            className="designer-upload-zone",
-        ),
     ]
+    if image_support is not False:
+        children.append(
+            dcc.Upload(
+                id="designer-refine-upload",
+                accept="image/*",
+                multiple=False,
+                children=dmc.Text(
+                    "Drag & drop a reference image (optional)",
+                    ta="center",
+                    c="dimmed",
+                    py="sm",
+                ),
+                className="designer-upload-zone",
+            )
+        )
+    else:
+        children.append(
+            html.Div(id="designer-refine-upload", style={"display": "none"})
+        )
     if refine_images:
         children.append(
             dmc.Stack(
