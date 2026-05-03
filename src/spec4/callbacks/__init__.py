@@ -17,6 +17,7 @@ from spec4.session import (
     _get_agent_gen,
     _load_working_dir,
     _persist_artifacts,
+    _validate_agent_preconditions,
 )
 
 _HOME = str(pathlib.Path.home())
@@ -354,20 +355,6 @@ def on_setup_tavily_skip(n: Any, session: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _validate_agent_preconditions(agent: str, session: dict[str, Any]) -> str | None:
-    """Return an error message if agent prerequisites are missing, else None."""
-    has_vision = session.get("vision_statement") is not None
-    has_stack = session.get("stack_statement") is not None
-    has_phases = bool(session.get("phases"))
-    if agent in ("stack_advisor", "phaser") and not has_vision:
-        return "Requires a vision statement. Load or generate a vision.json first."
-    if agent == "phaser" and not has_stack:
-        return "Requires a stack spec. Load or generate a stack.json first."
-    if agent == "deployer" and not has_phases:
-        return "Requires phases. Run Phaser first to generate the development phases."
-    return None
-
-
 @callback(
     Output("session", "data", allow_duplicate=True),
     Output("url", "pathname", allow_duplicate=True),
@@ -496,6 +483,9 @@ def on_stream_poll(n: Any, session: Any) -> Any:
         messages[-1] = {"role": "assistant", "content": text}
 
     if not stream["done"]:
+        prev = (session.get("messages") or [{}])[-1].get("content", "")
+        if text == prev:
+            return no_update, no_update
         return {**session, "messages": messages}, no_update
 
     # Stream complete — merge agent-mutated session and finalise
@@ -697,12 +687,7 @@ def on_phaser_to_deployer(n: Any, session: Any) -> Any:
 def on_deployer_to_phaser(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return {
-        **session,
-        "active_agent": "phaser",
-        "messages": [],
-        "_initial_turn_done": False,
-    }
+    return _switch_agent(session, "phaser", {"phaser_state": None, "phases": []})
 
 
 @callback(

@@ -162,7 +162,6 @@ def stream_turn(
                             tool_call_acc[i]["arguments"] += tc.function.arguments
 
         if tool_call_acc:
-            # Record assistant's tool-call request.
             messages.append(
                 {
                     "role": "assistant",
@@ -180,7 +179,6 @@ def stream_turn(
                     ],
                 }
             )
-            # Execute each tool call and add results.
             for tc in tool_call_acc.values():
                 if tc["name"] == "web_search":
                     try:
@@ -204,7 +202,6 @@ def stream_turn(
                             "content": result,
                         }
                     )
-            # Loop to get LLM's response to the tool results.
             continue
 
         else:

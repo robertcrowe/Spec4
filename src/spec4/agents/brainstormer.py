@@ -8,7 +8,9 @@ from spec4 import tavily_mcp
 from spec4.agents._utils import (
     _extract_json_block,
     _last_assistant_text,
+    _render_references,
     _replay_last_assistant,
+    _stream_suppressing_json,
 )
 from spec4.app_constants import STATE_VISION_COMPLETE
 
@@ -181,6 +183,79 @@ def _extract_vision_json(text: str) -> dict[str, Any] | None:
     return data if data is not None and "vision_statement" in data else None
 
 
+def _format_vision_as_text(vision: dict[str, Any]) -> str:
+    vs = vision.get("vision_statement", {})
+    raw_v = vs.get("vision", {})
+    # vision may be a plain string in minimal/test JSON
+    v: dict[str, Any] = raw_v if isinstance(raw_v, dict) else {}
+    lines: list[str] = []
+
+    name = vs.get("name", "")
+    lines.append(f"**Vision Statement: {name}**\n" if name else "**Vision Statement**\n")
+
+    if isinstance(raw_v, str):
+        lines.append(f"**Vision:** {raw_v}\n")
+    elif "purpose" in v:
+        lines.append(f"**Purpose:** {v['purpose']}\n")
+
+    if "ui_surface" in v:
+        lines.append(f"**UI Surface:** {v['ui_surface']}\n")
+
+    audience: list[str] = v.get("target_audience", [])
+    if audience:
+        lines.append("**Target Audience:**")
+        for item in audience:
+            lines.append(f"- {item}")
+        lines.append("")
+
+    features: list[dict[str, Any]] = v.get("key_features_mvp", [])
+    if features:
+        lines.append("**Core Features (MVP):**")
+        for feat in features:
+            for feat_name, feat_val in feat.items():
+                label = feat_name.replace("_", " ")
+                desc = feat_val.get("description", "") if isinstance(feat_val, dict) else str(feat_val)
+                lines.append(f"- **{label}** — {desc}")
+        lines.append("")
+
+    differentiators: list[str] = v.get("differentiators", [])
+    if differentiators:
+        lines.append("**Differentiators:**")
+        for item in differentiators:
+            lines.append(f"- {item}")
+        lines.append("")
+
+    future: list[dict[str, Any]] = v.get("future_enhancements", [])
+    if future:
+        lines.append("**Future Enhancements:**")
+        for feat in future:
+            for feat_name, feat_val in feat.items():
+                label = feat_name.replace("_", " ")
+                desc = feat_val.get("description", "") if isinstance(feat_val, dict) else str(feat_val)
+                lines.append(f"- **{label}** — {desc}")
+        lines.append("")
+
+    monetization: dict[str, Any] = v.get("monetization", {})
+    if monetization:
+        lines.append("**Monetization:**")
+        if "current" in monetization:
+            lines.append(f"- Current: {monetization['current']}")
+        future_opts: list[str] = monetization.get("future_options", [])
+        for opt in future_opts:
+            lines.append(f"- Future: {opt}")
+        lines.append("")
+
+    _render_references(v.get("references", []), lines)
+
+    lines.append(
+        "---\n\n"
+        "We've finished brainstorming the vision, so now you're ready to move on to "
+        "creating a look and feel or defining your tech stack. Please click on the "
+        "**Continue to Designer** button below."
+    )
+    return "\n".join(lines)
+
+
 def run(
     user_input: str | None,
     session: dict[str, Any],
@@ -198,7 +273,6 @@ def run(
 
     if user_input is None:
         if msgs:
-            # Re-entry: replay last assistant response without calling LLM
             yield from _replay_last_assistant(msgs)
             return
 
@@ -286,10 +360,14 @@ def run(
     tavily_api_key = session.get("tavily_api_key")
     system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
 
-    yield from tavily_mcp.stream_turn(system, msgs, llm_config, tavily_api_key)
+    yield from _stream_suppressing_json(
+        tavily_mcp.stream_turn(system, msgs, llm_config, tavily_api_key)
+    )
 
-    # Detect if the LLM generated a final vision JSON (last assistant message).
     vision = _extract_vision_json(_last_assistant_text(msgs))
     if vision:
         session["brainstormer_state"] = STATE_VISION_COMPLETE
         session["vision_statement"] = vision
+        display = _format_vision_as_text(vision)
+        msgs[-1]["content"] = display
+        session["_display_override"] = display

@@ -47,20 +47,17 @@ def load_spec4_artifacts(working_dir: str | Path) -> dict[str, Any]:
         ("stack", "stack.json"),
         ("code_review", "code_review.json"),
     ):
-        path = spec4_dir / filename
-        if path.exists():
-            try:
-                result[key] = json.loads(path.read_text())
-            except Exception:
-                pass
+        try:
+            result[key] = json.loads((spec4_dir / filename).read_text())
+        except (OSError, json.JSONDecodeError):
+            pass
 
     phases_dir = spec4_dir / "phases"
-    if phases_dir.exists():
-        for pf in sorted(phases_dir.glob("phase*.json")):
-            try:
-                result["phases"].append(json.loads(pf.read_text()))
-            except Exception:
-                pass
+    for pf in sorted(phases_dir.glob("phase*.json")):
+        try:
+            result["phases"].append(json.loads(pf.read_text()))
+        except (OSError, json.JSONDecodeError):
+            pass
 
     return result
 

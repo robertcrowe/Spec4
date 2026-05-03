@@ -9,7 +9,10 @@ from spec4 import tavily_mcp
 from spec4.agents._utils import (
     _extract_json_block,
     _last_assistant_text,
+    _render_coding_style,
+    _render_references,
     _replay_last_assistant,
+    _stream_suppressing_json,
 )
 from spec4.app_constants import STATE_STACK_COMPLETE
 
@@ -210,11 +213,57 @@ def _extract_stack_json(text: str) -> dict[str, Any] | None:
     data = _extract_json_block(text)
     if data is None:
         return None
-    return (
-        data
-        if data.get("title") == "stack" or "stack" in data or "stack_spec" in data
-        else None
+    return data if "stack" in data or "stack_spec" in data else None
+
+
+def _format_stack_as_text(stack: dict[str, Any]) -> str:
+    ss: dict[str, Any] = stack.get("stack_spec") or stack.get("stack") or stack
+    lines: list[str] = []
+
+    name = ss.get("name", "")
+    lines.append(f"**Tech Stack: {name}**\n" if name else "**Tech Stack**\n")
+
+    langs: list[str] = ss.get("languages", [])
+    if langs:
+        lines.append(f"**Languages:** {', '.join(langs)}\n")
+
+    deployment: dict[str, Any] = ss.get("deployment", {})
+    if deployment:
+        lines.append("**Deployment:**")
+        platforms: list[str] = deployment.get("platforms", [])
+        if platforms:
+            lines.append(f"- Platforms: {', '.join(platforms)}")
+        for key in ("hosting", "distribution", "build"):
+            if key in deployment:
+                lines.append(f"- {key.title()}: {deployment[key]}")
+        lines.append("")
+
+    libraries: dict[str, Any] = ss.get("libraries", {})
+    if libraries:
+        lines.append("**Libraries:**")
+        for category, libs in libraries.items():
+            category_label = category.replace("_", " ").title()
+            lines.append(f"\n*{category_label}:*")
+            if isinstance(libs, list):
+                for lib in libs:
+                    if isinstance(lib, dict):
+                        lib_name = lib.get("name", "")
+                        purpose = lib.get("purpose", "")
+                        lines.append(f"- {lib_name} — {purpose}" if purpose else f"- {lib_name}")
+                    else:
+                        lines.append(f"- {lib}")
+        lines.append("")
+
+    _render_coding_style(ss.get("coding_style", {}), lines)
+    _render_references(ss.get("references", []), lines)
+
+    lines.append(
+        "---\n\n"
+        "We've finished defining the tech stack, so now you're ready to move on to "
+        "creating implementation phases for your coding agent. Please click on the "
+        "**Continue to Phaser** button below."
     )
+    return "\n".join(lines)
 
 
 def run(
@@ -234,11 +283,10 @@ def run(
 
     if user_input is None:
         if messages:
-            # Re-entry: replay last assistant response without calling LLM
             yield from _replay_last_assistant(messages)
             return
 
-        # Opening turn: seed with vision and/or existing stack, then call LLM
+        # Seed with available context, then call LLM
         vision = session.get("vision_statement")
         stack = session.get("stack_statement")
         specmem = session.get("specmem")
@@ -316,9 +364,14 @@ def run(
     tavily_api_key = session.get("tavily_api_key")
     system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
 
-    yield from tavily_mcp.stream_turn(system, messages, llm_config, tavily_api_key)
+    yield from _stream_suppressing_json(
+        tavily_mcp.stream_turn(system, messages, llm_config, tavily_api_key)
+    )
 
     stack_spec = _extract_stack_json(_last_assistant_text(messages))
     if stack_spec:
         session["stack_advisor_state"] = STATE_STACK_COMPLETE
         session["stack_statement"] = stack_spec
+        display = _format_stack_as_text(stack_spec)
+        messages[-1]["content"] = display
+        session["_display_override"] = display

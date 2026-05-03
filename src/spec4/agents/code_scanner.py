@@ -8,7 +8,9 @@ from spec4 import tavily_mcp
 from spec4.agents._utils import (
     _extract_json_block,
     _last_assistant_text,
+    _render_coding_style,
     _replay_last_assistant,
+    _stream_suppressing_json,
 )
 from spec4.app_constants import STATE_REVIEW_COMPLETE
 
@@ -268,6 +270,51 @@ def _extract_review_json(text: str) -> dict[str, Any] | None:
     return data if data is not None and "code_review" in data else None
 
 
+def _format_review_as_text(review: dict[str, Any]) -> str:
+    cr = review.get("code_review", {})
+    lines: list[str] = ["**Code Review Complete**\n"]
+
+    if "project_type" in cr:
+        lines.append(f"**Project Type:** {cr['project_type']}\n")
+
+    if "architecture" in cr:
+        lines.append(f"**Architecture:** {cr['architecture']}\n")
+
+    langs: list[str] = cr.get("languages", [])
+    frameworks: list[str] = cr.get("frameworks", [])
+    if langs or frameworks:
+        combined = ", ".join(langs + frameworks)
+        lines.append(f"**Languages & Frameworks:** {combined}\n")
+
+    if "build_system" in cr:
+        lines.append(f"**Build System:** {cr['build_system']}\n")
+
+    deps: list[dict[str, str]] = cr.get("dependencies", [])
+    if deps:
+        lines.append("**Dependencies:**")
+        for d in deps:
+            name = d.get("name", "")
+            purpose = d.get("purpose", "")
+            lines.append(f"- {name} — {purpose}" if purpose else f"- {name}")
+        lines.append("")
+
+    _render_coding_style(cr.get("coding_style", {}), lines)
+
+    notes: list[str] = cr.get("notes", [])
+    if notes:
+        lines.append("**Notable Observations:**")
+        for note in notes:
+            lines.append(f"- {note}")
+        lines.append("")
+
+    lines.append(
+        "---\n\n"
+        "We've finished the code review, so now you're ready to move on to creating a vision. "
+        "Please click on the **Continue to Brainstormer** button below."
+    )
+    return "\n".join(lines)
+
+
 def run(
     user_input: str | None,
     session: dict[str, Any],
@@ -285,7 +332,6 @@ def run(
 
     if user_input is None:
         if msgs:
-            # Re-entry: replay last assistant response without calling LLM
             yield from _replay_last_assistant(msgs)
             return
 
@@ -316,16 +362,14 @@ def run(
     tavily_api_key = session.get("tavily_api_key")
     system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
 
-    yield from tavily_mcp.stream_turn(system, msgs, llm_config, tavily_api_key)
+    yield from _stream_suppressing_json(
+        tavily_mcp.stream_turn(system, msgs, llm_config, tavily_api_key)
+    )
 
     review = _extract_review_json(_last_assistant_text(msgs))
     if review:
         session["code_scanner_state"] = STATE_REVIEW_COMPLETE
         session["code_review"] = review
-        display = (
-            "Here is the finalized code review in JSON format. "
-            "This will be used by the downstream agents to understand your current code.\n\n"
-            + _last_assistant_text(msgs)
-        )
+        display = _format_review_as_text(review)
         msgs[-1]["content"] = display
         session["_display_override"] = display

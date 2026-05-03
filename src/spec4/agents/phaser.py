@@ -271,11 +271,9 @@ def run(
 
     if user_input is None:
         if messages:
-            # Re-entry: replay last assistant response without calling LLM
             yield from _replay_last_assistant(messages)
             return
 
-        # Opening turn: seed with vision + stack, plus context for brownfield scenarios
         vision = session.get("vision_statement")
         stack = session.get("stack_statement")
         existing_phases = session.get("phases") or []

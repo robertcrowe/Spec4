@@ -250,8 +250,7 @@ class TestStackAdvisor:
         )
         stack_response = (
             "Here is your stack spec!\n\n```json\n"
-            '{"type": "object", "title": "stack", "required": ["stack"], '
-            '"properties": {"language": {"type": "string", "description": "Python"}}}\n'
+            '{"stack_spec": {"name": "App", "languages": ["Python"]}}\n'
             "```"
         )
         with mock_litellm_stream(stack_response):
@@ -259,7 +258,7 @@ class TestStackAdvisor:
                 stack_advisor.run("Yes, finalize it", session, session["llm_config"])
             )
         assert session["stack_advisor_state"] == STATE_STACK_COMPLETE
-        assert session["stack_statement"]["title"] == "stack"
+        assert session["stack_statement"]["stack_spec"]["name"] == "App"
 
     def test_re_entry_does_not_call_llm(self) -> None:
         session = make_session(
@@ -406,12 +405,6 @@ class TestStackAdvisorBranches:
         from spec4.agents.stack_advisor import _extract_stack_json
 
         text = '```json\n{"stack": {"languages": ["Python"]}}\n```'
-        assert _extract_stack_json(text) is not None
-
-    def test_extract_stack_json_with_title_stack(self) -> None:
-        from spec4.agents.stack_advisor import _extract_stack_json
-
-        text = '```json\n{"title": "stack", "properties": {}}\n```'
         assert _extract_stack_json(text) is not None
 
     def test_extract_stack_json_no_stack_key_returns_none(self) -> None:

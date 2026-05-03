@@ -107,7 +107,7 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
     root = pathlib.Path(path)
     try:
         has_content = any(
-            True for item in root.iterdir() if not item.name.startswith(".")
+            not item.name.startswith(".") for item in root.iterdir()
         )
     except Exception:
         has_content = False
@@ -119,6 +119,20 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Agent execution helpers
 # ---------------------------------------------------------------------------
+
+
+def _validate_agent_preconditions(agent: str, session: dict[str, Any]) -> str | None:
+    """Return an error message if agent prerequisites are missing, else None."""
+    has_vision = session.get("vision_statement") is not None
+    has_stack = session.get("stack_statement") is not None
+    has_phases = bool(session.get("phases"))
+    if agent in ("stack_advisor", "phaser") and not has_vision:
+        return "Requires a vision statement. Load or generate a vision.json first."
+    if agent == "phaser" and not has_stack:
+        return "Requires a stack spec. Load or generate a stack.json first."
+    if agent == "deployer" and not has_phases:
+        return "Requires phases. Run Phaser first to generate the development phases."
+    return None
 
 
 def _get_agent_gen(

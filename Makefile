@@ -22,7 +22,7 @@ lint:
 
 # Production: gunicorn must be installed separately (uv add gunicorn)
 serve:
-	uv run gunicorn 'spec4.app:server' --bind 0.0.0.0:8050 --workers 2 --threads 4
+	uv run gunicorn 'spec4.app:server' --bind 0.0.0.0:8050 --workers 1 --threads 4
 
 build:
 	uv build
