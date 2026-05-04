@@ -94,7 +94,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
     elif active == "stack_advisor":
         back = dmc.Button(
             "← Back to Designer",
-            id="btn-stack-to-brainstormer",
+            id="btn-stack-to-designer",
             variant="outline",
             color="gray",
         )

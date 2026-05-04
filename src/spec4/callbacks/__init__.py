@@ -556,14 +556,15 @@ def on_brainstormer_to_designer(n: Any, session: Any) -> Any:
 
 @callback(
     Output("session", "data", allow_duplicate=True),
-    Input("btn-stack-to-brainstormer", "n_clicks"),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("btn-stack-to-designer", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_stack_to_brainstormer(n: Any, session: Any) -> Any:
+def on_stack_to_designer(n: Any, session: Any) -> Any:
     if not n:
-        return no_update
-    return _switch_agent(session, "brainstormer")
+        return no_update, no_update
+    return {**session, "phase": "designer"}, "/design"
 
 
 @callback(

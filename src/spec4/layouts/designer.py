@@ -451,7 +451,7 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
             dcc.Store(
                 id="mock-stream-buffer",
                 storage_type="memory",
-                data={"text": "", "tokens": 0, "progress": 0, "error": None},
+                data={"tokens": 0, "progress": 0, "error": None},
             ),
             dcc.Store(
                 id="mock-done-store",

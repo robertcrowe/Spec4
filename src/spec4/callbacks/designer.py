@@ -39,8 +39,8 @@ _MOCK_BUFFERS: dict[str, dict[str, Any]] = {}
 
 # Final HTML keyed by gen_id.  Written by _run() before setting done=True;
 # read and popped by on_mock_done (triggered via mock-done-store signal).
-# Kept separate from _MOCK_BUFFERS so the large payload never travels through
-# the poll callback response, which would race with the next interval tick.
+# Kept separate from _MOCK_BUFFERS so the large payload travels through a
+# one-shot callback (on_mock_done), not the 250 ms poll cycle.
 _FINAL_HTML: dict[str, str] = {}
 
 _MAX_HTML_BYTES = 512_000
@@ -163,11 +163,11 @@ def _start_gen(
     threading.Thread(target=_run, daemon=True).start()
 
     updated_store = {
-        **store, "step": 5, "_gen_id": gen_id, "_existing_html": existing_html
+        **store, "step": 5, "_gen_id": gen_id,
+        "_has_existing_html": existing_html is not None,
+        "mock_html": "",
     }
-    cleared_buffer: dict[str, Any] = {
-        "text": "", "tokens": 0, "progress": 0, "error": None
-    }
+    cleared_buffer: dict[str, Any] = {"tokens": 0, "progress": 0, "error": None}
     return updated_store, cleared_buffer, False  # False = not disabled
 
 
@@ -373,70 +373,39 @@ def on_designer_generate_mock(
     Output("mock-done-store", "data", allow_duplicate=True),
     Output("mock-stream-interval", "disabled", allow_duplicate=True),
     Input("mock-stream-interval", "n_intervals"),
-    State("mock-stream-buffer", "data"),
     State("designer-session-store", "data"),
-    State("session", "data"),
     prevent_initial_call=True,
 )
-def on_mock_stream_poll(
-    n: Any,
-    current_buffer: Any,
-    store: Any,
-    session: Any,
-) -> Any:
+def on_mock_stream_poll(n: Any, store: Any) -> Any:
     gen_id: str | None = (store or {}).get("_gen_id")
     if not gen_id or gen_id not in _MOCK_BUFFERS:
-        return no_update, no_update, True  # disable interval
+        return no_update, no_update, True
 
     buf_entry = _MOCK_BUFFERS[gen_id]
     accumulated = buf_entry["text"]
 
-    cb: dict[str, Any] = current_buffer or {
-        "text": "", "tokens": 0, "progress": 0, "error": None
-    }
-
     if "__GENERATION_ERROR__:" in accumulated:
         idx = accumulated.index("__GENERATION_ERROR__:")
         error_msg = accumulated[idx + len("__GENERATION_ERROR__:"):].strip()
-        # Empty error_msg (e.g. exception with no message) must still surface as an
-        # error so the user sees the retry button instead of a frozen progress bar.
         error_msg = error_msg or "Generation failed — check the server log for details."
         _MOCK_BUFFERS.pop(gen_id, None)
-        return (
-            {**cb, "text": accumulated, "error": error_msg},
-            no_update,
-            True,
-        )
+        return {"error": error_msg}, no_update, True
 
-    # _run() pre-computes final_html (extraction + disk save) before setting done.
-    # Emit a tiny signal to mock-done-store rather than including the full HTML in
-    # this response: the poll callback fires every 250 ms, so a large response risks
-    # losing a Dash "latest-trigger-wins" race with the next interval tick.
-    # on_mock_done picks up the signal and delivers the HTML in a one-shot response.
     final_html: str | None = buf_entry.get("final_html")
     if final_html is not None:
         _MOCK_BUFFERS.pop(gen_id, None)
-        final_buf = {
-            **cb,
-            "text": "",
-            "tokens": len(final_html),
-            "progress": 100,
-            "error": None,
-        }
+        final_buf = {"tokens": len(final_html), "progress": 100, "error": None}
         return final_buf, {"gen_id": gen_id}, True
 
-    # Generator finished (done flag set) but yielded no recognised sentinel.
-    # This happens when the stop-event fires mid-stream.  Disable the interval
-    # cleanly rather than polling forever.
+    # Generator finished without a recognised sentinel — stop event fired mid-stream.
     if buf_entry.get("done"):
         _MOCK_BUFFERS.pop(gen_id, None)
         return no_update, no_update, True
 
     tokens = len(accumulated)
-    # 80k tokens × ~4 chars/token = 320k chars for a typical mock; scale to 95%.
     progress = min(95, tokens * 95 // 320_000)
     return (
-        {**cb, "text": accumulated, "tokens": tokens, "progress": progress},
+        {"tokens": tokens, "progress": progress, "error": None},
         no_update,
         no_update,
     )
@@ -451,10 +420,9 @@ def on_mock_stream_poll(
 def on_mock_done(signal: Any, store: Any) -> Any:
     """Deliver the completed mock HTML to the session store.
 
-    Triggered by the tiny completion signal emitted by on_mock_stream_poll,
-    this callback is the sole writer of step=6 + mock_html.  Because it fires
-    from a unique store-change event (not the recurring interval), it has no
-    concurrent racing sibling that could discard its response.
+    Triggered by the completion signal emitted by on_mock_stream_poll.
+    The store is lightweight during generation (mock_html cleared by
+    _start_gen), so this one-shot response is the only large payload.
     """
     if not signal or not store:
         return no_update
@@ -634,10 +602,16 @@ def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> A
         return no_update, no_update, no_update
     sess = session or {}
     model, api_key, tavily_key, wd, support = _llm_params(sess, image_support)
-    existing_html: str | None = store.get("_existing_html")
+    existing_html: str | None = None
+    if store.get("_has_existing_html") and wd:
+        mock_path = pathlib.Path(wd) / ".spec4" / "design" / "mock.html"
+        try:
+            existing_html = mock_path.read_text()
+        except (OSError, FileNotFoundError):
+            pass
     planning_ctx: dict[str, Any] | None = (
         {"vision_statement": sess.get("vision_statement")}
-        if not existing_html and sess.get("vision_statement")
+        if not store.get("_has_existing_html") and sess.get("vision_statement")
         else None
     )
     new_store, buf, disabled = _start_gen(
