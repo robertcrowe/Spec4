@@ -4,7 +4,7 @@
 
 ![PyPI version](https://img.shields.io/pypi/v/spec4)
 
-Spec4 is a Dash app (using Dash Mantine Components) that guides you through three stages of project planning using a pipeline of specialised LLM agents. Start with a rough idea and finish with a set of structured, ordered development phases ready to hand to an AI coding agent like Claude Code.
+Spec4 is a Dash app (using Dash Mantine Components) that guides you from idea to deployment using a pipeline of specialised LLM agents. Start with a rough idea and finish with a set of structured, ordered development phases — plus an optional UI mock and deployment plan — ready to hand to an AI coding agent like Claude Code.
 
 > _"You've made something really really really cool. I'm almost done with our driver app. Will be
 > field tested by Friday. I don't think I would have built what this is going to become without it."_<br />
@@ -51,12 +51,13 @@ The app will be available at [http://localhost:8050](http://localhost:8050) in b
 
 ## Features
 
-- **Four-stage planning pipeline** — CodeScanner (optional) → Brainstormer → StackAdvisor → Phaser
+- **Five-stage pipeline** — CodeScanner (optional) → Brainstormer → StackAdvisor → Phaser → Deployer
+- **Designer** — optional parallel stage that generates an HTML mock of your UI from a vision and (optionally) reference screenshots
 - **Any LLM provider** — works with OpenAI, Anthropic, Google Gemini, Cohere, and Mistral via LiteLLM
 - **Web search grounding** — all agents can search the web via Tavily to find canonical documentation
 - **Saved credentials** — optionally remember your provider, model, and API keys in the browser (localStorage via `dcc.Store` — never sent to or stored on the server)
-- **Incremental output** — each agent produces a downloadable JSON or ZIP file you can reuse in a later session
-- **Jump-in anywhere** — start at StackAdvisor or Phaser by uploading previously saved output
+- **Incremental output** — each agent produces a downloadable artifact you can reuse in a later session
+- **Jump-in anywhere** — pick up at any stage by selecting a project directory with previously saved artifacts
 - **Project persistence** — artifacts saved to a `.spec4/` folder inside your chosen project directory
 
 ---
@@ -80,7 +81,13 @@ Decomposes the vision and stack into an ordered sequence of development phases:
 - **Stack spec fidelity** — confirms before adding any dependency not in the stack spec
 - **Verification criteria** — every phase includes the exact command needed to confirm it succeeded
 
-Produces `phases.zip` with one JSON file per phase.
+Saves one JSON file per phase under `.spec4/phases/`, downloadable as `phases.zip`.
+
+### 🚀 Deployer
+Plans the path from working code to a running production deployment. Walks through coding-agent workflow, deployment target, containerization, CI/CD, environment config, and monitoring — and can optionally generate complete Terraform scripts grounded in live provider docs via web search. Produces `deployment-plan.md`.
+
+### 🎨 Designer *(optional, parallel)*
+Generates a single-file HTML mock of your UI from your vision and reference screenshots. Supports two modes — create from scratch, or modify an existing UI while preserving its look and feel — with iterative refinement. Skipped automatically for CLI/terminal projects. Produces `design/mock.html`.
 
 ---
 
@@ -93,7 +100,7 @@ Produces `phases.zip` with one JSON file per phase.
 
 ### Picking up where you left off
 
-Each session auto-saves to `.spec4/` inside your project directory. On a future visit, select the same directory and previously completed artifacts will be loaded automatically. You can also upload JSON files manually on the agent-select screen.
+Each session auto-saves to `.spec4/` inside your project directory. On a future visit, select the same directory and previously completed artifacts will be loaded automatically.
 
 ---
 
@@ -102,18 +109,21 @@ Each session auto-saves to `.spec4/` inside your project directory. On a future 
 ```
 src/spec4/
 ├── app.py                  # Dash entry point — app wiring, root layout, page render
-├── app_constants.py        # Shared constants (theme, routes, fonts)
+├── app_constants.py        # Phase names, URL→phase routing, agent state constants
 ├── session.py              # Session defaults, agent runner, artifact persistence
-├── layouts.py              # All page layout functions
-├── callbacks.py            # All Dash server-side callbacks
+├── streaming.py            # Background-thread streaming + provider error formatting
 ├── providers.py            # Provider/model registry, live model fetching
-├── tavily_mcp.py           # Tavily web search integration
+├── tavily_mcp.py           # Tavily web search integration (async bridge)
 ├── project_manager.py      # .spec4/ artifact persistence
-└── agents/
-    ├── code_scanner.py     # Code review agent
-    ├── brainstormer.py     # Vision development agent
-    ├── stack_advisor.py    # Technology stack recommendation agent
-    └── phaser.py           # Incremental phase planning agent
+├── agents/
+│   ├── code_scanner.py     # Code review agent
+│   ├── brainstormer.py     # Vision development agent
+│   ├── stack_advisor.py    # Technology stack recommendation agent
+│   ├── phaser.py           # Incremental phase planning agent
+│   ├── deployer.py         # Deployment planning agent (terminal pipeline stage)
+│   └── designer.py         # UI mock generation agent (parallel, optional)
+├── callbacks/              # Dash server-side callbacks (main pipeline + designer)
+└── layouts/                # Page layout functions (chat, setup, designer, shared)
 tests/                      # pytest test suite
 Makefile                    # Common commands
 ```
