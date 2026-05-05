@@ -486,7 +486,7 @@ def on_mock_stream_poll(n: Any, store: Any) -> Any:
         return no_update, no_update, True
 
     tokens = len(accumulated)
-    progress = min(95, tokens * 95 // 320_000)
+    progress = min(100, tokens * 100 // 50_000)
     return (
         {"tokens": tokens, "progress": progress, "error": None},
         no_update,
@@ -563,7 +563,7 @@ def on_designer_start_over(n: Any, store: Any) -> Any:
 def on_designer_refine(n: Any, store: Any) -> Any:
     if not n or not store:
         return no_update
-    return {**store, "step": 7}
+    return {**store, "step": 7, "refine_text": ""}
 
 
 @callback(
@@ -575,31 +575,37 @@ def on_designer_refine(n: Any, store: Any) -> Any:
 def on_designer_refine_cancel(n: Any, store: Any) -> Any:
     if not n or not store:
         return no_update
-    return {**store, "step": 6, "refine_images": []}
+    return {**store, "step": 6, "refine_images": [], "refine_text": ""}
 
 
 @callback(
     Output("designer-session-store", "data", allow_duplicate=True),
     Input("designer-refine-upload", "contents"),
     State("designer-refine-upload", "filename"),
+    State("designer-refine-input", "value"),
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_refine_upload(contents: Any, filename: Any, store: Any) -> Any:
+def on_designer_refine_upload(
+    contents: Any, filename: Any, refine_text: Any, store: Any
+) -> Any:
     if not contents or not store:
         return no_update
     images: list[dict[str, str]] = list(store.get("refine_images", []))
     images.append({"data": contents, "filename": filename or "image"})
-    return {**store, "refine_images": images}
+    return {**store, "refine_images": images, "refine_text": refine_text or ""}
 
 
 @callback(
     Output("designer-session-store", "data", allow_duplicate=True),
     Input({"type": "designer-refine-image-delete", "index": ALL}, "n_clicks"),
+    State("designer-refine-input", "value"),
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_refine_image_delete(n_clicks_list: Any, store: Any) -> Any:
+def on_designer_refine_image_delete(
+    n_clicks_list: Any, refine_text: Any, store: Any
+) -> Any:
     if not any(n for n in (n_clicks_list or []) if n):
         return no_update
     triggered = ctx.triggered_id
@@ -609,7 +615,7 @@ def on_designer_refine_image_delete(n_clicks_list: Any, store: Any) -> Any:
     images: list[dict[str, str]] = list((store or {}).get("refine_images", []))
     if 0 <= idx < len(images):
         images.pop(idx)
-    return {**(store or {}), "refine_images": images}
+    return {**(store or {}), "refine_images": images, "refine_text": refine_text or ""}
 
 
 @callback(

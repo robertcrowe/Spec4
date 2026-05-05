@@ -327,18 +327,12 @@ def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any)
 
 
 def main() -> None:
-    import os
     import sys
 
     if len(sys.argv) > 1 and sys.argv[1] in ("--version", "-V"):
         print(f"spec4 {__version__}")
         sys.exit(0)
     logging.getLogger("werkzeug").setLevel(logging.ERROR)
-    if os.environ.get("DASH_DEBUG", "").lower() == "true":
-        import litellm
-
-        litellm._turn_on_debug()  # type: ignore[attr-defined, no-untyped-call]
-        print("[dev] litellm verbose debug enabled (DASH_DEBUG=true)", flush=True)
     print("Starting Spec4 AI — open http://localhost:8050 in your browser")
     app.run(host="0.0.0.0", port=8050, debug=False, dev_tools_ui=False, threaded=True)
 

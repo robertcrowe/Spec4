@@ -356,6 +356,7 @@ def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> 
             ),
             minRows=3,
             autosize=True,
+            value=store.get("refine_text", ""),
         ),
     ]
     if image_support is not False:
