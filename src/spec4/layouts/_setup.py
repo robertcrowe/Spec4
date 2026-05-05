@@ -105,6 +105,16 @@ def _setup_model_layout(
             ),
             _card(
                 dmc.Alert(f"Connected to {provider_label}", color="green", mb="md"),
+                dmc.Alert(
+                    "Please be aware that the Google free tier has recently excluded the Pro models. "
+                    "Selecting a Pro model when using the free tier may throw an error (or not, if that's changed recently). "
+                    "If that happens your best bet is probably to close and restart.",
+                    color="yellow",
+                    variant="light",
+                    mb="md",
+                )
+                if session["provider"] == "gemini"
+                else html.Div(),
                 dmc.Select(
                     id="setup-model",
                     label="Model",

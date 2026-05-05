@@ -415,5 +415,10 @@ def generate_mock_streaming(
         yield "__DONE__"
 
     except Exception as exc:
-        logger.debug("Generation error: %s", exc)
-        yield f"__GENERATION_ERROR__: {exc}"
+        # Use warning + exc_info so the actual exception type and traceback
+        # land in the server log unconditionally — debug-level was hiding
+        # litellm errors behind logger config, leaving only the unhelpful
+        # "Give Feedback / Get Help" banner that litellm prints itself.
+        logger.warning("Designer generation failed", exc_info=True)
+        msg = str(exc).strip() or repr(exc)
+        yield f"__GENERATION_ERROR__: {type(exc).__name__}: {msg}"

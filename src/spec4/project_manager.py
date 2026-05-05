@@ -92,6 +92,19 @@ def save_phases(working_dir: str | Path, phases: list[dict[str, Any]]) -> None:
         )
 
 
+def save_deployment_plan(working_dir: str | Path, markdown: str) -> None:
+    spec4_dir = ensure_spec4_dir(working_dir)
+    (spec4_dir / "deployment-plan.md").write_text(markdown, encoding="utf-8")
+
+
+def load_deployment_plan(working_dir: str | Path) -> str | None:
+    path = get_spec4_dir(working_dir) / "deployment-plan.md"
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, FileNotFoundError):
+        return None
+
+
 # ---------------------------------------------------------------------------
 # SPECMEM helpers
 # ---------------------------------------------------------------------------

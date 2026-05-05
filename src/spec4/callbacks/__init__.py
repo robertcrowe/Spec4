@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import pathlib
 import zipfile
 from typing import Any
@@ -21,6 +22,7 @@ from spec4.session import (
 )
 
 _HOME = str(pathlib.Path.home())
+_DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
 
 
 def _prefs_keep_working_dir(prefs: Any) -> dict[str, Any]:
@@ -475,6 +477,11 @@ def on_stream_poll(n: Any, session: Any) -> Any:
 
     stream = streaming.get(stream_id)
     if not stream:
+        if _DEV_MODE:
+            print(
+                f"[poll {stream_id[:8]}] stream entry missing, clearing _stream_id",
+                flush=True,
+            )
         return {**session, "_stream_id": None}, 0
 
     text = stream["text"]
@@ -489,13 +496,32 @@ def on_stream_poll(n: Any, session: Any) -> Any:
         return {**session, "messages": messages}, no_update
 
     # Stream complete — merge agent-mutated session and finalise
+    if _DEV_MODE:
+        print(
+            f"[poll {stream_id[:8]}] done branch firing; text_len={len(text)}, "
+            f"messages_count={len(messages)}, "
+            f"last_msg_preview={text[:120]!r}",
+            flush=True,
+        )
     final = streaming.pop(stream_id)
     if final is None:
+        if _DEV_MODE:
+            print(
+                f"[poll {stream_id[:8]}] streaming.pop returned None — "
+                f"error text would be lost",
+                flush=True,
+            )
         return {**session, "_stream_id": None}, 0
     agent_session = final["session"]
     _persist_artifacts(agent_session)
     if agent_session.get("_display_override") is not None and messages:
         messages[-1] = {"role": "assistant", "content": agent_session["_display_override"]}
+        if _DEV_MODE:
+            print(
+                f"[poll {stream_id[:8]}] _display_override applied "
+                f"(len={len(agent_session['_display_override'])})",
+                flush=True,
+            )
     return (
         {
             **agent_session,

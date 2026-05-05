@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import pathlib
 from collections.abc import Generator
 from typing import Any
@@ -7,6 +8,7 @@ from typing import Any
 from spec4 import project_manager
 from spec4.agents import brainstormer, code_scanner, deployer, phaser, stack_advisor
 from spec4.app_constants import (
+    STATE_DEPLOYER_COMPLETE,
     STATE_IN_PROGRESS,
     STATE_PHASES_COMPLETE,
     STATE_REVIEW_COMPLETE,
@@ -101,6 +103,9 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
     if artifacts.get("code_review"):
         session["code_review"] = artifacts["code_review"]
         session["code_scanner_state"] = STATE_REVIEW_COMPLETE
+    deployment_plan = project_manager.load_deployment_plan(path)
+    if deployment_plan:
+        session["deployer_state"] = STATE_DEPLOYER_COMPLETE
     specmem = project_manager.read_specmem(path)
     if specmem:
         session["specmem"] = specmem
@@ -135,6 +140,9 @@ def _validate_agent_preconditions(agent: str, session: dict[str, Any]) -> str | 
     return None
 
 
+_DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
+
+
 def _get_agent_gen(
     user_input: str | None, session: dict[str, Any]
 ) -> Generator[str, None, None]:
@@ -142,18 +150,62 @@ def _get_agent_gen(
     llm_config = session["llm_config"]
     active = session["active_agent"]
 
+    if _DEV_MODE:
+        agent_msgs = session.get(f"{active}_messages") or []
+        ui = "None" if user_input is None else f"str(len={len(user_input)})"
+        cfg = llm_config or {}
+        print(
+            f"[agent-gen] active={active!r} user_input={ui} "
+            f"{active}_messages_len={len(agent_msgs)} "
+            f"has_vision={session.get('vision_statement') is not None} "
+            f"has_stack={session.get('stack_statement') is not None} "
+            f"has_phases={bool(session.get('phases'))} "
+            f"has_code_review={session.get('code_review') is not None} "
+            f"has_specmem={session.get('specmem') is not None} "
+            f"llm_config_model={cfg.get('model')!r} "
+            f"api_key_set={bool(cfg.get('api_key'))}",
+            flush=True,
+        )
+
     if active == "code_scanner":
-        return code_scanner.run(user_input, session, llm_config)
+        gen: Generator[str, None, None] = code_scanner.run(
+            user_input, session, llm_config
+        )
     elif active == "brainstormer":
-        return brainstormer.run(user_input, session, llm_config)
+        gen = brainstormer.run(user_input, session, llm_config)
     elif active == "stack_advisor":
-        return stack_advisor.run(user_input, session, llm_config)
+        gen = stack_advisor.run(user_input, session, llm_config)
     elif active == "phaser":
-        return phaser.run(user_input, session, llm_config)
+        gen = phaser.run(user_input, session, llm_config)
     elif active == "deployer":
-        return deployer.run(user_input, session, llm_config)
+        gen = deployer.run(user_input, session, llm_config)
     else:
         raise ValueError(f"Unknown agent: {active!r}")
+
+    if not _DEV_MODE:
+        return gen
+    return _trace_gen(active, gen)
+
+
+def _trace_gen(
+    label: str, gen: Generator[str, None, None]
+) -> Generator[str, None, None]:
+    """Wrap an agent generator with first-yield / first-chunk / completion logging."""
+    print(f"[agent-gen] {label}: iteration starting", flush=True)
+    yielded = 0
+    try:
+        for chunk in gen:
+            yielded += 1
+            if yielded == 1:
+                preview = chunk[:80]
+                print(
+                    f"[agent-gen] {label}: first chunk "
+                    f"(len={len(chunk)}): {preview!r}",
+                    flush=True,
+                )
+            yield chunk
+    finally:
+        print(f"[agent-gen] {label}: iteration ended (yielded={yielded})", flush=True)
 
 
 def _run_agent_blocking(user_input: str | None, session: dict[str, Any]) -> str:
@@ -183,5 +235,13 @@ def _persist_artifacts(session: dict[str, Any]) -> None:
     if session.get("phaser_state") == STATE_PHASES_COMPLETE and session.get("phases"):
         project_manager.save_phases(working_dir, session["phases"])
         needs_specmem = True
+    if session.get("deployer_state") == STATE_DEPLOYER_COMPLETE:
+        messages = session.get("deployer_messages") or []
+        md = next(
+            (m["content"] for m in reversed(messages) if m.get("role") == "assistant"),
+            "",
+        )
+        if md:
+            project_manager.save_deployment_plan(working_dir, md)
     if needs_specmem:
         project_manager.update_specmem_planning_state(working_dir, session)

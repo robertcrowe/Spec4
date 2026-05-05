@@ -7,6 +7,7 @@ from typing import Any
 
 from spec4 import tavily_mcp
 from spec4.agents._utils import (
+    _drop_orphan_trailing_user,
     _extract_json_block,
     _last_assistant_text,
     _render_coding_style,
@@ -280,6 +281,7 @@ def run(
         session["stack_advisor_messages"] = []
 
     messages = session["stack_advisor_messages"]
+    _drop_orphan_trailing_user(messages)
 
     if user_input is None:
         if messages:

@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import traceback
 from collections.abc import Generator
 from typing import Any
+
+_DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
 
 
 def _extract_json_block(text: str) -> dict[str, Any] | None:
@@ -35,6 +39,25 @@ def _last_assistant_text(msgs: list[dict[str, Any]]) -> str:
     )
 
 
+def _drop_orphan_trailing_user(msgs: list[dict[str, Any]]) -> int:
+    """Remove trailing non-assistant messages left over from an interrupted turn.
+
+    When an LLM call raises mid-stream (rate limit, network error, etc.) the
+    agent has already appended its user/tool message to msgs but no assistant
+    reply gets recorded. On the next entry the replay branch then finds no
+    assistant to yield (silent stuck UI), and resubmitting would produce two
+    consecutive user messages that Anthropic and others reject.
+
+    Pops trailing entries until msgs ends with an assistant turn or is empty.
+    Returns the number of entries removed (caller can log it in dev mode).
+    """
+    removed = 0
+    while msgs and msgs[-1].get("role") != "assistant":
+        msgs.pop()
+        removed += 1
+    return removed
+
+
 def _stream_suppressing_json(
     chunks: Generator[str, None, None],
 ) -> Generator[str, None, None]:
@@ -48,22 +71,44 @@ def _stream_suppressing_json(
     buf = ""
     flushed = False
     suppress = False
-    for chunk in chunks:
-        if flushed:
-            yield chunk
-        elif suppress:
-            pass
-        else:
-            buf += chunk
-            stripped = buf.lstrip()
-            if stripped.startswith(_FENCE):
-                suppress = True
-            elif len(stripped) >= len(_FENCE):
-                flushed = True
-                yield buf
-                buf = ""
-    if not suppress and not flushed and buf:
-        yield buf
+    received = 0
+    if _DEV_MODE:
+        print("[suppress] entering", flush=True)
+    try:
+        for chunk in chunks:
+            received += 1
+            if flushed:
+                yield chunk
+            elif suppress:
+                pass
+            else:
+                buf += chunk
+                stripped = buf.lstrip()
+                if stripped.startswith(_FENCE):
+                    suppress = True
+                elif len(stripped) >= len(_FENCE):
+                    flushed = True
+                    yield buf
+                    buf = ""
+        if not suppress and not flushed and buf:
+            yield buf
+    except BaseException as exc:
+        if _DEV_MODE:
+            print(
+                f"[suppress] EXCEPTION after {received} chunks "
+                f"(suppress={suppress}, flushed={flushed}, buf_len={len(buf)}): "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            traceback.print_exc()
+        raise
+    finally:
+        if _DEV_MODE:
+            print(
+                f"[suppress] exit: received={received} suppress={suppress} "
+                f"flushed={flushed}",
+                flush=True,
+            )
 
 
 def _render_references(refs: list[dict[str, str]], lines: list[str]) -> None:

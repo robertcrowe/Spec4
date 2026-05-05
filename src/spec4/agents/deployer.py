@@ -5,7 +5,11 @@ from collections.abc import Generator
 from typing import Any
 
 from spec4 import tavily_mcp
-from spec4.agents._utils import _last_assistant_text, _replay_last_assistant
+from spec4.agents._utils import (
+    _drop_orphan_trailing_user,
+    _last_assistant_text,
+    _replay_last_assistant,
+)
 from spec4.app_constants import STATE_DEPLOYER_COMPLETE
 
 
@@ -255,6 +259,7 @@ def run(
         session["deployer_messages"] = []
 
     messages = session["deployer_messages"]
+    _drop_orphan_trailing_user(messages)
 
     if user_input is None:
         if messages:

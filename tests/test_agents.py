@@ -178,6 +178,59 @@ class TestBrainstormer:
         assert "brainstormer_messages" in session
 
 
+class TestOrphanTurnRecovery:
+    """An LLM error mid-stream leaves the agent's history with a trailing user
+    turn and no assistant followup. The next entry must recover, not stall."""
+
+    def test_init_turn_recovers_when_history_ends_with_user(self) -> None:
+        # Brownfield init: an earlier vision-update prompt was appended to
+        # brainstormer_messages but the LLM call that followed raised, so the
+        # message log is now [user_only].
+        session = make_session(
+            vision_statement={"summary": "existing"},
+            brainstormer_messages=[
+                {
+                    "role": "user",
+                    "content": "I have an existing vision statement...",
+                }
+            ],
+        )
+        with mock_litellm_stream("Hi! Let's review your existing vision."):
+            output = collect(
+                brainstormer.run(None, session, session["llm_config"])
+            )
+
+        # The agent must have produced output (didn't silently return zero
+        # chunks via a stale-replay path).
+        assert "existing vision" in output.lower()
+        # And history ends correctly with the new assistant turn.
+        assert session["brainstormer_messages"][-1]["role"] == "assistant"
+
+    def test_user_submit_after_failure_drops_orphan_then_appends(self) -> None:
+        # Same orphan setup, but now the user submits a new message.
+        session = make_session(
+            brainstormer_messages=[
+                {"role": "user", "content": "earlier orphan"},
+            ]
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            mock_llm.return_value = iter(
+                [
+                    make_stream_chunk("ok"),
+                    make_stream_chunk("", finish_reason="stop"),
+                ]
+            )
+            collect(
+                brainstormer.run("new message", session, session["llm_config"])
+            )
+
+        # The LLM must NOT receive two consecutive user messages — the orphan
+        # gets dropped before the new user turn is appended.
+        sent = mock_llm.call_args[1]["messages"]
+        non_system = [m for m in sent if m["role"] != "system"]
+        assert non_system == [{"role": "user", "content": "new message"}]
+
+
 # ---------------------------------------------------------------------------
 # Stack Advisor tests
 # ---------------------------------------------------------------------------
@@ -325,14 +378,19 @@ class TestBrainstormerBranches:
         mock_llm.assert_not_called()
         assert "Existing response" in output
 
-    def test_reentry_no_assistant_message_yields_nothing(self) -> None:
+    def test_reentry_drops_orphan_user_and_falls_through(self) -> None:
+        # An interrupted previous turn left a user message orphaned in history.
+        # Re-entry must drop it and proceed to the fresh-start greeting (no
+        # vision/code_review/specmem in this session), not silently yield zero
+        # chunks.
         session = make_session(
             brainstormer_messages=[{"role": "user", "content": "hi"}]
         )
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             output = collect(brainstormer.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
-        assert output == ""
+        assert output != ""
+        assert session["brainstormer_messages"] == []
 
     def test_preloaded_vision_calls_llm(self) -> None:
         vision = {"name": "MyApp", "vision": "desc"}
@@ -427,16 +485,20 @@ class TestStackAdvisorBranches:
             collect(stack_advisor.run(None, session, session["llm_config"]))
         assert "stack_advisor_messages" in session
 
-    def test_reentry_no_assistant_message_yields_nothing(self) -> None:
+    def test_reentry_drops_orphan_user_and_reseeds(self) -> None:
+        # Orphan user from a failed previous brownfield init must be dropped
+        # so the seed-with-vision flow re-runs cleanly.
         session = make_session(
             active_agent="stack_advisor",
             vision_statement={"name": "App", "vision": "v"},
         )
         session["stack_advisor_messages"] = [{"role": "user", "content": "hi"}]
-        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+        with mock_litellm_stream("Reviewing the vision now."):
             output = collect(stack_advisor.run(None, session, session["llm_config"]))
-        mock_llm.assert_not_called()
-        assert output == ""
+        assert "Reviewing" in output
+        # Final history must be a clean user-then-assistant pair.
+        roles = [m["role"] for m in session["stack_advisor_messages"]]
+        assert roles == ["user", "assistant"]
 
     def test_existing_stack_seed_contains_stack_info(self) -> None:
         vision = {"name": "App", "vision": "v"}
@@ -515,12 +577,16 @@ class TestCodeScanner:
         mock_llm.assert_not_called()
         assert "CodeScanner response" in output
 
-    def test_reentry_no_assistant_yields_nothing(self) -> None:
+    def test_reentry_drops_orphan_user_and_falls_through(self) -> None:
+        # No working_dir set in the default session, so after the orphan is
+        # dropped the agent yields its "select a directory" notice rather
+        # than getting stuck on a malformed history.
         session = make_session(code_scanner_messages=[{"role": "user", "content": "hi"}])
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             output = collect(code_scanner.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
-        assert output == ""
+        assert "directory" in output.lower()
+        assert session["code_scanner_messages"] == []
 
     def test_user_input_calls_llm(self) -> None:
         session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}])
@@ -693,12 +759,15 @@ class TestPhaser:
         mock_llm.assert_not_called()
         assert "Phaser response" in output
 
-    def test_reentry_no_assistant_yields_nothing(self) -> None:
+    def test_reentry_drops_orphan_user_and_reseeds(self) -> None:
+        # Orphan user from a failed previous init must be dropped so Phaser
+        # can re-seed and call the LLM again rather than stalling.
         session = make_session(phaser_messages=[{"role": "user", "content": "hi"}])
-        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+        with mock_litellm_stream("Phaser back online."):
             output = collect(phaser.run(None, session, session["llm_config"]))
-        mock_llm.assert_not_called()
-        assert output == ""
+        assert "Phaser" in output
+        roles = [m["role"] for m in session["phaser_messages"]]
+        assert roles == ["user", "assistant"]
 
     def test_user_input_appended_to_messages(self) -> None:
         session = make_session(

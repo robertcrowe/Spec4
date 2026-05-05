@@ -33,17 +33,24 @@ from spec4.layouts.designer import (
 )
 
 # keyed by gen_id stored in designer-session-store["_gen_id"]
-# _run() is the sole writer of buf["text"]; poll callbacks only read it.
-# CPython's GIL makes this single-writer pattern safe without a lock.
+# _run() is the sole writer of buf["text"] / buf["final_html"]; poll callbacks
+# only read them.  CPython's GIL makes this single-writer pattern safe without
+# a lock.  When _run() finishes extraction, on_mock_stream_poll picks up
+# buf["final_html"] and pushes the completed mock straight to
+# designer-session-store — no intermediary signal store needed.
 _MOCK_BUFFERS: dict[str, dict[str, Any]] = {}
 
-# Final HTML keyed by gen_id.  Written by _run() before setting done=True;
-# read and popped by on_mock_done (triggered via mock-done-store signal).
-# Kept separate from _MOCK_BUFFERS so the large payload travels through a
-# one-shot callback (on_mock_done), not the 250 ms poll cycle.
-_FINAL_HTML: dict[str, str] = {}
-
 _MAX_HTML_BYTES = 512_000
+
+# Number of polling ticks (250 ms each) over which we re-deliver the
+# completion payload.  Defends against an intermittent Dash dispatch failure
+# observed during refine-with-screenshot: the server emits the completion
+# response, but the browser silently drops it ~1 in 5 times, leaving the UI
+# stranded at step 5.  By holding the buffer alive for ~1.5 s and re-emitting
+# the identical payload on each tick, a dropped first delivery is recovered
+# by the retry.  DO NOT lower below 4 without re-confirming the bug is gone —
+# the only observed failure mode needs at least one retry to succeed.
+_DELIVERY_TICKS = 6
 
 
 def _llm_params(
@@ -156,16 +163,23 @@ def _start_gen(
                         logger.warning(
                             "Designer: could not persist session to disk: %s", exc
                         )
-                _FINAL_HTML[gen_id] = extracted
                 buf_entry["final_html"] = extracted
         _MOCK_BUFFERS[gen_id]["done"] = True
 
     threading.Thread(target=_run, daemon=True).start()
 
+    # Drop screenshots and refine_images from the store.  Load-bearing —
+    # don't restore on cleanup.  Their base64 payload can run to several MB,
+    # and `ds` (above) has already captured the merged list in the thread
+    # closure for the LLM call, so the dcc.Store copy is dead weight.
+    # Leaving them in bloats every subsequent callback's State and Output
+    # payload, which has been observed to break Dash dispatch silently.
     updated_store = {
         **store, "step": 5, "_gen_id": gen_id,
         "_has_existing_html": existing_html is not None,
         "mock_html": "",
+        "screenshots": [],
+        "refine_images": [],
     }
     cleared_buffer: dict[str, Any] = {"tokens": 0, "progress": 0, "error": None}
     return updated_store, cleared_buffer, False  # False = not disabled
@@ -370,13 +384,39 @@ def on_designer_generate_mock(
 
 @callback(
     Output("mock-stream-buffer", "data", allow_duplicate=True),
-    Output("mock-done-store", "data", allow_duplicate=True),
+    Output("designer-session-store", "data", allow_duplicate=True),
     Output("mock-stream-interval", "disabled", allow_duplicate=True),
     Input("mock-stream-interval", "n_intervals"),
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
 def on_mock_stream_poll(n: Any, store: Any) -> Any:
+    """Poll the mock generation thread and deliver completion in-band.
+
+    On each tick this updates mock-stream-buffer with token/progress info.
+    When the background thread finishes and stores the extracted HTML on
+    buf_entry["final_html"], this same callback writes the completed mock
+    straight into designer-session-store (step=6, mock_html=...) and disables
+    the interval.
+
+    Two pieces of load-bearing weirdness — preserve both during cleanup:
+
+    1. **In-band delivery.**  Earlier this fanned out through a separate
+       mock-done-store dcc.Store + on_mock_done callback.  That chain failed
+       silently when the user attached a screenshot to a refine: the signal
+       store updated but on_mock_done never fired.  Cause never fully nailed
+       down; consolidating delivery into this callback bypasses it entirely.
+       Don't reintroduce a chained completion callback.
+
+    2. **Idempotent re-delivery for _DELIVERY_TICKS ticks.**  Even with the
+       direct in-band delivery, the first response is occasionally dropped
+       by the browser (server prints "mock delivered" but UI stays at step
+       5).  We hold the buffer alive and re-emit the identical step=6 /
+       mock_html payload on each tick until the store actually catches up.
+       Dash deduplicates on identical store values, so a successful first
+       delivery costs nothing on subsequent ticks.  Don't pop _MOCK_BUFFERS
+       on the first tick — the retry needs the buffer to still be there.
+    """
     gen_id: str | None = (store or {}).get("_gen_id")
     if not gen_id or gen_id not in _MOCK_BUFFERS:
         return no_update, no_update, True
@@ -393,9 +433,52 @@ def on_mock_stream_poll(n: Any, store: Any) -> Any:
 
     final_html: str | None = buf_entry.get("final_html")
     if final_html is not None:
-        _MOCK_BUFFERS.pop(gen_id, None)
+        # See the docstring for the rationale on idempotent re-delivery.
+        # The two-counter pattern (delivered++, pop only at _DELIVERY_TICKS)
+        # is what gives the retry its window.  Don't collapse it.
+        delivered = buf_entry.get("delivered", 0) + 1
+        buf_entry["delivered"] = delivered
+
+        s = store or {}
         final_buf = {"tokens": len(final_html), "progress": 100, "error": None}
-        return final_buf, {"gen_id": gen_id}, True
+
+        # Step guard, also load-bearing.  Re-emitting step=6 unconditionally
+        # would bounce a user who clicked Refine between ticks back from
+        # step 7 to step 6.  Only push the completion when the UI is still
+        # at step 5 (i.e. the first delivery hasn't taken effect yet).
+        if s.get("step") == 5:
+            new_store: Any = {
+                "step": 6,
+                "mock_html": final_html,
+                "_gen_id": gen_id,
+                "_has_existing_html": s.get("_has_existing_html", False),
+                "_has_existing_ui": s.get("_has_existing_ui", True),
+                "preference_text": s.get("preference_text", ""),
+                "screenshots": [],
+                "refine_images": [],
+                "finalized": False,
+            }
+        else:
+            new_store = no_update
+
+        if delivered >= _DELIVERY_TICKS:
+            _MOCK_BUFFERS.pop(gen_id, None)
+            disabled: Any = True
+        else:
+            disabled = no_update
+
+        if _DEV_MODE:
+            action = (
+                "delivered"
+                if s.get("step") == 5
+                else f"skipped (store step={s.get('step')})"
+            )
+            print(
+                f"[Designer] mock {action} (tick {delivered}/{_DELIVERY_TICKS}): "
+                f"gen_id={gen_id[:8]} mock_html_len={len(final_html)}",
+                flush=True,
+            )
+        return final_buf, new_store, disabled
 
     # Generator finished without a recognised sentinel — stop event fired mid-stream.
     if buf_entry.get("done"):
@@ -409,28 +492,6 @@ def on_mock_stream_poll(n: Any, store: Any) -> Any:
         no_update,
         no_update,
     )
-
-
-@callback(
-    Output("designer-session-store", "data", allow_duplicate=True),
-    Input("mock-done-store", "data"),
-    State("designer-session-store", "data"),
-    prevent_initial_call=True,
-)
-def on_mock_done(signal: Any, store: Any) -> Any:
-    """Deliver the completed mock HTML to the session store.
-
-    Triggered by the completion signal emitted by on_mock_stream_poll.
-    The store is lightweight during generation (mock_html cleared by
-    _start_gen), so this one-shot response is the only large payload.
-    """
-    if not signal or not store:
-        return no_update
-    gen_id: str | None = signal.get("gen_id")
-    if not gen_id or gen_id not in _FINAL_HTML:
-        return no_update
-    final_html = _FINAL_HTML.pop(gen_id)
-    return {**(store or {}), "step": 6, "mock_html": final_html}
 
 
 @callback(

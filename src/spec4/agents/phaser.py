@@ -7,7 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from spec4 import tavily_mcp
-from spec4.agents._utils import _last_assistant_text, _replay_last_assistant
+from spec4.agents._utils import (
+    _drop_orphan_trailing_user,
+    _last_assistant_text,
+    _replay_last_assistant,
+)
 from spec4.app_constants import STATE_PHASES_COMPLETE
 
 
@@ -268,6 +272,7 @@ def run(
         session["phaser_messages"] = []
 
     messages = session["phaser_messages"]
+    _drop_orphan_trailing_user(messages)
 
     if user_input is None:
         if messages:

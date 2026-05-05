@@ -6,6 +6,7 @@ from typing import Any
 
 from spec4 import tavily_mcp
 from spec4.agents._utils import (
+    _drop_orphan_trailing_user,
     _extract_json_block,
     _last_assistant_text,
     _render_references,
@@ -270,6 +271,7 @@ def run(
         session["brainstormer_messages"] = []
 
     msgs = session["brainstormer_messages"]
+    _drop_orphan_trailing_user(msgs)
 
     if user_input is None:
         if msgs:

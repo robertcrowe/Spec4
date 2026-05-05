@@ -453,11 +453,6 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
                 storage_type="memory",
                 data={"tokens": 0, "progress": 0, "error": None},
             ),
-            dcc.Store(
-                id="mock-done-store",
-                storage_type="memory",
-                data=None,
-            ),
             dcc.Interval(
                 id="mock-stream-interval",
                 interval=250,
