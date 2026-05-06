@@ -17,7 +17,6 @@ def make_session(**overrides: Any) -> dict[str, Any]:
         "phase": "chat",
         "active_agent": "brainstormer",
         "working_dir": None,
-        "specmem": None,
         "code_review": None,
         "brainstormer_state": STATE_IN_PROGRESS,
         "brainstormer_messages": [],
@@ -176,6 +175,130 @@ class TestBrainstormer:
         with mock_litellm_stream("Hello!"):
             collect(brainstormer.run("An idea", session, session["llm_config"]))
         assert "brainstormer_messages" in session
+
+
+class TestStalenessQuestion:
+    """When an upstream artifact is updated after a downstream agent has
+    completed, re-entering that agent must surface a revision question rather
+    than silently replaying the now-outdated prior response."""
+
+    def _setup_stale(
+        self, tmp_path: Any, output_name: str, input_name: str
+    ) -> None:
+        """Create output_name with old mtime and input_name with newer mtime."""
+        import os
+        spec4 = tmp_path / ".spec4"
+        spec4.mkdir(parents=True, exist_ok=True)
+        for name, mtime in [(output_name, 1_000.0), (input_name, 2_000.0)]:
+            p = spec4 / name
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("{}", encoding="utf-8")
+            os.utime(p, (mtime, mtime))
+
+    def test_stack_reentry_asks_revision_question_when_vision_newer(
+        self, tmp_path: Any
+    ) -> None:
+        self._setup_stale(tmp_path, "stack.json", "vision.json")
+        session = make_session(
+            active_agent="stack_advisor",
+            working_dir=str(tmp_path),
+            vision_statement={"name": "App", "vision": "updated"},
+            stack_statement={"name": "App", "languages": ["Python"]},
+            stack_advisor_messages=[
+                {"role": "user", "content": "seed"},
+                {"role": "assistant", "content": "Final stack JSON…"},
+            ],
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(
+                stack_advisor.run(None, session, session["llm_config"])
+            )
+        # No LLM call — the question is statically yielded.
+        mock_llm.assert_not_called()
+        assert "updated" in output.lower() or "revise" in output.lower()
+        # Session is marked acknowledged at the current vision mtime.
+        ack = session["stack_advisor_stale_acknowledged"]
+        assert ack.get("vision") == 2_000.0
+
+    def test_replay_path_runs_when_no_staleness(self, tmp_path: Any) -> None:
+        # Output is newer than input → not stale → replay branch fires.
+        import os
+        spec4 = tmp_path / ".spec4"
+        spec4.mkdir()
+        (spec4 / "vision.json").write_text("{}")
+        os.utime(spec4 / "vision.json", (1_000.0, 1_000.0))
+        (spec4 / "stack.json").write_text("{}")
+        os.utime(spec4 / "stack.json", (2_000.0, 2_000.0))
+
+        session = make_session(
+            active_agent="stack_advisor",
+            working_dir=str(tmp_path),
+            vision_statement={"name": "App"},
+            stack_statement={"name": "App"},
+            stack_advisor_messages=[
+                {"role": "user", "content": "seed"},
+                {"role": "assistant", "content": "Final stack JSON output."},
+            ],
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(
+                stack_advisor.run(None, session, session["llm_config"])
+            )
+        mock_llm.assert_not_called()
+        assert "Final stack JSON output." in output
+
+    def test_acknowledged_at_same_mtime_does_not_reask(
+        self, tmp_path: Any
+    ) -> None:
+        self._setup_stale(tmp_path, "stack.json", "vision.json")
+        session = make_session(
+            active_agent="stack_advisor",
+            working_dir=str(tmp_path),
+            vision_statement={"name": "App"},
+            stack_statement={"name": "App"},
+            stack_advisor_messages=[
+                {"role": "user", "content": "seed"},
+                {"role": "assistant", "content": "Last assistant message."},
+            ],
+            stack_advisor_stale_acknowledged={"vision": 2_000.0},
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(
+                stack_advisor.run(None, session, session["llm_config"])
+            )
+        mock_llm.assert_not_called()
+        # Replay branch fires — last assistant message comes back.
+        assert "Last assistant message." in output
+
+    def test_input_updated_again_triggers_reask(self, tmp_path: Any) -> None:
+        # Acknowledged at 2_000.0, but vision has since been updated to 3_000.0.
+        import os
+        spec4 = tmp_path / ".spec4"
+        spec4.mkdir()
+        (spec4 / "stack.json").write_text("{}")
+        os.utime(spec4 / "stack.json", (1_000.0, 1_000.0))
+        (spec4 / "vision.json").write_text("{}")
+        os.utime(spec4 / "vision.json", (3_000.0, 3_000.0))
+
+        session = make_session(
+            active_agent="stack_advisor",
+            working_dir=str(tmp_path),
+            vision_statement={"name": "App"},
+            stack_statement={"name": "App"},
+            stack_advisor_messages=[
+                {"role": "user", "content": "seed"},
+                {"role": "assistant", "content": "Old final stack."},
+            ],
+            stack_advisor_stale_acknowledged={"vision": 2_000.0},
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(
+                stack_advisor.run(None, session, session["llm_config"])
+            )
+        mock_llm.assert_not_called()
+        # Re-asks because the mtime moved.
+        assert "revise" in output.lower() or "updated" in output.lower()
+        assert session["stack_advisor_stale_acknowledged"]["vision"] == 3_000.0
 
 
 class TestOrphanTurnRecovery:
@@ -432,19 +555,6 @@ class TestBrainstormerBranches:
             collect(brainstormer.run(None, session, session["llm_config"]))
         mock_llm.assert_called_once()
 
-    def test_specmem_seed_calls_llm(self) -> None:
-        session = make_session(
-            specmem="# Notes\nSome project notes",
-            vision_statement=None,
-            code_review=None,
-        )
-        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
-            mock_llm.return_value = iter(
-                [make_stream_chunk("Ok"), make_stream_chunk("", finish_reason="stop")]
-            )
-            collect(brainstormer.run(None, session, session["llm_config"]))
-        mock_llm.assert_called_once()
-
 
 # ---------------------------------------------------------------------------
 # Stack Advisor branch tests
@@ -521,21 +631,6 @@ class TestStackAdvisorBranches:
             vision_statement={"name": "App", "vision": "v"},
             code_review=review,
             stack_statement=None,
-        )
-        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
-            mock_llm.return_value = iter(
-                [make_stream_chunk("Ok"), make_stream_chunk("", finish_reason="stop")]
-            )
-            collect(stack_advisor.run(None, session, session["llm_config"]))
-        mock_llm.assert_called_once()
-
-    def test_specmem_seed_calls_llm(self) -> None:
-        session = make_session(
-            active_agent="stack_advisor",
-            vision_statement={"name": "App", "vision": "v"},
-            specmem="# Notes\nDetails",
-            stack_statement=None,
-            code_review=None,
         )
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             mock_llm.return_value = iter(

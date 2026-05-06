@@ -8,6 +8,7 @@ from spec4 import tavily_mcp
 from spec4.agents._utils import (
     _drop_orphan_trailing_user,
     _last_assistant_text,
+    _maybe_inject_staleness_question,
     _replay_last_assistant,
 )
 from spec4.app_constants import STATE_DEPLOYER_COMPLETE
@@ -263,6 +264,10 @@ def run(
 
     if user_input is None:
         if messages:
+            stale_q = _maybe_inject_staleness_question(session, "deployer", messages)
+            if stale_q is not None:
+                yield stale_q
+                return
             yield from _replay_last_assistant(messages)
             return
 
@@ -304,3 +309,4 @@ def run(
 
     if "## Deployment Steps" in _last_assistant_text(messages):
         session["deployer_state"] = STATE_DEPLOYER_COMPLETE
+        session["deployer_stale_acknowledged"] = {}

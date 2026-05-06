@@ -9,6 +9,7 @@ from spec4.agents._utils import (
     _drop_orphan_trailing_user,
     _extract_json_block,
     _last_assistant_text,
+    _maybe_inject_staleness_question,
     _render_references,
     _replay_last_assistant,
     _stream_suppressing_json,
@@ -275,11 +276,14 @@ def run(
 
     if user_input is None:
         if msgs:
+            stale_q = _maybe_inject_staleness_question(session, "brainstormer", msgs)
+            if stale_q is not None:
+                yield stale_q
+                return
             yield from _replay_last_assistant(msgs)
             return
 
         vision = session.get("vision_statement")
-        specmem = session.get("specmem")
         code_review = session.get("code_review")
 
         code_review_block = (
@@ -317,32 +321,10 @@ def run(
                         "I have an existing software project that I'd like to create a vision "
                         "statement for. Here is a code review of the existing project:\n\n"
                         f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
-                        + (
-                            f"Additional project notes:\n\n{specmem}\n\n"
-                            if specmem
-                            else ""
-                        )
-                        + "Please introduce yourself as Brainstormer. Briefly describe what you "
+                        "Please introduce yourself as Brainstormer. Briefly describe what you "
                         "understand about this project from the code review, then begin your "
                         "usual question-by-question process to develop the vision statement. "
                         "Use the code review as context to inform your questions."
-                    ),
-                }
-            )
-            # Fall through to LLM call below
-        elif specmem:
-            # Existing project notes but no vision yet
-            msgs.append(
-                {
-                    "role": "user",
-                    "content": (
-                        "I have an existing software project that I'd like to create a vision "
-                        "statement for. Here is a summary of the current project state:\n\n"
-                        f"{specmem}\n\n"
-                        "Please introduce yourself as Brainstormer. Briefly describe what you "
-                        "understand about this project from the summary, then begin your "
-                        "usual question-by-question process to develop the vision statement. "
-                        "Use the summary as context to inform your questions."
                     ),
                 }
             )
@@ -370,6 +352,7 @@ def run(
     if vision:
         session["brainstormer_state"] = STATE_VISION_COMPLETE
         session["vision_statement"] = vision
+        session["brainstormer_stale_acknowledged"] = {}
         display = _format_vision_as_text(vision)
         msgs[-1]["content"] = display
         session["_display_override"] = display

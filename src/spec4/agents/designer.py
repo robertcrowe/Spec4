@@ -210,7 +210,7 @@ def build_mock_prompt(
                 "```html\n" + existing_html + "\n```\n\n---"
             ),
         })
-    elif planning_context and planning_context.get("vision_statement"):
+    if planning_context and planning_context.get("vision_statement"):
         parts.append({
             "type": "text",
             "text": (

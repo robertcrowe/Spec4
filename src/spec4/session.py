@@ -26,7 +26,6 @@ def _default_session() -> dict[str, Any]:
     return {
         "working_dir": None,
         "browser_path": None,
-        "specmem": None,
         "phase": "landing",
         "provider": None,
         "model": None,
@@ -52,6 +51,11 @@ def _default_session() -> dict[str, Any]:
         "phases": [],
         "deployer_state": STATE_IN_PROGRESS,
         "deployer_messages": [],
+        "brainstormer_stale_acknowledged": {},
+        "stack_advisor_stale_acknowledged": {},
+        "phaser_stale_acknowledged": {},
+        "deployer_stale_acknowledged": {},
+        "designer_stale_acknowledged": {},
         "_warn_existing_content": False,
         "_dir_has_content": False,
         "_initial_turn_done": False,
@@ -83,8 +87,12 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
         "phaser_state": None,
         "code_review": None,
         "code_scanner_state": STATE_IN_PROGRESS,
-        "specmem": None,
         "deployer_state": STATE_IN_PROGRESS,
+        "brainstormer_stale_acknowledged": {},
+        "stack_advisor_stale_acknowledged": {},
+        "phaser_stale_acknowledged": {},
+        "deployer_stale_acknowledged": {},
+        "designer_stale_acknowledged": {},
         "_warn_existing_content": False,
     }
     try:
@@ -106,9 +114,6 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
     deployment_plan = project_manager.load_deployment_plan(path)
     if deployment_plan:
         session["deployer_state"] = STATE_DEPLOYER_COMPLETE
-    specmem = project_manager.read_specmem(path)
-    if specmem:
-        session["specmem"] = specmem
     root = pathlib.Path(path)
     try:
         has_content = any(
@@ -161,7 +166,6 @@ def _get_agent_gen(
             f"has_stack={session.get('stack_statement') is not None} "
             f"has_phases={bool(session.get('phases'))} "
             f"has_code_review={session.get('code_review') is not None} "
-            f"has_specmem={session.get('specmem') is not None} "
             f"llm_config_model={cfg.get('model')!r} "
             f"api_key_set={bool(cfg.get('api_key'))}",
             flush=True,

@@ -105,6 +105,77 @@ class TestSaveArtifacts:
         assert (tmp_path / ".spec4").is_dir()
 
 
+class TestDetectStaleInputs:
+    def _touch_with_mtime(self, path: Path, mtime: float) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}", encoding="utf-8")
+        import os
+        os.utime(path, (mtime, mtime))
+
+    def test_unknown_agent_returns_empty(self, tmp_path: Path) -> None:
+        assert project_manager.detect_stale_inputs(tmp_path, "nonsense") == {}
+
+    def test_no_output_artifact_returns_empty(self, tmp_path: Path) -> None:
+        # vision.json exists but stack.json does not — stack hasn't run yet
+        self._touch_with_mtime(tmp_path / ".spec4" / "vision.json", 1_000.0)
+        assert project_manager.detect_stale_inputs(tmp_path, "stack_advisor") == {}
+
+    def test_output_newer_than_inputs_returns_empty(self, tmp_path: Path) -> None:
+        self._touch_with_mtime(tmp_path / ".spec4" / "vision.json", 1_000.0)
+        self._touch_with_mtime(tmp_path / ".spec4" / "stack.json", 2_000.0)
+        assert project_manager.detect_stale_inputs(tmp_path, "stack_advisor") == {}
+
+    def test_input_newer_than_output_marks_stale(self, tmp_path: Path) -> None:
+        self._touch_with_mtime(tmp_path / ".spec4" / "stack.json", 1_000.0)
+        self._touch_with_mtime(tmp_path / ".spec4" / "vision.json", 2_000.0)
+        result = project_manager.detect_stale_inputs(tmp_path, "stack_advisor")
+        assert result == {"vision": 2_000.0}
+
+    def test_multiple_stale_inputs(self, tmp_path: Path) -> None:
+        self._touch_with_mtime(tmp_path / ".spec4" / "stack.json", 1_000.0)
+        self._touch_with_mtime(tmp_path / ".spec4" / "vision.json", 2_000.0)
+        self._touch_with_mtime(tmp_path / ".spec4" / "code_review.json", 3_000.0)
+        result = project_manager.detect_stale_inputs(tmp_path, "stack_advisor")
+        assert set(result) == {"vision", "code review"}
+        assert result["vision"] == 2_000.0
+        assert result["code review"] == 3_000.0
+
+    def test_missing_input_is_skipped(self, tmp_path: Path) -> None:
+        # Only stack.json present; no upstream files at all
+        self._touch_with_mtime(tmp_path / ".spec4" / "stack.json", 1_000.0)
+        assert project_manager.detect_stale_inputs(tmp_path, "stack_advisor") == {}
+
+    def test_phaser_uses_phases_directory_mtime(self, tmp_path: Path) -> None:
+        self._touch_with_mtime(
+            tmp_path / ".spec4" / "phases" / "phase1.json", 1_000.0
+        )
+        self._touch_with_mtime(
+            tmp_path / ".spec4" / "phases" / "phase2.json", 1_500.0
+        )
+        # Vision newer than the most recent phase
+        self._touch_with_mtime(tmp_path / ".spec4" / "vision.json", 2_000.0)
+        result = project_manager.detect_stale_inputs(tmp_path, "phaser")
+        assert result == {"vision": 2_000.0}
+
+    def test_designer_depends_on_vision(self, tmp_path: Path) -> None:
+        self._touch_with_mtime(
+            tmp_path / ".spec4" / "design" / "mock.html", 1_000.0
+        )
+        self._touch_with_mtime(tmp_path / ".spec4" / "vision.json", 2_000.0)
+        result = project_manager.detect_stale_inputs(tmp_path, "designer")
+        assert result == {"vision": 2_000.0}
+
+    def test_deployer_depends_on_phases_dir(self, tmp_path: Path) -> None:
+        self._touch_with_mtime(
+            tmp_path / ".spec4" / "deployment-plan.md", 1_000.0
+        )
+        self._touch_with_mtime(
+            tmp_path / ".spec4" / "phases" / "phase1.json", 2_000.0
+        )
+        result = project_manager.detect_stale_inputs(tmp_path, "deployer")
+        assert "phases" in result
+
+
 class TestSpecmem:
     def test_read_missing_returns_none(self, tmp_path: Path) -> None:
         assert project_manager.read_specmem(tmp_path) is None

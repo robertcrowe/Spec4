@@ -402,6 +402,27 @@ def on_chat_back(n: Any, session: Any) -> Any:
     return {**session, "phase": "agent_select"}, "/agents"
 
 
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("btn-agent-change-provider", "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_agent_change_provider(n: Any, session: Any) -> Any:
+    if not n:
+        return no_update, no_update
+    return {
+        **session,
+        "phase": "setup",
+        "available_models": None,
+        "model": None,
+        "llm_config": None,
+        "setup_error": None,
+        "agent_select_error": None,
+    }, "/setup"
+
+
 # ---------------------------------------------------------------------------
 # Chat — initial turn
 # ---------------------------------------------------------------------------

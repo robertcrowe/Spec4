@@ -26,7 +26,6 @@ class TestDefaultSession:
         required = [
             "working_dir",
             "browser_path",
-            "specmem",
             "phase",
             "provider",
             "model",

@@ -10,6 +10,7 @@ from spec4 import tavily_mcp
 from spec4.agents._utils import (
     _drop_orphan_trailing_user,
     _last_assistant_text,
+    _maybe_inject_staleness_question,
     _replay_last_assistant,
 )
 from spec4.app_constants import STATE_PHASES_COMPLETE
@@ -276,6 +277,10 @@ def run(
 
     if user_input is None:
         if messages:
+            stale_q = _maybe_inject_staleness_question(session, "phaser", messages)
+            if stale_q is not None:
+                yield stale_q
+                return
             yield from _replay_last_assistant(messages)
             return
 
@@ -346,6 +351,7 @@ def run(
     if phases:
         session["phaser_state"] = STATE_PHASES_COMPLETE
         session["phases"] = phases
+        session["phaser_stale_acknowledged"] = {}
         display = (
             "**Your phases are ready.** Each phase is a structured prompt you will hand "
             "to your AI coding agent — one at a time, in order. The next step, "

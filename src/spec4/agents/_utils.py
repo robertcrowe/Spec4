@@ -5,9 +5,19 @@ import os
 import re
 import traceback
 from collections.abc import Generator
+from pathlib import Path
 from typing import Any
 
+from spec4 import project_manager
+
 _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
+
+_AGENT_DELIVERABLE: dict[str, str] = {
+    "brainstormer": "the vision",
+    "stack_advisor": "the stack recommendation",
+    "phaser": "the phase plan",
+    "deployer": "the deployment plan",
+}
 
 
 def _extract_json_block(text: str) -> dict[str, Any] | None:
@@ -37,6 +47,115 @@ def _last_assistant_text(msgs: list[dict[str, Any]]) -> str:
     return next(
         (m["content"] or "" for m in reversed(msgs) if m["role"] == "assistant"), ""
     )
+
+
+def _stale_phrase(stale: list[str]) -> str:
+    """Format stale input names as 'X', 'X and Y', or 'X, Y, and Z'."""
+    if not stale:
+        return ""
+    if len(stale) == 1:
+        return stale[0]
+    if len(stale) == 2:
+        return f"{stale[0]} and {stale[1]}"
+    return ", ".join(stale[:-1]) + f", and {stale[-1]}"
+
+
+def _build_revision_context(
+    session: dict[str, Any], stale: list[str]
+) -> str:
+    """Build a synthetic user message containing the latest upstream artifacts.
+
+    Injected into the conversation history alongside the staleness question so
+    the LLM has the new content available when the user asks for a revision.
+    """
+    parts: list[str] = [
+        "[Spec4 system note: the following upstream inputs have been updated "
+        "since I last produced my output. Use these latest versions if I ask "
+        "you to revise.]"
+    ]
+    if "vision" in stale:
+        v = session.get("vision_statement")
+        if v is not None:
+            parts.append(
+                "Updated vision statement:\n\n"
+                f"```json\n{json.dumps(v, indent=2)}\n```"
+            )
+    if "stack" in stale:
+        s = session.get("stack_statement")
+        if s is not None:
+            parts.append(
+                "Updated stack spec:\n\n"
+                f"```json\n{json.dumps(s, indent=2)}\n```"
+            )
+    if "code review" in stale:
+        cr = session.get("code_review")
+        if cr is not None:
+            parts.append(
+                "Updated code review:\n\n"
+                f"```json\n{json.dumps(cr, indent=2)}\n```"
+            )
+    if "phases" in stale:
+        ph = session.get("phases") or []
+        if ph:
+            phases_block = "\n\n".join(
+                f"```json\n{json.dumps(p, indent=2)}\n```" for p in ph
+            )
+            parts.append(f"Updated phases:\n\n{phases_block}")
+    if "UI mock" in stale:
+        wd = session.get("working_dir")
+        if wd:
+            mock_path = Path(wd) / ".spec4" / "design" / "mock.html"
+            try:
+                html = mock_path.read_text(encoding="utf-8", errors="replace")
+                parts.append(
+                    "Updated UI mock (HTML):\n\n```html\n" + html + "\n```"
+                )
+            except OSError:
+                pass
+    return "\n\n".join(parts)
+
+
+def _maybe_inject_staleness_question(
+    session: dict[str, Any],
+    agent: str,
+    messages: list[dict[str, Any]],
+) -> str | None:
+    """Append a staleness-revision question pair if upstream inputs are stale.
+
+    Detects upstream artifacts whose mtime is newer than `agent`'s output. If
+    any are detected and have not already been asked about at their current
+    mtime, appends a synthetic user message with the latest artifact content
+    plus an assistant question asking whether to revise. Returns the question
+    text for the caller to yield, or None if no question is needed.
+    """
+    working_dir = session.get("working_dir")
+    if not working_dir:
+        return None
+    stale = project_manager.detect_stale_inputs(working_dir, agent)
+    if not stale:
+        return None
+    ack_key = f"{agent}_stale_acknowledged"
+    acknowledged: dict[str, float] = session.get(ack_key) or {}
+    # Re-ask only if a stale input has a newer mtime than what we last asked
+    # about — handles "user updated the same upstream artifact again."
+    if all(acknowledged.get(name) == mtime for name, mtime in stale.items()):
+        return None
+    stale_names = list(stale)
+    deliverable = _AGENT_DELIVERABLE.get(agent, "the previous output")
+    phrase = _stale_phrase(stale_names)
+    verb = "have" if len(stale_names) > 1 else "has"
+    question = (
+        f"I notice that {phrase} {verb} been updated since I last ran. Would "
+        f"you like me to revise {deliverable}? "
+        "(yes/no — you're also welcome to ask questions or share comments "
+        "either way)"
+    )
+    messages.append(
+        {"role": "user", "content": _build_revision_context(session, stale_names)}
+    )
+    messages.append({"role": "assistant", "content": question})
+    session[ack_key] = dict(stale)
+    return question
 
 
 def _drop_orphan_trailing_user(msgs: list[dict[str, Any]]) -> int:

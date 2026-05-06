@@ -8,12 +8,9 @@ import threading
 import uuid
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
-_DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
-
 from dash import ALL, Input, Output, State, callback, ctx, no_update
 
+from spec4 import project_manager
 from spec4.agents.designer import (
     DesignerSession,
     collect_ui_source_files,
@@ -31,6 +28,10 @@ from spec4.layouts.designer import (
     _step6_content,
     _step7_content,
 )
+
+logger = logging.getLogger(__name__)
+
+_DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
 
 # keyed by gen_id stored in designer-session-store["_gen_id"]
 # _run() is the sole writer of buf["text"] / buf["final_html"]; poll callbacks
@@ -646,12 +647,72 @@ def on_designer_regenerate(
         screenshots.append({"data": img["data"], "annotation": img["filename"]})
     existing_html: str | None = store.get("mock_html") or None
     updated = {**store, "preference_text": pref, "screenshots": screenshots}
-    model, api_key, tavily_key, wd, support = _llm_params(session or {}, image_support)
+    sess = session or {}
+    model, api_key, tavily_key, wd, support = _llm_params(sess, image_support)
+    planning_ctx: dict[str, Any] | None = (
+        {"vision_statement": sess.get("vision_statement")}
+        if sess.get("vision_statement")
+        else None
+    )
     new_store, buf, disabled = _start_gen(
         updated, wd, model, api_key, tavily_key, support,
+        planning_ctx,
         existing_html=existing_html,
     )
     return new_store, buf, disabled
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("session", "data", allow_duplicate=True),
+    Input("btn-designer-revise-stale", "n_clicks"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_revise_stale(n: Any, store: Any, session: Any) -> Any:
+    if not n or not store:
+        return no_update, no_update
+    sess = session or {}
+    stale_inputs: list[str] = (store or {}).get("_stale_inputs", [])
+    note_lines = [
+        "[The project " + ", ".join(stale_inputs) + " has been updated since "
+        "this mock was generated. Please revise the mock to reflect the "
+        "updated context above while preserving the existing look and feel "
+        "where possible.]"
+    ]
+    new_store = {
+        **store,
+        "step": 7,
+        "_stale_inputs": [],
+        "refine_text": "\n".join(note_lines),
+        "refine_images": [],
+    }
+    # Acknowledge at the current input mtimes so we don't re-prompt on this
+    # session if the user navigates away mid-revise.
+    wd = sess.get("working_dir")
+    ack = dict(project_manager.detect_stale_inputs(wd, "designer")) if wd else {}
+    return new_store, {**sess, "designer_stale_acknowledged": ack}
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("session", "data", allow_duplicate=True),
+    Input("btn-designer-keep-stale", "n_clicks"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_keep_stale(n: Any, store: Any, session: Any) -> Any:
+    if not n or not store:
+        return no_update, no_update
+    sess = session or {}
+    wd = sess.get("working_dir")
+    ack = dict(project_manager.detect_stale_inputs(wd, "designer")) if wd else {}
+    return (
+        {**store, "_stale_inputs": []},
+        {**sess, "designer_stale_acknowledged": ack},
+    )
 
 
 @callback(

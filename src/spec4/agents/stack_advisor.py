@@ -10,6 +10,7 @@ from spec4.agents._utils import (
     _drop_orphan_trailing_user,
     _extract_json_block,
     _last_assistant_text,
+    _maybe_inject_staleness_question,
     _render_coding_style,
     _render_references,
     _replay_last_assistant,
@@ -285,13 +286,16 @@ def run(
 
     if user_input is None:
         if messages:
+            stale_q = _maybe_inject_staleness_question(session, "stack_advisor", messages)
+            if stale_q is not None:
+                yield stale_q
+                return
             yield from _replay_last_assistant(messages)
             return
 
         # Seed with available context, then call LLM
         vision = session.get("vision_statement")
         stack = session.get("stack_statement")
-        specmem = session.get("specmem")
         code_review = session.get("code_review")
 
         working_dir = session.get("working_dir")
@@ -339,18 +343,6 @@ def run(
                 "review and refine, or (2) we start fresh and you guide me through the usual "
                 "stack selection questions. Ask me which I'd prefer."
             )
-        elif specmem:
-            seed = (
-                f"{vision_block}"
-                f"{design_block}"
-                "Here is a summary of the current project state:\n\n"
-                f"{specmem}\n\n"
-                "Please introduce yourself as StackAdvisor. Briefly describe what you understand "
-                "about the project's technology from the summary, then offer me two options: "
-                "(1) you draft an initial stack spec based on the summary for me to review and "
-                "refine, or (2) we start fresh and you guide me through the usual stack selection "
-                "questions. Ask me which I'd prefer."
-            )
         else:
             seed = (
                 f"{vision_block}"
@@ -374,6 +366,7 @@ def run(
     if stack_spec:
         session["stack_advisor_state"] = STATE_STACK_COMPLETE
         session["stack_statement"] = stack_spec
+        session["stack_advisor_stale_acknowledged"] = {}
         display = _format_stack_as_text(stack_spec)
         messages[-1]["content"] = display
         session["_display_override"] = display

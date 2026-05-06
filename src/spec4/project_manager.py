@@ -106,6 +106,82 @@ def load_deployment_plan(working_dir: str | Path) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# Staleness detection
+# ---------------------------------------------------------------------------
+
+# Maps each agent to (output artifact rel path, [(input name, input rel path)…]).
+# Output and input paths are relative to .spec4/. A directory is treated as the
+# newest mtime among its files.
+_STALE_DEPENDENCIES: dict[str, tuple[str, list[tuple[str, str]]]] = {
+    "brainstormer": ("vision.json", [("code review", "code_review.json")]),
+    "stack_advisor": (
+        "stack.json",
+        [
+            ("vision", "vision.json"),
+            ("code review", "code_review.json"),
+            ("UI mock", "design/mock.html"),
+        ],
+    ),
+    "phaser": (
+        "phases",
+        [
+            ("vision", "vision.json"),
+            ("stack", "stack.json"),
+            ("code review", "code_review.json"),
+            ("UI mock", "design/mock.html"),
+        ],
+    ),
+    "deployer": (
+        "deployment-plan.md",
+        [
+            ("stack", "stack.json"),
+            ("phases", "phases"),
+            ("UI mock", "design/mock.html"),
+        ],
+    ),
+    "designer": ("design/mock.html", [("vision", "vision.json")]),
+}
+
+
+def _path_mtime(path: Path) -> float | None:
+    """Return the most recent mtime at `path`. None if missing.
+
+    For a directory, returns the newest mtime among its files (recursive).
+    """
+    if not path.exists():
+        return None
+    if path.is_file():
+        return path.stat().st_mtime
+    mtimes = [p.stat().st_mtime for p in path.rglob("*") if p.is_file()]
+    return max(mtimes) if mtimes else None
+
+
+def detect_stale_inputs(working_dir: str | Path, agent: str) -> dict[str, float]:
+    """Return {input_name: input_mtime} for upstream inputs newer than `agent`'s output.
+
+    Returns {} if `agent` has no recorded dependencies, the agent has not
+    produced an output yet, or no input is newer than the output. Mtimes are
+    returned alongside names so callers can detect a *further* upstream update
+    (the same input name appearing with a different mtime than what was last
+    acknowledged).
+    """
+    spec = _STALE_DEPENDENCIES.get(agent)
+    if not spec:
+        return {}
+    output_rel, inputs = spec
+    spec4_dir = get_spec4_dir(working_dir)
+    output_mtime = _path_mtime(spec4_dir / output_rel)
+    if output_mtime is None:
+        return {}
+    stale: dict[str, float] = {}
+    for name, rel in inputs:
+        input_mtime = _path_mtime(spec4_dir / rel)
+        if input_mtime is not None and input_mtime > output_mtime:
+            stale[name] = input_mtime
+    return stale
+
+
+# ---------------------------------------------------------------------------
 # SPECMEM helpers
 # ---------------------------------------------------------------------------
 

@@ -6,6 +6,7 @@ from typing import Any
 from dash import dcc, html
 import dash_mantine_components as dmc
 
+from spec4 import project_manager
 from spec4.agents.designer import detect_has_ui_source, detect_no_ui, load_session
 
 _PLACEHOLDER_HTML = (
@@ -259,8 +260,51 @@ _MOCK_DISCLAIMER = dmc.Alert(
 )
 
 
+def _stale_banner(stale: list[str]) -> Any:
+    """Banner shown above the mock preview when the vision is newer than the mock."""
+    parts = (
+        "the project " + ", the project ".join(stale)
+        if len(stale) > 1
+        else f"the project {stale[0]}"
+    )
+    return dmc.Alert(
+        [
+            dmc.Text(
+                f"I notice that {parts} has been updated since this mock was "
+                f"generated. Would you like me to revise the mock?",
+                mb="sm",
+            ),
+            dmc.Group(
+                [
+                    dmc.Button(
+                        "Revise mock",
+                        id="btn-designer-revise-stale",
+                        color="blue",
+                        size="sm",
+                    ),
+                    dmc.Button(
+                        "Keep as is",
+                        id="btn-designer-keep-stale",
+                        variant="outline",
+                        color="gray",
+                        size="sm",
+                    ),
+                ],
+                gap="sm",
+            ),
+        ],
+        title="Upstream changes detected",
+        color="yellow",
+        variant="light",
+    )
+
+
 def _step6_content(store: dict[str, Any]) -> Any:
-    return dmc.Stack(
+    stale_inputs: list[str] = store.get("_stale_inputs") or []
+    children: list[Any] = []
+    if stale_inputs:
+        children.append(_stale_banner(stale_inputs))
+    children.extend(
         [
             dmc.Group(
                 [
@@ -306,9 +350,9 @@ def _step6_content(store: dict[str, Any]) -> Any:
                 ],
                 gap="sm",
             ),
-        ],
-        gap="sm",
+        ]
     )
+    return dmc.Stack(children, gap="sm")
 
 
 def _refine_image_row(idx: int, filename: str) -> Any:
@@ -427,6 +471,14 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
             "mock_html": saved["mock_html"],
             "finalized": saved["finalized"],
         }
+        if working_dir:
+            stale = project_manager.detect_stale_inputs(working_dir, "designer")
+            ack: dict[str, float] = session.get("designer_stale_acknowledged") or {}
+            unacknowledged = [
+                name for name, mtime in stale.items() if ack.get(name) != mtime
+            ]
+            if unacknowledged:
+                initial_store["_stale_inputs"] = unacknowledged
     elif detect_no_ui(vision, code_review):
         initial_step = 1
         initial_store = _default_designer_session(step=1)

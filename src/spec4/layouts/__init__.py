@@ -6,6 +6,14 @@ from typing import Any
 from dash import dcc, html
 import dash_mantine_components as dmc
 
+from spec4.agents.designer import load_session as _load_designer_session
+from spec4.app_constants import (
+    STATE_DEPLOYER_COMPLETE,
+    STATE_PHASES_COMPLETE,
+    STATE_REVIEW_COMPLETE,
+    STATE_STACK_COMPLETE,
+    STATE_VISION_COMPLETE,
+)
 from spec4.layouts._chat import _agent_status_bar, _chat_action_buttons, _chat_layout
 from spec4.layouts._setup import _setup_layout
 from spec4.layouts._shared import (
@@ -350,6 +358,8 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
     spec4_dir = pathlib.Path(working_dir) / ".spec4" if working_dir else None
     review_in_spec4 = bool(spec4_dir and (spec4_dir / "code_review.json").exists())
 
+    mock_loaded = bool(spec4_dir and (spec4_dir / "design" / "mock.html").exists())
+
     loaded_items = []
     if vision_loaded:
         loaded_items.append("vision.json")
@@ -357,6 +367,8 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
         loaded_items.append("stack.json")
     if phases_loaded:
         loaded_items.append(f"phases/ ({len(session['phases'])} phases)")
+    if mock_loaded:
+        loaded_items.append("design/mock.html")
 
     children = [
         dmc.Title("Where Should We Begin?", order=3, mb="sm"),
@@ -410,25 +422,32 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
             )
         )
 
-    if session.get("specmem"):
-        children.append(
-            dmc.Accordion(
-                dmc.AccordionItem(
-                    [
-                        dmc.AccordionControl("📋 Current Project State (SPECMEM.md)"),
-                        dmc.AccordionPanel(dcc.Markdown(session["specmem"])),
-                    ],
-                    value="specmem",
+    designer_complete = False
+    if spec4_dir is not None:
+        saved_designer = _load_designer_session(spec4_dir / "design")
+        designer_complete = bool(saved_designer and saved_designer.get("finalized"))
+
+    def _label(complete: bool, step: int, emoji: str, name: str, desc: str) -> Any:
+        check = "☑" if complete else "☐"
+        return html.Span(
+            [
+                html.Span(
+                    check,
+                    style={
+                        "fontSize": "2em",
+                        "verticalAlign": "middle",
+                        "marginRight": "0.5em",
+                    },
                 ),
-                mb="md",
-            )
+                f"Step {step}: {emoji} {name} — {desc}",
+            ]
         )
 
     children.append(
         _card(
+            dmc.Text("Start with:", size="lg", fw=600, mb="md"),
             dmc.RadioGroup(
                 id="agent-select-radio",
-                label="Start with:",
                 value=(
                     "code_scanner"
                     if session.get("_dir_has_content")
@@ -438,27 +457,51 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
                 children=dmc.Stack(
                     [
                         dmc.Radio(
-                            label="🔍 CodeScanner — analyze the existing project directory (optional)",  # noqa: E501
+                            label=_label(
+                                session.get("code_scanner_state") == STATE_REVIEW_COMPLETE,
+                                0, "🔍", "CodeScanner",
+                                "analyze the existing project directory (optional)",
+                            ),
                             value="code_scanner",
                         ),
                         dmc.Radio(
-                            label="🧠 Brainstormer — develop or refine a project vision",  # noqa: E501
+                            label=_label(
+                                session.get("brainstormer_state") == STATE_VISION_COMPLETE,
+                                1, "🧠", "Brainstormer",
+                                "develop or refine a project vision",
+                            ),
                             value="brainstormer",
                         ),
                         dmc.Radio(
-                            label="🎨 Designer — create a visual mock-up for your application's starting screen",  # noqa: E501
+                            label=_label(
+                                designer_complete,
+                                2, "🎨", "Designer",
+                                "create a visual mock-up for your application's starting screen",
+                            ),
                             value="designer",
                         ),
                         dmc.Radio(
-                            label="⚙️ StackAdvisor — select or refine a technology stack",  # noqa: E501
+                            label=_label(
+                                session.get("stack_advisor_state") == STATE_STACK_COMPLETE,
+                                3, "⚙️", "StackAdvisor",
+                                "select or refine a technology stack",
+                            ),
                             value="stack_advisor",
                         ),
                         dmc.Radio(
-                            label="📋 Phaser — break your project into executable coding phases",  # noqa: E501
+                            label=_label(
+                                session.get("phaser_state") == STATE_PHASES_COMPLETE,
+                                4, "📋", "Phaser",
+                                "break your project into executable coding phases",
+                            ),
                             value="phaser",
                         ),
                         dmc.Radio(
-                            label="🚀 Deployer — plan coding-agent workflow and deployment strategy",  # noqa: E501
+                            label=_label(
+                                session.get("deployer_state") == STATE_DEPLOYER_COMPLETE,
+                                5, "🚀", "Deployer",
+                                "plan coding-agent workflow and deployment strategy",
+                            ),
                             value="deployer",
                         ),
                     ],
@@ -466,7 +509,17 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
                 ),
             ),
             _error(error) if error else html.Div(),
-            dmc.Button("Start →", id="btn-agent-start", mt="md"),
+            dmc.Group(
+                [
+                    dmc.Button("Start →", id="btn-agent-start"),
+                    dmc.Button(
+                        "Change model / provider",
+                        id="btn-agent-change-provider",
+                        variant="outline",
+                    ),
+                ],
+                mt="md",
+            ),
         )
     )
 

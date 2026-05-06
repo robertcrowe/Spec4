@@ -365,6 +365,25 @@ class TestBuildMockPrompt:
         assert "starting point" in normal_combined
         assert "look and feel" in capture_combined
 
+    def test_existing_html_and_planning_context_both_included(self) -> None:
+        # Refine path with planning context — used when an upstream artifact
+        # (vision) was updated after the mock was already generated. Both the
+        # current mock HTML and the new vision must appear in the prompt.
+        messages = build_mock_prompt(
+            _session(preference_text=""),
+            [],
+            False,
+            planning_context={"vision_statement": {"name": "FreshApp"}},
+            existing_html="<html><body><h1>Old</h1></body></html>",
+        )
+        parts = messages[1]["content"]
+        assert isinstance(parts, list)
+        combined = " ".join(str(p.get("text", "")) for p in parts)
+        assert "Existing Mock" in combined
+        assert "<h1>Old</h1>" in combined
+        assert "Project Vision" in combined
+        assert "FreshApp" in combined
+
 
 # ---------------------------------------------------------------------------
 # collect_ui_source_files
