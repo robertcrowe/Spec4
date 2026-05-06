@@ -8,6 +8,7 @@ from spec4 import tavily_mcp
 from spec4.agents._utils import (
     _drop_orphan_trailing_user,
     _last_assistant_text,
+    _maybe_inject_resume_summary,
     _maybe_inject_staleness_question,
     _replay_last_assistant,
 )
@@ -268,37 +269,41 @@ def run(
             if stale_q is not None:
                 yield stale_q
                 return
-            yield from _replay_last_assistant(messages)
-            return
-
-        stack = session.get("stack_statement")
-        phases = session.get("phases") or []
-
-        stack_block = (
-            f"Here is the technology stack spec:\n\n"
-            f"```json\n{json.dumps(stack, indent=2)}\n```\n\n"
-            if stack
-            else ""
-        )
-
-        if phases:
-            phase_titles = "\n".join(
-                f"- Phase {p.get('phase_number')}: {p.get('phase_title', '')}"
-                for p in phases
-            )
-            phases_block = (
-                f"Here are the {len(phases)} development phases planned for this project:\n\n"
-                f"{phase_titles}\n\n"
-            )
+            if not _maybe_inject_resume_summary(
+                session, "deployer", messages, STATE_DEPLOYER_COMPLETE
+            ):
+                yield from _replay_last_assistant(messages)
+                return
+            # Resume summary injected — fall through to LLM call.
         else:
-            phases_block = ""
+            stack = session.get("stack_statement")
+            phases = session.get("phases") or []
 
-        seed = (
-            f"{stack_block}{phases_block}"
-            "Please introduce yourself as Deployer, then begin by asking which AI coding agent "
-            "the developer plans to use to implement these phases."
-        )
-        messages.append({"role": "user", "content": seed})
+            stack_block = (
+                f"Here is the technology stack spec:\n\n"
+                f"```json\n{json.dumps(stack, indent=2)}\n```\n\n"
+                if stack
+                else ""
+            )
+
+            if phases:
+                phase_titles = "\n".join(
+                    f"- Phase {p.get('phase_number')}: {p.get('phase_title', '')}"
+                    for p in phases
+                )
+                phases_block = (
+                    f"Here are the {len(phases)} development phases planned for this project:\n\n"
+                    f"{phase_titles}\n\n"
+                )
+            else:
+                phases_block = ""
+
+            seed = (
+                f"{stack_block}{phases_block}"
+                "Please introduce yourself as Deployer, then begin by asking which AI coding agent "
+                "the developer plans to use to implement these phases."
+            )
+            messages.append({"role": "user", "content": seed})
     else:
         messages.append({"role": "user", "content": user_input})
 
@@ -310,3 +315,4 @@ def run(
     if "## Deployment Steps" in _last_assistant_text(messages):
         session["deployer_state"] = STATE_DEPLOYER_COMPLETE
         session["deployer_stale_acknowledged"] = {}
+        session["deployer_artifact_msg_count"] = len(messages)

@@ -565,11 +565,16 @@ def _switch_agent(
     target: str,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Switch active_agent and reset its message history in a session dict copy."""
+    """Switch active_agent and clear UI display state, preserving the target
+    agent's conversation and artifact state.
+
+    The recap helper (`_maybe_inject_resume_summary`) handles resumption when
+    `{target}_messages` is non-empty, so navigating between agents picks up
+    where the user left off rather than starting from scratch.
+    """
     return {
         **session,
         "active_agent": target,
-        f"{target}_messages": [],
         "messages": [],
         "_initial_turn_done": False,
         **(extra or {}),
@@ -623,7 +628,7 @@ def on_stack_to_designer(n: Any, session: Any) -> Any:
 def on_stack_to_phaser(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return _switch_agent(session, "phaser", {"phaser_state": None, "phases": []})
+    return _switch_agent(session, "phaser")
 
 
 @callback(
@@ -735,7 +740,7 @@ def on_phaser_to_deployer(n: Any, session: Any) -> Any:
 def on_deployer_to_phaser(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return _switch_agent(session, "phaser", {"phaser_state": None, "phases": []})
+    return _switch_agent(session, "phaser")
 
 
 @callback(

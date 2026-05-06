@@ -2,7 +2,7 @@ from collections.abc import Iterable
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from spec4.agents import brainstormer, code_scanner, phaser, stack_advisor
+from spec4.agents import brainstormer, code_scanner, deployer, phaser, stack_advisor
 from spec4.app_constants import (
     STATE_IN_PROGRESS,
     STATE_PHASES_COMPLETE,
@@ -235,6 +235,7 @@ class TestStalenessQuestion:
             working_dir=str(tmp_path),
             vision_statement={"name": "App"},
             stack_statement={"name": "App"},
+            stack_advisor_resumed=True,
             stack_advisor_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "Final stack JSON output."},
@@ -256,6 +257,7 @@ class TestStalenessQuestion:
             working_dir=str(tmp_path),
             vision_statement={"name": "App"},
             stack_statement={"name": "App"},
+            stack_advisor_resumed=True,
             stack_advisor_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "Last assistant message."},
@@ -299,6 +301,151 @@ class TestStalenessQuestion:
         # Re-asks because the mtime moved.
         assert "revise" in output.lower() or "updated" in output.lower()
         assert session["stack_advisor_stale_acknowledged"]["vision"] == 3_000.0
+
+
+class TestResumeSummary:
+    """When the user navigates back to an in-progress agent after a break,
+    replaying the last assistant message verbatim drops them into a
+    mid-thought sentence with no surrounding context. Instead, the first
+    re-entry per session-store lifetime should inject a synthetic user
+    message asking the LLM for a recap-then-continue."""
+
+    def _in_progress_session(self, agent: str, **overrides: Any) -> dict[str, Any]:
+        msgs_key = f"{agent}_messages"
+        return make_session(
+            active_agent=agent,
+            **{
+                msgs_key: [
+                    {"role": "user", "content": "earlier turn"},
+                    {
+                        "role": "assistant",
+                        "content": (
+                            "Good. Now I understand how Vercel handles env "
+                            "variables. For a React + Vite SPA you likely won't "
+                            "need many secrets at this stage..."
+                        ),
+                    },
+                ],
+                **overrides,
+            },
+        )
+
+    def test_deployer_first_reentry_calls_llm_for_recap(self) -> None:
+        session = self._in_progress_session(
+            "deployer",
+            phases=[{"phase_number": 1, "phase_title": "Steel thread"}],
+            stack_statement={"name": "App"},
+        )
+        with mock_litellm_stream(
+            "**Recap:** We've discussed deployment to Vercel. **Next:** "
+            "what monitoring would you like?"
+        ):
+            output = collect(deployer.run(None, session, session["llm_config"]))
+
+        assert "Recap" in output
+        assert session["deployer_resumed"] is True
+        # The synthetic user prompt is now in the message log, followed by the
+        # LLM's recap reply.
+        msgs = session["deployer_messages"]
+        assert msgs[-2]["role"] == "user"
+        assert "resuming this session" in msgs[-2]["content"]
+        assert msgs[-1]["role"] == "assistant"
+        assert "Recap" in msgs[-1]["content"]
+
+    def test_second_reentry_replays_without_calling_llm(self) -> None:
+        session = self._in_progress_session(
+            "deployer",
+            phases=[{"phase_number": 1, "phase_title": "Steel thread"}],
+            deployer_resumed=True,
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(deployer.run(None, session, session["llm_config"]))
+        mock_llm.assert_not_called()
+        # The original last assistant message comes back via replay.
+        assert "Vercel" in output
+
+    def test_completed_agent_replays_artifact_not_recap(self) -> None:
+        # Brainstormer is done — the last assistant turn is the
+        # formatted-vision text, not a mid-thought question. Replay is right.
+        session = self._in_progress_session(
+            "brainstormer",
+            brainstormer_state=STATE_VISION_COMPLETE,
+            vision_statement={"name": "App"},
+        )
+        # Overwrite the last assistant content with a finished-artifact display
+        # and snapshot the message count to match (this is what the agent does
+        # when it writes the artifact).
+        session["brainstormer_messages"][-1]["content"] = "**Vision:** App\n\n…"
+        session["brainstormer_artifact_msg_count"] = len(
+            session["brainstormer_messages"]
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(
+                brainstormer.run(None, session, session["llm_config"])
+            )
+        mock_llm.assert_not_called()
+        assert "Vision" in output
+        assert session.get("brainstormer_resumed") is not True
+
+    def test_completed_agent_in_revision_mode_does_recap(self) -> None:
+        # Brainstormer finished earlier, the user has chatted further past the
+        # artifact (e.g., asking for revisions). The last message is now a
+        # mid-thought question — so the recap should fire even though the
+        # agent's *_state is STATE_*_COMPLETE.
+        session = self._in_progress_session(
+            "brainstormer",
+            brainstormer_state=STATE_VISION_COMPLETE,
+            vision_statement={"name": "App"},
+        )
+        # Snapshot is older than the current message count, simulating
+        # post-artifact revision turns.
+        session["brainstormer_artifact_msg_count"] = 0
+        with mock_litellm_stream(
+            "**Recap:** We finalized your vision for App. **Next:** which "
+            "section would you like to refine?"
+        ):
+            output = collect(
+                brainstormer.run(None, session, session["llm_config"])
+            )
+        assert "Recap" in output
+        assert session["brainstormer_resumed"] is True
+
+    def test_empty_messages_skips_recap_branch(self) -> None:
+        # Fresh start — the static greeting branch must run, not the
+        # recap branch (which requires non-empty msgs).
+        session = make_session(active_agent="brainstormer")
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(
+                brainstormer.run(None, session, session["llm_config"])
+            )
+        mock_llm.assert_not_called()
+        assert "Brainstormer" in output
+        assert session.get("brainstormer_resumed") is not True
+
+    def test_staleness_takes_precedence_over_recap(self, tmp_path: Any) -> None:
+        # Both staleness AND a fresh resume condition are present; the
+        # staleness question must fire first (it's more important).
+        import os
+        spec4 = tmp_path / ".spec4"
+        spec4.mkdir()
+        for name, mtime in [("stack.json", 1_000.0), ("vision.json", 2_000.0)]:
+            p = spec4 / name
+            p.write_text("{}", encoding="utf-8")
+            os.utime(p, (mtime, mtime))
+        session = self._in_progress_session(
+            "stack_advisor",
+            working_dir=str(tmp_path),
+            vision_statement={"name": "App"},
+            stack_statement={"name": "App"},
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(
+                stack_advisor.run(None, session, session["llm_config"])
+            )
+        mock_llm.assert_not_called()
+        assert "revise" in output.lower() or "updated" in output.lower()
+        # Resume flag is NOT set — recap path didn't fire.
+        assert session.get("stack_advisor_resumed") is not True
 
 
 class TestOrphanTurnRecovery:
@@ -440,6 +587,7 @@ class TestStackAdvisor:
         session = make_session(
             active_agent="stack_advisor",
             vision_statement={"name": "App", "vision": "v"},
+            stack_advisor_resumed=True,
         )
         session["stack_advisor_messages"] = [
             {"role": "user", "content": "seed"},
@@ -489,12 +637,93 @@ class TestBrainstormerBranches:
 
         assert _extract_vision_json("no json here") is None
 
+    def test_format_vision_handles_string_features(self) -> None:
+        # Real LLMs sometimes emit features as bare strings rather than the
+        # canonical {Name: {description, example}} shape — this used to crash
+        # with `'str' object has no attribute 'items'` and surface raw JSON
+        # plus an AttributeError to the user.
+        from spec4.agents.brainstormer import _format_vision_as_text
+
+        vision = {
+            "vision_statement": {
+                "name": "Chrome & Carbon",
+                "vision": {
+                    "purpose": "demo",
+                    "key_features_mvp": ["AI Recommendations", "User Reviews"],
+                    "future_enhancements": ["Predictive AI"],
+                },
+            }
+        }
+        out = _format_vision_as_text(vision)
+        assert "AI Recommendations" in out
+        assert "User Reviews" in out
+        assert "Continue to Designer" in out
+
+    def test_format_vision_handles_flat_named_features(self) -> None:
+        from spec4.agents.brainstormer import _format_vision_as_text
+
+        vision = {
+            "vision_statement": {
+                "name": "App",
+                "vision": {
+                    "key_features_mvp": [
+                        {"name": "AI Recs", "description": "Personalized suggestions"},
+                    ],
+                },
+            }
+        }
+        out = _format_vision_as_text(vision)
+        assert "AI Recs" in out
+        assert "Personalized suggestions" in out
+
+    def test_run_uses_fallback_display_when_format_raises(self) -> None:
+        # Even with a hardened formatter, an unexpected schema shape must not
+        # leak raw JSON to the chat. The agent's run() wraps the formatter in
+        # try/except and falls back to a minimal display that still includes
+        # the project name and the transition message.
+        session = make_session(
+            brainstormer_messages=[
+                {"role": "user", "content": "ready"},
+                {
+                    "role": "assistant",
+                    "content": (
+                        '```json\n'
+                        '{"vision_statement": {"name": "App", "vision": "desc"}}\n'
+                        '```'
+                    ),
+                },
+            ],
+            brainstormer_resumed=True,
+        )
+        with patch(
+            "spec4.agents.brainstormer._format_vision_as_text",
+            side_effect=AttributeError("'str' object has no attribute 'items'"),
+        ):
+            with mock_litellm_stream(
+                '```json\n'
+                '{"vision_statement": {"name": "App", "vision": "desc"}}\n'
+                '```'
+            ):
+                collect(
+                    brainstormer.run("yes", session, session["llm_config"])
+                )
+        override = session.get("_display_override")
+        assert override is not None
+        assert "App" in override
+        assert "Continue to Designer" in override
+        # The agent still records vision_statement and flips state to complete.
+        assert session["brainstormer_state"] == STATE_VISION_COMPLETE
+        assert session["vision_statement"] == {
+            "vision_statement": {"name": "App", "vision": "desc"}
+        }
+
     def test_reentry_replays_last_assistant_message(self) -> None:
         session = make_session(
+            brainstormer_resumed=True,
             brainstormer_messages=[
                 {"role": "user", "content": "hi"},
                 {"role": "assistant", "content": "Existing response"},
-            ]
+            ],
         )
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             output = collect(brainstormer.run(None, session, session["llm_config"]))
@@ -662,10 +891,11 @@ class TestCodeScanner:
 
     def test_reentry_replays_last_assistant_message(self) -> None:
         session = make_session(
+            code_scanner_resumed=True,
             code_scanner_messages=[
                 {"role": "user", "content": "hi"},
                 {"role": "assistant", "content": "CodeScanner response"},
-            ]
+            ],
         )
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             output = collect(code_scanner.run(None, session, session["llm_config"]))

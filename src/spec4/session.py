@@ -93,6 +93,14 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
         "phaser_stale_acknowledged": {},
         "deployer_stale_acknowledged": {},
         "designer_stale_acknowledged": {},
+        "code_scanner_resumed": False,
+        "brainstormer_resumed": False,
+        "stack_advisor_resumed": False,
+        "deployer_resumed": False,
+        "code_scanner_artifact_msg_count": None,
+        "brainstormer_artifact_msg_count": None,
+        "stack_advisor_artifact_msg_count": None,
+        "deployer_artifact_msg_count": None,
         "_warn_existing_content": False,
     }
     try:

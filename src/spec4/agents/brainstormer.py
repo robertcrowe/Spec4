@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import traceback
 from collections.abc import Generator
 from typing import Any
 
@@ -9,12 +11,15 @@ from spec4.agents._utils import (
     _drop_orphan_trailing_user,
     _extract_json_block,
     _last_assistant_text,
+    _maybe_inject_resume_summary,
     _maybe_inject_staleness_question,
     _render_references,
     _replay_last_assistant,
     _stream_suppressing_json,
 )
 from spec4.app_constants import STATE_VISION_COMPLETE
+
+_DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
 
 
 SYSTEM_PROMPT = """\
@@ -185,6 +190,40 @@ def _extract_vision_json(text: str) -> dict[str, Any] | None:
     return data if data is not None and "vision_statement" in data else None
 
 
+_VISION_TRANSITION = (
+    "---\n\n"
+    "We've finished brainstorming the vision, so now you're ready to move on to "
+    "creating a look and feel or defining your tech stack. Please click on the "
+    "**Continue to Designer** button below."
+)
+
+
+def _render_feature_item(feat: Any, lines: list[str]) -> None:
+    """Render a single feature/enhancement entry in any of the shapes the LLM emits.
+
+    Three shapes seen in practice:
+    - bare string ("AI Recommendations")
+    - canonical {Name: {description, example}} from the system prompt
+    - flat dict with explicit "name"/"description" keys
+    """
+    if isinstance(feat, str):
+        lines.append(f"- {feat}")
+        return
+    if not isinstance(feat, dict):
+        lines.append(f"- {feat}")
+        return
+    if "name" in feat and "description" in feat:
+        lines.append(f"- **{feat['name']}** — {feat['description']}")
+        return
+    for feat_name, feat_val in feat.items():
+        label = str(feat_name).replace("_", " ")
+        if isinstance(feat_val, dict):
+            desc = feat_val.get("description", "")
+        else:
+            desc = str(feat_val)
+        lines.append(f"- **{label}** — {desc}")
+
+
 def _format_vision_as_text(vision: dict[str, Any]) -> str:
     vs = vision.get("vision_statement", {})
     raw_v = vs.get("vision", {})
@@ -210,14 +249,11 @@ def _format_vision_as_text(vision: dict[str, Any]) -> str:
             lines.append(f"- {item}")
         lines.append("")
 
-    features: list[dict[str, Any]] = v.get("key_features_mvp", [])
+    features: list[Any] = v.get("key_features_mvp", [])
     if features:
         lines.append("**Core Features (MVP):**")
         for feat in features:
-            for feat_name, feat_val in feat.items():
-                label = feat_name.replace("_", " ")
-                desc = feat_val.get("description", "") if isinstance(feat_val, dict) else str(feat_val)
-                lines.append(f"- **{label}** — {desc}")
+            _render_feature_item(feat, lines)
         lines.append("")
 
     differentiators: list[str] = v.get("differentiators", [])
@@ -227,14 +263,11 @@ def _format_vision_as_text(vision: dict[str, Any]) -> str:
             lines.append(f"- {item}")
         lines.append("")
 
-    future: list[dict[str, Any]] = v.get("future_enhancements", [])
+    future: list[Any] = v.get("future_enhancements", [])
     if future:
         lines.append("**Future Enhancements:**")
         for feat in future:
-            for feat_name, feat_val in feat.items():
-                label = feat_name.replace("_", " ")
-                desc = feat_val.get("description", "") if isinstance(feat_val, dict) else str(feat_val)
-                lines.append(f"- **{label}** — {desc}")
+            _render_feature_item(feat, lines)
         lines.append("")
 
     monetization: dict[str, Any] = v.get("monetization", {})
@@ -249,13 +282,30 @@ def _format_vision_as_text(vision: dict[str, Any]) -> str:
 
     _render_references(v.get("references", []), lines)
 
-    lines.append(
-        "---\n\n"
-        "We've finished brainstorming the vision, so now you're ready to move on to "
-        "creating a look and feel or defining your tech stack. Please click on the "
-        "**Continue to Designer** button below."
-    )
+    lines.append(_VISION_TRANSITION)
     return "\n".join(lines)
+
+
+def _vision_fallback_display(vision: dict[str, Any]) -> str:
+    """Minimal display used when `_format_vision_as_text` raises on an unexpected shape.
+
+    Guarantees the user sees the project name and the transition message instead
+    of a raw JSON dump leaking through the chat.
+    """
+    name = ""
+    vs = vision.get("vision_statement")
+    if isinstance(vs, dict):
+        name = str(vs.get("name", "") or "")
+    heading = (
+        f"**Vision Statement saved for {name}.**\n\n"
+        if name
+        else "**Vision Statement saved.**\n\n"
+    )
+    return (
+        heading
+        + "Your vision has been saved to `.spec4/vision.json`.\n\n"
+        + _VISION_TRANSITION
+    )
 
 
 def run(
@@ -280,64 +330,68 @@ def run(
             if stale_q is not None:
                 yield stale_q
                 return
-            yield from _replay_last_assistant(msgs)
-            return
-
-        vision = session.get("vision_statement")
-        code_review = session.get("code_review")
-
-        code_review_block = (
-            f"\n\nFor context, here is a code review of the existing project:\n\n"
-            f"```json\n{json.dumps(code_review, indent=2)}\n```\n"
-            if code_review
-            else ""
-        )
-
-        if vision:
-            # Brownfield update mode: present the existing vision and ask for changes
-            vision_text = json.dumps(vision, indent=2)
-            msgs.append(
-                {
-                    "role": "user",
-                    "content": (
-                        f"I have an existing vision statement from a previous planning "
-                        f"session:{code_review_block}\n\n"
-                        f"```json\n{vision_text}\n```\n\n"
-                        "Please introduce yourself as Brainstormer, then present this existing "
-                        "vision to me as a clear, readable summary. Ask me to review it and "
-                        "describe the changes I would like to make, then work through my "
-                        "requested changes one at a time. When I confirm I am satisfied, "
-                        "generate an updated vision statement."
-                    ),
-                }
-            )
-            # Fall through to LLM call below
-        elif code_review:
-            # Existing project with code review but no vision yet
-            msgs.append(
-                {
-                    "role": "user",
-                    "content": (
-                        "I have an existing software project that I'd like to create a vision "
-                        "statement for. Here is a code review of the existing project:\n\n"
-                        f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
-                        "Please introduce yourself as Brainstormer. Briefly describe what you "
-                        "understand about this project from the code review, then begin your "
-                        "usual question-by-question process to develop the vision statement. "
-                        "Use the code review as context to inform your questions."
-                    ),
-                }
-            )
-            # Fall through to LLM call below
+            if not _maybe_inject_resume_summary(
+                session, "brainstormer", msgs, STATE_VISION_COMPLETE
+            ):
+                yield from _replay_last_assistant(msgs)
+                return
+            # Resume summary injected — fall through to LLM call.
         else:
-            # Fresh start: static greeting
-            yield (
-                "Hello! I'm the **Brainstormer**. I'll help you develop a clear, "
-                "well-defined vision for your software project.\n\n"
-                "What's your initial idea for the project? It can be rough — "
-                "we'll refine it together."
+            vision = session.get("vision_statement")
+            code_review = session.get("code_review")
+
+            code_review_block = (
+                f"\n\nFor context, here is a code review of the existing project:\n\n"
+                f"```json\n{json.dumps(code_review, indent=2)}\n```\n"
+                if code_review
+                else ""
             )
-            return
+
+            if vision:
+                # Brownfield update mode: present the existing vision and ask for changes
+                vision_text = json.dumps(vision, indent=2)
+                msgs.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"I have an existing vision statement from a previous planning "
+                            f"session:{code_review_block}\n\n"
+                            f"```json\n{vision_text}\n```\n\n"
+                            "Please introduce yourself as Brainstormer, then present this existing "
+                            "vision to me as a clear, readable summary. Ask me to review it and "
+                            "describe the changes I would like to make, then work through my "
+                            "requested changes one at a time. When I confirm I am satisfied, "
+                            "generate an updated vision statement."
+                        ),
+                    }
+                )
+                # Fall through to LLM call below
+            elif code_review:
+                # Existing project with code review but no vision yet
+                msgs.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "I have an existing software project that I'd like to create a vision "
+                            "statement for. Here is a code review of the existing project:\n\n"
+                            f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
+                            "Please introduce yourself as Brainstormer. Briefly describe what you "
+                            "understand about this project from the code review, then begin your "
+                            "usual question-by-question process to develop the vision statement. "
+                            "Use the code review as context to inform your questions."
+                        ),
+                    }
+                )
+                # Fall through to LLM call below
+            else:
+                # Fresh start: static greeting
+                yield (
+                    "Hello! I'm the **Brainstormer**. I'll help you develop a clear, "
+                    "well-defined vision for your software project.\n\n"
+                    "What's your initial idea for the project? It can be rough — "
+                    "we'll refine it together."
+                )
+                return
     else:
         msgs.append({"role": "user", "content": user_input})
 
@@ -353,6 +407,17 @@ def run(
         session["brainstormer_state"] = STATE_VISION_COMPLETE
         session["vision_statement"] = vision
         session["brainstormer_stale_acknowledged"] = {}
-        display = _format_vision_as_text(vision)
+        try:
+            display = _format_vision_as_text(vision)
+        except Exception as exc:
+            if _DEV_MODE:
+                print(
+                    f"[brainstormer] _format_vision_as_text failed: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                traceback.print_exc()
+            display = _vision_fallback_display(vision)
         msgs[-1]["content"] = display
         session["_display_override"] = display
+        session["brainstormer_artifact_msg_count"] = len(msgs)

@@ -158,6 +158,66 @@ def _maybe_inject_staleness_question(
     return question
 
 
+def _maybe_inject_resume_summary(
+    session: dict[str, Any],
+    agent: str,
+    msgs: list[dict[str, Any]],
+    complete_state: str,
+) -> bool:
+    """Append a "recap then continue" user prompt on the first re-entry of a session.
+
+    Without this, navigating back to an in-progress agent replays the last
+    assistant message verbatim — which is usually a mid-thought sentence
+    (e.g. "Good. Now I understand how Vercel handles environment
+    variables...") that reads as nonsense without the surrounding context.
+
+    Returns True if a synthetic user message was appended (caller should
+    fall through to the LLM call to produce the recap). Returns False if
+    no action — caller should follow its normal replay branch.
+
+    Skips when:
+    - msgs is empty (fresh start, not a resume),
+    - `session[f"{agent}_resumed"]` is truthy (already summarized once for
+      this session-store lifetime), or
+    - the agent has finished AND the user is still sitting on the
+      just-written formatted-artifact message (i.e. `*_state == complete_state`
+      and `len(msgs) == *_artifact_msg_count`). In that exact case, replay
+      of the artifact text is the right behavior. If the user has chatted
+      further past the artifact (revision mode after a brownfield reload),
+      msgs has grown and the recap fires.
+
+    The flag and the message-count snapshot both clear in
+    `session._load_working_dir()`, so reloading the project directory
+    triggers a fresh summary on the next visit.
+    """
+    if not msgs:
+        return False
+    if session.get(f"{agent}_resumed"):
+        return False
+    if (
+        session.get(f"{agent}_state") == complete_state
+        and session.get(f"{agent}_artifact_msg_count") == len(msgs)
+    ):
+        return False
+    msgs.append(
+        {
+            "role": "user",
+            "content": (
+                "[Spec4 system note: the developer is resuming this session "
+                "after a break and has lost the chat context. Begin your "
+                "reply with a brief recap (2-4 sentences) of what we have "
+                "discussed and decided so far, then continue from where we "
+                "left off — either by re-asking your most recent question "
+                "or by moving on to the next topic. Do not output any "
+                "final JSON artifact in this turn; the recap and next "
+                "question is all that is needed."
+            ),
+        }
+    )
+    session[f"{agent}_resumed"] = True
+    return True
+
+
 def _drop_orphan_trailing_user(msgs: list[dict[str, Any]]) -> int:
     """Remove trailing non-assistant messages left over from an interrupted turn.
 

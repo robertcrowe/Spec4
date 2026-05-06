@@ -9,6 +9,7 @@ from spec4.agents._utils import (
     _drop_orphan_trailing_user,
     _extract_json_block,
     _last_assistant_text,
+    _maybe_inject_resume_summary,
     _render_coding_style,
     _replay_last_assistant,
     _stream_suppressing_json,
@@ -334,30 +335,34 @@ def run(
 
     if user_input is None:
         if msgs:
-            yield from _replay_last_assistant(msgs)
-            return
+            if not _maybe_inject_resume_summary(
+                session, "code_scanner", msgs, STATE_REVIEW_COMPLETE
+            ):
+                yield from _replay_last_assistant(msgs)
+                return
+            # Resume summary injected — fall through to LLM call.
+        else:
+            working_dir = session.get("working_dir")
+            if not working_dir:
+                yield (
+                    "I'm the **CodeScanner**. I analyze your project directory to understand "
+                    "the existing codebase.\n\n"
+                    "⚠️ No project directory has been selected. Please go back and select "
+                    "a working directory first."
+                )
+                return
 
-        working_dir = session.get("working_dir")
-        if not working_dir:
-            yield (
-                "I'm the **CodeScanner**. I analyze your project directory to understand "
-                "the existing codebase.\n\n"
-                "⚠️ No project directory has been selected. Please go back and select "
-                "a working directory first."
+            context = _gather_project_context(working_dir)
+            msgs.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Please introduce yourself as CodeScanner, then analyze this project "
+                        "directory section by section as instructed.\n\n"
+                        f"{context}"
+                    ),
+                }
             )
-            return
-
-        context = _gather_project_context(working_dir)
-        msgs.append(
-            {
-                "role": "user",
-                "content": (
-                    "Please introduce yourself as CodeScanner, then analyze this project "
-                    "directory section by section as instructed.\n\n"
-                    f"{context}"
-                ),
-            }
-        )
     else:
         msgs.append({"role": "user", "content": user_input})
 
@@ -375,3 +380,4 @@ def run(
         display = _format_review_as_text(review)
         msgs[-1]["content"] = display
         session["_display_override"] = display
+        session["code_scanner_artifact_msg_count"] = len(msgs)

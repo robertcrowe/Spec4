@@ -10,6 +10,7 @@ from spec4.agents._utils import (
     _drop_orphan_trailing_user,
     _extract_json_block,
     _last_assistant_text,
+    _maybe_inject_resume_summary,
     _maybe_inject_staleness_question,
     _render_coding_style,
     _render_references,
@@ -290,68 +291,72 @@ def run(
             if stale_q is not None:
                 yield stale_q
                 return
-            yield from _replay_last_assistant(messages)
-            return
-
-        # Seed with available context, then call LLM
-        vision = session.get("vision_statement")
-        stack = session.get("stack_statement")
-        code_review = session.get("code_review")
-
-        working_dir = session.get("working_dir")
-        design_dir = Path(working_dir) / ".spec4" / "design" if working_dir else None
-        design_ctx = _load_design_context(design_dir) if design_dir else ""
-        design_block = f"{design_ctx}\n\n" if design_ctx else ""
-
-        vision_block = (
-            f"Here is my project vision statement:\n\n```json\n{json.dumps(vision, indent=2)}\n```\n\n"
-            if vision
-            else ""
-        )
-        code_review_block = (
-            f"For context, here is a code review of the existing project:\n\n"
-            f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
-            "**Important:** If any stack choices proposed during our conversation conflict with "
-            "the existing technologies above (different language, incompatible framework, etc.), "
-            "proactively warn me about the conflict, explain the implications (migration effort, "
-            "incompatibility risks), and offer concrete options: keep existing tech, migrate to "
-            "new choice, or a hybrid approach.\n\n"
-            if code_review
-            else ""
-        )
-
-        if stack:
-            seed = (
-                f"{vision_block}"
-                f"{design_block}"
-                f"{code_review_block}"
-                f"I also have an existing stack spec:\n\n"
-                f"```json\n{json.dumps(stack, indent=2)}\n```\n\n"
-                "Please introduce yourself as StackAdvisor and briefly summarize the existing "
-                "stack spec. Then ask me: would I like to **continue refining this existing "
-                "stack**, or would I prefer to **start with a completely new stack** from "
-                "scratch? Wait for my answer before proceeding."
-            )
-        elif code_review:
-            seed = (
-                f"{vision_block}"
-                f"{design_block}"
-                f"{code_review_block}"
-                "Please introduce yourself as StackAdvisor. Briefly describe what you understand "
-                "about the project's existing technology from the code review, then offer me two "
-                "options: (1) you draft an initial stack spec based on what you found for me to "
-                "review and refine, or (2) we start fresh and you guide me through the usual "
-                "stack selection questions. Ask me which I'd prefer."
-            )
+            if not _maybe_inject_resume_summary(
+                session, "stack_advisor", messages, STATE_STACK_COMPLETE
+            ):
+                yield from _replay_last_assistant(messages)
+                return
+            # Resume summary injected — fall through to LLM call.
         else:
-            seed = (
-                f"{vision_block}"
-                f"{design_block}"
-                "Please introduce yourself as StackAdvisor, greet the user, and begin guiding "
-                "me through the technology stack selection."
+            # Seed with available context, then call LLM
+            vision = session.get("vision_statement")
+            stack = session.get("stack_statement")
+            code_review = session.get("code_review")
+
+            working_dir = session.get("working_dir")
+            design_dir = Path(working_dir) / ".spec4" / "design" if working_dir else None
+            design_ctx = _load_design_context(design_dir) if design_dir else ""
+            design_block = f"{design_ctx}\n\n" if design_ctx else ""
+
+            vision_block = (
+                f"Here is my project vision statement:\n\n```json\n{json.dumps(vision, indent=2)}\n```\n\n"
+                if vision
+                else ""
+            )
+            code_review_block = (
+                f"For context, here is a code review of the existing project:\n\n"
+                f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
+                "**Important:** If any stack choices proposed during our conversation conflict with "
+                "the existing technologies above (different language, incompatible framework, etc.), "
+                "proactively warn me about the conflict, explain the implications (migration effort, "
+                "incompatibility risks), and offer concrete options: keep existing tech, migrate to "
+                "new choice, or a hybrid approach.\n\n"
+                if code_review
+                else ""
             )
 
-        messages.append({"role": "user", "content": seed})
+            if stack:
+                seed = (
+                    f"{vision_block}"
+                    f"{design_block}"
+                    f"{code_review_block}"
+                    f"I also have an existing stack spec:\n\n"
+                    f"```json\n{json.dumps(stack, indent=2)}\n```\n\n"
+                    "Please introduce yourself as StackAdvisor and briefly summarize the existing "
+                    "stack spec. Then ask me: would I like to **continue refining this existing "
+                    "stack**, or would I prefer to **start with a completely new stack** from "
+                    "scratch? Wait for my answer before proceeding."
+                )
+            elif code_review:
+                seed = (
+                    f"{vision_block}"
+                    f"{design_block}"
+                    f"{code_review_block}"
+                    "Please introduce yourself as StackAdvisor. Briefly describe what you understand "
+                    "about the project's existing technology from the code review, then offer me two "
+                    "options: (1) you draft an initial stack spec based on what you found for me to "
+                    "review and refine, or (2) we start fresh and you guide me through the usual "
+                    "stack selection questions. Ask me which I'd prefer."
+                )
+            else:
+                seed = (
+                    f"{vision_block}"
+                    f"{design_block}"
+                    "Please introduce yourself as StackAdvisor, greet the user, and begin guiding "
+                    "me through the technology stack selection."
+                )
+
+            messages.append({"role": "user", "content": seed})
     else:
         messages.append({"role": "user", "content": user_input})
 
@@ -370,3 +375,4 @@ def run(
         display = _format_stack_as_text(stack_spec)
         messages[-1]["content"] = display
         session["_display_override"] = display
+        session["stack_advisor_artifact_msg_count"] = len(messages)
