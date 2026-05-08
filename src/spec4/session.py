@@ -63,21 +63,53 @@ def _default_session() -> dict[str, Any]:
     }
 
 
+# Setup keys preserved across "Start New Project" — these represent the
+# developer's LLM connection, which is independent of any specific project.
+_PRESERVED_SETUP_KEYS: tuple[str, ...] = (
+    "provider",
+    "api_key",
+    "model",
+    "available_models",
+    "llm_config",
+    "tavily_api_key",
+)
+
+
+def _reset_for_new_project(session: dict[str, Any]) -> dict[str, Any]:
+    """Build a fresh-default session preserving only the LLM setup keys.
+
+    Used by the "Start New Project" action in Deployer. Clears every
+    project-specific field (working_dir, all agent messages/states/artifacts,
+    chat display messages, the deployer plan flags, staleness acknowledgements,
+    resume snapshots, etc.) so the agents page renders with empty checkboxes,
+    while leaving the developer's provider/model/Tavily configuration in place
+    so they don't have to redo the setup screen.
+    """
+    fresh = _default_session()
+    for key in _PRESERVED_SETUP_KEYS:
+        fresh[key] = session.get(key)
+    return fresh
+
+
 # ---------------------------------------------------------------------------
 # Working directory loader
 # ---------------------------------------------------------------------------
 
 
 def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
-    """Build a session dict for the given working directory, loading .spec4/ artifacts."""  # noqa: E501
+    """Build a session dict for the given working directory, loading .spec4/ artifacts.
+
+    Preserves provider/model/llm_config/tavily_api_key from the incoming session
+    (via the spread) so a developer who has already configured an LLM can pick
+    a different working directory without redoing setup. Callers decide whether
+    to route the user through /setup or skip directly to /agents based on the
+    resulting llm_config.
+    """
     session = {
         **session,
         "working_dir": path,
         "browser_path": path,
         "phase": "setup",
-        "available_models": None,
-        "model": None,
-        "llm_config": None,
         "setup_error": None,
         "vision_statement": None,
         "brainstormer_state": STATE_IN_PROGRESS,
@@ -122,6 +154,9 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
     deployment_plan = project_manager.load_deployment_plan(path)
     if deployment_plan:
         session["deployer_state"] = STATE_DEPLOYER_COMPLETE
+    session["_deployer_plan_existed"] = bool(deployment_plan)
+    session["_deployer_plan_markdown"] = None
+    session["_deployer_pending_plan"] = False
     root = pathlib.Path(path)
     try:
         has_content = any(
@@ -144,8 +179,11 @@ def _validate_agent_preconditions(agent: str, session: dict[str, Any]) -> str | 
     has_vision = session.get("vision_statement") is not None
     has_stack = session.get("stack_statement") is not None
     has_phases = bool(session.get("phases"))
-    if agent in ("stack_advisor", "phaser") and not has_vision:
-        return "Requires a vision statement. Load or generate a vision.json first."
+    if agent in ("stack_advisor", "phaser", "designer") and not has_vision:
+        return (
+            "Requires a vision statement. "
+            "Please use Brainstormer to create a vision first."
+        )
     if agent == "phaser" and not has_stack:
         return "Requires a stack spec. Load or generate a stack.json first."
     if agent == "deployer" and not has_phases:
@@ -248,12 +286,18 @@ def _persist_artifacts(session: dict[str, Any]) -> None:
         project_manager.save_phases(working_dir, session["phases"])
         needs_specmem = True
     if session.get("deployer_state") == STATE_DEPLOYER_COMPLETE:
-        messages = session.get("deployer_messages") or []
-        md = next(
-            (m["content"] for m in reversed(messages) if m.get("role") == "assistant"),
-            "",
-        )
-        if md:
+        # Only save when the agent has explicitly produced a fresh plan in this
+        # session. _deployer_plan_markdown is set by deployer.run() the moment a
+        # response containing "## Deployment Steps" arrives, and only after the
+        # confirmation prompt (when an existing plan is on disk) has been
+        # resolved with an affirmative reply. This prevents a returning user
+        # whose deployer_state was lifted to COMPLETE by _load_working_dir from
+        # silently overwriting the on-disk plan with whatever the last assistant
+        # message happens to be (a greeting, a "no" acknowledgement, etc).
+        md = session.get("_deployer_plan_markdown") or ""
+        if md and "## Deployment Steps" in md:
             project_manager.save_deployment_plan(working_dir, md)
+            session["_deployer_plan_existed"] = True
+            session["_deployer_plan_markdown"] = None
     if needs_specmem:
         project_manager.update_specmem_planning_state(working_dir, session)

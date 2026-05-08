@@ -12,12 +12,13 @@ from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
 from spec4 import providers, streaming, tavily_mcp
 from spec4.agents._image_probe import probe_image_support
-from spec4.app_constants import PATH_TO_PHASE
+from spec4.app_constants import PATH_TO_PHASE, STATE_IN_PROGRESS
 from spec4.session import (
     _default_session,
     _get_agent_gen,
     _load_working_dir,
     _persist_artifacts,
+    _reset_for_new_project,
     _validate_agent_preconditions,
 )
 
@@ -105,7 +106,15 @@ def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
         return no_update, no_update, no_update
     path = session.get("browser_path") or _HOME
     new_prefs = {**(prefs or {}), "working_dir": path}
-    return _load_working_dir(path, session), "/setup", new_prefs
+    new_session = _load_working_dir(path, session)
+    # If the developer already has a working LLM connection from a previous
+    # project, skip the setup screen and drop them straight into agent select.
+    # The "Change provider" button on the agents page is still there if they
+    # want to swap models or update their Tavily key.
+    if new_session.get("llm_config") and new_session.get("model"):
+        new_session = {**new_session, "phase": "agent_select"}
+        return new_session, "/agents", new_prefs
+    return new_session, "/setup", new_prefs
 
 
 @callback(
@@ -583,6 +592,53 @@ def _switch_agent(
 
 @callback(
     Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
+    Input({"type": "agent-pill", "agent": ALL}, "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_agent_pill_click(n_clicks_list: Any, session: Any) -> Any:
+    """Pipeline pill click → navigate to that agent.
+
+    Disabled pills (preconditions unmet) are blocked at the layout level so
+    no n_clicks event reaches us; the precondition check here is defensive
+    in case the disabled state and the actual session diverge.
+    """
+    if not ctx.triggered_id or not any(n for n in n_clicks_list if n):
+        return no_update, no_update
+    target = ctx.triggered_id["agent"]
+    session = session or {}
+    if target == session.get("active_agent") and session.get("phase") == "chat":
+        return no_update, no_update
+    if _validate_agent_preconditions(target, session) is not None:
+        return no_update, no_update
+    if target == "designer":
+        return {**session, "phase": "designer"}, "/design"
+    return _switch_agent(session, target, extra={"phase": "chat"}), "/chat"
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Input("btn-rescan-project", "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_rescan_project(n: Any, session: Any) -> Any:
+    if not n:
+        return no_update
+    return {
+        **session,
+        "code_scanner_messages": [],
+        "code_scanner_state": STATE_IN_PROGRESS,
+        "code_scanner_artifact_msg_count": None,
+        "code_scanner_resumed": False,
+        "messages": [],
+        "_initial_turn_done": False,
+    }
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
     Input("btn-review-to-brainstormer", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
@@ -753,7 +809,13 @@ def on_deployer_to_phaser(n: Any, session: Any) -> Any:
 def on_deployer_new_project(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
-    return {**session, "phase": "landing"}, "/"
+    fresh = _reset_for_new_project(session or {})
+    fresh["phase"] = "working_dir"
+    # Open the directory browser at home rather than letting the prefs-stored
+    # previous-project path get auto-restored (which would land the developer
+    # back on the project they just finished).
+    fresh["browser_path"] = _HOME
+    return fresh, "/dir"
 
 
 @callback(

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from spec4.agents import brainstormer, code_scanner, deployer, phaser, stack_advisor
 from spec4.app_constants import (
+    STATE_DEPLOYER_COMPLETE,
     STATE_IN_PROGRESS,
     STATE_PHASES_COMPLETE,
     STATE_REVIEW_COMPLETE,
@@ -959,6 +960,71 @@ class TestCodeScanner:
             collect(code_scanner.run("Hi", session, session["llm_config"]))
         assert "code_scanner_messages" in session
 
+    def test_brownfield_display_shows_existing_review_without_llm(self) -> None:
+        review = {"code_review": {"is_software_project": True, "project_type": "CLI tool"}}
+        session = make_session(
+            code_review=review,
+            code_scanner_state=STATE_REVIEW_COMPLETE,
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(code_scanner.run(None, session, session["llm_config"]))
+        mock_llm.assert_not_called()
+        assert "Code Review Complete" in output
+        assert "CLI tool" in output
+        assert session["code_scanner_artifact_msg_count"] == len(session["code_scanner_messages"])
+
+    def test_brownfield_display_heals_stale_persisted_content(self) -> None:
+        # Simulate a session persisted from before _format_review_as_text was
+        # fixed: msgs already has the synthetic pair but the assistant content
+        # was generated from notes-as-string (single-char bullets).
+        review = {"code_review": {"notes": "Directory is flat"}}
+        stale_content = "**Code Review Complete**\n\n**Notable Observations:**\n- D\n- i\n"
+        session = make_session(
+            code_review=review,
+            code_scanner_state=STATE_REVIEW_COMPLETE,
+            code_scanner_artifact_msg_count=2,
+            code_scanner_messages=[
+                {"role": "user", "content": "[Spec4: displaying existing code review]"},
+                {"role": "assistant", "content": stale_content},
+            ],
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(code_scanner.run(None, session, session["llm_config"]))
+        mock_llm.assert_not_called()
+        assert "- Directory is flat" in output
+        assert "- D\n" not in output
+
+    def test_brownfield_display_replay_on_reentry(self) -> None:
+        review = {"code_review": {"is_software_project": True, "project_type": "web app"}}
+        session = make_session(
+            code_review=review,
+            code_scanner_state=STATE_REVIEW_COMPLETE,
+        )
+        # First init: brownfield display
+        with patch("spec4.tavily_mcp.litellm.completion"):
+            collect(code_scanner.run(None, session, session["llm_config"]))
+        # Second init: replay (no LLM call)
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output2 = collect(code_scanner.run(None, session, session["llm_config"]))
+        mock_llm.assert_not_called()
+        assert "Code Review Complete" in output2
+
+    def test_format_review_notes_as_string_renders_as_single_bullet(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {"code_review": {"notes": "Directory is flat, no CI found"}}
+        result = _format_review_as_text(review)
+        assert "- Directory is flat, no CI found" in result
+        assert "- D\n" not in result
+
+    def test_format_review_langs_as_string_renders_correctly(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {"code_review": {"languages": "Python", "frameworks": []}}
+        result = _format_review_as_text(review)
+        assert "Python" in result
+        assert "- P\n" not in result
+
 
 # ---------------------------------------------------------------------------
 # _gather_project_context tests
@@ -1200,3 +1266,130 @@ class TestLoadPhaserDesignNote:
 
         result = _load_phaser_design_note(tmp_path)
         assert "discretion" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# Deployer return-with-existing-plan behavior
+# ---------------------------------------------------------------------------
+
+
+class TestDeployerExistingPlanGuard:
+    """A deployment-plan.md on disk must not be replaced silently when the
+    user returns — including in a fresh browser with no in-memory state."""
+
+    def _returning_session(self, **overrides: Any) -> dict[str, Any]:
+        # Mirrors what session._load_working_dir produces when an on-disk
+        # deployment-plan.md is detected: state is COMPLETE, the "existed"
+        # flag is True, the in-memory plan markdown is None, no chat history.
+        defaults: dict[str, Any] = dict(
+            active_agent="deployer",
+            phases=[{"phase_number": 1, "phase_title": "Steel thread"}],
+            stack_statement={"name": "App"},
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            deployer_messages=[],
+            _deployer_plan_existed=True,
+            _deployer_plan_markdown=None,
+            _deployer_pending_plan=False,
+        )
+        defaults.update(overrides)
+        return make_session(**defaults)
+
+    def test_fresh_start_seed_acknowledges_existing_plan(self) -> None:
+        # The agent's first turn must inform the developer that an existing
+        # plan was found and ask how they want to proceed, rather than the
+        # generic "which coding agent are you using" intro.
+        session = self._returning_session()
+        with mock_litellm_stream("Hi! I see you have an existing plan…"):
+            collect(deployer.run(None, session, session["llm_config"]))
+        seed = session["deployer_messages"][0]["content"]
+        assert "existing" in seed.lower() or "previous session" in seed.lower()
+        assert "deployment-plan.md" in seed
+        # The seed offers concrete options to the user.
+        assert "1." in seed and "2." in seed and "3." in seed
+
+    def test_fresh_start_seed_unchanged_when_no_existing_plan(self) -> None:
+        # Greenfield: the agent uses its original intro, asking which coding
+        # agent the developer plans to use.
+        session = make_session(
+            active_agent="deployer",
+            phases=[{"phase_number": 1, "phase_title": "Steel thread"}],
+            _deployer_plan_existed=False,
+        )
+        with mock_litellm_stream("Hi! I'm Deployer."):
+            collect(deployer.run(None, session, session["llm_config"]))
+        seed = session["deployer_messages"][0]["content"]
+        assert "coding agent" in seed.lower()
+        # And does NOT mention an existing on-disk plan.
+        assert "deployment-plan.md" not in seed
+
+    def test_no_reply_clears_pending_markdown(self) -> None:
+        # The previous turn produced a candidate plan; user replies "no".
+        session = self._returning_session(
+            deployer_messages=[
+                {"role": "user", "content": "earlier"},
+                {
+                    "role": "assistant",
+                    "content": "## Deployment Steps … replace? (yes/no)",
+                },
+            ],
+            _deployer_plan_markdown="# Plan\n\n## Deployment Steps\n…",
+            _deployer_pending_plan=True,
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(
+                deployer.run("no, keep it", session, session["llm_config"])
+            )
+        # No LLM call — the agent short-circuits with the keep_msg.
+        mock_llm.assert_not_called()
+        assert "kept" in output.lower() or "existing" in output.lower()
+        # Critical: the staged markdown is cleared so _persist_artifacts
+        # cannot save it on a subsequent turn.
+        assert session["_deployer_plan_markdown"] is None
+        assert session["_deployer_pending_plan"] is False
+
+    def test_yes_reply_preserves_markdown_for_persist(self) -> None:
+        plan = "# Plan\n\n## Deployment Steps\n\n### 1. Build\n…"
+        session = self._returning_session(
+            deployer_messages=[
+                {"role": "user", "content": "earlier"},
+                {
+                    "role": "assistant",
+                    "content": plan + "\n\n…replace? (yes/no)",
+                },
+            ],
+            _deployer_plan_markdown=plan,
+            _deployer_pending_plan=True,
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            collect(deployer.run("yes", session, session["llm_config"]))
+        mock_llm.assert_not_called()
+        # Markdown is still set so _persist_artifacts can write it.
+        assert session["_deployer_plan_markdown"] == plan
+        assert session["deployer_state"] == STATE_DEPLOYER_COMPLETE
+        assert session["_deployer_pending_plan"] is False
+
+    def test_new_plan_on_returning_user_triggers_confirmation(self) -> None:
+        # Returning user with existing plan; chat history has built up and
+        # the LLM now produces a fresh plan. The confirmation prompt must
+        # fire — the new plan must NOT be persisted before approval.
+        session = self._returning_session(
+            deployer_messages=[
+                {"role": "user", "content": "let's revise the plan"},
+                {"role": "assistant", "content": "OK, what changes?"},
+                {"role": "user", "content": "use Cloud Run instead"},
+            ],
+        )
+        new_plan = (
+            "# Deployment Plan\n\n## Target\n- **Provider:** GCP\n\n"
+            "## Deployment Steps\n\n### 1. Build image\n…"
+        )
+        with mock_litellm_stream(new_plan):
+            collect(deployer.run("use Cloud Run instead", session,
+                                 session["llm_config"]))
+        assert session["_deployer_plan_markdown"] == new_plan
+        assert session["_deployer_pending_plan"] is True
+        # State was already COMPLETE on entry but the agent does not "re-set"
+        # it — the affirmative branch on the next turn is what locks in the
+        # save.
+        last_assistant = session["deployer_messages"][-1]["content"]
+        assert "yes" in last_assistant.lower() and "no" in last_assistant.lower()

@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from spec4.app_constants import (
+    STATE_DEPLOYER_COMPLETE,
     STATE_IN_PROGRESS,
     STATE_PHASES_COMPLETE,
     STATE_REVIEW_COMPLETE,
@@ -16,6 +17,7 @@ from spec4.session import (
     _default_session,
     _load_working_dir,
     _persist_artifacts,
+    _reset_for_new_project,
     _run_agent_blocking,
 )
 
@@ -214,6 +216,58 @@ class TestPersistArtifacts:
             _persist_artifacts(session)
         mock_pm.update_specmem_planning_state.assert_called()
 
+    def test_does_not_save_deployment_plan_without_markdown(self) -> None:
+        """A returning user lands in Deployer with deployer_state=COMPLETE
+        (lifted by _load_working_dir from disk presence) but no
+        _deployer_plan_markdown. After any chat turn, _persist_artifacts must
+        NOT overwrite the on-disk plan with a stray assistant message."""
+        session = self._base_session(
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_plan_markdown=None,
+            deployer_messages=[
+                {"role": "user", "content": "seed"},
+                {"role": "assistant", "content": "Hi! Which coding agent…"},
+            ],
+        )
+        with patch("spec4.session.project_manager") as mock_pm:
+            _persist_artifacts(session)
+        mock_pm.save_deployment_plan.assert_not_called()
+
+    def test_does_not_save_when_markdown_lacks_deployment_steps(self) -> None:
+        """Belt-and-suspenders: even if _deployer_plan_markdown is somehow set
+        without the required header, refuse to save."""
+        session = self._base_session(
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_plan_markdown="No, keep the existing plan.",
+        )
+        with patch("spec4.session.project_manager") as mock_pm:
+            _persist_artifacts(session)
+        mock_pm.save_deployment_plan.assert_not_called()
+
+    def test_saves_deployment_plan_when_markdown_set(self) -> None:
+        plan = "# Deployment Plan\n\n## Deployment Steps\n\n### 1. Build\n…"
+        session = self._base_session(
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_plan_markdown=plan,
+        )
+        with patch("spec4.session.project_manager") as mock_pm:
+            _persist_artifacts(session)
+        mock_pm.save_deployment_plan.assert_called_once_with("/some/dir", plan)
+
+    def test_clears_markdown_and_marks_existed_after_save(self) -> None:
+        plan = "# Deployment Plan\n\n## Deployment Steps\n\n…"
+        session = self._base_session(
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_plan_markdown=plan,
+            _deployer_plan_existed=False,
+        )
+        with patch("spec4.session.project_manager"):
+            _persist_artifacts(session)
+        # Subsequent generations must trigger the confirmation flow.
+        assert session["_deployer_plan_existed"] is True
+        # Don't re-save the same content on the next persist tick.
+        assert session["_deployer_plan_markdown"] is None
+
 
 class TestLoadWorkingDir:
     def _base_session(self) -> dict[str, Any]:
@@ -266,3 +320,131 @@ class TestLoadWorkingDir:
             session = _load_working_dir(str(tmp_path), self._base_session())
         assert session["vision_statement"] is None
         assert session["brainstormer_state"] == STATE_IN_PROGRESS
+
+    def test_preserves_llm_config_when_set(self, tmp_path: pathlib.Path) -> None:
+        # A developer who has already chosen provider+model and picks a
+        # different working directory should not be sent back through the
+        # setup screen — _load_working_dir must preserve the LLM connection.
+        s = self._base_session()
+        s["model"] = "gpt-4o"
+        s["available_models"] = ["gpt-4o", "gpt-4o-mini"]
+        s["llm_config"] = {"model": "gpt-4o", "api_key": "sk-test"}
+        s["tavily_api_key"] = "tvly-test"
+        session = _load_working_dir(str(tmp_path), s)
+        assert session["model"] == "gpt-4o"
+        assert session["available_models"] == ["gpt-4o", "gpt-4o-mini"]
+        assert session["llm_config"] == {"model": "gpt-4o", "api_key": "sk-test"}
+        assert session["tavily_api_key"] == "tvly-test"
+
+    def test_does_not_invent_llm_config_when_absent(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # First-time user: still routed through /setup because llm_config is
+        # None. _load_working_dir must not synthesize one.
+        session = _load_working_dir(str(tmp_path), self._base_session())
+        assert session["llm_config"] is None
+        assert session["model"] is None
+        assert session["available_models"] is None
+
+
+class TestResetForNewProject:
+    """The "Start New Project" action in Deployer must clear every
+    project-specific field but keep the developer's LLM configuration so
+    they aren't forced back through the provider/model/Tavily wizard."""
+
+    def _configured_session(self) -> dict[str, Any]:
+        return {
+            **_default_session(),
+            "working_dir": "/old/project",
+            "browser_path": "/old/project",
+            "phase": "chat",
+            "provider": "openai",
+            "api_key": "sk-test",
+            "model": "gpt-4o",
+            "available_models": ["gpt-4o", "gpt-4o-mini"],
+            "llm_config": {"model": "gpt-4o", "api_key": "sk-test"},
+            "tavily_api_key": "tvly-test",
+            "active_agent": "deployer",
+            "vision_statement": {"name": "OldApp"},
+            "stack_statement": {"language": "Python"},
+            "phases": [{"phase_number": 1, "phase_title": "Bootstrap"}],
+            "code_review": {"summary": "ok"},
+            "brainstormer_state": STATE_VISION_COMPLETE,
+            "stack_advisor_state": STATE_STACK_COMPLETE,
+            "phaser_state": STATE_PHASES_COMPLETE,
+            "code_scanner_state": STATE_REVIEW_COMPLETE,
+            "deployer_state": "deployer_complete",
+            "brainstormer_messages": [{"role": "user", "content": "old"}],
+            "stack_advisor_messages": [{"role": "user", "content": "old"}],
+            "phaser_messages": [{"role": "user", "content": "old"}],
+            "code_scanner_messages": [{"role": "user", "content": "old"}],
+            "deployer_messages": [{"role": "user", "content": "old"}],
+            "messages": [{"role": "user", "content": "ui display"}],
+            "_deployer_plan_existed": True,
+            "_deployer_plan_markdown": "# Old plan…",
+            "_deployer_pending_plan": False,
+            "deployer_stale_acknowledged": {"phases": 1.0},
+            "brainstormer_resumed": True,
+        }
+
+    def test_preserves_llm_setup(self) -> None:
+        fresh = _reset_for_new_project(self._configured_session())
+        assert fresh["provider"] == "openai"
+        assert fresh["api_key"] == "sk-test"
+        assert fresh["model"] == "gpt-4o"
+        assert fresh["available_models"] == ["gpt-4o", "gpt-4o-mini"]
+        assert fresh["llm_config"] == {"model": "gpt-4o", "api_key": "sk-test"}
+        assert fresh["tavily_api_key"] == "tvly-test"
+
+    def test_clears_working_dir(self) -> None:
+        fresh = _reset_for_new_project(self._configured_session())
+        assert fresh["working_dir"] is None
+        assert fresh["browser_path"] is None
+
+    def test_clears_artifacts(self) -> None:
+        fresh = _reset_for_new_project(self._configured_session())
+        assert fresh["vision_statement"] is None
+        assert fresh["stack_statement"] is None
+        assert fresh["phases"] == []
+        assert fresh["code_review"] is None
+
+    def test_clears_agent_states(self) -> None:
+        # Agent-select-page checkboxes are driven by these fields. Resetting
+        # them is the whole point of "Start New Project".
+        fresh = _reset_for_new_project(self._configured_session())
+        assert fresh["brainstormer_state"] == STATE_IN_PROGRESS
+        assert fresh["stack_advisor_state"] == STATE_IN_PROGRESS
+        assert fresh["phaser_state"] is None
+        assert fresh["code_scanner_state"] == STATE_IN_PROGRESS
+        assert fresh["deployer_state"] == STATE_IN_PROGRESS
+
+    def test_clears_message_logs(self) -> None:
+        fresh = _reset_for_new_project(self._configured_session())
+        assert fresh["brainstormer_messages"] == []
+        assert fresh["stack_advisor_messages"] == []
+        assert fresh["phaser_messages"] == []
+        assert fresh["code_scanner_messages"] == []
+        assert fresh["deployer_messages"] == []
+        assert fresh["messages"] == []
+
+    def test_clears_deployer_plan_state(self) -> None:
+        # Critical: the new project must NOT inherit the previous plan's
+        # "_deployer_plan_existed" flag, or the next plan generated would be
+        # treated as a replacement and gated behind the confirmation prompt.
+        fresh = _reset_for_new_project(self._configured_session())
+        assert fresh.get("_deployer_plan_existed") in (None, False)
+        assert fresh.get("_deployer_plan_markdown") in (None, "")
+        assert fresh.get("_deployer_pending_plan") in (None, False)
+
+    def test_clears_resume_and_staleness_state(self) -> None:
+        fresh = _reset_for_new_project(self._configured_session())
+        assert fresh["deployer_stale_acknowledged"] == {}
+        assert fresh.get("brainstormer_resumed") in (None, False)
+
+    def test_handles_empty_session(self) -> None:
+        # A defensively-called reset on an empty session shouldn't crash.
+        fresh = _reset_for_new_project({})
+        assert fresh["provider"] is None
+        assert fresh["api_key"] is None
+        assert fresh["llm_config"] is None
+        assert fresh["working_dir"] is None

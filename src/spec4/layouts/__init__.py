@@ -165,16 +165,21 @@ def _landing_layout() -> html.Div:
                         target="_blank",
                         style={"textDecoration": "none", "color": "inherit"},
                     ),
-                    _feature_card(
-                        dmc.Title("🎨 Designer", order=4, mb="sm"),
-                        dmc.Text(
-                            "Generates a self-contained HTML mock-up of your starting screen "  # noqa: E501
-                            "from a style description and optional reference screenshots.",  # noqa: E501
-                            size="sm",
-                            mb="md",
-                            c="dimmed",
+                    html.A(
+                        _feature_card(
+                            dmc.Title("🎨 Designer", order=4, mb="sm"),
+                            dmc.Text(
+                                "Generates a self-contained HTML mock-up of your starting screen "  # noqa: E501
+                                "from a style description and optional reference screenshots.",  # noqa: E501
+                                size="sm",
+                                mb="md",
+                                c="dimmed",
+                            ),
+                            html.Span("mock.html", className="output-badge"),
                         ),
-                        html.Span("mock.html", className="output-badge"),
+                        href="https://spec4.ai/agents/designer/",
+                        target="_blank",
+                        style={"textDecoration": "none", "color": "inherit"},
                     ),
                     html.A(
                         _feature_card(
@@ -208,16 +213,21 @@ def _landing_layout() -> html.Div:
                         target="_blank",
                         style={"textDecoration": "none", "color": "inherit"},
                     ),
-                    _feature_card(
-                        dmc.Title("🚀 Deployer", order=4, mb="sm"),
-                        dmc.Text(
-                            "Guides you through coding-agent workflow and designs a deployment "  # noqa: E501
-                            "plan tailored to your stack — cloud, PaaS, containers, CI/CD.",  # noqa: E501
-                            size="sm",
-                            mb="md",
-                            c="dimmed",
+                    html.A(
+                        _feature_card(
+                            dmc.Title("🚀 Deployer", order=4, mb="sm"),
+                            dmc.Text(
+                                "Guides you through coding-agent workflow and designs a deployment "  # noqa: E501
+                                "plan tailored to your stack — cloud, PaaS, containers, CI/CD.",  # noqa: E501
+                                size="sm",
+                                mb="md",
+                                c="dimmed",
+                            ),
+                            html.Span("deployment.json", className="output-badge"),
                         ),
-                        html.Span("deployment.json", className="output-badge"),
+                        href="https://spec4.ai/agents/deployer/",
+                        target="_blank",
+                        style={"textDecoration": "none", "color": "inherit"},
                     ),
                 ],
             ),

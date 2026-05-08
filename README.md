@@ -10,8 +10,8 @@ Spec4 is a Dash app (using Dash Mantine Components) that guides you from idea to
 > field tested by Friday. I don't think I would have built what this is going to become without it."_<br />
 > Wihan Booyse, [Kriterion.ai](https://kriterion.ai)
 
-### Quick Demo Video
-[![Spec4 Demo](https://github.com/robertcrowe/Spec4/raw/main/src/spec4/assets/thumb.png)](https://youtu.be/vhIcx05FoUs)
+### How It Works
+[![How Spec4 Works](https://github.com/robertcrowe/Spec4/raw/main/src/spec4/assets/landing.png)](https://spec4.ai/how-it-works/)
 
 ---
 

@@ -272,6 +272,15 @@ def _extract_review_json(text: str) -> dict[str, Any] | None:
     return data if data is not None and "code_review" in data else None
 
 
+def _as_str_list(value: Any) -> list[str]:
+    """Coerce a value to list[str], guarding against the LLM returning a string."""
+    if isinstance(value, list):
+        return [str(v) for v in value]
+    if isinstance(value, str):
+        return [value] if value else []
+    return []
+
+
 def _format_review_as_text(review: dict[str, Any]) -> str:
     cr = review.get("code_review", {})
     lines: list[str] = ["**Code Review Complete**\n"]
@@ -282,8 +291,8 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
     if "architecture" in cr:
         lines.append(f"**Architecture:** {cr['architecture']}\n")
 
-    langs: list[str] = cr.get("languages", [])
-    frameworks: list[str] = cr.get("frameworks", [])
+    langs = _as_str_list(cr.get("languages", []))
+    frameworks = _as_str_list(cr.get("frameworks", []))
     if langs or frameworks:
         combined = ", ".join(langs + frameworks)
         lines.append(f"**Languages & Frameworks:** {combined}\n")
@@ -291,18 +300,22 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
     if "build_system" in cr:
         lines.append(f"**Build System:** {cr['build_system']}\n")
 
-    deps: list[dict[str, str]] = cr.get("dependencies", [])
+    raw_deps = cr.get("dependencies", [])
+    deps: list[dict[str, str]] = raw_deps if isinstance(raw_deps, list) else []
     if deps:
         lines.append("**Dependencies:**")
         for d in deps:
-            name = d.get("name", "")
-            purpose = d.get("purpose", "")
-            lines.append(f"- {name} — {purpose}" if purpose else f"- {name}")
+            if isinstance(d, dict):
+                name = d.get("name", "")
+                purpose = d.get("purpose", "")
+                lines.append(f"- {name} — {purpose}" if purpose else f"- {name}")
+            else:
+                lines.append(f"- {d}")
         lines.append("")
 
     _render_coding_style(cr.get("coding_style", {}), lines)
 
-    notes: list[str] = cr.get("notes", [])
+    notes = _as_str_list(cr.get("notes", []))
     if notes:
         lines.append("**Notable Observations:**")
         for note in notes:
@@ -335,6 +348,19 @@ def run(
 
     if user_input is None:
         if msgs:
+            # When sitting exactly on the artifact display, re-format from the
+            # live session data so any formatting fixes apply to persisted content
+            # from earlier sessions (e.g. notes stored as a string).
+            if (
+                session.get("code_scanner_state") == STATE_REVIEW_COMPLETE
+                and session.get("code_scanner_artifact_msg_count") == len(msgs)
+                and session.get("code_review") is not None
+            ):
+                display = _format_review_as_text(session["code_review"])
+                msgs[-1]["content"] = display
+                session["_display_override"] = display
+                yield display
+                return
             if not _maybe_inject_resume_summary(
                 session, "code_scanner", msgs, STATE_REVIEW_COMPLETE
             ):
@@ -342,6 +368,22 @@ def run(
                 return
             # Resume summary injected — fall through to LLM call.
         else:
+            # Brownfield display: existing code_review in session — show it without
+            # re-running the scan. The "Re-scan Project" button resets state so
+            # the fresh-start branch below runs on the next init.
+            existing_review = session.get("code_review")
+            if (
+                existing_review is not None
+                and session.get("code_scanner_state") == STATE_REVIEW_COMPLETE
+            ):
+                display = _format_review_as_text(existing_review)
+                msgs.append({"role": "user", "content": "[Spec4: displaying existing code review]"})
+                msgs.append({"role": "assistant", "content": display})
+                session["code_scanner_artifact_msg_count"] = len(msgs)
+                session["_display_override"] = display
+                yield display
+                return
+
             working_dir = session.get("working_dir")
             if not working_dir:
                 yield (

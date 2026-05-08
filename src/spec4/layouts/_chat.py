@@ -14,6 +14,16 @@ from spec4.app_constants import (
     STATE_VISION_COMPLETE,
 )
 from spec4.layouts._shared import _render_message
+from spec4.session import _validate_agent_preconditions
+
+# Reset native html.Button styling so the wrapper looks like the bare badge.
+_PILL_BUTTON_STYLE: dict[str, Any] = {
+    "background": "none",
+    "border": "none",
+    "padding": 0,
+    "margin": 0,
+    "lineHeight": 0,
+}
 
 
 def _agent_status_bar(session: dict[str, Any]) -> html.Div:
@@ -39,14 +49,34 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
     ]
     items = []
     for i, (key, label, done) in enumerate(agents):
-        if key == active:
-            items.append(dmc.Badge(label, color="green", variant="filled", size="md"))
+        is_active = key == active
+        if is_active:
+            badge: Any = dmc.Badge(label, color="green", variant="filled", size="md")
         elif done:
-            items.append(
-                dmc.Badge(f"✓ {label}", color="gray", variant="light", size="md")
-            )
+            badge = dmc.Badge(f"✓ {label}", color="gray", variant="light", size="md")
         else:
-            items.append(dmc.Badge(label, color="gray", variant="outline", size="md"))
+            badge = dmc.Badge(label, color="gray", variant="outline", size="md")
+        # Active pill is rendered as a plain badge — clicking it would just
+        # navigate to where you already are.
+        if is_active:
+            items.append(badge)
+        else:
+            reachable = _validate_agent_preconditions(key, session) is None
+            items.append(
+                html.Button(
+                    badge,
+                    id={"type": "agent-pill", "agent": key},
+                    n_clicks=0,
+                    disabled=not reachable,
+                    title=None if reachable
+                    else _validate_agent_preconditions(key, session),
+                    style={
+                        **_PILL_BUTTON_STYLE,
+                        "cursor": "pointer" if reachable else "not-allowed",
+                        "opacity": 1.0 if reachable else 0.4,
+                    },
+                )
+            )
         if i < len(agents) - 1:
             items.append(dmc.Text("→", c="dimmed", size="sm"))
     return html.Div(
@@ -70,6 +100,29 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
     )
 
 
+_TOKEN_COUNTER_AGENTS = ("phaser", "deployer")
+
+
+def _streamed_token_count(session: dict[str, Any]) -> int:
+    """Length of the in-flight assistant message, used as a token-count proxy."""
+    messages = session.get("messages") or []
+    if not messages:
+        return 0
+    last = messages[-1]
+    if last.get("role") != "assistant":
+        return 0
+    return len(last.get("content") or "")
+
+
+def _token_count_text(session: dict[str, Any]) -> str:
+    """Render text for the token counter, or empty when it shouldn't show."""
+    if session.get("active_agent") not in _TOKEN_COUNTER_AGENTS:
+        return ""
+    if not session.get("_stream_id") and _streamed_token_count(session) == 0:
+        return ""
+    return f"Tokens received: {_streamed_token_count(session)}"
+
+
 def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
     active = session.get("active_agent")
     buttons = []
@@ -78,6 +131,12 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
         buttons = [
             dmc.Button(
                 "💾 Download code_review.json", id="btn-dl-review", variant="outline"
+            ),
+            dmc.Button(
+                "🔄 Re-scan Project",
+                id="btn-rescan-project",
+                variant="outline",
+                color="orange",
             ),
             dmc.Button("Continue to Brainstormer →", id="btn-review-to-brainstormer"),
         ]
@@ -115,16 +174,23 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
             variant="outline",
             color="gray",
         )
+        token_counter = dmc.Text(
+            _token_count_text(session),
+            id="chat-token-count",
+            c="dimmed",
+            size="sm",
+        )
         if session.get("phases"):
             buttons = [
                 back,
+                token_counter,
                 dmc.Button(
                     "💾 Download phases.zip", id="btn-dl-phases", variant="outline"
                 ),
                 dmc.Button("Continue to Deployer →", id="btn-phaser-to-deployer"),
             ]
         else:
-            buttons = [back]
+            buttons = [back, token_counter]
     elif active == "deployer":
         back = dmc.Button(
             "← Back to Phaser",
@@ -132,9 +198,16 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
             variant="outline",
             color="gray",
         )
+        token_counter = dmc.Text(
+            _token_count_text(session),
+            id="chat-token-count",
+            c="dimmed",
+            size="sm",
+        )
         if session.get("deployer_state") == STATE_DEPLOYER_COMPLETE:
             buttons = [
                 back,
+                token_counter,
                 dmc.Button(
                     "💾 Download deployment plan (Markdown)",
                     id="btn-dl-deployment",
@@ -145,7 +218,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
                 ),
             ]
         else:
-            buttons = [back]
+            buttons = [back, token_counter]
 
     if not buttons:
         return html.Div()
@@ -201,7 +274,10 @@ def _chat_layout(session: dict[str, Any]) -> html.Div:
                     value=100, animated=True, striped=True, color="blue", size="sm"
                 ),
                 id="chat-progress-container",
-                style={"display": "none", "marginBottom": "12px"},
+                style={
+                    "display": "block" if session.get("_stream_id") else "none",
+                    "marginBottom": "12px",
+                },
             ),
             html.Div(
                 [

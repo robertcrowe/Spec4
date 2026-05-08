@@ -298,21 +298,94 @@ def run(
             else:
                 phases_block = ""
 
-            seed = (
-                f"{stack_block}{phases_block}"
-                "Please introduce yourself as Deployer, then begin by asking which AI coding agent "
-                "the developer plans to use to implement these phases."
-            )
+            if session.get("_deployer_plan_existed"):
+                # Returning developer (possibly in a fresh browser with no
+                # in-memory chat history). A `deployment-plan.md` is already on
+                # disk — surface that context up front and offer choices, and
+                # make it explicit that the file will not be touched without
+                # their approval.
+                seed = (
+                    f"{stack_block}{phases_block}"
+                    "A deployment plan from a previous session is already saved at "
+                    "`.spec4/deployment-plan.md`, but this is a fresh chat session "
+                    "with no record of how it was built.\n\n"
+                    "Please introduce yourself as Deployer, mention that an existing "
+                    "deployment plan was found on disk, and reassure the developer "
+                    "that you will NOT replace the existing file unless they ask for "
+                    "changes and explicitly approve the new plan. Then ask which of "
+                    "the following they would like to do, as a numbered list:\n\n"
+                    "1. Keep the existing plan as-is and ask follow-up questions about it.\n"
+                    "2. Refine or update specific parts of the plan.\n"
+                    "3. Start over and design a new deployment plan from scratch.\n\n"
+                    "End with \"Please select an option (answer with number and/or "
+                    "optional comments)\"."
+                )
+            else:
+                seed = (
+                    f"{stack_block}{phases_block}"
+                    "Please introduce yourself as Deployer, then begin by asking which AI coding agent "
+                    "the developer plans to use to implement these phases."
+                )
             messages.append({"role": "user", "content": seed})
     else:
         messages.append({"role": "user", "content": user_input})
+
+        if session.get("_deployer_pending_plan"):
+            session["_deployer_pending_plan"] = False
+            lowered = user_input.lower()
+            affirmative = any(
+                w in lowered
+                for w in ("yes", "yeah", "yep", "yup", "sure", "ok", "okay",
+                          "go ahead", "proceed", "replace", "save", "confirm")
+            )
+            negative = any(
+                w in lowered
+                for w in ("no", "nope", "nah", "don't", "dont", "keep",
+                          "cancel", "discard", "stop")
+            )
+            if affirmative and not negative:
+                confirm_msg = (
+                    "✓ Your new deployment plan has been saved. "
+                    "You can download it using the button below."
+                )
+                messages.append({"role": "assistant", "content": confirm_msg})
+                session["deployer_state"] = STATE_DEPLOYER_COMPLETE
+                session["deployer_stale_acknowledged"] = {}
+                session["deployer_artifact_msg_count"] = len(messages)
+                yield confirm_msg
+                return
+            elif negative and not affirmative:
+                keep_msg = (
+                    "Understood — your existing deployment plan has been kept. "
+                    "Feel free to continue refining or ask any follow-up questions."
+                )
+                messages.append({"role": "assistant", "content": keep_msg})
+                # Drop the staged plan so _persist_artifacts can't save it on a
+                # later turn — the developer just told us not to.
+                session["_deployer_plan_markdown"] = None
+                yield keep_msg
+                return
+            # Ambiguous response — fall through to the LLM.
 
     tavily_api_key = session.get("tavily_api_key")
     system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
 
     yield from tavily_mcp.stream_turn(system, messages, llm_config, tavily_api_key)
 
-    if "## Deployment Steps" in _last_assistant_text(messages):
-        session["deployer_state"] = STATE_DEPLOYER_COMPLETE
-        session["deployer_stale_acknowledged"] = {}
-        session["deployer_artifact_msg_count"] = len(messages)
+    last_text = _last_assistant_text(messages)
+    if "## Deployment Steps" in last_text:
+        session["_deployer_plan_markdown"] = last_text
+        if session.get("_deployer_plan_existed"):
+            confirm_q = (
+                "\n\n---\n\n"
+                "⚠️ **Heads up:** You already have a `deployment-plan.md` from a previous "
+                "session. **Would you like to replace it with this new plan?** "
+                "(yes/no — you're also welcome to ask questions or request changes)"
+            )
+            messages[-1]["content"] = last_text + confirm_q
+            session["_display_override"] = messages[-1]["content"]
+            session["_deployer_pending_plan"] = True
+        else:
+            session["deployer_state"] = STATE_DEPLOYER_COMPLETE
+            session["deployer_stale_acknowledged"] = {}
+            session["deployer_artifact_msg_count"] = len(messages)
