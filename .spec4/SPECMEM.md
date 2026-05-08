@@ -1,0 +1,269 @@
+
+---
+
+## Spec4 Planning State
+
+*Last updated by Spec4*
+
+### Vision Statement
+```json
+{
+  "vision_statement": {
+    "name": "Spec4",
+    "vision": {
+      "purpose": "A **locally-run, AI-assisted software project planning web app** (also installable as a standalone PyPI package) that guides users through a **sequential pipeline of five AI agents** \u2014 Reviewer, Brainstormer, Designer, StackAdvisor, and Phaser \u2014 transforming a rough idea or existing codebase into a concrete, actionable project plan complete with a vision statement, UI design mock, recommended technology stack, and phased implementation plan.",
+      "target_audience": [
+        "Solo developers and small teams who want to go from a rough idea to a concrete project plan without needing a consultant or architect",
+        "Developers who know what they want to build but not how to approach planning it",
+        "Developers replanning or extending an existing project"
+      ],
+      "key_features_mvp": [
+        {
+          "Pipeline_Architecture": {
+            "description": "A five-stage sequential AI agent pipeline: Reviewer \u2192 Brainstormer \u2192 Designer \u2192 StackAdvisor \u2192 Phaser. Users may enter the pipeline at any stage by uploading prior output. All planning artifacts are saved to a `.spec4/` folder on the local filesystem.",
+            "example": "A user with an existing codebase uploads a prior code review and jumps straight to Brainstormer."
+          }
+        },
+        {
+          "Reviewer_Agent": {
+            "description": "Analyzes an existing codebase to produce a structured code review artifact (`code_review.json`) that downstream agents use to understand the project.",
+            "example": "Reviewer reads the project directory and summarizes the architecture, languages, frameworks, and notable patterns."
+          }
+        },
+        {
+          "Brainstormer_Agent": {
+            "description": "Collaborates with the user through a guided question-and-answer process to develop and refine a project vision statement, saved as `vision.json`.",
+            "example": "Brainstormer asks focused questions one at a time and builds a structured vision statement the user can review and adjust."
+          }
+        },
+        {
+          "Designer_Agent": {
+            "description": "An AI expert graphic designer and UI design agent inserted between Brainstormer and StackAdvisor. Designer leads the user through a structured process to define the look and feel of their project's user interface, producing a single self-contained HTML/CSS/JS mock of the landing page or starting screen, saved to `.spec4/design/`.",
+            "workflow": [
+              "Step 1 \u2014 No-UI detection: Designer checks both `vision.json` and `code_review.json`. If either indicates the project has no graphical UI (e.g. CLI or no UI at all), Designer informs the user and asks if they would like to add a GUI. If yes, Designer proceeds with the full flow. If no, Designer creates an empty `.spec4/design/` directory and directs the user to StackAdvisor.",
+              "Step 2 \u2014 Greenfield vs. existing project detection: Designer checks whether the project directory contains anything beyond the `.spec4/` folder. If only `.spec4/` is present, it is a greenfield project; otherwise it is an existing project with a codebase to reference.",
+              "Step 3 \u2014 Resume or start: If `.spec4/design/` already contains a saved session, Designer automatically resumes by displaying the saved mock in the preview at step 6 (Approve / Refine / Start Over). Otherwise Designer asks the user whether they want to modify an existing look and feel or create a new one. If the user declines both, Designer creates an empty `.spec4/design/` directory and directs the user to StackAdvisor, with Phaser later noting that UI design decisions are left to the developer's discretion.",
+              "Step 4 \u2014 Read vision: Designer reads `vision.json` to understand the project's purpose, audience, and goals.",
+              "Step 5 \u2014 User describes preferences: Designer asks the user to describe in words the kind of look and feel they are hoping for.",
+              "Step 6 \u2014 Screenshot examples: Designer asks the user to supply screenshot examples illustrating graphical elements, colors, typography, or other UI aspects they like or dislike. For each screenshot the user is asked what they like and what they don't like about it. A soft warning is shown when more than 5 screenshots have been supplied, noting that too many examples may produce conflicting guidance. If the selected model does not support image understanding, the user is informed in this step and screenshot upload is disabled; Designer continues gracefully with the remaining steps.",
+              "Step 7 \u2014 Generate mock: For a greenfield project, Designer generates a fresh HTML/CSS/JS mock from scratch based on the user's preferences and vision. For an existing project, Designer reads UI-related source files (HTML, CSS, JS, templates) directly from the project directory \u2014 filtered to common UI file types and capped per file to stay within model context limits \u2014 and uses the existing UI as a starting point. The mock covers only the landing page (web projects) or starting screen (other projects). Generation is expected to take several minutes; a progress bar and a running character count of tokens received from the model are displayed during generation. No partial rendering is shown; only the final result is displayed once generation is complete.",
+              "Step 8 \u2014 Preview: The completed mock is displayed to the user in an embedded iframe within the Dash app. A full-screen overlay button allows the user to expand the preview to the full width of the browser window.",
+              "Step 9 \u2014 Approve, Refine, or Start Over: The user chooses to (a) finalize the design, (b) make incremental refinements, or (c) start over entirely. If finalizing, Designer saves the mock to `.spec4/design/` and directs the user to StackAdvisor. If refining, Designer asks the user to describe specific changes they want and optionally supply new screenshots, then regenerates the mock and returns to the preview. If starting over, all saved Designer state (descriptions, screenshots, and mock) is cleared from `.spec4/design/` and Designer returns to step 4."
+            ],
+            "output": "A single self-contained HTML file with all CSS in an embedded `<style>` block and any necessary JavaScript in an embedded `<script>` block, saved to `.spec4/design/`. Full session state (text descriptions and screenshots) is also persisted to `.spec4/design/` to allow resumption across sessions.",
+            "example": "Designer produces a pixel-style mock of a dashboard landing page that the coding agent can reference during implementation."
+          }
+        },
+        {
+          "StackAdvisor_Agent": {
+            "description": "Recommends a technology stack based on the vision statement and, where available, the design mock.",
+            "example": "StackAdvisor suggests a React frontend with a FastAPI backend based on the vision and design artifacts."
+          }
+        },
+        {
+          "Phaser_Agent": {
+            "description": "Plans the implementation phases of the project. If a finalized design exists in `.spec4/design/`, Phaser directs the coding agent to refer to those files during implementation. If the design directory is empty, Phaser acknowledges that no design was specified and notes that UI design decisions are left to the developer's discretion.",
+            "example": "Phaser produces a phased plan where Phase 1 includes scaffolding the UI to match the `.spec4/design/` mock."
+          }
+        },
+        {
+          "Multi_Provider_LLM_Support": {
+            "description": "Supports multiple LLM providers (OpenAI, Anthropic, Gemini, Cohere, Mistral) via a unified LiteLLM abstraction. The global model selection step tests whether the selected model supports image understanding by sending a small test image with a simple question. If the model cannot process images, the user is informed and advised to select a different model if they wish to supply screenshot examples in Designer.",
+            "example": "A user selects a Gemini model; the app confirms it supports image input before proceeding."
+          }
+        },
+        {
+          "Web_Search_Integration": {
+            "description": "All agents can perform live web searches via the Tavily Search API integrated through the Model Context Protocol (MCP), enabling agents to ground their recommendations in current, real-world information.",
+            "example": "StackAdvisor searches for the latest stable version of a recommended framework before including it in its output."
+          }
+        },
+        {
+          "Client_Side_Credential_Storage": {
+            "description": "API credentials are stored client-side in the browser using Dash's `dcc.Store` component (browser localStorage), so no credentials are persisted on the server.",
+            "example": "A user's OpenAI API key is stored locally in the browser and never sent to or stored by the Spec4 server."
+          }
+        }
+      ],
+      "differentiators": [
+        "A **complete end-to-end planning pipeline** covering code review, vision, UI design, stack selection, and phased implementation \u2014 all in one locally-run tool.",
+        "A **Designer agent** that produces a tangible, self-contained HTML/CSS/JS UI mock grounded in the user's stated preferences, example screenshots, and project vision \u2014 giving the coding agent a concrete visual reference from day one.",
+        "**Flexible pipeline entry** \u2014 users can upload prior artifacts and join at any stage, making the tool useful for both greenfield and brownfield projects.",
+        "**Image-capability-aware model selection** \u2014 the app proactively tests whether the chosen LLM can process images, so users know before they begin whether screenshot-based design inspiration is available to them."
+      ],
+      "future_enhancements": [
+        {
+          "Additional_UI_Screens": {
+            "description": "Extend Designer to produce mocks for additional screens beyond the landing page or starting screen.",
+            "example": "Designer produces mocks for a settings page, a dashboard, and an onboarding flow."
+          }
+        },
+        {
+          "CI_CD_Pipeline": {
+            "description": "Add a CI/CD pipeline to automate quality gates (linting, type checking, test coverage) currently run manually via make targets.",
+            "example": "A GitHub Actions workflow runs ruff, mypy, and pytest on every pull request."
+          }
+        }
+      ],
+      "references": [
+        {
+          "standard": "Model Context Protocol (MCP)",
+          "url": "https://modelcontextprotocol.io/docs/getting-started/intro"
+        },
+        {
+          "standard": "LiteLLM",
+          "url": "https://docs.litellm.ai/docs/"
+        },
+        {
+          "standard": "Tavily Search API",
+          "url": "https://docs.tavily.com/documentation/about"
+        },
+        {
+          "standard": "Plotly Dash",
+          "url": "https://dash.plotly.com/"
+        }
+      ]
+    }
+  }
+}
+```
+
+### Stack Spec
+```json
+{
+  "stack_spec": {
+    "name": "Spec4",
+    "languages": [
+      "Python 3.12+",
+      "JavaScript (inline/embedded in Dash clientside callbacks only)",
+      "CSS"
+    ],
+    "deployment": {
+      "platforms": [
+        "Locally-run web app (Dash on localhost)",
+        "PyPI package"
+      ],
+      "hosting": "Self-hosted (user's local machine)",
+      "distribution": "GitHub repository + PyPI",
+      "build": "uv / pyproject.toml / uv_build"
+    },
+    "libraries": {
+      "web_framework_and_ui": [
+        {
+          "name": "dash",
+          "purpose": "Core web framework \u2014 Flask-based reactive UI via callbacks, dcc.Store for client-side credential storage in browser localStorage"
+        },
+        {
+          "name": "dash-mantine-components",
+          "purpose": "React/Mantine-based UI component library \u2014 rich, polished components with theming support"
+        },
+        {
+          "name": "dash-iconify",
+          "purpose": "Icon integration for Dash via the Iconify icon set ecosystem"
+        }
+      ],
+      "llm_abstraction": [
+        {
+          "name": "litellm",
+          "purpose": "Unified multi-provider LLM abstraction \u2014 single API for OpenAI, Anthropic, Gemini, Cohere, Mistral and 100+ other providers; handles streaming, image inputs, and model capability metadata"
+        }
+      ],
+      "web_search_integration": [
+        {
+          "name": "mcp",
+          "purpose": "MCP Python SDK \u2014 integrates Tavily web search tool into all five agents via the Model Context Protocol"
+        }
+      ],
+      "wsgi_server": [
+        {
+          "name": "gunicorn",
+          "purpose": "Production WSGI server for serving the Dash/Flask app when run locally after PyPI install"
+        }
+      ],
+      "testing": [
+        {
+          "name": "pytest",
+          "purpose": "Test runner \u2014 simple, expressive, widely adopted Python testing framework"
+        },
+        {
+          "name": "pytest-cov",
+          "purpose": "Test coverage reporting integrated with pytest"
+        }
+      ],
+      "quality_tooling": [
+        {
+          "name": "ruff",
+          "purpose": "Linter and formatter \u2014 replaces Flake8 and Black in a single tool"
+        },
+        {
+          "name": "mypy",
+          "purpose": "Static type checker in strict mode \u2014 enforces full annotation coverage across the codebase"
+        }
+      ]
+    },
+    "coding_style": {
+      "linter": "Ruff (rule sets E and F; E501 suppressed per-file for agents/*.py and app.py where long strings are unavoidable)",
+      "formatter": "Ruff format",
+      "type_checker": "mypy (strict = true)",
+      "indentation": "4 spaces",
+      "line_length": 88,
+      "quotes": "double",
+      "naming_conventions": {
+        "variables": "snake_case",
+        "functions": "snake_case",
+        "classes": "PascalCase",
+        "constants": "UPPER_SNAKE_CASE",
+        "private_helpers": "single underscore prefix (e.g. _utils.py, _extract_json_block)",
+        "files": "snake_case"
+      },
+      "other_rules": [
+        "trailing commas in multi-line expressions",
+        "no unused imports",
+        "from __future__ import annotations in all agent modules for deferred annotation evaluation"
+      ],
+      "patterns": [
+        "layered architecture (presentation / business logic / session & persistence)",
+        "sequential pipeline (Reviewer \u2192 Brainstormer \u2192 Designer \u2192 StackAdvisor \u2192 Phaser) \u2014 each stage consumes prior output as input",
+        "functional core / imperative shell \u2014 pure functions for data transformation and agent logic; side effects (filesystem I/O, LLM calls, HTTP) pushed to the edges",
+        "dependency injection \u2014 agents receive dependencies (LLM client, session state, filesystem paths) rather than constructing them internally",
+        "single underscore prefix for private helpers at both function and module level"
+      ]
+    },
+    "references": [
+      {
+        "standard": "Model Context Protocol (MCP)",
+        "url": "https://modelcontextprotocol.io/docs/getting-started/intro"
+      },
+      {
+        "standard": "MCP Python SDK",
+        "url": "https://github.com/modelcontextprotocol/python-sdk"
+      },
+      {
+        "standard": "LiteLLM",
+        "url": "https://docs.litellm.ai/docs/"
+      },
+      {
+        "standard": "Tavily Search API",
+        "url": "https://docs.tavily.com/documentation/about"
+      },
+      {
+        "standard": "Tavily MCP Server",
+        "url": "https://github.com/tavily-ai/tavily-mcp"
+      },
+      {
+        "standard": "Plotly Dash",
+        "url": "https://dash.plotly.com/"
+      }
+    ]
+  }
+}
+```
+
+### Phases (6 total)
+- Phase 1: Integration & Validation Baseline
+- Phase 2: Designer Agent — Core Logic & Session Persistence
+- Phase 3: Designer Agent — UI Layout, Screenshot Upload & Mock Preview
+- Phase 4: Designer Agent — Mock Generation, Streaming Progress & Approve/Refine/Start-Over
+- Phase 5: Image-Capability Probe & Model-Selection Integration
+- Phase 6: Pipeline Wiring — Designer ↔ StackAdvisor ↔ Phaser Integration
+

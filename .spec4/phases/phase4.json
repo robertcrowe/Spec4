@@ -1,0 +1,99 @@
+{
+  "phase_number": 4,
+  "total_phases": 6,
+  "phase_title": "Designer Agent \u2014 Mock Generation, Streaming Progress & Approve/Refine/Start-Over",
+  "phase_summary": "Replace the Phase 3 placeholder generation stub with a real LiteLLM streaming call. This phase wires the complete mock-generation pipeline: building the prompt (using `build_mock_prompt` from Phase 2), calling the LLM with streaming enabled and MCP/Tavily tool support consistent with the other agents, driving a live progress bar and token counter via `dcc.Interval`, extracting the completed HTML, and persisting it. The Approve/Refine/Start-Over loop is fully operational by the end of this phase.",
+  "tech_stack_spec": {
+    "dependencies": [
+      "litellm",
+      "mcp",
+      "dash",
+      "dash-mantine-components",
+      "dash-iconify",
+      "pytest",
+      "pytest-cov",
+      "ruff",
+      "mypy"
+    ],
+    "configurations": "LLM provider API key env var (e.g. OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY) must be set in the environment for end-to-end testing. TAVILY_API_KEY must be set for MCP/Tavily web search. The selected model string and API key are read from `dcc.Store(id='model-store')` and `dcc.Store(id='credentials-store')` \u2014 these stores are assumed to be populated by the existing model-selection UI from the prior codebase. For greenfield projects: no additional env vars. For existing projects: the project root path is read from `dcc.Store(id='project-path-store')` (assumed to exist in the prior codebase)."
+  },
+  "instructions": [
+    "In `agents/designer.py`, implement `collect_ui_source_files(project_root: Path, max_chars_per_file: int = 8000) -> list[str]`. This function walks `project_root` (excluding `.spec4/`, `.git/`, `__pycache__/`, `node_modules/`, `dist/`, `.venv/`), collects files matching the extensions `{'.html', '.htm', '.css', '.js', '.jsx', '.ts', '.tsx', '.jinja', '.jinja2', '.j2', '.svelte', '.vue'}`, reads each up to `max_chars_per_file` characters (truncating with a `# [truncated]` comment if needed), and returns them as a list of strings formatted as `# --- filename ---\\n<content>`. Cap the total returned list at 20 files to stay within model context limits.",
+    "In `agents/designer.py`, implement `generate_mock_streaming(session: DesignerSession, model: str, api_key: str, ui_source_snippets: list[str], image_support: bool, tavily_api_key: str | None = None) -> Iterator[str]`. This generator: (a) calls `build_mock_prompt(session, ui_source_snippets, image_support)` to construct the messages list; (b) sets the appropriate provider API key env var from `api_key` before calling litellm (follow the same pattern used in the existing agents); (c) calls `litellm.completion(model=model, messages=messages, stream=True, tools=<tavily_mcp_tools_if_available>)`; (d) yields each `chunk.choices[0].delta.content or ''` string as it arrives; (e) wraps the entire call in a try/except that yields a sentinel error string `'__GENERATION_ERROR__: <message>'` on failure so the caller can detect and display errors without raising.",
+    "If `tavily_api_key` is provided, integrate the Tavily MCP tool into the LiteLLM call in the same way the existing agents do (inspect `agents/` in the existing codebase and replicate the MCP tool wiring pattern exactly \u2014 do not invent a new pattern).",
+    "In `callbacks/designer.py`, add a `dcc.Store(id='mock-stream-buffer', storage_type='memory')` and a `dcc.Interval(id='mock-stream-interval', interval=250, disabled=True)` to the Designer layout (add these to `layouts/designer.py`).",
+    "Replace the Phase 3 placeholder 'Generate Mock' callback with a two-part streaming pattern: (a) A 'start generation' callback triggered by the 'Generate Mock' / 'Regenerate' button click. This callback launches generation in a background thread (use `threading.Thread` \u2014 Dash's Flask backend is synchronous), stores the thread's output queue or a shared list in a module-level dict keyed by a session UUID stored in `designer-session-store`, enables `mock-stream-interval`, and sets the progress bar to indeterminate. (b) A polling callback triggered by `mock-stream-interval` `n_intervals`. This callback dequeues all available chunks from the shared buffer, appends them to `mock-stream-buffer`, updates the token counter (`len(accumulated)` characters), and updates the progress bar value (use a heuristic: `min(95, tokens_received / 50)` to give a sense of progress without knowing total length). When the sentinel `'__DONE__'` is detected in the buffer (yielded by the generator after the last chunk), the callback: disables `mock-stream-interval`, extracts the complete HTML from the buffer, calls `save_mock` and `save_session`, writes the HTML to `designer-session-store['mock_html']`, sets the stepper to step 6 (preview), and sets the iframe `srcDoc`. If `'__GENERATION_ERROR__:'` is detected, disable the interval and display a `dmc.Alert` (color='red') with the error message.",
+    "Update `generate_mock_streaming` to yield `'__DONE__'` as the final item after all content chunks have been yielded.",
+    "For the Refine flow: the 'Regenerate' button appends the refinement textarea content to `session['preference_text']` (separated by `\\n\\n--- Refinement ---\\n`) and any new screenshots to `session['screenshots']` before triggering the same generation callback. This means `generate_mock_streaming` always sees the full accumulated preference context.",
+    "For the Start Over flow (already wired in Phase 3 to call `clear_session`): additionally cancel any in-flight generation thread for this session UUID (set a threading.Event 'stop' flag checked inside the generator loop) and clear `mock-stream-buffer`.",
+    "Add unit tests in `tests/test_designer.py` for: `collect_ui_source_files` (correct file extensions collected, excluded dirs skipped, per-file truncation applied, 20-file cap respected \u2014 use `tmp_path` to create a synthetic project tree). Mock `litellm.completion` to test that `generate_mock_streaming` yields streamed chunks, yields `__DONE__` at the end, and yields `__GENERATION_ERROR__:` on exception.",
+    "Run `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy .`, and `uv run pytest --cov` \u2014 all must pass."
+  ],
+  "risk_assessment": {
+    "potential_bottlenecks": "Running LLM generation in a background thread while Dash's Flask server handles concurrent requests requires careful shared-state management \u2014 a poorly scoped module-level dict can leak state between users (not a concern for this locally-run single-user app, but the pattern must still be correct). The streaming generator may hold a network connection open for several minutes; if the user navigates away, the thread must be cleanly cancelled. Extracting only the HTML content from the model's response (which may include prose before/after the code block) requires robust parsing.",
+    "mitigation_strategy": "Key the shared generation buffer dict by a UUID generated per generation session and stored in `designer-session-store` \u2014 this avoids cross-session leakage. Use a `threading.Event` cancellation flag passed into the generator; check it at each chunk iteration and break early if set. For HTML extraction, use a regex that matches the outermost `<!DOCTYPE html>` or `<html` ... `</html>` block; if no match is found, use the raw accumulated string as a fallback and prepend a comment `<!-- Designer: raw output, no HTML wrapper detected -->`."
+  },
+  "verification": "End-to-end manual test: select a vision-enabled model, navigate to Designer, enter preference text, click 'Generate Mock'. Observe the progress bar incrementing and the token counter updating in real time. After generation completes, confirm the iframe renders a self-contained HTML page. Click 'Approve' and confirm `mock.html` and `session.json` appear in `.spec4/design/`. Restart the app, navigate back to Designer, and confirm the saved mock is auto-loaded in the preview (resume flow). Run `uv run pytest --cov` \u2014 all tests pass. Run `uv run ruff check .` and `uv run mypy .` \u2014 both exit 0.",
+  "references": [
+    {
+      "standard": "Plotly Dash",
+      "url": "https://dash.plotly.com/"
+    },
+    {
+      "standard": "Dash \u2014 dcc.Interval",
+      "url": "https://dash.plotly.com/dash-core-components/interval"
+    },
+    {
+      "standard": "Dash \u2014 dcc.Store",
+      "url": "https://dash.plotly.com/dash-core-components/store"
+    },
+    {
+      "standard": "Dash Mantine Components",
+      "url": "https://www.dash-mantine-components.com/"
+    },
+    {
+      "standard": "LiteLLM",
+      "url": "https://docs.litellm.ai/docs/"
+    },
+    {
+      "standard": "LiteLLM \u2014 Streaming",
+      "url": "https://docs.litellm.ai/docs/completion/stream"
+    },
+    {
+      "standard": "LiteLLM \u2014 Vision / Multimodal",
+      "url": "https://docs.litellm.ai/docs/completion/vision"
+    },
+    {
+      "standard": "Model Context Protocol (MCP)",
+      "url": "https://modelcontextprotocol.io/docs/getting-started/intro"
+    },
+    {
+      "standard": "MCP Python SDK",
+      "url": "https://github.com/modelcontextprotocol/python-sdk"
+    },
+    {
+      "standard": "Tavily Search API",
+      "url": "https://docs.tavily.com/documentation/about"
+    },
+    {
+      "standard": "Tavily MCP Server",
+      "url": "https://github.com/tavily-ai/tavily-mcp"
+    },
+    {
+      "standard": "pytest",
+      "url": "https://docs.pytest.org/"
+    },
+    {
+      "standard": "pytest-cov",
+      "url": "https://pytest-cov.readthedocs.io/"
+    },
+    {
+      "standard": "Ruff",
+      "url": "https://docs.astral.sh/ruff/"
+    },
+    {
+      "standard": "mypy",
+      "url": "https://mypy.readthedocs.io/en/stable/"
+    }
+  ]
+}

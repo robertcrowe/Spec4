@@ -1,32 +1,34 @@
 import json
+from collections.abc import Iterator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from spec4 import tavily_mcp
 
 
 class TestUrlBuilder:
-    def test_contains_api_key(self):
+    def test_contains_api_key(self) -> None:
         assert "my-key" in tavily_mcp._url("my-key")
 
-    def test_is_https(self):
+    def test_is_https(self) -> None:
         assert tavily_mcp._url("key").startswith("https://")
 
 
 class TestWebSearchToolSpec:
-    def test_type_is_function(self):
+    def test_type_is_function(self) -> None:
         assert tavily_mcp.WEB_SEARCH_TOOL["type"] == "function"
 
-    def test_name_is_web_search(self):
+    def test_name_is_web_search(self) -> None:
         assert tavily_mcp.WEB_SEARCH_TOOL["function"]["name"] == "web_search"
 
-    def test_has_query_parameter(self):
+    def test_has_query_parameter(self) -> None:
         params = tavily_mcp.WEB_SEARCH_TOOL["function"]["parameters"]
         assert "query" in params["properties"]
         assert "query" in params["required"]
 
 
 class TestValidate:
-    def test_success_returns_true_with_tools(self):
+    def test_success_returns_true_with_tools(self) -> None:
         with patch(
             "spec4.tavily_mcp._list_tools_async",
             new_callable=AsyncMock,
@@ -37,7 +39,7 @@ class TestValidate:
         assert tools == ["search"]
         assert err == ""
 
-    def test_failure_returns_false_with_message(self):
+    def test_failure_returns_false_with_message(self) -> None:
         with patch(
             "spec4.tavily_mcp._list_tools_async",
             new_callable=AsyncMock,
@@ -50,7 +52,7 @@ class TestValidate:
 
 
 class TestSearch:
-    def test_returns_result_text(self):
+    def test_returns_result_text(self) -> None:
         with patch(
             "spec4.tavily_mcp._call_search_async",
             new_callable=AsyncMock,
@@ -58,7 +60,7 @@ class TestSearch:
         ):
             assert tavily_mcp.search("query", "key") == "Search results here"
 
-    def test_exception_returns_error_string(self):
+    def test_exception_returns_error_string(self) -> None:
         with patch(
             "spec4.tavily_mcp._call_search_async",
             new_callable=AsyncMock,
@@ -70,20 +72,25 @@ class TestSearch:
 
 
 class TestStreamTurn:
-    def _chunk(self, content, finish_reason=None, tool_calls=None):
+    def _chunk(
+        self,
+        content: str | None,
+        finish_reason: str | None = None,
+        tool_calls: Any = None,
+    ) -> MagicMock:
         chunk = MagicMock()
         chunk.choices[0].delta.content = content
         chunk.choices[0].delta.tool_calls = tool_calls
         chunk.choices[0].finish_reason = finish_reason
         return chunk
 
-    def test_yields_text_chunks(self):
+    def test_yields_text_chunks(self) -> None:
         chunks = [
             self._chunk("Hello "),
             self._chunk("world"),
             self._chunk("", finish_reason="stop"),
         ]
-        messages = []
+        messages: list[Any] = []
         with patch("spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)):
             output = "".join(
                 tavily_mcp.stream_turn(
@@ -92,9 +99,9 @@ class TestStreamTurn:
             )
         assert output == "Hello world"
 
-    def test_appends_assistant_message(self):
+    def test_appends_assistant_message(self) -> None:
         chunks = [self._chunk("Hi"), self._chunk("", finish_reason="stop")]
-        messages = []
+        messages: list[Any] = []
         with patch("spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)):
             list(
                 tavily_mcp.stream_turn(
@@ -103,7 +110,7 @@ class TestStreamTurn:
             )
         assert messages[-1] == {"role": "assistant", "content": "Hi"}
 
-    def test_no_tools_kwarg_when_no_tavily_key(self):
+    def test_no_tools_kwarg_when_no_tavily_key(self) -> None:
         chunks = [self._chunk("Hi"), self._chunk("", finish_reason="stop")]
         with patch(
             "spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)
@@ -113,7 +120,7 @@ class TestStreamTurn:
             )
         assert "tools" not in mock_llm.call_args[1]
 
-    def test_tools_kwarg_present_when_tavily_key_given(self):
+    def test_tools_kwarg_present_when_tavily_key_given(self) -> None:
         chunks = [self._chunk("Hi"), self._chunk("", finish_reason="stop")]
         with patch(
             "spec4.tavily_mcp.litellm.completion", return_value=iter(chunks)
@@ -125,7 +132,7 @@ class TestStreamTurn:
             )
         assert mock_llm.call_args[1]["tools"] == [tavily_mcp.WEB_SEARCH_TOOL]
 
-    def test_system_prompt_prepended(self):
+    def test_system_prompt_prepended(self) -> None:
         chunks = [self._chunk("Hi"), self._chunk("", finish_reason="stop")]
         messages = [{"role": "user", "content": "Hello"}]
         with patch(
@@ -140,7 +147,7 @@ class TestStreamTurn:
         assert sent[0] == {"role": "system", "content": "my-system"}
         assert sent[1] == {"role": "user", "content": "Hello"}
 
-    def test_tool_call_triggers_search_and_loops(self):
+    def test_tool_call_triggers_search_and_loops(self) -> None:
         tc = MagicMock()
         tc.index = 0
         tc.id = "call-1"
@@ -150,14 +157,14 @@ class TestStreamTurn:
         tool_chunk = self._chunk(None, tool_calls=[tc])
         call_count = 0
 
-        def fake_completion(**kwargs):
+        def fake_completion(**kwargs: Any) -> Iterator[MagicMock]:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
                 return iter([tool_chunk, self._chunk("", finish_reason="stop")])
             return iter([self._chunk("Answer"), self._chunk("", finish_reason="stop")])
 
-        messages = []
+        messages: list[Any] = []
         with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
             with patch(
                 "spec4.tavily_mcp.search", return_value="search results"
@@ -172,7 +179,7 @@ class TestStreamTurn:
         assert "Answer" in output
         assert call_count == 2
 
-    def test_tool_call_yields_search_indicator(self):
+    def test_tool_call_yields_search_indicator(self) -> None:
         tc = MagicMock()
         tc.index = 0
         tc.id = "call-1"
@@ -181,7 +188,7 @@ class TestStreamTurn:
 
         call_count = 0
 
-        def fake_completion(**kwargs):
+        def fake_completion(**kwargs: Any) -> Iterator[MagicMock]:
             nonlocal call_count
             call_count += 1
             if call_count == 1:

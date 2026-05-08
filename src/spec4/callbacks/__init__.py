@@ -2,24 +2,33 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import pathlib
 import zipfile
 from typing import Any
 
+
 from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
-from spec4 import project_manager, providers, streaming, tavily_mcp
-from spec4.app_constants import (
-    PATH_TO_PHASE,
-    STATE_STACK_COMPLETE,
-    STATE_VISION_COMPLETE,
-)
+from spec4 import providers, streaming, tavily_mcp
+from spec4.agents._image_probe import probe_image_support
+from spec4.app_constants import PATH_TO_PHASE, STATE_IN_PROGRESS
 from spec4.session import (
     _default_session,
     _get_agent_gen,
     _load_working_dir,
     _persist_artifacts,
+    _reset_for_new_project,
+    _validate_agent_preconditions,
 )
+
+_HOME = str(pathlib.Path.home())
+_DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
+
+
+def _prefs_keep_working_dir(prefs: Any) -> dict[str, Any]:
+    """Return a prefs dict retaining only working_dir, or empty dict."""
+    return {"working_dir": prefs["working_dir"]} if prefs and prefs.get("working_dir") else {}
 
 
 # ---------------------------------------------------------------------------
@@ -95,9 +104,17 @@ def on_landing_start(n: Any, session: Any) -> Any:
 def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
     if not n:
         return no_update, no_update, no_update
-    path = session.get("browser_path") or str(pathlib.Path.home())
+    path = session.get("browser_path") or _HOME
     new_prefs = {**(prefs or {}), "working_dir": path}
-    return _load_working_dir(path, session), "/setup", new_prefs
+    new_session = _load_working_dir(path, session)
+    # If the developer already has a working LLM connection from a previous
+    # project, skip the setup screen and drop them straight into agent select.
+    # The "Change provider" button on the agents page is still there if they
+    # want to swap models or update their Tavily key.
+    if new_session.get("llm_config") and new_session.get("model"):
+        new_session = {**new_session, "phase": "agent_select"}
+        return new_session, "/agents", new_prefs
+    return new_session, "/setup", new_prefs
 
 
 @callback(
@@ -109,7 +126,7 @@ def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
 def on_dir_up(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    current = pathlib.Path(session.get("browser_path") or str(pathlib.Path.home()))
+    current = pathlib.Path(session.get("browser_path") or _HOME)
     return {**session, "browser_path": str(current.parent)}
 
 
@@ -151,7 +168,7 @@ def on_subdir_click(n_clicks_list: Any, session: Any) -> Any:
 def on_create_folder(n: Any, name: Any, session: Any) -> Any:
     if not n or not name or not name.strip():
         return no_update
-    current = pathlib.Path(session.get("browser_path") or str(pathlib.Path.home()))
+    current = pathlib.Path(session.get("browser_path") or _HOME)
     new_path = current / name.strip()
     try:
         new_path.mkdir(parents=True, exist_ok=True)
@@ -194,11 +211,7 @@ def on_setup_connect(
             "available_models": models,
             "setup_error": None,
         }
-        base = (
-            {"working_dir": prefs["working_dir"]}
-            if prefs and prefs.get("working_dir")
-            else {}
-        )
+        base = _prefs_keep_working_dir(prefs)
         new_prefs = (
             {
                 **prefs,
@@ -222,12 +235,7 @@ def on_setup_connect(
 def on_setup_clear(n: Any, prefs: Any) -> Any:
     if not n:
         return no_update
-    preserved = (
-        {"working_dir": prefs["working_dir"]}
-        if prefs and prefs.get("working_dir")
-        else {}
-    )
-    return preserved
+    return _prefs_keep_working_dir(prefs)
 
 
 @callback(
@@ -250,6 +258,8 @@ def on_setup_back_provider(n: Any, session: Any) -> Any:
 @callback(
     Output("session", "data", allow_duplicate=True),
     Output("prefs", "data", allow_duplicate=True),
+    Output("image-support-store", "data", allow_duplicate=True),
+    Output("notifications-container", "children", allow_duplicate=True),
     Input("btn-setup-model-continue", "n_clicks"),
     State("setup-model", "value"),
     State("session", "data"),
@@ -258,7 +268,7 @@ def on_setup_back_provider(n: Any, session: Any) -> Any:
 )
 def on_setup_model_continue(n: Any, model: Any, session: Any, prefs: Any) -> Any:
     if not n or not model:
-        return no_update, no_update
+        return no_update, no_update, no_update, no_update
     new_session = {
         **session,
         "model": model,
@@ -266,7 +276,14 @@ def on_setup_model_continue(n: Any, model: Any, session: Any, prefs: Any) -> Any
         "setup_error": None,
     }
     new_prefs = {**prefs, "model": model} if prefs.get("save_prefs") else prefs
-    return new_session, new_prefs
+
+    image_support: bool | None = None
+    try:
+        image_support = probe_image_support(model, session.get("api_key") or "")
+    except Exception:
+        image_support = None
+
+    return new_session, new_prefs, image_support, no_update
 
 
 @callback(
@@ -345,68 +362,8 @@ def on_setup_tavily_skip(n: Any, session: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Agent select — load files from .spec4/ directly
-# ---------------------------------------------------------------------------
-
-
-@callback(
-    Output("session", "data", allow_duplicate=True),
-    Input("btn-load-vision", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def on_load_vision(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update
-    working_dir = session.get("working_dir")
-    if not working_dir:
-        return no_update
-    data = project_manager.load_single_artifact(working_dir, "vision.json")
-    if data is None:
-        return no_update
-    return {
-        **session,
-        "vision_statement": data.get("vision_statement", data),
-        "brainstormer_state": STATE_VISION_COMPLETE,
-    }
-
-
-@callback(
-    Output("session", "data", allow_duplicate=True),
-    Input("btn-load-stack", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def on_load_stack(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update
-    working_dir = session.get("working_dir")
-    if not working_dir:
-        return no_update
-    data = project_manager.load_single_artifact(working_dir, "stack.json")
-    if data is None:
-        return no_update
-    return {
-        **session,
-        "stack_statement": data.get("stack_statement", data),
-        "stack_advisor_state": STATE_STACK_COMPLETE,
-    }
-
-
-# ---------------------------------------------------------------------------
 # Agent select
 # ---------------------------------------------------------------------------
-
-
-def _validate_agent_preconditions(agent: str, session: dict[str, Any]) -> str | None:
-    """Return an error message if agent prerequisites are missing, else None."""
-    has_vision = session.get("vision_statement") is not None
-    has_stack = session.get("stack_statement") is not None
-    if agent in ("stack_advisor", "phaser") and not has_vision:
-        return "Requires a vision statement. Load or generate a vision.json first."
-    if agent == "phaser" and not has_stack:
-        return "Requires a stack spec. Load or generate a stack.json first."
-    return None
 
 
 @callback(
@@ -424,6 +381,8 @@ def on_agent_start(n: Any, agent_choice: Any, session: Any) -> Any:
     err = _validate_agent_preconditions(agent_choice, session)
     if err:
         return {**session, "agent_select_error": err}, no_update
+    if agent_choice == "designer":
+        return {**session, "agent_select_error": None, "phase": "designer"}, "/design"
     return {
         **session,
         "agent_select_error": None,
@@ -450,6 +409,27 @@ def on_chat_back(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return {**session, "phase": "agent_select"}, "/agents"
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("btn-agent-change-provider", "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_agent_change_provider(n: Any, session: Any) -> Any:
+    if not n:
+        return no_update, no_update
+    return {
+        **session,
+        "phase": "setup",
+        "available_models": None,
+        "model": None,
+        "llm_config": None,
+        "setup_error": None,
+        "agent_select_error": None,
+    }, "/setup"
 
 
 # ---------------------------------------------------------------------------
@@ -527,6 +507,11 @@ def on_stream_poll(n: Any, session: Any) -> Any:
 
     stream = streaming.get(stream_id)
     if not stream:
+        if _DEV_MODE:
+            print(
+                f"[poll {stream_id[:8]}] stream entry missing, clearing _stream_id",
+                flush=True,
+            )
         return {**session, "_stream_id": None}, 0
 
     text = stream["text"]
@@ -535,18 +520,45 @@ def on_stream_poll(n: Any, session: Any) -> Any:
         messages[-1] = {"role": "assistant", "content": text}
 
     if not stream["done"]:
+        prev = (session.get("messages") or [{}])[-1].get("content", "")
+        if text == prev:
+            return no_update, no_update
         return {**session, "messages": messages}, no_update
 
     # Stream complete — merge agent-mutated session and finalise
+    if _DEV_MODE:
+        print(
+            f"[poll {stream_id[:8]}] done branch firing; text_len={len(text)}, "
+            f"messages_count={len(messages)}, "
+            f"last_msg_preview={text[:120]!r}",
+            flush=True,
+        )
     final = streaming.pop(stream_id)
+    if final is None:
+        if _DEV_MODE:
+            print(
+                f"[poll {stream_id[:8]}] streaming.pop returned None — "
+                f"error text would be lost",
+                flush=True,
+            )
+        return {**session, "_stream_id": None}, 0
     agent_session = final["session"]
     _persist_artifacts(agent_session)
+    if agent_session.get("_display_override") is not None and messages:
+        messages[-1] = {"role": "assistant", "content": agent_session["_display_override"]}
+        if _DEV_MODE:
+            print(
+                f"[poll {stream_id[:8]}] _display_override applied "
+                f"(len={len(agent_session['_display_override'])})",
+                flush=True,
+            )
     return (
         {
             **agent_session,
             "messages": messages,
             "_stream_id": None,
             "_initial_turn_done": True,
+            "_display_override": None,
         },
         0,
     )
@@ -562,14 +574,66 @@ def _switch_agent(
     target: str,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Return a new session dict switching the active agent and clearing its messages."""
+    """Switch active_agent and clear UI display state, preserving the target
+    agent's conversation and artifact state.
+
+    The recap helper (`_maybe_inject_resume_summary`) handles resumption when
+    `{target}_messages` is non-empty, so navigating between agents picks up
+    where the user left off rather than starting from scratch.
+    """
     return {
         **session,
         "active_agent": target,
-        f"{target}_messages": [],
         "messages": [],
         "_initial_turn_done": False,
         **(extra or {}),
+    }
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
+    Input({"type": "agent-pill", "agent": ALL}, "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_agent_pill_click(n_clicks_list: Any, session: Any) -> Any:
+    """Pipeline pill click → navigate to that agent.
+
+    Disabled pills (preconditions unmet) are blocked at the layout level so
+    no n_clicks event reaches us; the precondition check here is defensive
+    in case the disabled state and the actual session diverge.
+    """
+    if not ctx.triggered_id or not any(n for n in n_clicks_list if n):
+        return no_update, no_update
+    target = ctx.triggered_id["agent"]
+    session = session or {}
+    if target == session.get("active_agent") and session.get("phase") == "chat":
+        return no_update, no_update
+    if _validate_agent_preconditions(target, session) is not None:
+        return no_update, no_update
+    if target == "designer":
+        return {**session, "phase": "designer"}, "/design"
+    return _switch_agent(session, target, extra={"phase": "chat"}), "/chat"
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Input("btn-rescan-project", "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_rescan_project(n: Any, session: Any) -> Any:
+    if not n:
+        return no_update
+    return {
+        **session,
+        "code_scanner_messages": [],
+        "code_scanner_state": STATE_IN_PROGRESS,
+        "code_scanner_artifact_msg_count": None,
+        "code_scanner_resumed": False,
+        "messages": [],
+        "_initial_turn_done": False,
     }
 
 
@@ -587,26 +651,28 @@ def on_review_to_brainstormer(n: Any, session: Any) -> Any:
 
 @callback(
     Output("session", "data", allow_duplicate=True),
-    Input("btn-brainstormer-to-stack", "n_clicks"),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("btn-brainstormer-to-designer", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_brainstormer_to_stack(n: Any, session: Any) -> Any:
+def on_brainstormer_to_designer(n: Any, session: Any) -> Any:
     if not n:
-        return no_update
-    return _switch_agent(session, "stack_advisor")
+        return no_update, no_update
+    return {**session, "phase": "designer"}, "/design"
 
 
 @callback(
     Output("session", "data", allow_duplicate=True),
-    Input("btn-stack-to-brainstormer", "n_clicks"),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("btn-stack-to-designer", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_stack_to_brainstormer(n: Any, session: Any) -> Any:
+def on_stack_to_designer(n: Any, session: Any) -> Any:
     if not n:
-        return no_update
-    return _switch_agent(session, "brainstormer")
+        return no_update, no_update
+    return {**session, "phase": "designer"}, "/design"
 
 
 @callback(
@@ -618,7 +684,7 @@ def on_stack_to_brainstormer(n: Any, session: Any) -> Any:
 def on_stack_to_phaser(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return _switch_agent(session, "phaser", {"phaser_state": None, "phases": []})
+    return _switch_agent(session, "phaser")
 
 
 @callback(
@@ -705,80 +771,65 @@ def dl_phases(n: Any, session: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Done page
+# Deployer navigation
 # ---------------------------------------------------------------------------
 
 
 @callback(
     Output("session", "data", allow_duplicate=True),
-    Output("url", "pathname", allow_duplicate=True),
-    Input("btn-phaser-done", "n_clicks"),
+    Input("btn-phaser-to-deployer", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_phaser_done(n: Any, session: Any) -> Any:
+def on_phaser_to_deployer(n: Any, session: Any) -> Any:
     if not n:
-        return no_update, no_update
-    return {**session, "phase": "done"}, "/done"
+        return no_update
+    return _switch_agent(session, "deployer")
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Input("btn-deployer-to-phaser", "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_deployer_to_phaser(n: Any, session: Any) -> Any:
+    if not n:
+        return no_update
+    return _switch_agent(session, "phaser")
 
 
 @callback(
     Output("session", "data", allow_duplicate=True),
     Output("url", "pathname", allow_duplicate=True),
-    Input("btn-done-back-to-phaser", "n_clicks"),
+    Input("btn-deployer-new-project", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_done_back_to_phaser(n: Any, session: Any) -> Any:
+def on_deployer_new_project(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
-    return {**session, "phase": "chat"}, "/chat"
+    fresh = _reset_for_new_project(session or {})
+    fresh["phase"] = "working_dir"
+    # Open the directory browser at home rather than letting the prefs-stored
+    # previous-project path get auto-restored (which would land the developer
+    # back on the project they just finished).
+    fresh["browser_path"] = _HOME
+    return fresh, "/dir"
 
 
 @callback(
-    Output("session", "data", allow_duplicate=True),
-    Output("url", "pathname", allow_duplicate=True),
-    Input("btn-done-new-project", "n_clicks"),
+    Output("dl-deployment", "data"),
+    Input("btn-dl-deployment", "n_clicks"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_done_new_project(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update, no_update
-    return {**session, "phase": "agent_select"}, "/agents"
-
-
-@callback(
-    Output("dl-phases-done", "data"),
-    Input("btn-dl-phases-done", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def dl_phases_done(n: Any, session: Any) -> Any:
+def dl_deployment(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return _build_phases_zip(session)
-
-
-@callback(
-    Output("dl-vision-done", "data"),
-    Input("btn-dl-vision-done", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def dl_vision_done(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update
-    return _send_json(session.get("vision_statement"), "vision.json")
-
-
-@callback(
-    Output("dl-stack-done", "data"),
-    Input("btn-dl-stack-done", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def dl_stack_done(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update
-    return _send_json(session.get("stack_statement"), "stack.json")
+    messages = session.get("deployer_messages") or []
+    md = next(
+        (m["content"] for m in reversed(messages) if m.get("role") == "assistant"),
+        "",
+    )
+    return dcc.send_string(md, "deployment-plan.md", type="text/markdown")  # type: ignore[attr-defined, no-untyped-call]

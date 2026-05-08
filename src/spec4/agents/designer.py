@@ -1,0 +1,424 @@
+from __future__ import annotations
+
+import json
+import logging
+import threading
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any, TypedDict
+
+import litellm
+
+from spec4.tavily_mcp import WEB_SEARCH_TOOL, search as tavily_search
+
+logger = logging.getLogger(__name__)
+
+_NO_UI_KEYWORDS = (
+    "cli",
+    "command-line",
+    "command line",
+    "no ui",
+    "no-ui",
+    "terminal",
+    "batch",
+)
+
+_SYSTEM_PROMPT = (
+    "You are an expert UI/UX designer generating a self-contained HTML mock-up "
+    "for a software project. A project vision describing the purpose, audience, "
+    "and key features will be provided — use it as your primary design input. "
+    "The mock-up will be shown to the project owner for approval and will serve "
+    "as a visual reference for downstream development, so it must be polished "
+    "and realistic: use the project's actual name and feature names (not Lorem "
+    "ipsum or generic placeholder text), apply a coherent colour scheme and "
+    "typography, and faithfully represent the layout and key interactions of the "
+    "starting screen. "
+    "You write HTML, CSS, and JavaScript directly — no frameworks, no external "
+    "assets, no CDN links. All CSS goes inside a <style> block in <head> and all "
+    "JavaScript goes inside a <script> block at the end of <body>. The output "
+    "must be a single complete HTML document."
+)
+
+_SYSTEM_PROMPT_REFINE = (
+    "You are an expert UI/UX designer. You will receive an existing HTML mock-up "
+    "followed by a refinement request. Apply the requested changes precisely and "
+    "preserve everything that was not explicitly asked to change — do not "
+    "redesign, refactor, or improve unrequested parts. When feedback is "
+    "ambiguous, apply the most conservative interpretation that satisfies the "
+    "request. "
+    "You write HTML, CSS, and JavaScript directly — no frameworks, no external "
+    "assets, no CDN links. All CSS goes inside a <style> block in <head> and all "
+    "JavaScript goes inside a <script> block at the end of <body>. The output "
+    "must be a single complete HTML document."
+)
+
+_HTML_INSTRUCTION = (
+    "Generate a single self-contained HTML file for the landing page or starting "
+    "screen. Use the project vision above — name, purpose, key features, and "
+    "target audience — to inform every design decision: layout, colour, "
+    "typography, and content. Use realistic content drawn from the vision rather "
+    "than placeholder text. "
+    "Place all CSS inside a <style> block in <head> and all JavaScript inside a "
+    "<script> block at the bottom of <body>. Do not use external CDN links or "
+    "import statements. "
+    "Output ONLY the HTML document — no introduction, no explanation, no "
+    "recap, no markdown commentary before or after the code."
+)
+
+_SYSTEM_PROMPT_CAPTURE = (
+    "You are an expert UI/UX designer. You will receive source code from an "
+    "existing web application and must produce a self-contained HTML mock-up "
+    "that faithfully captures its current look and feel — this is a reference "
+    "baseline, not a redesign. Match the colour scheme, typography, spacing, "
+    "layout, and component shapes as closely as possible. When the source uses "
+    "a framework (React, Vue, Svelte, etc.), translate the component structure "
+    "into equivalent semantic HTML with matching styles — do not attempt to "
+    "reproduce the framework runtime. If screenshots are provided, they take "
+    "precedence over source code for all visual decisions. "
+    "You write HTML, CSS, and JavaScript directly — no frameworks, no external "
+    "assets, no CDN links. All CSS goes inside a <style> block in <head> and all "
+    "JavaScript goes inside a <script> block at the end of <body>. The output "
+    "must be a single complete HTML document."
+)
+
+_HTML_REFINEMENT_INSTRUCTION = (
+    "Apply the requested changes to the existing mock shown above. Preserve "
+    "everything not explicitly changed — do not improve, refactor, or redesign "
+    "unrequested parts. Place all CSS inside a <style> block in <head> and all "
+    "JavaScript inside a <script> block at the bottom of <body>. Do not use "
+    "external CDN links or import statements. "
+    "Output ONLY the complete updated HTML document — no introduction, no "
+    "explanation, no recap, no markdown commentary before or after the code."
+)
+
+_HTML_CAPTURE_INSTRUCTION = (
+    "Generate a single self-contained HTML file that faithfully recreates the "
+    "landing page or starting screen from the source code above. Preserve the "
+    "existing colour scheme, typography, spacing, and layout exactly — this is "
+    "a baseline reference, not a redesign. If the source uses a framework, "
+    "translate the component structure into equivalent semantic HTML with "
+    "matching styles. "
+    "Place all CSS inside a <style> block in <head> and all JavaScript inside "
+    "a <script> block at the bottom of <body>. Do not use external CDN links "
+    "or import statements. "
+    "Output ONLY the HTML document — no introduction, no explanation, no "
+    "recap, no markdown commentary before or after the code."
+)
+
+
+class DesignerSession(TypedDict):
+    step: int
+    preference_text: str
+    screenshots: list[dict[str, str]]
+    mock_html: str
+    finalized: bool
+
+
+def detect_no_ui(
+    vision: dict[str, object],
+    code_review: dict[str, object],
+) -> bool:
+    """Return True if the project appears to have no graphical UI."""
+    for obj in (vision, code_review):
+        for field in ("purpose", "project_type", "description", "vision", "ui_type"):
+            val = obj.get(field)
+            if isinstance(val, str):
+                lower = val.lower()
+                if any(kw in lower for kw in _NO_UI_KEYWORDS):
+                    return True
+    return False
+
+
+def detect_greenfield(project_root: Path) -> bool:
+    """Return True if project_root contains only the .spec4/ directory."""
+    entries = list(project_root.iterdir())
+    return len(entries) == 1 and entries[0].name == ".spec4"
+
+
+def detect_has_ui_source(project_root: Path, design_dir: Path | None = None) -> bool:
+    """Return True if mock.html exists or the project contains UI source files."""
+    if design_dir is not None and (design_dir / "mock.html").exists():
+        return True
+    for root, dirs, files in project_root.walk():
+        dirs[:] = sorted(d for d in dirs if d not in _EXCLUDED_DIRS)
+        for fname in files:
+            if Path(fname).suffix.lower() in _UI_EXTENSIONS:
+                return True
+    return False
+
+
+def load_session(design_dir: Path) -> DesignerSession | None:
+    """Load a DesignerSession from design_dir/session.json, or return None."""
+    path = design_dir / "session.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        session: DesignerSession = {
+            "step": data["step"],
+            "preference_text": data["preference_text"],
+            "screenshots": data["screenshots"],
+            "mock_html": data["mock_html"],
+            "finalized": data["finalized"],
+        }
+        return session
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        logger.warning("Malformed Designer session file: %s", path)
+        return None
+
+
+def save_session(session: DesignerSession, design_dir: Path) -> None:
+    """Persist session to design_dir/session.json."""
+    design_dir.mkdir(parents=True, exist_ok=True)
+    (design_dir / "session.json").write_text(
+        json.dumps(session, indent=2), encoding="utf-8"
+    )
+
+
+def save_mock(html: str, design_dir: Path) -> None:
+    """Write mock HTML to design_dir/mock.html."""
+    design_dir.mkdir(parents=True, exist_ok=True)
+    (design_dir / "mock.html").write_text(html, encoding="utf-8")
+
+
+def clear_session(design_dir: Path) -> None:
+    """Delete session.json and mock.html from design_dir if they exist."""
+    for name in ("session.json", "mock.html"):
+        f = design_dir / name
+        if f.exists():
+            f.unlink()
+
+
+def build_mock_prompt(
+    session: DesignerSession,
+    ui_source_snippets: list[str],
+    image_support: bool,
+    planning_context: dict[str, Any] | None = None,
+    existing_html: str | None = None,
+    capture_mode: bool = False,
+) -> list[dict[str, object]]:
+    """Construct the LiteLLM messages list for mock generation or refinement."""
+    parts: list[dict[str, object]] = []
+
+    if existing_html:
+        parts.append({
+            "type": "text",
+            "text": (
+                "## Existing Mock\n\n"
+                "Below is the current HTML. Apply the requested changes to it — "
+                "preserve everything not explicitly changed.\n\n"
+                "```html\n" + existing_html + "\n```\n\n---"
+            ),
+        })
+    if planning_context and planning_context.get("vision_statement"):
+        parts.append({
+            "type": "text",
+            "text": (
+                "## Project Vision\n\n"
+                "Use the following project vision to inform the UI design "
+                "(purpose, audience, and key features):\n\n"
+                + json.dumps(planning_context["vision_statement"], indent=2)
+                + "\n\n---"
+            ),
+        })
+
+    if session["preference_text"]:
+        parts.append({"type": "text", "text": session["preference_text"]})
+    if image_support and session["screenshots"]:
+        for shot in session["screenshots"]:
+            parts.append({"type": "image_url", "image_url": {"url": shot["data"]}})
+            parts.append({"type": "text", "text": f"Note: {shot['annotation']}"})
+    if not existing_html and ui_source_snippets:
+        combined = "\n\n".join(
+            f"--- UI Source Snippet ---\n{s}" for s in ui_source_snippets
+        )
+        label = (
+            "Existing UI source code — recreate its look and feel:\n\n"
+            if capture_mode
+            else "Existing UI code for reference (use as starting point):\n\n"
+        )
+        parts.append({"type": "text", "text": label + combined})
+    if existing_html:
+        instruction = _HTML_REFINEMENT_INSTRUCTION
+        system = _SYSTEM_PROMPT_REFINE
+    elif capture_mode:
+        instruction = _HTML_CAPTURE_INSTRUCTION
+        system = _SYSTEM_PROMPT_CAPTURE
+    else:
+        instruction = _HTML_INSTRUCTION
+        system = _SYSTEM_PROMPT
+    parts.append({"type": "text", "text": instruction})
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": parts},
+    ]
+
+
+_UI_EXTENSIONS: frozenset[str] = frozenset(
+    {
+        ".html",
+        ".htm",
+        ".css",
+        ".js",
+        ".jsx",
+        ".ts",
+        ".tsx",
+        ".jinja",
+        ".jinja2",
+        ".j2",
+        ".svelte",
+        ".vue",
+    }
+)
+_EXCLUDED_DIRS: frozenset[str] = frozenset(
+    {".spec4", ".git", "__pycache__", "node_modules", "dist", ".venv"}
+)
+_MAX_UI_FILES = 20
+_MAX_UI_FILE_CHARS = 8_000
+
+
+def collect_ui_source_files(project_root: Path) -> list[str]:
+    result: list[str] = []
+    for root, dirs, files in project_root.walk():
+        dirs[:] = sorted(d for d in dirs if d not in _EXCLUDED_DIRS)
+        for fname in sorted(files):
+            if Path(fname).suffix.lower() not in _UI_EXTENSIONS:
+                continue
+            fpath = root / fname
+            try:
+                content = fpath.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if len(content) > _MAX_UI_FILE_CHARS:
+                content = content[:_MAX_UI_FILE_CHARS] + "\n# [truncated]"
+            rel = fpath.relative_to(project_root)
+            result.append(f"# --- {rel} ---\n{content}")
+            if len(result) >= _MAX_UI_FILES:
+                return result
+    return result
+
+
+def generate_mock_streaming(
+    session: DesignerSession,
+    model: str,
+    api_key: str,
+    ui_source_snippets: list[str],
+    image_support: bool,
+    tavily_api_key: str | None = None,
+    stop_event: threading.Event | None = None,
+    planning_context: dict[str, Any] | None = None,
+    existing_html: str | None = None,
+    capture_mode: bool = False,
+) -> Iterator[str]:
+    messages: list[dict[str, Any]] = build_mock_prompt(
+        session, ui_source_snippets, image_support, planning_context, existing_html,
+        capture_mode,
+    )
+    tools: list[dict[str, Any]] | None = [WEB_SEARCH_TOOL] if tavily_api_key else None
+
+    logger.debug("Sending input to model...")
+
+    try:
+        while True:
+            kwargs: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "api_key": api_key,
+                "stream": True,
+            }
+            if tools:
+                kwargs["tools"] = tools
+
+            response = litellm.completion(**kwargs)
+            logger.debug("Awaiting first output token")
+
+            full_text = ""
+            tool_call_acc: dict[int, dict[str, str]] = {}
+            chunk_count = 0
+            last_finish_reason = None
+
+            for chunk in response:
+                chunk_count += 1
+                if stop_event is not None and stop_event.is_set():
+                    return
+
+                choice = chunk.choices[0] if chunk.choices else None
+                if choice is None:
+                    logger.debug("Chunk %d: no choices", chunk_count)
+                    continue
+
+                last_finish_reason = getattr(choice, "finish_reason", None)
+                delta = choice.delta
+                content = getattr(delta, "content", None) or ""
+                tc_deltas = getattr(delta, "tool_calls", None)
+
+                if chunk_count <= 3 or tc_deltas:
+                    logger.debug(
+                        "Chunk %d: content=%r tool_calls=%s finish_reason=%s",
+                        chunk_count, content, bool(tc_deltas), last_finish_reason,
+                    )
+
+                if content:
+                    full_text += content
+                    yield content
+
+                if tc_deltas:
+                    for tc in tc_deltas:
+                        i = tc.index
+                        if i not in tool_call_acc:
+                            tool_call_acc[i] = {"id": "", "name": "", "arguments": ""}
+                        if tc.id:
+                            tool_call_acc[i]["id"] = tc.id
+                        if tc.function:
+                            if tc.function.name:
+                                tool_call_acc[i]["name"] += tc.function.name
+                            if tc.function.arguments:
+                                tool_call_acc[i]["arguments"] += tc.function.arguments
+
+            logger.debug(
+                "Iteration complete — %d chunks, finish_reason=%s",
+                chunk_count, last_finish_reason,
+            )
+
+            if tool_call_acc:
+                messages.append({
+                    "role": "assistant",
+                    "content": full_text or None,
+                    "tool_calls": [
+                        {
+                            "id": tc["id"],
+                            "type": "function",
+                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
+                        }
+                        for tc in tool_call_acc.values()
+                    ],
+                })
+                for tc in tool_call_acc.values():
+                    logger.debug("Tool call: %s args=%s", tc["name"], tc["arguments"])
+                    if tc["name"] == "web_search":
+                        try:
+                            query = json.loads(tc["arguments"]).get("query", "")
+                        except (json.JSONDecodeError, KeyError):
+                            query = tc["arguments"]
+                        logger.debug("Web search: %r", query)
+                        result = tavily_search(query, tavily_api_key or "")
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tc["id"],
+                            "content": result,
+                        })
+                continue
+
+            break
+
+        logger.debug("Output complete")
+        yield "__DONE__"
+
+    except Exception as exc:
+        # Use warning + exc_info so the actual exception type and traceback
+        # land in the server log unconditionally — debug-level was hiding
+        # litellm errors behind logger config, leaving only the unhelpful
+        # "Give Feedback / Get Help" banner that litellm prints itself.
+        logger.warning("Designer generation failed", exc_info=True)
+        msg = str(exc).strip() or repr(exc)
+        yield f"__GENERATION_ERROR__: {type(exc).__name__}: {msg}"

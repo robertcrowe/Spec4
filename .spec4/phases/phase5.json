@@ -1,0 +1,79 @@
+{
+  "phase_number": 5,
+  "total_phases": 6,
+  "phase_title": "Image-Capability Probe & Model-Selection Integration",
+  "phase_summary": "At model-selection time, proactively test whether the chosen LLM can process images by sending a minimal base64-encoded 1\u00d71 white PNG with a simple question via LiteLLM. Store the boolean result in `dcc.Store(id='image-support-store', storage_type='local')`. Display a brief notification informing the user of the result. The Designer agent's screenshot upload section (built in Phase 3) reads this flag to conditionally enable or disable the upload zone. This phase touches the existing model-selection UI in the prior codebase.",
+  "tech_stack_spec": {
+    "dependencies": [
+      "litellm",
+      "dash",
+      "dash-mantine-components",
+      "dash-iconify",
+      "pytest",
+      "pytest-cov",
+      "ruff",
+      "mypy"
+    ],
+    "configurations": "LLM provider API key env var must be set for the probe to make a real LLM call. The probe is a lightweight call (1\u00d71 PNG, single-word expected response) and should complete in under 5 seconds. `dcc.Store(id='image-support-store', storage_type='local')` persists across page refreshes so the user is not re-probed on every reload \u2014 only when the model selection changes."
+  },
+  "instructions": [
+    "Create `agents/_image_probe.py`. Add `from __future__ import annotations` at the top.",
+    "Define `_PROBE_IMAGE_B64: str` as a module-level constant containing the base64-encoded data URI of a 1\u00d71 white PNG: `'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwADhQGAWjR9awAAAABJRU5ErkJggg=='`. This is a known-valid minimal PNG \u2014 do not use a different encoding.",
+    "Implement `probe_image_support(model: str, api_key: str) -> bool`. This function: (a) sets the appropriate provider API key env var from `api_key`, following the same pattern as the existing agents; (b) calls `litellm.completion(model=model, messages=[{'role': 'user', 'content': [{'type': 'text', 'text': 'What colour is this image? Reply with one word.'}, {'type': 'image_url', 'image_url': {'url': _PROBE_IMAGE_B64}}]}], max_tokens=10)` wrapped in a try/except; (c) returns `True` if the call succeeds (no exception, `response.choices` is non-empty); (d) returns `False` if a `litellm.exceptions.BadRequestError` or any exception whose string representation contains 'vision', 'image', 'multimodal', or 'does not support' is raised; (e) re-raises any other unexpected exception (network timeouts, auth errors) so the caller can handle them distinctly.",
+    "Ensure `probe_image_support` cleans up the env var it set after the call (use a try/finally block) to avoid polluting the process environment for subsequent calls with different credentials.",
+    "In the existing model-selection callback (locate it in `callbacks/` in the prior codebase \u2014 it handles the 'Confirm model' or equivalent button), add an `Output` targeting `dcc.Store(id='image-support-store')` `data` property.",
+    "In that same callback, after the model is confirmed, call `probe_image_support(model, api_key)` in a try/except. On success, write the boolean result to `image-support-store`. On `BadRequestError` (vision not supported), write `False`. On any other exception (e.g. auth failure), write `None` \u2014 a `None` value means 'unknown' and the Designer UI should treat it conservatively as unsupported.",
+    "After writing to `image-support-store`, trigger a `dmc.Notification` (use the existing notification pattern in the app, or `dmc.NotificationProvider` if already present): if `True`, show '\u2713 This model supports image input \u2014 screenshot examples are available in Designer' (color='green'); if `False`, show '\u26a0 This model does not support image input \u2014 screenshot upload will be disabled in Designer' (color='orange'); if `None`, show '\u26a0 Could not determine image support for this model \u2014 screenshot upload will be disabled in Designer' (color='yellow').",
+    "In `callbacks/designer.py` (Phase 3), update the screenshot-upload section callback to read `image-support-store` as a `State` input and hide the `dcc.Upload` zone when the value is `False` or `None`, showing the alert text instead.",
+    "Create `tests/test_image_probe.py`. Write unit tests covering: `probe_image_support` returns `True` when `litellm.completion` succeeds (mock the call); returns `False` when `litellm.completion` raises `BadRequestError` with 'vision' in the message; returns `False` when any exception with 'does not support' in the message is raised; re-raises an exception that does not match the vision-error heuristic; correctly cleans up the env var in both success and failure paths. Use `unittest.mock.patch` to mock `litellm.completion`.",
+    "Run `uv run ruff check agents/_image_probe.py tests/test_image_probe.py`, `uv run ruff format --check agents/_image_probe.py tests/test_image_probe.py`, `uv run mypy agents/_image_probe.py` \u2014 all must pass.",
+    "Run `uv run pytest --cov` \u2014 all tests pass, no regressions."
+  ],
+  "risk_assessment": {
+    "potential_bottlenecks": "The image probe makes a live LLM network call during model selection, adding latency to an action the user expects to be instant. Some providers (e.g. Cohere, Mistral) may return a 200 response but ignore the image content entirely rather than raising an error \u2014 a 'true positive' probe result may not be reliable for all providers. The env var cleanup in a try/finally block must handle the case where the env var did not exist before the call (use `os.environ.pop(key, None)` rather than `del os.environ[key]`).",
+    "mitigation_strategy": "Run `probe_image_support` in a background thread (same pattern as generation in Phase 4) and show a `dmc.Loader` spinner on the model-confirm button while the probe is in flight \u2014 do not block the UI thread. Document in a code comment that the probe is a best-effort heuristic: a `True` result means the model accepted a vision message without error, not that it processed the image meaningfully. Use `os.environ.pop(key, None)` in the finally block to safely handle the missing-key case."
+  },
+  "verification": "Unit tests: `uv run pytest tests/test_image_probe.py --cov=agents/_image_probe --cov-report=term-missing` \u2014 all tests pass, 100% coverage of `_image_probe.py`. Integration test: select a known vision-capable model (e.g. gpt-4o), confirm it \u2014 `image-support-store` should be `true` and the green notification should appear. Select a known text-only model, confirm it \u2014 `image-support-store` should be `false` and the orange notification should appear. Navigate to Designer and confirm the screenshot upload zone is hidden when `image-support-store` is `false`. Run `uv run ruff check .` and `uv run mypy .` \u2014 both exit 0.",
+  "references": [
+    {
+      "standard": "Plotly Dash",
+      "url": "https://dash.plotly.com/"
+    },
+    {
+      "standard": "Dash \u2014 dcc.Store",
+      "url": "https://dash.plotly.com/dash-core-components/store"
+    },
+    {
+      "standard": "Dash Mantine Components",
+      "url": "https://www.dash-mantine-components.com/"
+    },
+    {
+      "standard": "dash-iconify",
+      "url": "https://github.com/snehilvj/dash-iconify"
+    },
+    {
+      "standard": "LiteLLM",
+      "url": "https://docs.litellm.ai/docs/"
+    },
+    {
+      "standard": "LiteLLM \u2014 Vision / Multimodal",
+      "url": "https://docs.litellm.ai/docs/completion/vision"
+    },
+    {
+      "standard": "pytest",
+      "url": "https://docs.pytest.org/"
+    },
+    {
+      "standard": "pytest-cov",
+      "url": "https://pytest-cov.readthedocs.io/"
+    },
+    {
+      "standard": "Ruff",
+      "url": "https://docs.astral.sh/ruff/"
+    },
+    {
+      "standard": "mypy",
+      "url": "https://mypy.readthedocs.io/en/stable/"
+    }
+  ]
+}

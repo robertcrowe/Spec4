@@ -1,0 +1,109 @@
+{
+  "phase_number": 6,
+  "total_phases": 6,
+  "phase_title": "Pipeline Wiring \u2014 Designer \u2194 StackAdvisor \u2194 Phaser Integration",
+  "phase_summary": "Close the full pipeline. Update the pipeline stage order to Reviewer \u2192 Brainstormer \u2192 Designer \u2192 StackAdvisor \u2192 Phaser. Update StackAdvisor to include the design mock path in its LLM context when `.spec4/design/mock.html` exists. Update Phaser to reference `.spec4/design/` artefacts in its output when present, or explicitly note their absence. Update the pipeline-entry upload logic to allow skipping Designer by supplying a pre-existing mock. Run the full quality suite and a complete end-to-end smoke test of the whole pipeline.",
+  "tech_stack_spec": {
+    "dependencies": [
+      "litellm",
+      "mcp",
+      "dash",
+      "dash-mantine-components",
+      "dash-iconify",
+      "pytest",
+      "pytest-cov",
+      "ruff",
+      "mypy"
+    ],
+    "configurations": "No new env vars beyond those already in use. The `.spec4/design/mock.html` path is derived from the project root path stored in `dcc.Store(id='project-path-store')`. All pipeline navigation is controlled via existing pipeline-stage routing constants in the codebase \u2014 add `DESIGNER` to that constant sequence."
+  },
+  "instructions": [
+    "Locate the pipeline stage ordering constant or enum in the existing codebase (likely in `app_constants.py` or equivalent). Add `DESIGNER = 'designer'` between `BRAINSTORMER` and `STACK_ADVISOR`. Update any stage-index lookups, stage-label maps, and navigation callback logic that depend on this ordering.",
+    "Update the main pipeline navigation callback (in `callbacks/` \u2014 the one that advances the user from one stage to the next): insert Designer as the stage that fires after Brainstormer's 'Continue to Designer' button and before StackAdvisor's activation. The 'Skip Designer' paths (from Phase 3) must also land correctly on StackAdvisor.",
+    "Update the pipeline-entry upload section. The existing code allows users to upload prior artefacts to jump into the pipeline at any stage. Add a new upload slot for `mock.html` that, when provided: (a) writes the uploaded HTML to `.spec4/design/mock.html`; (b) creates a minimal `session.json` in `.spec4/design/` with `finalized=True` and the mock HTML; (c) sets the pipeline entry point to StackAdvisor, bypassing Designer entirely.",
+    "In `agents/stack_advisor.py` (or the equivalent file \u2014 inspect the existing codebase and match its internal structure exactly): add a helper `_load_design_context(design_dir: Path) -> str`. This function returns an empty string if `design_dir / 'mock.html'` does not exist. If it does exist, it returns the string: `'A UI design mock has been produced by the Designer agent and saved to .spec4/design/mock.html. You may reference this file as a concrete visual specification when evaluating technology stack options for frontend rendering.'`",
+    "In `stack_advisor.py`, inject the result of `_load_design_context` into the system prompt or user message passed to the LLM, appended after the vision statement context. Follow the exact prompt-construction pattern used in the existing file \u2014 do not restructure the agent.",
+    "In `agents/phaser.py` (or equivalent): add a helper `_load_phaser_design_note(design_dir: Path) -> str`. If `design_dir / 'mock.html'` exists and is non-empty, return: `'A finalized UI design mock is available at .spec4/design/mock.html. Direct the coding agent to reference this file during implementation to match the intended visual design.'` If `design_dir` exists but `mock.html` is absent or empty, return: `'No UI design mock was produced. UI design decisions are left to the developer's discretion.'`",
+    "In `phaser.py`, inject the result of `_load_phaser_design_note` into the system prompt or user message, following the exact prompt-construction pattern of the existing file.",
+    "Update `tests/test_agents.py` (the existing file that covers all agent modules) to add test cases for: `_load_design_context` (returns empty string when no mock, returns correct string when mock exists); `_load_phaser_design_note` (correct string when mock exists, correct string when mock absent). Use `tmp_path` for filesystem cases.",
+    "Run the full test suite: `uv run pytest --cov --cov-report=term-missing`. Confirm all tests pass and no coverage regressions.",
+    "Run `uv run ruff check .`, `uv run ruff format --check .`, and `uv run mypy .` \u2014 all must exit 0.",
+    "Perform a complete end-to-end smoke test of the full pipeline in sequence: (1) Start with an empty `.spec4/` directory. (2) Run through Reviewer (or skip with upload). (3) Complete Brainstormer to produce `vision.json`. (4) Proceed through Designer: enter preferences, generate a mock, approve it. (5) Confirm `.spec4/design/mock.html` and `session.json` exist. (6) Proceed to StackAdvisor \u2014 confirm the LLM prompt includes the design context string (check via a debug log or test). (7) Proceed to Phaser \u2014 confirm the output references `.spec4/design/mock.html`. (8) Repeat step 1 but skip Designer via the 'Skip Designer' button \u2014 confirm Phaser output contains the 'no UI design mock' note.",
+    "Run `uv build` and confirm the package builds cleanly with the new Designer agent module included."
+  ],
+  "risk_assessment": {
+    "potential_bottlenecks": "Inserting a new stage into an existing ordered pipeline constant may silently break any code that uses integer stage indices rather than named constants \u2014 for example, `if stage_index > 2` style guards will shift. The pipeline-entry upload logic must be extended carefully: uploading a mock.html should not accidentally overwrite an existing `.spec4/design/` session that was produced by running the Designer agent. The StackAdvisor and Phaser prompt injections must not exceed model context windows \u2014 the design note strings are short and safe, but the `mock.html` itself must NOT be injected wholesale.",
+    "mitigation_strategy": "Audit every use of the pipeline stage list/enum after adding DESIGNER \u2014 search for integer index access patterns and replace them with named constant comparisons. In the upload-mock path, check whether `.spec4/design/mock.html` already exists; if so, prompt the user with a `dmc.Modal` ('A design mock already exists \u2014 overwrite it?') before writing. Confirm that neither `stack_advisor.py` nor `phaser.py` injects the raw mock HTML content \u2014 only the file-path reference string. Add an assertion in `_load_design_context` and `_load_phaser_design_note` that the returned string is under 500 characters."
+  },
+  "verification": "All of the following must pass: `uv run ruff check .` (exit 0), `uv run ruff format --check .` (exit 0), `uv run mypy .` (exit 0), `uv run pytest --cov` (all tests green). `uv build` produces a valid `.whl` and `.tar.gz`. Full end-to-end smoke test as described in the instructions step 10: the pipeline runs from Brainstormer through Designer through StackAdvisor to Phaser without errors, Phaser output references `.spec4/design/mock.html`, and a 'Skip Designer' run produces the 'no UI design mock' note in Phaser output.",
+  "references": [
+    {
+      "standard": "Plotly Dash",
+      "url": "https://dash.plotly.com/"
+    },
+    {
+      "standard": "Dash \u2014 dcc.Store",
+      "url": "https://dash.plotly.com/dash-core-components/store"
+    },
+    {
+      "standard": "Dash Mantine Components",
+      "url": "https://www.dash-mantine-components.com/"
+    },
+    {
+      "standard": "dash-iconify",
+      "url": "https://github.com/snehilvj/dash-iconify"
+    },
+    {
+      "standard": "LiteLLM",
+      "url": "https://docs.litellm.ai/docs/"
+    },
+    {
+      "standard": "LiteLLM \u2014 Vision / Multimodal",
+      "url": "https://docs.litellm.ai/docs/completion/vision"
+    },
+    {
+      "standard": "LiteLLM \u2014 Streaming",
+      "url": "https://docs.litellm.ai/docs/completion/stream"
+    },
+    {
+      "standard": "Model Context Protocol (MCP)",
+      "url": "https://modelcontextprotocol.io/docs/getting-started/intro"
+    },
+    {
+      "standard": "MCP Python SDK",
+      "url": "https://github.com/modelcontextprotocol/python-sdk"
+    },
+    {
+      "standard": "Tavily Search API",
+      "url": "https://docs.tavily.com/documentation/about"
+    },
+    {
+      "standard": "Tavily MCP Server",
+      "url": "https://github.com/tavily-ai/tavily-mcp"
+    },
+    {
+      "standard": "pytest",
+      "url": "https://docs.pytest.org/"
+    },
+    {
+      "standard": "pytest-cov",
+      "url": "https://pytest-cov.readthedocs.io/"
+    },
+    {
+      "standard": "Ruff",
+      "url": "https://docs.astral.sh/ruff/"
+    },
+    {
+      "standard": "mypy",
+      "url": "https://mypy.readthedocs.io/en/stable/"
+    },
+    {
+      "standard": "uv \u2014 Building and publishing a package",
+      "url": "https://docs.astral.sh/uv/guides/package/"
+    },
+    {
+      "standard": "Gunicorn",
+      "url": "https://gunicorn.org/"
+    }
+  ]
+}

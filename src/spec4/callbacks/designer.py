@@ -1,0 +1,750 @@
+from __future__ import annotations
+
+import logging
+import os
+import pathlib
+import re
+import threading
+import uuid
+from typing import Any
+
+from dash import ALL, Input, Output, State, callback, ctx, no_update
+
+from spec4 import project_manager
+from spec4.agents.designer import (
+    DesignerSession,
+    collect_ui_source_files,
+    generate_mock_streaming,
+    save_mock,
+    save_session,
+)
+from spec4.layouts.designer import (
+    _default_designer_session,
+    _step1_content,
+    _step2_content,
+    _step3_content,
+    _step4_content,
+    _step5_content,
+    _step6_content,
+    _step7_content,
+)
+
+logger = logging.getLogger(__name__)
+
+_DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
+
+# keyed by gen_id stored in designer-session-store["_gen_id"]
+# _run() is the sole writer of buf["text"] / buf["final_html"]; poll callbacks
+# only read them.  CPython's GIL makes this single-writer pattern safe without
+# a lock.  When _run() finishes extraction, on_mock_stream_poll picks up
+# buf["final_html"] and pushes the completed mock straight to
+# designer-session-store — no intermediary signal store needed.
+_MOCK_BUFFERS: dict[str, dict[str, Any]] = {}
+
+_MAX_HTML_BYTES = 512_000
+
+# Number of polling ticks (250 ms each) over which we re-deliver the
+# completion payload.  Defends against an intermittent Dash dispatch failure
+# observed during refine-with-screenshot: the server emits the completion
+# response, but the browser silently drops it ~1 in 5 times, leaving the UI
+# stranded at step 5.  By holding the buffer alive for ~1.5 s and re-emitting
+# the identical payload on each tick, a dropped first delivery is recovered
+# by the retry.  DO NOT lower below 4 without re-confirming the bug is gone —
+# the only observed failure mode needs at least one retry to succeed.
+_DELIVERY_TICKS = 6
+
+
+def _llm_params(
+    session: dict[str, Any], image_support: Any
+) -> tuple[str, str, str | None, str | None, bool]:
+    """Extract LLM connection parameters from the main session dict."""
+    return (
+        session.get("model") or "",
+        session.get("api_key") or "",
+        session.get("tavily_api_key"),
+        session.get("working_dir"),
+        bool(image_support) if image_support is not None else True,
+    )
+
+
+def _extract_html(text: str) -> str | None:
+    """Extract an HTML document from model output, returning None if not found."""
+    match = re.search(
+        r"(<!DOCTYPE html>.*?</html>|<html[\s>].*?</html>)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if match:
+        return match.group(1).strip()
+    code_match = re.search(r"```(?:html)?\s*(.*?)\s*```", text, re.DOTALL)
+    if code_match:
+        inner = code_match.group(1).strip()
+        if "<html" in inner.lower() or "<!doctype" in inner.lower():
+            return inner
+    return None
+
+
+def _start_gen(
+    store: dict[str, Any],
+    working_dir: str | None,
+    model: str,
+    api_key: str,
+    tavily_key: str | None,
+    image_support: bool,
+    planning_context: dict[str, Any] | None = None,
+    existing_html: str | None = None,
+    capture_mode: bool = False,
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
+    """Launch generation in a background thread.
+
+    Returns (updated_store, cleared_buffer, interval_disabled=False).
+    """
+    gen_id = str(uuid.uuid4())
+    stop_ev = threading.Event()
+    buf_entry: dict[str, Any] = {"done": False, "stop": stop_ev, "text": ""}
+    _MOCK_BUFFERS[gen_id] = buf_entry
+
+    ds: DesignerSession = {
+        "step": store.get("step", 5),
+        "preference_text": store.get("preference_text", ""),
+        "screenshots": store.get("screenshots", []),
+        "mock_html": store.get("mock_html", ""),
+        "finalized": False,
+    }
+
+    def _run() -> None:
+        snippets: list[str] = []
+        if not existing_html and working_dir:
+            snippets = collect_ui_source_files(pathlib.Path(working_dir))
+        if _DEV_MODE:
+            print("\n[Designer] Generating mock...", flush=True)
+        for chunk in generate_mock_streaming(
+            ds, model, api_key, snippets, image_support, tavily_key, stop_ev,
+            planning_context=planning_context,
+            existing_html=existing_html,
+            capture_mode=capture_mode,
+        ):
+            buf_entry["text"] += chunk
+            if _DEV_MODE and not chunk.startswith("__"):
+                print(chunk, end="", flush=True)
+        if _DEV_MODE:
+            print("\n[Designer] Done.", flush=True)
+        if gen_id not in _MOCK_BUFFERS:
+            return
+        # Do the slow work (HTML extraction + disk save) here in the background
+        # thread so the poll callback returns instantly and can't race itself.
+        accumulated = buf_entry["text"]
+        if "__DONE__" in accumulated and "__GENERATION_ERROR__:" not in accumulated:
+            html_text = accumulated.replace("__DONE__", "").strip()
+            extracted = _extract_html(html_text)
+            if extracted is None:
+                buf_entry["text"] += (
+                    "__GENERATION_ERROR__: The model did not return a valid HTML "
+                    "document. Please retry or refine your style description."
+                )
+            else:
+                if len(extracted) > _MAX_HTML_BYTES:
+                    extracted = (
+                        extracted[:_MAX_HTML_BYTES]
+                        + "\n<!-- Designer: output truncated at 512 kB -->"
+                    )
+                if working_dir:
+                    design_dir_path = pathlib.Path(working_dir) / ".spec4" / "design"
+                    save_ds: DesignerSession = {
+                        "step": 6,
+                        "preference_text": ds["preference_text"],
+                        "screenshots": ds["screenshots"],
+                        "mock_html": extracted,
+                        "finalized": False,
+                    }
+                    try:
+                        save_session(save_ds, design_dir_path)
+                        save_mock(extracted, design_dir_path)
+                    except Exception as exc:
+                        logger.warning(
+                            "Designer: could not persist session to disk: %s", exc
+                        )
+                buf_entry["final_html"] = extracted
+        _MOCK_BUFFERS[gen_id]["done"] = True
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    # Drop screenshots and refine_images from the store.  Load-bearing —
+    # don't restore on cleanup.  Their base64 payload can run to several MB,
+    # and `ds` (above) has already captured the merged list in the thread
+    # closure for the LLM call, so the dcc.Store copy is dead weight.
+    # Leaving them in bloats every subsequent callback's State and Output
+    # payload, which has been observed to break Dash dispatch silently.
+    updated_store = {
+        **store, "step": 5, "_gen_id": gen_id,
+        "_has_existing_html": existing_html is not None,
+        "mock_html": "",
+        "screenshots": [],
+        "refine_images": [],
+    }
+    cleared_buffer: dict[str, Any] = {"tokens": 0, "progress": 0, "error": None}
+    return updated_store, cleared_buffer, False  # False = not disabled
+
+
+@callback(
+    Output("designer-step-content", "children"),
+    Output("designer-stepper", "active"),
+    Input("designer-session-store", "data"),
+    Input("mock-stream-buffer", "data"),
+    State("image-support-store", "data"),
+)
+def render_designer_step(store: Any, buffer_data: Any, image_support: Any) -> Any:
+    if not store:
+        return no_update, no_update
+    step: int = store.get("step", 2)
+    content: Any
+    if step == 1:
+        content = _step1_content()
+    elif step == 2:
+        content = _step2_content(bool(store.get("_has_existing_ui", True)))
+    elif step == 3:
+        content = _step3_content()
+    elif step == 4:
+        support: bool | None = image_support
+        content = _step4_content(store, support)
+    elif step == 5:
+        content = _step5_content(buffer_data)
+    elif step == 6:
+        content = _step6_content(store)
+    elif step == 7:
+        content = _step7_content(store, image_support)
+    else:
+        content = _step2_content(bool(store.get("_has_existing_ui", True)))
+    stepper_active = max(0, min(step - 1, 5))
+    return content, stepper_active
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input("btn-designer-add-gui", "n_clicks"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_add_gui(n: Any, store: Any) -> Any:
+    if not n or not store:
+        return no_update
+    return {**store, "step": 2}
+
+
+def _skip_to_stack_advisor(session: Any) -> Any:
+    session = session or {}
+    return {
+        **session,
+        "phase": "chat",
+        "active_agent": "stack_advisor",
+        "stack_advisor_messages": [],
+        "messages": [],
+        "_initial_turn_done": False,
+    }, "/chat"
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("btn-designer-skip-1", "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_skip_1(n: Any, session: Any) -> Any:
+    if not n:
+        return no_update, no_update
+    return _skip_to_stack_advisor(session)
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("btn-designer-skip-2", "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_skip_2(n: Any, session: Any) -> Any:
+    if not n:
+        return no_update, no_update
+    return _skip_to_stack_advisor(session)
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-stream-buffer", "data", allow_duplicate=True),
+    Output("mock-stream-interval", "disabled", allow_duplicate=True),
+    Input("btn-designer-modify-existing", "n_clicks"),
+    Input("btn-designer-create-new", "n_clicks"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    State("image-support-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_step2_choice(
+    n_modify: Any, n_create: Any, store: Any, session: Any, image_support: Any
+) -> Any:
+    if not ctx.triggered_id or not (n_modify or n_create):
+        return no_update, no_update, no_update
+    if ctx.triggered_id == "btn-designer-create-new":
+        return {**(store or {}), "step": 3}, no_update, no_update
+    # "Modify existing" — capture the project's current look and feel
+    model, api_key, tavily_key, wd, support = _llm_params(session or {}, image_support)
+    new_store, buf, disabled = _start_gen(
+        store or {}, wd, model, api_key, tavily_key, support, capture_mode=True
+    )
+    return new_store, buf, disabled
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input("btn-designer-preferences-next", "n_clicks"),
+    State("designer-preference-input", "value"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_preferences_next(n: Any, pref_text: Any, store: Any) -> Any:
+    if not n or not store:
+        return no_update
+    return {**store, "preference_text": pref_text or "", "step": 4}
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input("designer-screenshot-upload", "contents"),
+    State({"type": "designer-screenshot-annotation", "index": ALL}, "value"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_screenshot_upload(contents: Any, annotations: Any, store: Any) -> Any:
+    if not contents or not store:
+        return no_update
+    screenshots: list[dict[str, str]] = list(store.get("screenshots", []))
+    for i, ann in enumerate(annotations or []):
+        if i < len(screenshots):
+            screenshots[i] = {**screenshots[i], "annotation": ann or ""}
+    screenshots.append({"data": contents, "annotation": ""})
+    return {**store, "screenshots": screenshots}
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input({"type": "designer-screenshot-delete", "index": ALL}, "n_clicks"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_screenshot_delete(n_clicks_list: Any, store: Any) -> Any:
+    if not any(n for n in (n_clicks_list or []) if n):
+        return no_update
+    triggered = ctx.triggered_id
+    if not isinstance(triggered, dict):
+        return no_update
+    idx: int = triggered["index"]
+    screenshots: list[dict[str, str]] = list((store or {}).get("screenshots", []))
+    if 0 <= idx < len(screenshots):
+        screenshots.pop(idx)
+    return {**(store or {}), "screenshots": screenshots}
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-stream-buffer", "data", allow_duplicate=True),
+    Output("mock-stream-interval", "disabled", allow_duplicate=True),
+    Input("btn-designer-generate-mock", "n_clicks"),
+    State({"type": "designer-screenshot-annotation", "index": ALL}, "value"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    State("image-support-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_generate_mock(
+    n: Any,
+    annotations: Any,
+    store: Any,
+    session: Any,
+    image_support: Any,
+) -> Any:
+    if not n or not store:
+        return no_update, no_update, no_update
+    screenshots: list[dict[str, str]] = list(store.get("screenshots", []))
+    for i, ann in enumerate(annotations or []):
+        if i < len(screenshots):
+            screenshots[i] = {**screenshots[i], "annotation": ann or ""}
+    updated = {**store, "screenshots": screenshots}
+    sess = session or {}
+    model, api_key, tavily_key, wd, support = _llm_params(sess, image_support)
+    planning_ctx: dict[str, Any] | None = (
+        {"vision_statement": sess.get("vision_statement")}
+        if sess.get("vision_statement")
+        else None
+    )
+    new_store, buf, disabled = _start_gen(
+        updated, wd, model, api_key, tavily_key, support, planning_ctx
+    )
+    return new_store, buf, disabled
+
+
+@callback(
+    Output("mock-stream-buffer", "data", allow_duplicate=True),
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-stream-interval", "disabled", allow_duplicate=True),
+    Input("mock-stream-interval", "n_intervals"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_mock_stream_poll(n: Any, store: Any) -> Any:
+    """Poll the mock generation thread and deliver completion in-band.
+
+    On each tick this updates mock-stream-buffer with token/progress info.
+    When the background thread finishes and stores the extracted HTML on
+    buf_entry["final_html"], this same callback writes the completed mock
+    straight into designer-session-store (step=6, mock_html=...) and disables
+    the interval.
+
+    Two pieces of load-bearing weirdness — preserve both during cleanup:
+
+    1. **In-band delivery.**  Earlier this fanned out through a separate
+       mock-done-store dcc.Store + on_mock_done callback.  That chain failed
+       silently when the user attached a screenshot to a refine: the signal
+       store updated but on_mock_done never fired.  Cause never fully nailed
+       down; consolidating delivery into this callback bypasses it entirely.
+       Don't reintroduce a chained completion callback.
+
+    2. **Idempotent re-delivery for _DELIVERY_TICKS ticks.**  Even with the
+       direct in-band delivery, the first response is occasionally dropped
+       by the browser (server prints "mock delivered" but UI stays at step
+       5).  We hold the buffer alive and re-emit the identical step=6 /
+       mock_html payload on each tick until the store actually catches up.
+       Dash deduplicates on identical store values, so a successful first
+       delivery costs nothing on subsequent ticks.  Don't pop _MOCK_BUFFERS
+       on the first tick — the retry needs the buffer to still be there.
+    """
+    gen_id: str | None = (store or {}).get("_gen_id")
+    if not gen_id or gen_id not in _MOCK_BUFFERS:
+        return no_update, no_update, True
+
+    buf_entry = _MOCK_BUFFERS[gen_id]
+    accumulated = buf_entry["text"]
+
+    if "__GENERATION_ERROR__:" in accumulated:
+        idx = accumulated.index("__GENERATION_ERROR__:")
+        error_msg = accumulated[idx + len("__GENERATION_ERROR__:"):].strip()
+        error_msg = error_msg or "Generation failed — check the server log for details."
+        _MOCK_BUFFERS.pop(gen_id, None)
+        return {"error": error_msg}, no_update, True
+
+    final_html: str | None = buf_entry.get("final_html")
+    if final_html is not None:
+        # See the docstring for the rationale on idempotent re-delivery.
+        # The two-counter pattern (delivered++, pop only at _DELIVERY_TICKS)
+        # is what gives the retry its window.  Don't collapse it.
+        delivered = buf_entry.get("delivered", 0) + 1
+        buf_entry["delivered"] = delivered
+
+        s = store or {}
+        final_buf = {"tokens": len(final_html), "progress": 100, "error": None}
+
+        # Step guard, also load-bearing.  Re-emitting step=6 unconditionally
+        # would bounce a user who clicked Refine between ticks back from
+        # step 7 to step 6.  Only push the completion when the UI is still
+        # at step 5 (i.e. the first delivery hasn't taken effect yet).
+        if s.get("step") == 5:
+            new_store: Any = {
+                "step": 6,
+                "mock_html": final_html,
+                "_gen_id": gen_id,
+                "_has_existing_html": s.get("_has_existing_html", False),
+                "_has_existing_ui": s.get("_has_existing_ui", True),
+                "preference_text": s.get("preference_text", ""),
+                "screenshots": [],
+                "refine_images": [],
+                "finalized": False,
+            }
+        else:
+            new_store = no_update
+
+        if delivered >= _DELIVERY_TICKS:
+            _MOCK_BUFFERS.pop(gen_id, None)
+            disabled: Any = True
+        else:
+            disabled = no_update
+
+        if _DEV_MODE:
+            action = (
+                "delivered"
+                if s.get("step") == 5
+                else f"skipped (store step={s.get('step')})"
+            )
+            print(
+                f"[Designer] mock {action} (tick {delivered}/{_DELIVERY_TICKS}): "
+                f"gen_id={gen_id[:8]} mock_html_len={len(final_html)}",
+                flush=True,
+            )
+        return final_buf, new_store, disabled
+
+    # Generator finished without a recognised sentinel — stop event fired mid-stream.
+    if buf_entry.get("done"):
+        _MOCK_BUFFERS.pop(gen_id, None)
+        return no_update, no_update, True
+
+    tokens = len(accumulated)
+    progress = min(100, tokens * 100 // 50_000)
+    return (
+        {"tokens": tokens, "progress": progress, "error": None},
+        no_update,
+        no_update,
+    )
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("btn-designer-approve", "n_clicks"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_approve(n: Any, store: Any, session: Any) -> Any:
+    if not n or not store:
+        return no_update, no_update
+    session = session or {}
+    working_dir: str | None = session.get("working_dir")
+    if working_dir:
+        design_dir = pathlib.Path(working_dir) / ".spec4" / "design"
+        ds: DesignerSession = {
+            "step": store.get("step", 6),
+            "preference_text": store.get("preference_text", ""),
+            "screenshots": store.get("screenshots", []),
+            "mock_html": store.get("mock_html", ""),
+            "finalized": True,
+        }
+        save_session(ds, design_dir)
+        save_mock(ds["mock_html"], design_dir)
+    return {
+        **session,
+        "phase": "chat",
+        "active_agent": "stack_advisor",
+        "stack_advisor_messages": [],
+        "messages": [],
+        "_initial_turn_done": False,
+    }, "/chat"
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-stream-buffer", "data", allow_duplicate=True),
+    Output("mock-stream-interval", "disabled", allow_duplicate=True),
+    Input("btn-designer-start-over", "n_clicks"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_start_over(n: Any, store: Any) -> Any:
+    if not n:
+        return no_update, no_update, no_update
+    gen_id: str | None = (store or {}).get("_gen_id")
+    if gen_id:
+        entry = _MOCK_BUFFERS.pop(gen_id, None)
+        if entry:
+            entry["stop"].set()
+    return (
+        {
+            **_default_designer_session(step=2),
+            "_has_existing_ui": (store or {}).get("_has_existing_ui", False),
+        },
+        {"text": "", "tokens": 0, "progress": 0, "error": None},
+        True,
+    )
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input("btn-designer-refine", "n_clicks"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_refine(n: Any, store: Any) -> Any:
+    if not n or not store:
+        return no_update
+    return {**store, "step": 7, "refine_text": ""}
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input("btn-designer-refine-cancel", "n_clicks"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_refine_cancel(n: Any, store: Any) -> Any:
+    if not n or not store:
+        return no_update
+    return {**store, "step": 6, "refine_images": [], "refine_text": ""}
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input("designer-refine-upload", "contents"),
+    State("designer-refine-upload", "filename"),
+    State("designer-refine-input", "value"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_refine_upload(
+    contents: Any, filename: Any, refine_text: Any, store: Any
+) -> Any:
+    if not contents or not store:
+        return no_update
+    images: list[dict[str, str]] = list(store.get("refine_images", []))
+    images.append({"data": contents, "filename": filename or "image"})
+    return {**store, "refine_images": images, "refine_text": refine_text or ""}
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input({"type": "designer-refine-image-delete", "index": ALL}, "n_clicks"),
+    State("designer-refine-input", "value"),
+    State("designer-session-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_refine_image_delete(
+    n_clicks_list: Any, refine_text: Any, store: Any
+) -> Any:
+    if not any(n for n in (n_clicks_list or []) if n):
+        return no_update
+    triggered = ctx.triggered_id
+    if not isinstance(triggered, dict):
+        return no_update
+    idx: int = triggered["index"]
+    images: list[dict[str, str]] = list((store or {}).get("refine_images", []))
+    if 0 <= idx < len(images):
+        images.pop(idx)
+    return {**(store or {}), "refine_images": images, "refine_text": refine_text or ""}
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-stream-buffer", "data", allow_duplicate=True),
+    Output("mock-stream-interval", "disabled", allow_duplicate=True),
+    Input("btn-designer-regenerate", "n_clicks"),
+    State("designer-refine-input", "value"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    State("image-support-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_regenerate(
+    n: Any,
+    refine_text: Any,
+    store: Any,
+    session: Any,
+    image_support: Any,
+) -> Any:
+    if not n or not store:
+        return no_update, no_update, no_update
+    pref: str = store.get("preference_text", "")
+    if refine_text and refine_text.strip():
+        pref = f"{pref}\n\n--- Refinement ---\n{refine_text.strip()}"
+    screenshots: list[dict[str, str]] = list(store.get("screenshots", []))
+    for img in store.get("refine_images", []):
+        screenshots.append({"data": img["data"], "annotation": img["filename"]})
+    existing_html: str | None = store.get("mock_html") or None
+    updated = {**store, "preference_text": pref, "screenshots": screenshots}
+    sess = session or {}
+    model, api_key, tavily_key, wd, support = _llm_params(sess, image_support)
+    planning_ctx: dict[str, Any] | None = (
+        {"vision_statement": sess.get("vision_statement")}
+        if sess.get("vision_statement")
+        else None
+    )
+    new_store, buf, disabled = _start_gen(
+        updated, wd, model, api_key, tavily_key, support,
+        planning_ctx,
+        existing_html=existing_html,
+    )
+    return new_store, buf, disabled
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("session", "data", allow_duplicate=True),
+    Input("btn-designer-revise-stale", "n_clicks"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_revise_stale(n: Any, store: Any, session: Any) -> Any:
+    if not n or not store:
+        return no_update, no_update
+    sess = session or {}
+    stale_inputs: list[str] = (store or {}).get("_stale_inputs", [])
+    note_lines = [
+        "[The project " + ", ".join(stale_inputs) + " has been updated since "
+        "this mock was generated. Please revise the mock to reflect the "
+        "updated context above while preserving the existing look and feel "
+        "where possible.]"
+    ]
+    new_store = {
+        **store,
+        "step": 7,
+        "_stale_inputs": [],
+        "refine_text": "\n".join(note_lines),
+        "refine_images": [],
+    }
+    # Acknowledge at the current input mtimes so we don't re-prompt on this
+    # session if the user navigates away mid-revise.
+    wd = sess.get("working_dir")
+    ack = dict(project_manager.detect_stale_inputs(wd, "designer")) if wd else {}
+    return new_store, {**sess, "designer_stale_acknowledged": ack}
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("session", "data", allow_duplicate=True),
+    Input("btn-designer-keep-stale", "n_clicks"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_keep_stale(n: Any, store: Any, session: Any) -> Any:
+    if not n or not store:
+        return no_update, no_update
+    sess = session or {}
+    wd = sess.get("working_dir")
+    ack = dict(project_manager.detect_stale_inputs(wd, "designer")) if wd else {}
+    return (
+        {**store, "_stale_inputs": []},
+        {**sess, "designer_stale_acknowledged": ack},
+    )
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-stream-buffer", "data", allow_duplicate=True),
+    Output("mock-stream-interval", "disabled", allow_duplicate=True),
+    Input("btn-designer-retry", "n_clicks"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    State("image-support-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> Any:
+    if not n or not store:
+        return no_update, no_update, no_update
+    sess = session or {}
+    model, api_key, tavily_key, wd, support = _llm_params(sess, image_support)
+    existing_html: str | None = None
+    if store.get("_has_existing_html") and wd:
+        mock_path = pathlib.Path(wd) / ".spec4" / "design" / "mock.html"
+        try:
+            existing_html = mock_path.read_text()
+        except (OSError, FileNotFoundError):
+            pass
+    planning_ctx: dict[str, Any] | None = (
+        {"vision_statement": sess.get("vision_statement")}
+        if not store.get("_has_existing_html") and sess.get("vision_statement")
+        else None
+    )
+    new_store, buf, disabled = _start_gen(
+        store, wd, model, api_key, tavily_key, support,
+        planning_ctx,
+        existing_html=existing_html,
+    )
+    return new_store, buf, disabled

@@ -1,11 +1,11 @@
 [project]
 name = "spec4"
-version = "0.1.6"
+version = "0.5.0"
 description = "AI-assisted software project planning — from idea to executable coding phases"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 authors = [
-    { name = "Robert Crowe", email = "crowe3555@gmail.com" }
+    { name = "Robert Crowe", email = "please-post-in-github@gmail.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -67,9 +67,3 @@ module = [
     "gunicorn.*",
 ]
 ignore_missing_imports = true
-
-[tool.hatch.build.targets.sdist]
-exclude = [
-    "Makefile.publish",
-    "dist/",
-]

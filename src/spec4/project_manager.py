@@ -47,35 +47,19 @@ def load_spec4_artifacts(working_dir: str | Path) -> dict[str, Any]:
         ("stack", "stack.json"),
         ("code_review", "code_review.json"),
     ):
-        path = spec4_dir / filename
-        if path.exists():
-            try:
-                result[key] = json.loads(path.read_text())
-            except Exception:
-                pass
+        try:
+            result[key] = json.loads((spec4_dir / filename).read_text())
+        except (OSError, json.JSONDecodeError):
+            pass
 
     phases_dir = spec4_dir / "phases"
-    if phases_dir.exists():
-        for pf in sorted(phases_dir.glob("phase*.json")):
-            try:
-                result["phases"].append(json.loads(pf.read_text()))
-            except Exception:
-                pass
+    for pf in sorted(phases_dir.glob("phase*.json")):
+        try:
+            result["phases"].append(json.loads(pf.read_text()))
+        except (OSError, json.JSONDecodeError):
+            pass
 
     return result
-
-
-def load_single_artifact(
-    working_dir: str | Path, filename: str
-) -> dict[str, Any] | None:
-    """Load and JSON-parse a single file from .spec4/, returning None on any error."""
-    try:
-        result: dict[str, Any] = json.loads(
-            (get_spec4_dir(working_dir) / filename).read_text()
-        )
-        return result
-    except Exception:
-        return None
 
 
 def save_vision(working_dir: str | Path, vision: dict[str, Any]) -> None:
@@ -106,6 +90,95 @@ def save_phases(working_dir: str | Path, phases: list[dict[str, Any]]) -> None:
         (phases_dir / f"phase{num}.json").write_text(
             json.dumps(phase, indent=2), encoding="utf-8"
         )
+
+
+def save_deployment_plan(working_dir: str | Path, markdown: str) -> None:
+    spec4_dir = ensure_spec4_dir(working_dir)
+    (spec4_dir / "deployment-plan.md").write_text(markdown, encoding="utf-8")
+
+
+def load_deployment_plan(working_dir: str | Path) -> str | None:
+    path = get_spec4_dir(working_dir) / "deployment-plan.md"
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, FileNotFoundError):
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Staleness detection
+# ---------------------------------------------------------------------------
+
+# Maps each agent to (output artifact rel path, [(input name, input rel path)…]).
+# Output and input paths are relative to .spec4/. A directory is treated as the
+# newest mtime among its files.
+_STALE_DEPENDENCIES: dict[str, tuple[str, list[tuple[str, str]]]] = {
+    "brainstormer": ("vision.json", [("code review", "code_review.json")]),
+    "stack_advisor": (
+        "stack.json",
+        [
+            ("vision", "vision.json"),
+            ("code review", "code_review.json"),
+            ("UI mock", "design/mock.html"),
+        ],
+    ),
+    "phaser": (
+        "phases",
+        [
+            ("vision", "vision.json"),
+            ("stack", "stack.json"),
+            ("code review", "code_review.json"),
+            ("UI mock", "design/mock.html"),
+        ],
+    ),
+    "deployer": (
+        "deployment-plan.md",
+        [
+            ("stack", "stack.json"),
+            ("phases", "phases"),
+            ("UI mock", "design/mock.html"),
+        ],
+    ),
+    "designer": ("design/mock.html", [("vision", "vision.json")]),
+}
+
+
+def _path_mtime(path: Path) -> float | None:
+    """Return the most recent mtime at `path`. None if missing.
+
+    For a directory, returns the newest mtime among its files (recursive).
+    """
+    if not path.exists():
+        return None
+    if path.is_file():
+        return path.stat().st_mtime
+    mtimes = [p.stat().st_mtime for p in path.rglob("*") if p.is_file()]
+    return max(mtimes) if mtimes else None
+
+
+def detect_stale_inputs(working_dir: str | Path, agent: str) -> dict[str, float]:
+    """Return {input_name: input_mtime} for upstream inputs newer than `agent`'s output.
+
+    Returns {} if `agent` has no recorded dependencies, the agent has not
+    produced an output yet, or no input is newer than the output. Mtimes are
+    returned alongside names so callers can detect a *further* upstream update
+    (the same input name appearing with a different mtime than what was last
+    acknowledged).
+    """
+    spec = _STALE_DEPENDENCIES.get(agent)
+    if not spec:
+        return {}
+    output_rel, inputs = spec
+    spec4_dir = get_spec4_dir(working_dir)
+    output_mtime = _path_mtime(spec4_dir / output_rel)
+    if output_mtime is None:
+        return {}
+    stale: dict[str, float] = {}
+    for name, rel in inputs:
+        input_mtime = _path_mtime(spec4_dir / rel)
+        if input_mtime is not None and input_mtime > output_mtime:
+            stale[name] = input_mtime
+    return stale
 
 
 # ---------------------------------------------------------------------------
