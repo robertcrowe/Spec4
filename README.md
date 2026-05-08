@@ -51,14 +51,15 @@ The app will be available at [http://localhost:8050](http://localhost:8050) in b
 
 ## Features
 
-- **Five-stage pipeline** — CodeScanner (optional) → Brainstormer → StackAdvisor → Phaser → Deployer
-- **Designer** — optional parallel stage that generates an HTML mock of your UI from a vision and (optionally) reference screenshots
+- **Six-stage pipeline** — CodeScanner (optional) → Brainstormer → Designer → StackAdvisor → Phaser → Deployer
+- **Designer** — optional parallel stage that generates [an HTML mock of your UI](https://spec4.ai/examples/mock.html) from a vision and (optionally) reference screenshots
 - **Any LLM provider** — works with OpenAI, Anthropic, Google Gemini, Cohere, and Mistral via LiteLLM
 - **Web search grounding** — all agents can search the web via Tavily to find canonical documentation
 - **Saved credentials** — optionally remember your provider, model, and API keys in the browser (localStorage via `dcc.Store` — never sent to or stored on the server)
 - **Incremental output** — each agent produces a downloadable artifact you can reuse in a later session
 - **Jump-in anywhere** — pick up at any stage by selecting a project directory with previously saved artifacts
 - **Project persistence** — artifacts saved to a `.spec4/` folder inside your chosen project directory
+- **Deployer** — Generates a [deployment plan](https://spec4.ai/examples/deployment-plan.html) including coding agent instructions and even Terraform scripts
 
 ---
 
@@ -69,6 +70,9 @@ Analyzes an existing project directory to understand its architecture, technolog
 
 ### 🧠 Brainstormer
 Develops a clear project vision through focused, one-at-a-time questions. Identifies technical standards via web search and embeds canonical documentation links in the output. Produces `vision.json`.
+
+### 🎨 Designer *(optional, parallel)*
+Generates a single-file HTML mock of your UI from your vision and reference screenshots. Supports two modes — create from scratch, or modify an existing UI while preserving its look and feel — with iterative refinement. Skipped automatically for CLI/terminal projects. Produces `design/mock.html`. [Sample Design Mock](https://spec4.ai/examples/mock.html)
 
 ### ⚙️ StackAdvisor
 Recommends languages, frameworks, hosting, and infrastructure based on the vision. Compares options, explains trade-offs, and uses web search to ground every recommendation. Produces `stack.json`.
@@ -84,10 +88,8 @@ Decomposes the vision and stack into an ordered sequence of development phases:
 Saves one JSON file per phase under `.spec4/phases/`, downloadable as `phases.zip`.
 
 ### 🚀 Deployer
-Plans the path from working code to a running production deployment. Walks through coding-agent workflow, deployment target, containerization, CI/CD, environment config, and monitoring — and can optionally generate complete Terraform scripts grounded in live provider docs via web search. Produces `deployment-plan.md`.
+Plans the path from working code to a running production deployment. Walks through coding-agent workflow, deployment target, containerization, CI/CD, environment config, and monitoring — and can optionally generate complete Terraform scripts grounded in live provider docs via web search. Produces `deployment-plan.md`. [Sample Deployment Plan](https://spec4.ai/examples/deployment-plan.html)
 
-### 🎨 Designer *(optional, parallel)*
-Generates a single-file HTML mock of your UI from your vision and reference screenshots. Supports two modes — create from scratch, or modify an existing UI while preserving its look and feel — with iterative refinement. Skipped automatically for CLI/terminal projects. Produces `design/mock.html`.
 
 ---
 
