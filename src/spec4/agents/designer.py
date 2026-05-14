@@ -114,13 +114,56 @@ class DesignerSession(TypedDict):
     finalized: bool
 
 
+def _unwrap(obj: dict[str, object], envelope_key: str) -> dict[str, object]:
+    """Unwrap a {envelope_key: {...}} envelope if present, else return obj as-is.
+
+    Spec4 stores artifacts in their LLM-emitted envelope form (e.g.
+    ``session["code_review"] == {"code_review": {...}}``). Detection helpers
+    accept either the envelope or the inner dict so callers don't have to
+    care which form they hold.
+    """
+    inner = obj.get(envelope_key)
+    if isinstance(inner, dict):
+        return inner
+    return obj
+
+
 def detect_no_ui(
     vision: dict[str, object],
     code_review: dict[str, object],
 ) -> bool:
-    """Return True if the project appears to have no graphical UI."""
-    for obj in (vision, code_review):
-        for field in ("purpose", "project_type", "description", "vision", "ui_type"):
+    """Return True if the project appears to have no graphical UI.
+
+    Preference order:
+    1. ``code_review.ui_summary.has_ui`` (structured signal — schema_version 1+)
+    2. ``vision.ui_surface`` or ``vision.ui_type`` matched against the no-UI
+       keyword list (Brainstormer captures the UI surface as topic 5)
+    3. Free-text keyword sweep over a handful of legacy fields, for older
+       reviews and visions that predate the structured fields
+    """
+    cr_inner = _unwrap(code_review, "code_review")
+    ui_summary = cr_inner.get("ui_summary")
+    if isinstance(ui_summary, dict):
+        has_ui = ui_summary.get("has_ui")
+        if has_ui is False:
+            return True
+        if has_ui is True:
+            return False
+
+    v_inner = _unwrap(vision, "vision_statement")
+    vision_block = v_inner.get("vision")
+    if isinstance(vision_block, dict):
+        v_inner = {**v_inner, **vision_block}
+
+    for obj in (v_inner, cr_inner):
+        for field in (
+            "purpose",
+            "project_type",
+            "description",
+            "vision",
+            "ui_type",
+            "ui_surface",
+        ):
             val = obj.get(field)
             if isinstance(val, str):
                 lower = val.lower()

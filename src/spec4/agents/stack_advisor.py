@@ -316,6 +316,14 @@ def run(
             code_review_block = (
                 f"For context, here is a code review of the existing project:\n\n"
                 f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
+                "Within the review, treat `runtime_versions`, `languages`, "
+                "`frameworks`, `dependencies`, `protocols_implemented`, "
+                "`build_system`, and `commands.deploy` as authoritative facts. "
+                "`protocols_implemented` are industry standards already wired "
+                "in — treat them as constraints when proposing changes. The "
+                "`notes` block is typed observations — pay particular "
+                "attention to `notes.change_risks` when proposing technology "
+                "swaps.\n\n"
                 "**Important:** If any stack choices proposed during our conversation conflict with "
                 "the existing technologies above (different language, incompatible framework, etc.), "
                 "proactively warn me about the conflict, explain the implications (migration effort, "
@@ -364,7 +372,9 @@ def run(
     system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
 
     yield from _stream_suppressing_json(
-        tavily_mcp.stream_turn(system, messages, llm_config, tavily_api_key)
+        tavily_mcp.stream_turn(
+            system, messages, llm_config, tavily_api_key, agent_name="stack_advisor"
+        )
     )
 
     stack_spec = _extract_stack_json(_last_assistant_text(messages))

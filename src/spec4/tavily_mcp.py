@@ -105,19 +105,108 @@ def search(query: str, api_key: str) -> str:
         return f"Search failed: {exc}"
 
 
+# Per-agent temperature tuning. Extraction-shaped agents (CodeScanner,
+# Phaser, Deployer) emit structured artifacts where sampling creativity
+# actively hurts (e.g. inventing canonical keys, paraphrasing instead of
+# quoting, embedding shell fallbacks in command values). Conversational /
+# creative agents stay near provider defaults.
+#
+# An agent not listed here falls through to the provider's default
+# temperature. The user's llm_config can also include an explicit
+# `temperature` key — that always wins over the per-agent mapping.
+_AGENT_TEMPERATURE: dict[str, float] = {
+    "code_scanner": 0.2,
+    "phaser": 0.2,
+    "deployer": 0.3,
+}
+
+
+def _temperature_for(
+    agent_name: str | None, llm_config: dict[str, Any]
+) -> float | None:
+    """Return the temperature to merge into the completion kwargs, or None.
+
+    Precedence: explicit `llm_config["temperature"]` (user override) >
+    per-agent mapping > None (use provider default).
+    """
+    if "temperature" in llm_config:
+        value = llm_config["temperature"]
+        return float(value) if value is not None else None
+    if agent_name is None:
+        return None
+    return _AGENT_TEMPERATURE.get(agent_name)
+
+
+def _history_has_tool_use(messages: list[dict[str, Any]]) -> bool:
+    """Return True if the message log contains tool calls or tool results.
+
+    Anthropic (via litellm) rejects requests whose message history contains
+    `tool_use` / `tool_result` blocks unless the request also specifies
+    `tools=`. This check lets `stream_turn` keep `tools=` present on retry
+    calls when prior tool use has already occurred, even when we would
+    otherwise suppress the tool for `response_format`-style structured
+    output.
+    """
+    for m in messages:
+        if m.get("role") == "tool":
+            return True
+        if m.get("tool_calls"):
+            return True
+    return False
+
+
+def supports_response_format(model: str) -> bool:
+    """Return True if the provider/model accepts the `response_format` kwarg.
+
+    Used by agents (currently only CodeScanner) that want to force a
+    JSON-only retry after schema validation fails. LiteLLM exposes
+    `get_supported_openai_params` per model; if that probe fails we
+    conservatively return False rather than risking a 400 on the retry.
+    """
+    if not model:
+        return False
+    try:
+        params = litellm.get_supported_openai_params(model=model) or []
+    except Exception:
+        return False
+    return "response_format" in params
+
+
 def stream_turn(
     system_prompt: str,
     messages: list[dict[str, Any]],
     llm_config: dict[str, Any],
     tavily_api_key: str | None,
+    agent_name: str | None = None,
+    response_format: dict[str, Any] | None = None,
 ) -> Generator[str, None, None]:
     """Stream one LLM conversation turn, handling tool calls transparently.
 
     Yields text chunks consumed by streaming.start() via the agent run() generators.
     Mutates `messages` to record the full turn (assistant reply + tool calls/results).
     Loops internally until the LLM produces a final text response.
+
+    `agent_name`, when provided, opts the call into the per-agent temperature
+    mapping in `_AGENT_TEMPERATURE`. An explicit `llm_config["temperature"]`
+    always wins over the mapping.
+
+    `response_format`, when provided, is forwarded to LiteLLM as-is — e.g.
+    `{"type": "json_object"}` to force JSON-only output. When set, the
+    web-search tool is suppressed for the call since JSON-mode responses
+    do not interleave tool calls cleanly across providers — UNLESS the
+    message history already contains tool_use / tool_result blocks, in
+    which case `tools=` must remain present (Anthropic rejects the request
+    otherwise with `UnsupportedParamsError`).
     """
-    tools = [WEB_SEARCH_TOOL] if tavily_api_key else None
+    suppress_tools_for_format = (
+        response_format is not None and not _history_has_tool_use(messages)
+    )
+    tools = (
+        [WEB_SEARCH_TOOL]
+        if tavily_api_key and not suppress_tools_for_format
+        else None
+    )
+    temperature = _temperature_for(agent_name, llm_config)
 
     while True:
         llm_messages = [{"role": "system", "content": system_prompt}] + messages
@@ -127,8 +216,12 @@ def stream_turn(
             api_key=llm_config["api_key"],
             stream=True,
         )
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         if tools:
             kwargs["tools"] = tools
+        if response_format is not None:
+            kwargs["response_format"] = response_format
 
         response = litellm.completion(**kwargs)
 

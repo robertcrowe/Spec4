@@ -342,7 +342,14 @@ def run(
 
             code_review_block = (
                 f"\n\nFor context, here is a code review of the existing project:\n\n"
-                f"```json\n{json.dumps(code_review, indent=2)}\n```\n"
+                f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
+                "Within the review, treat structured fields (`commands`, "
+                "`entrypoints`, `ui_summary`, `runtime_versions`, "
+                "`protocols_implemented`, `existing_self_description`) as "
+                "authoritative facts about the project. The `notes` block is "
+                "typed observations — respect `notes.change_risks` and "
+                "`notes.incomplete_or_dead_code` when asking about future "
+                "features.\n"
                 if code_review
                 else ""
             )
@@ -399,7 +406,9 @@ def run(
     system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
 
     yield from _stream_suppressing_json(
-        tavily_mcp.stream_turn(system, msgs, llm_config, tavily_api_key)
+        tavily_mcp.stream_turn(
+            system, msgs, llm_config, tavily_api_key, agent_name="brainstormer"
+        )
     )
 
     vision = _extract_vision_json(_last_assistant_text(msgs))

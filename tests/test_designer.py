@@ -61,6 +61,42 @@ class TestDetectNoUi:
     def test_non_string_field_value_ignored(self) -> None:
         assert detect_no_ui({"project_type": 42}, {"is_cli": True}) is False
 
+    def test_ui_summary_has_ui_false_takes_precedence(self) -> None:
+        # ui_summary.has_ui=False wins even when prose says web app
+        cr = {
+            "code_review": {
+                "project_type": "web application",
+                "ui_summary": {"has_ui": False, "kind": "none"},
+            }
+        }
+        assert detect_no_ui({}, cr) is True
+
+    def test_ui_summary_has_ui_true_takes_precedence(self) -> None:
+        # ui_summary.has_ui=True wins even when prose contains 'cli'
+        cr = {
+            "code_review": {
+                "project_type": "cli utility with a web dashboard",
+                "ui_summary": {"has_ui": True, "kind": "spa"},
+            }
+        }
+        assert detect_no_ui({}, cr) is False
+
+    def test_envelope_unwrapping_for_legacy_callers(self) -> None:
+        # Passing the full envelope (as the production layout caller does)
+        # should still resolve the keyword sweep correctly.
+        cr_envelope = {"code_review": {"project_type": "command-line utility"}}
+        assert detect_no_ui({}, cr_envelope) is True
+
+    def test_vision_ui_surface_matched(self) -> None:
+        # Brainstormer captures the UI surface as vision.ui_surface; ensure
+        # we honour it even when nested under the vision envelope.
+        v_envelope = {
+            "vision_statement": {
+                "vision": {"ui_surface": "CLI tool for batch jobs"}
+            }
+        }
+        assert detect_no_ui(v_envelope, {}) is True
+
 
 # ---------------------------------------------------------------------------
 # detect_greenfield

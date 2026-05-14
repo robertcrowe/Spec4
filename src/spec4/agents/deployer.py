@@ -105,18 +105,25 @@ Guide the developer through a series of focused questions to build their deploym
    pricing and free-tier availability before recommending, then make a clear recommendation\
    informed by the stack.
 
-3. **Containerization** — Based on the stack and target, recommend whether to containerize\
-   with Docker. For most web applications, containerization is strongly recommended. Search for\
-   the current recommended base image for the project's language/framework.
+3. **Containerization** — If the code-review excerpt shows an existing `deployment.containerization`\
+   block (Dockerfile already in place), reference it explicitly — note the current `tool` and\
+   `base_image`, and ask whether to keep it as-is or update. Otherwise, recommend whether to\
+   containerize with Docker based on the stack and target. For most web applications,\
+   containerization is strongly recommended. Search for the current recommended base image for\
+   the project's language/framework when proposing a new one.
 
 4. **CI/CD pipeline** — Ask if they want automated builds and deploys on push. If yes, help\
    them choose a CI/CD platform (GitHub Actions, GitLab CI, CircleCI, Bitbucket Pipelines,\
    etc.) and define the pipeline stages. Search for current setup documentation for the chosen\
    platform and target service combination.
 
-5. **Environment configuration** — Based on the stack, identify the required environment\
-   variables. Ask how they plan to manage secrets (platform-native secrets manager, AWS Secrets\
-   Manager, HashiCorp Vault, .env files for local development only, etc.).
+5. **Environment configuration** — If the code-review excerpt includes an `env_vars` list,\
+   start from that list (it captures variables actually read by the project) — present the\
+   required ones and confirm with the developer; add any variables the chosen deployment\
+   target itself requires (e.g. database connection strings the platform provides). If no\
+   `env_vars` list is present, derive the required variables from the stack. Reference variable\
+   NAMES only — never values. Ask how they plan to manage secrets (platform-native secrets\
+   manager, AWS Secrets Manager, HashiCorp Vault, .env files for local development only, etc.).
 
 6. **Monitoring and observability** — Ask whether they want error tracking and/or infrastructure\
    monitoring. Make lightweight, appropriate suggestions (e.g., Sentry for errors, CloudWatch /\
@@ -247,6 +254,35 @@ Any additional caveats, cost estimates, or advice.
 """
 
 
+def _build_existing_infra_block(code_review: dict[str, Any]) -> str:
+    """Render the deployment-relevant excerpt of code_review for the seed.
+
+    Pulls only the four blocks Deployer's prompt acts on (deployment,
+    env_vars, persistence, auth). When none of them are present we emit
+    nothing — the prompt's default behavior (decide from stack + phases)
+    still applies.
+    """
+    cr = code_review.get("code_review", code_review) if code_review else {}
+    if not isinstance(cr, dict):
+        return ""
+    excerpt: dict[str, Any] = {}
+    for key in ("deployment", "env_vars", "persistence", "auth"):
+        if cr.get(key):
+            excerpt[key] = cr[key]
+    if not excerpt:
+        return ""
+    body = json.dumps(excerpt, indent=2)
+    return (
+        "Here is the deployment-relevant excerpt of the existing code review. "
+        "Treat these as facts about what the project already has — when asking "
+        "the developer about containerization, env vars, persistence, or auth, "
+        "reference what is already in place and ask whether to keep or change "
+        "it (don't re-decide from scratch). Reference env variable NAMES only — "
+        "values live in the developer's secret store.\n\n"
+        f"```json\n{body}\n```\n\n"
+    )
+
+
 def run(
     user_input: str | None,
     session: dict[str, Any],
@@ -278,6 +314,7 @@ def run(
         else:
             stack = session.get("stack_statement")
             phases = session.get("phases") or []
+            code_review = session.get("code_review") or {}
 
             stack_block = (
                 f"Here is the technology stack spec:\n\n"
@@ -298,6 +335,8 @@ def run(
             else:
                 phases_block = ""
 
+            existing_infra_block = _build_existing_infra_block(code_review)
+
             if session.get("_deployer_plan_existed"):
                 # Returning developer (possibly in a fresh browser with no
                 # in-memory chat history). A `deployment-plan.md` is already on
@@ -305,7 +344,7 @@ def run(
                 # make it explicit that the file will not be touched without
                 # their approval.
                 seed = (
-                    f"{stack_block}{phases_block}"
+                    f"{stack_block}{phases_block}{existing_infra_block}"
                     "A deployment plan from a previous session is already saved at "
                     "`.spec4/deployment-plan.md`, but this is a fresh chat session "
                     "with no record of how it was built.\n\n"
@@ -322,7 +361,7 @@ def run(
                 )
             else:
                 seed = (
-                    f"{stack_block}{phases_block}"
+                    f"{stack_block}{phases_block}{existing_infra_block}"
                     "Please introduce yourself as Deployer, then begin by asking which AI coding agent "
                     "the developer plans to use to implement these phases."
                 )
@@ -370,7 +409,9 @@ def run(
     tavily_api_key = session.get("tavily_api_key")
     system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
 
-    yield from tavily_mcp.stream_turn(system, messages, llm_config, tavily_api_key)
+    yield from tavily_mcp.stream_turn(
+        system, messages, llm_config, tavily_api_key, agent_name="deployer"
+    )
 
     last_text = _last_assistant_text(messages)
     if "## Deployment Steps" in last_text:

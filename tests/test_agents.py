@@ -922,11 +922,16 @@ class TestCodeScanner:
 
     def test_review_json_sets_state_complete(self) -> None:
         session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}])
-        review_response = '```json\n{"code_review": {"is_software_project": true}}\n```'
+        review_response = (
+            '```json\n{"code_review": {"schema_version": 1, '
+            '"is_software_project": true}}\n```'
+        )
         with mock_litellm_stream(review_response):
             collect(code_scanner.run("Confirm", session, session["llm_config"]))
         assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
-        assert session["code_review"] == {"code_review": {"is_software_project": True}}
+        assert session["code_review"] == {
+            "code_review": {"schema_version": 1, "is_software_project": True}
+        }
 
     def test_non_review_response_stays_in_progress(self) -> None:
         session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}])
@@ -1025,6 +1030,356 @@ class TestCodeScanner:
         assert "Python" in result
         assert "- P\n" not in result
 
+    def test_format_review_renders_schema_v1_fields(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "project_type": "web application",
+                "existing_self_description": {
+                    "text": "A planning tool.",
+                    "source": "README.md",
+                },
+                "architecture": {
+                    "summary": "Layered Dash app.",
+                    "pattern": "layered",
+                    "inferred_from": "src/spec4/app.py",
+                },
+                "languages": [{"name": "Python", "source": "pyproject.toml"}],
+                "frameworks": [{"name": "Dash", "source": "pyproject.toml"}],
+                "runtime_versions": {"python": ">=3.12"},
+                "build_system": {"tool": "uv", "manifest": "pyproject.toml"},
+                "dependencies": [
+                    {"name": "dash", "purpose": "Web UI", "source": "pyproject.toml"}
+                ],
+                "commands": {"test": "make test", "lint": "make lint"},
+                "entrypoints": {
+                    "main": "src/spec4/app.py",
+                    "wsgi_app": "spec4.app:server",
+                },
+                "directory_map": [
+                    {"path": "src/spec4/agents/", "role": "pipeline agents"}
+                ],
+                "ui_summary": {
+                    "has_ui": True,
+                    "kind": "spa",
+                    "framework": "Dash",
+                },
+                "coding_style": {
+                    "linter": {"value": "ruff", "source": "pyproject.toml"},
+                    "naming_conventions": {
+                        "functions": {
+                            "value": "snake_case",
+                            "inferred_from": "src/spec4/session.py",
+                        }
+                    },
+                },
+                "notes": {
+                    "test_coverage": {"has_tests": True, "framework": "pytest"},
+                    "ci_cd": {"present": False},
+                    "change_risks": [
+                        {
+                            "area": "session",
+                            "risk": "shared mutation",
+                            "mitigation_hint": "use {**session, key: val}",
+                        }
+                    ],
+                    "other_notes": ["py.typed marker present"],
+                },
+            }
+        }
+        out = _format_review_as_text(review)
+        assert "**Project Type:** web application" in out
+        assert "**Existing self-description:** A planning tool." in out
+        assert "_(from README.md)_" in out
+        assert "layered" in out
+        assert "Python (source: pyproject.toml)" in out
+        assert "Dash (source: pyproject.toml)" in out
+        assert "python: >=3.12" in out
+        assert "uv (pyproject.toml)" in out
+        assert "dash" in out and "Web UI" in out
+        assert "test: `make test`" in out
+        assert "main: `src/spec4/app.py`" in out
+        assert "wsgi app: `spec4.app:server`" in out
+        assert "`src/spec4/agents/`" in out and "pipeline agents" in out
+        assert "spa" in out and "Dash" in out
+        assert "ruff" in out
+        assert "snake_case" in out
+        assert "**Test Coverage:**" in out and "pytest" in out
+        assert "**CI/CD:** none detected" in out
+        assert "**Change Risks:**" in out
+        assert "Mitigation: use {**session, key: val}" in out
+        assert "py.typed marker present" in out
+        assert "Continue to Brainstormer" in out
+
+    def test_format_review_renders_empty_project(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": False,
+                "summary": "Directory is empty.",
+            }
+        }
+        out = _format_review_as_text(review)
+        assert "Code Review Complete" in out
+        assert "Directory is empty." in out
+        assert "Brainstormer" in out
+
+    def test_format_review_renders_protocols_implemented(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {
+            "code_review": {
+                "is_software_project": True,
+                "protocols_implemented": [
+                    {
+                        "name": "A2A Protocol",
+                        "version": "1.0",
+                        "location": "arrg/a2a/",
+                        "source": "README.md",
+                    },
+                    {
+                        "name": "MCP",
+                        "version": "2025-11-25",
+                        "location": "arrg/mcp/",
+                        "source": "arrg/mcp/server.py",
+                    },
+                ],
+            }
+        }
+        out = _format_review_as_text(review)
+        assert "**Protocols Implemented:**" in out
+        assert "A2A Protocol v1.0" in out
+        assert "`arrg/a2a/`" in out
+        assert "MCP v2025-11-25" in out
+        assert "`arrg/mcp/`" in out
+
+    def test_format_review_skips_protocols_block_when_absent(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {"code_review": {"is_software_project": True, "project_type": "CLI"}}
+        out = _format_review_as_text(review)
+        assert "**Protocols Implemented:**" not in out
+
+    def test_format_review_renders_persistence(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {
+            "code_review": {
+                "is_software_project": True,
+                "persistence": {
+                    "databases": [
+                        {"engine": "PostgreSQL", "role": "primary"},
+                        {"engine": "Redis", "role": "cache"},
+                    ],
+                    "orm": {"name": "SQLAlchemy", "source": "pyproject.toml"},
+                    "migration_tool": {"name": "Alembic"},
+                    "migrations_path": "migrations/",
+                },
+            }
+        }
+        out = _format_review_as_text(review)
+        assert "**Persistence:**" in out
+        assert "PostgreSQL (primary)" in out
+        assert "Redis (cache)" in out
+        assert "ORM: SQLAlchemy" in out
+        assert "migrations: Alembic" in out
+        assert "`migrations/`" in out
+
+    def test_format_review_skips_persistence_when_absent(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {"code_review": {"is_software_project": True, "project_type": "CLI"}}
+        out = _format_review_as_text(review)
+        assert "**Persistence:**" not in out
+
+    def test_format_review_renders_env_vars(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {
+            "code_review": {
+                "is_software_project": True,
+                "env_vars": [
+                    {
+                        "name": "DATABASE_URL",
+                        "purpose": "Postgres connection string",
+                        "required": True,
+                    },
+                    {"name": "DASH_DEBUG", "required": False},
+                    {"name": "API_KEY"},
+                ],
+            }
+        }
+        out = _format_review_as_text(review)
+        assert "**Environment Variables:**" in out
+        assert "`DATABASE_URL`" in out and "(required)" in out
+        assert "Postgres connection string" in out
+        assert "`DASH_DEBUG`" in out and "(optional)" in out
+        assert "`API_KEY`" in out
+
+    def test_format_review_env_vars_never_leak_values(self) -> None:
+        """Even if a malformed entry slips a value in, the renderer ignores it."""
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {
+            "code_review": {
+                "is_software_project": True,
+                "env_vars": [{"name": "SECRET_KEY", "value": "leaked-secret"}],
+            }
+        }
+        out = _format_review_as_text(review)
+        assert "`SECRET_KEY`" in out
+        assert "leaked-secret" not in out
+
+    def test_format_review_renders_deployment(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {
+            "code_review": {
+                "is_software_project": True,
+                "deployment": {
+                    "containerization": {
+                        "tool": "docker",
+                        "dockerfile_path": "Dockerfile",
+                        "base_image": "python:3.12-slim",
+                    },
+                    "paas": {"platform": "fly.io", "config_path": "fly.toml"},
+                    "iac": {"tool": "terraform", "path": "infra/"},
+                },
+            }
+        }
+        out = _format_review_as_text(review)
+        assert "**Deployment:**" in out
+        assert "docker" in out
+        assert "`Dockerfile`" in out
+        assert "base: `python:3.12-slim`" in out
+        assert "PaaS: fly.io" in out
+        assert "`fly.toml`" in out
+        assert "IaC: terraform" in out
+        assert "`infra/`" in out
+
+    def test_format_review_skips_deployment_when_absent(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {"code_review": {"is_software_project": True}}
+        out = _format_review_as_text(review)
+        assert "**Deployment:**" not in out
+
+    def test_format_review_renders_api_surface(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {
+            "code_review": {
+                "is_software_project": True,
+                "api_surface": [
+                    {
+                        "protocol": "http",
+                        "path_or_method": "GET /users/:id",
+                        "handler": "users.get_user",
+                    },
+                    {
+                        "protocol": "grpc",
+                        "path_or_method": "UserService.GetUser",
+                        "summary": "Fetch a user by ID",
+                    },
+                ],
+            }
+        }
+        out = _format_review_as_text(review)
+        assert "**API Surface:**" in out
+        assert "[http]" in out and "GET /users/:id" in out
+        assert "users.get_user" in out
+        assert "[grpc]" in out and "UserService.GetUser" in out
+        assert "Fetch a user by ID" in out
+
+    def test_format_review_renders_auth(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {
+            "code_review": {
+                "is_software_project": True,
+                "auth": {
+                    "model": "oauth",
+                    "provider": "Auth0",
+                    "library": "authlib",
+                },
+            }
+        }
+        out = _format_review_as_text(review)
+        assert "**Authentication:**" in out
+        assert "oauth" in out
+        assert "Auth0" in out
+        assert "authlib" in out
+
+    def test_format_review_skips_auth_when_absent(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {"code_review": {"is_software_project": True}}
+        out = _format_review_as_text(review)
+        assert "**Authentication:**" not in out
+
+    def test_format_review_test_coverage_summary_preferred_over_lists(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {
+            "code_review": {
+                "is_software_project": True,
+                "notes": {
+                    "test_coverage": {
+                        "has_tests": True,
+                        "framework": "pytest",
+                        "coverage_summary": "10 modules covered; UI layer uncovered",
+                        "covered_modules": ["should_be_ignored"],
+                    }
+                },
+            }
+        }
+        out = _format_review_as_text(review)
+        assert "10 modules covered; UI layer uncovered" in out
+        assert "should_be_ignored" not in out
+
+    def test_format_review_ui_summary_has_ui_false_shows_none(self) -> None:
+        from spec4.agents.code_scanner import _format_review_as_text
+
+        review = {
+            "code_review": {
+                "is_software_project": True,
+                "ui_summary": {"has_ui": False, "kind": "none"},
+            }
+        }
+        out = _format_review_as_text(review)
+        assert "**UI:** none" in out
+
+    def test_update_mode_seeds_with_prior_review(self) -> None:
+        from spec4.agents.code_scanner import _build_update_scan_seed
+
+        prior = {"code_review": {"is_software_project": True, "project_type": "CLI"}}
+        seed = _build_update_scan_seed("/tmp/does-not-matter", prior)
+        assert "Update mode instructions" in seed
+        assert "Prior code review on disk" in seed
+        assert "project_type" in seed
+        assert "Added / Removed / Changed" in seed
+
+    def test_rescan_enters_update_mode_when_review_exists(self) -> None:
+        # Simulate the state immediately after on_rescan_project: prior review
+        # is kept in session but state and msgs are reset.
+        review = {"code_review": {"is_software_project": True, "project_type": "web"}}
+        session = make_session(
+            code_review=review,
+            code_scanner_state=STATE_IN_PROGRESS,
+            code_scanner_messages=[],
+            working_dir="/tmp/not-real-but-not-empty",
+        )
+        with mock_litellm_stream("(LLM update response)"):
+            collect(code_scanner.run(None, session, session["llm_config"]))
+        seed = session["code_scanner_messages"][0]["content"]
+        assert "Update mode" in seed
+        assert "Prior code review on disk" in seed
+
 
 # ---------------------------------------------------------------------------
 # _gather_project_context tests
@@ -1067,6 +1422,62 @@ class TestGatherProjectContext:
         (tmp_path / "app.py").write_text("def main():\n    pass\n")
         result = _gather_project_context(str(tmp_path))
         assert "def main" in result
+
+    def test_readme_emits_labeled_section(self, tmp_path: Any) -> None:
+        from spec4.agents.code_scanner import _gather_project_context
+
+        (tmp_path / "README.md").write_text("# My Project\n\nA cool app.\n")
+        result = _gather_project_context(str(tmp_path))
+        assert "### README Excerpt" in result
+        assert "My Project" in result
+
+    def test_ci_workflow_files_detected(self, tmp_path: Any) -> None:
+        from spec4.agents.code_scanner import _gather_project_context
+
+        wf_dir = tmp_path / ".github" / "workflows"
+        wf_dir.mkdir(parents=True)
+        (wf_dir / "ci.yml").write_text("name: CI\non: push\n")
+        # need at least one non-CI file or _gather returns the empty placeholder
+        (tmp_path / "main.py").write_text("print('x')")
+        result = _gather_project_context(str(tmp_path))
+        assert "### CI / Workflow Files" in result
+        assert "ci.yml" in result
+
+    def test_dockerfile_detected_as_deployment_signal(self, tmp_path: Any) -> None:
+        from spec4.agents.code_scanner import _gather_project_context
+
+        (tmp_path / "Dockerfile").write_text("FROM python:3.12\n")
+        (tmp_path / "main.py").write_text("print('x')")
+        result = _gather_project_context(str(tmp_path))
+        assert "### Deployment Signals" in result
+        assert "Dockerfile" in result
+
+    def test_terraform_directory_detected_as_deployment_signal(
+        self, tmp_path: Any
+    ) -> None:
+        from spec4.agents.code_scanner import _gather_project_context
+
+        tf_dir = tmp_path / "terraform"
+        tf_dir.mkdir()
+        (tf_dir / "main.tf").write_text('resource "null_resource" "x" {}\n')
+        (tmp_path / "main.py").write_text("print('x')")
+        result = _gather_project_context(str(tmp_path))
+        assert "Terraform configuration detected" in result
+
+    def test_entrypoint_files_prioritized_in_source_samples(
+        self, tmp_path: Any
+    ) -> None:
+        from spec4.agents.code_scanner import _gather_project_context
+
+        # Create many alphabetically-earlier files so plain-alpha ordering
+        # would push 'main.py' past the 8-file priority cutoff.
+        for i in range(10):
+            (tmp_path / f"a_aux_{i}.py").write_text(f"# helper {i}\n")
+        (tmp_path / "main.py").write_text("def main():\n    pass\n")
+        result = _gather_project_context(str(tmp_path))
+        # main.py should be sampled (and labeled as an entrypoint candidate)
+        assert "main.py" in result
+        assert "entrypoint candidate" in result
 
 
 # ---------------------------------------------------------------------------
@@ -1273,6 +1684,112 @@ class TestLoadPhaserDesignNote:
 # ---------------------------------------------------------------------------
 
 
+class TestDeployerExistingInfra:
+    """Deployer pulls deployment-relevant code_review fields into its seed
+    so it can reference existing infra rather than re-deciding from scratch."""
+
+    def test_build_existing_infra_block_emits_only_present_fields(self) -> None:
+        from spec4.agents.deployer import _build_existing_infra_block
+
+        code_review = {
+            "code_review": {
+                "is_software_project": True,
+                "deployment": {
+                    "containerization": {
+                        "tool": "docker",
+                        "dockerfile_path": "Dockerfile",
+                    },
+                },
+                "env_vars": [{"name": "DATABASE_URL", "required": True}],
+                # persistence and auth absent
+            }
+        }
+        block = _build_existing_infra_block(code_review)
+        assert "deployment-relevant excerpt" in block
+        # Inspect the JSON body, not the prose instructions (which mention
+        # the field names by reference).
+        json_body = block.split("```json", 1)[1].split("```", 1)[0]
+        assert '"deployment"' in json_body
+        assert '"env_vars"' in json_body
+        assert "DATABASE_URL" in json_body
+        assert '"persistence"' not in json_body
+        assert '"auth"' not in json_body
+        # Names-only reminder lives in the prose.
+        assert "values live in the developer" in block.lower()
+
+    def test_build_existing_infra_block_empty_when_nothing_relevant(self) -> None:
+        from spec4.agents.deployer import _build_existing_infra_block
+
+        # Code review present but no deployment-relevant blocks.
+        cr = {
+            "code_review": {
+                "is_software_project": True,
+                "project_type": "CLI tool",
+                "languages": [{"name": "Python"}],
+            }
+        }
+        assert _build_existing_infra_block(cr) == ""
+
+    def test_build_existing_infra_block_empty_when_no_review(self) -> None:
+        from spec4.agents.deployer import _build_existing_infra_block
+
+        assert _build_existing_infra_block({}) == ""
+
+    def test_build_existing_infra_block_accepts_unwrapped_form(self) -> None:
+        """Works whether code_review is wrapped in the LLM envelope or not."""
+        from spec4.agents.deployer import _build_existing_infra_block
+
+        unwrapped = {
+            "is_software_project": True,
+            "auth": {"model": "jwt", "library": "authlib"},
+        }
+        block = _build_existing_infra_block(unwrapped)
+        assert "auth" in block
+        assert "jwt" in block
+
+    def test_fresh_start_seed_includes_infra_excerpt_when_present(self) -> None:
+        session = make_session(
+            active_agent="deployer",
+            phases=[{"phase_number": 1, "phase_title": "Steel thread"}],
+            code_review={
+                "code_review": {
+                    "is_software_project": True,
+                    "deployment": {
+                        "containerization": {
+                            "tool": "docker",
+                            "dockerfile_path": "Dockerfile",
+                        },
+                    },
+                    "env_vars": [{"name": "API_KEY", "required": True}],
+                }
+            },
+        )
+        with mock_litellm_stream("Hi! I'm Deployer."):
+            collect(deployer.run(None, session, session["llm_config"]))
+        seed = session["deployer_messages"][0]["content"]
+        assert "deployment-relevant excerpt" in seed
+        assert "API_KEY" in seed
+        assert "Dockerfile" in seed
+
+    def test_fresh_start_seed_omits_infra_excerpt_when_review_lacks_fields(
+        self,
+    ) -> None:
+        session = make_session(
+            active_agent="deployer",
+            phases=[{"phase_number": 1, "phase_title": "Steel thread"}],
+            code_review={
+                "code_review": {
+                    "is_software_project": True,
+                    "project_type": "library",
+                }
+            },
+        )
+        with mock_litellm_stream("Hi! I'm Deployer."):
+            collect(deployer.run(None, session, session["llm_config"]))
+        seed = session["deployer_messages"][0]["content"]
+        assert "deployment-relevant excerpt" not in seed
+
+
 class TestDeployerExistingPlanGuard:
     """A deployment-plan.md on disk must not be replaced silently when the
     user returns — including in a fresh browser with no in-memory state."""
@@ -1393,3 +1910,758 @@ class TestDeployerExistingPlanGuard:
         # save.
         last_assistant = session["deployer_messages"][-1]["content"]
         assert "yes" in last_assistant.lower() and "no" in last_assistant.lower()
+
+
+# ---------------------------------------------------------------------------
+# code_review JSON Schema tests
+# ---------------------------------------------------------------------------
+
+
+class TestCodeReviewSchemaValidation:
+    """Direct tests of the validate_code_review() schema check."""
+
+    def test_minimal_valid_review_passes(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {"code_review": {"schema_version": 1, "is_software_project": True}}
+        assert validate_code_review(data) == []
+
+    def test_empty_project_review_passes(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": False,
+                "summary": "Directory contained only a CNAME file.",
+            }
+        }
+        assert validate_code_review(data) == []
+
+    def test_missing_schema_version_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {"code_review": {"is_software_project": True}}
+        errors = validate_code_review(data)
+        assert any("schema_version" in e for e in errors)
+
+    def test_wrong_schema_version_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {"code_review": {"schema_version": 2, "is_software_project": True}}
+        errors = validate_code_review(data)
+        assert any("schema_version" in e for e in errors)
+
+    def test_custom_commands_key_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "commands": {
+                    "test": "pytest",
+                    "run_dashboard": "arrg dashboard",  # custom key — should fail
+                },
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("commands" in e and "run_dashboard" in e for e in errors)
+
+    def test_custom_entrypoints_key_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "entrypoints": {
+                    "main": "spec4/app.py",
+                    "mcp_server": "arrg/mcp/server.py",  # custom key — should fail
+                },
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("entrypoints" in e and "mcp_server" in e for e in errors)
+
+    def test_invalid_ui_kind_enum_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "ui_summary": {
+                    "has_ui": True,
+                    "kind": "streamlit_dashboard",  # not in enum
+                },
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("ui_summary" in e and "kind" in e for e in errors)
+
+    def test_valid_ui_kind_enum_passes(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        for kind in ("spa", "mpa", "mobile", "desktop", "tui", "none"):
+            data = {
+                "code_review": {
+                    "schema_version": 1,
+                    "is_software_project": True,
+                    "ui_summary": {"has_ui": kind != "none", "kind": kind},
+                }
+            }
+            assert validate_code_review(data) == [], f"kind={kind} should pass"
+
+    def test_custom_notes_key_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "notes": {"miscellaneous_thoughts": ["..."]},  # not in closed schema
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("notes" in e and "miscellaneous_thoughts" in e for e in errors)
+
+    def test_protocols_implemented_entry_validates(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "protocols_implemented": [
+                    {
+                        "name": "MCP",
+                        "version": "2025-11-25",
+                        "location": "arrg/mcp/",
+                        "source": "README.md",
+                    }
+                ],
+            }
+        }
+        assert validate_code_review(data) == []
+
+    def test_protocols_implemented_missing_name_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "protocols_implemented": [{"location": "arrg/mcp/"}],
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("protocols_implemented" in e for e in errors)
+
+    def test_persistence_block_validates(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "persistence": {
+                    "databases": [
+                        {
+                            "engine": "PostgreSQL",
+                            "name": "app",
+                            "role": "primary",
+                            "source": "docker-compose.yml",
+                        },
+                        {"engine": "Redis", "role": "cache"},
+                    ],
+                    "orm": {"name": "SQLAlchemy", "source": "pyproject.toml"},
+                    "migration_tool": {"name": "Alembic", "source": "pyproject.toml"},
+                    "migrations_path": "migrations/",
+                },
+            }
+        }
+        assert validate_code_review(data) == []
+
+    def test_persistence_database_missing_engine_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "persistence": {
+                    "databases": [{"name": "app", "role": "primary"}],
+                },
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("engine" in e for e in errors)
+
+    def test_persistence_extra_key_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "persistence": {
+                    "cache_layer": "Redis",  # not in closed schema
+                },
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("persistence" in e and "cache_layer" in e for e in errors)
+
+    def test_env_vars_block_validates(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "env_vars": [
+                    {
+                        "name": "DATABASE_URL",
+                        "purpose": "Primary Postgres connection string",
+                        "required": True,
+                        "source": "src/spec4/db.py",
+                    },
+                    {"name": "DASH_DEBUG", "purpose": "Enable Dash hot reload"},
+                ],
+            }
+        }
+        assert validate_code_review(data) == []
+
+    def test_env_var_missing_name_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "env_vars": [{"purpose": "Stripe secret"}],
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("env_vars" in e and "name" in e for e in errors)
+
+    def test_env_var_extra_key_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        # `value` is explicitly forbidden — names only, values are a
+        # security boundary. The schema enforces this via closed shape.
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "env_vars": [
+                    {"name": "DATABASE_URL", "value": "postgres://leaked"},
+                ],
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("env_vars" in e and "value" in e for e in errors)
+
+    def test_deployment_block_validates(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "deployment": {
+                    "containerization": {
+                        "tool": "docker",
+                        "dockerfile_path": "Dockerfile",
+                        "compose_path": "docker-compose.yml",
+                        "base_image": "python:3.12-slim",
+                        "source": "Dockerfile",
+                    },
+                    "orchestration": {
+                        "tool": "kubernetes",
+                        "manifests_path": "k8s/",
+                        "source": "k8s/deployment.yaml",
+                    },
+                    "paas": {
+                        "platform": "fly.io",
+                        "config_path": "fly.toml",
+                        "source": "fly.toml",
+                    },
+                    "iac": {
+                        "tool": "terraform",
+                        "path": "infra/",
+                        "source": "infra/main.tf",
+                    },
+                },
+            }
+        }
+        assert validate_code_review(data) == []
+
+    def test_deployment_extra_key_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "deployment": {
+                    "edge_cdn": "cloudflare",  # not in closed schema
+                },
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("deployment" in e and "edge_cdn" in e for e in errors)
+
+    def test_api_surface_block_validates(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "api_surface": [
+                    {
+                        "protocol": "http",
+                        "path_or_method": "GET /users/:id",
+                        "handler": "users.get_user",
+                        "source": "src/app/routes.py",
+                    },
+                    {
+                        "protocol": "grpc",
+                        "path_or_method": "UserService.GetUser",
+                        "summary": "Fetch a user by ID",
+                    },
+                    {
+                        "protocol": "websocket",
+                        "path_or_method": "/ws/stream",
+                    },
+                ],
+            }
+        }
+        assert validate_code_review(data) == []
+
+    def test_api_surface_invalid_protocol_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "api_surface": [
+                    {"protocol": "soap", "path_or_method": "GetUser"},  # not in enum
+                ],
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("api_surface" in e and "protocol" in e for e in errors)
+
+    def test_api_surface_missing_required_fields_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "api_surface": [{"protocol": "http"}],  # missing path_or_method
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("api_surface" in e and "path_or_method" in e for e in errors)
+
+    def test_auth_block_validates(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        models = (
+            "session", "jwt", "oauth", "sso",
+            "api_key", "basic", "mtls", "none", "other",
+        )
+        for model in models:
+            data = {
+                "code_review": {
+                    "schema_version": 1,
+                    "is_software_project": True,
+                    "auth": {
+                        "model": model,
+                        "provider": "Auth0" if model in ("oauth", "sso") else "",
+                        "library": "authlib",
+                        "source": "src/app/auth.py",
+                    },
+                }
+            }
+            assert validate_code_review(data) == [], f"auth.model={model} should pass"
+
+    def test_auth_invalid_model_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "auth": {"model": "magic_link"},  # not in enum
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("auth" in e and "model" in e for e in errors)
+
+    def test_auth_extra_key_fails(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "auth": {
+                    "model": "jwt",
+                    "secret_value": "super-secret",  # security boundary; not allowed
+                },
+            }
+        }
+        errors = validate_code_review(data)
+        assert any("auth" in e and "secret_value" in e for e in errors)
+
+    def test_full_realistic_review_passes(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        data = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "project_type": "web application — Dash SPA",
+                "existing_self_description": {
+                    "text": "Spec4 is an AI-assisted project planner.",
+                    "source": "README.md",
+                },
+                "architecture": {
+                    "summary": "layered Dash app",
+                    "pattern": "MVC-ish",
+                    "inferred_from": "src/spec4/app.py",
+                },
+                "languages": [{"name": "Python", "source": "pyproject.toml"}],
+                "frameworks": [{"name": "Dash", "source": "pyproject.toml"}],
+                "protocols_implemented": [
+                    {"name": "MCP", "version": "2025-11-25", "location": "src/spec4/"}
+                ],
+                "runtime_versions": {"python": ">=3.12"},
+                "build_system": {
+                    "tool": "uv",
+                    "manifest": "pyproject.toml",
+                    "build_backend": "uv_build",
+                },
+                "dependencies": [
+                    {"name": "dash", "purpose": "Web UI", "source": "pyproject.toml"}
+                ],
+                "commands": {
+                    "test": "uv run pytest",
+                    "lint": "uv run ruff check src/ tests/",
+                    "typecheck": "uv run mypy src/",
+                    "run": "uv run python src/spec4/app.py",
+                },
+                "entrypoints": {
+                    "main": "src/spec4/app.py",
+                    "wsgi_app": "src/spec4/app.py:server",
+                    "cli_script": "spec4 = spec4.app:main",
+                },
+                "directory_map": [
+                    {"path": "src/spec4/agents/", "role": "pipeline LLM agents"}
+                ],
+                "ui_summary": {
+                    "has_ui": True,
+                    "kind": "spa",
+                    "framework": "Dash + Mantine",
+                    "styling": "Mantine + custom CSS",
+                    "entry_files": ["src/spec4/app.py"],
+                },
+                "coding_style": {
+                    "linter": {"value": "ruff", "source": "pyproject.toml"},
+                    "line_length": {"value": 88, "source": "pyproject.toml"},
+                    "indentation": "4 spaces",
+                    "naming_conventions": {
+                        "functions": {
+                            "value": "snake_case",
+                            "inferred_from": "src/spec4/session.py",
+                        }
+                    },
+                },
+                "persistence": {
+                    "databases": [
+                        {
+                            "engine": "PostgreSQL",
+                            "role": "primary",
+                            "source": "fly.toml",
+                        },
+                    ],
+                    "orm": {"name": "SQLAlchemy", "source": "pyproject.toml"},
+                    "migration_tool": {"name": "Alembic", "source": "pyproject.toml"},
+                    "migrations_path": "migrations/",
+                },
+                "env_vars": [
+                    {
+                        "name": "DATABASE_URL",
+                        "purpose": "Postgres connection string",
+                        "required": True,
+                        "source": "fly.toml",
+                    },
+                ],
+                "deployment": {
+                    "containerization": {
+                        "tool": "docker",
+                        "dockerfile_path": "Dockerfile",
+                        "base_image": "python:3.12-slim",
+                        "source": "Dockerfile",
+                    },
+                    "paas": {
+                        "platform": "fly.io",
+                        "config_path": "fly.toml",
+                        "source": "fly.toml",
+                    },
+                },
+                "api_surface": [
+                    {
+                        "protocol": "http",
+                        "path_or_method": "POST /api/agent/run",
+                        "handler": "spec4.app.run_agent",
+                        "source": "src/spec4/app.py",
+                    },
+                ],
+                "auth": {
+                    "model": "api_key",
+                    "library": "custom",
+                    "inferred_from": "src/spec4/providers.py",
+                },
+                "notes": {
+                    "test_coverage": {
+                        "has_tests": True,
+                        "framework": "pytest",
+                        "coverage_summary": "broad coverage of agents and utils",
+                    },
+                    "ci_cd": {"present": False, "type": None, "path": None},
+                    "other_notes": ["py.typed marker present"],
+                },
+            }
+        }
+        assert validate_code_review(data) == []
+
+
+class TestFormatValidationErrorsForRetry:
+    """The corrective message body that gets fed back to the LLM."""
+
+    def test_includes_each_error(self) -> None:
+        from spec4.agents._code_review_schema import format_validation_errors_for_retry
+
+        msg = format_validation_errors_for_retry(["a: bad", "b: also bad"])
+        assert "- a: bad" in msg
+        assert "- b: also bad" in msg
+
+    def test_caps_long_lists(self) -> None:
+        from spec4.agents._code_review_schema import format_validation_errors_for_retry
+
+        errs = [f"err{i}" for i in range(30)]
+        msg = format_validation_errors_for_retry(errs, limit=5)
+        assert "(plus 25 more" in msg
+        assert "- err0" in msg
+        assert "- err29" not in msg
+
+    def test_reminds_canonical_key_rule(self) -> None:
+        from spec4.agents._code_review_schema import format_validation_errors_for_retry
+
+        msg = format_validation_errors_for_retry(["x: y"])
+        assert "CLOSED canonical key" in msg
+
+
+# ---------------------------------------------------------------------------
+# CodeScanner validation + retry flow
+# ---------------------------------------------------------------------------
+
+
+class TestCodeScannerValidationRetry:
+    """Integration tests for the validate-and-retry behavior in run()."""
+
+    def _valid_review_text(self) -> str:
+        return (
+            '```json\n{"code_review": {"schema_version": 1, '
+            '"is_software_project": true}}\n```'
+        )
+
+    def _invalid_review_text(self) -> str:
+        # Missing schema_version → fails validation.
+        return '```json\n{"code_review": {"is_software_project": true}}\n```'
+
+    def test_valid_review_does_not_retry(self) -> None:
+        session = make_session(
+            code_scanner_messages=[{"role": "user", "content": "seed"}]
+        )
+        with mock_litellm_stream(self._valid_review_text()) as mock_llm:
+            collect(code_scanner.run("Confirm", session, session["llm_config"]))
+        # One completion call total — no retry.
+        assert mock_llm.call_count == 1
+        assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
+
+    def test_invalid_review_triggers_retry_with_corrective_message(self) -> None:
+        # First LLM call returns invalid JSON; second returns valid JSON.
+        # The retry user message must appear in msgs and reference the error.
+        session = make_session(
+            code_scanner_messages=[{"role": "user", "content": "seed"}]
+        )
+        chunk_seqs = [
+            list(_chunkify_stream(self._invalid_review_text())),
+            list(_chunkify_stream(self._valid_review_text())),
+        ]
+
+        def fake_completion(**kwargs: Any) -> Any:
+            return iter(chunk_seqs.pop(0))
+
+        with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
+            collect(code_scanner.run("Confirm", session, session["llm_config"]))
+
+        msgs = session["code_scanner_messages"]
+        # Synthesized retry user message present, mentioning validation.
+        retry_msgs = [
+            m for m in msgs
+            if m["role"] == "user" and "failed schema validation" in m["content"]
+        ]
+        assert len(retry_msgs) == 1
+        # Final review committed.
+        assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
+        assert session["code_review"]["code_review"]["schema_version"] == 1
+
+    def test_retry_drained_silently_not_yielded(self) -> None:
+        # The retry stream's body (raw or fenced JSON) must not be yielded
+        # to the user. The original suppression already swallows fenced JSON;
+        # here we verify the retry pass adds nothing to the visible output.
+        session = make_session(
+            code_scanner_messages=[{"role": "user", "content": "seed"}]
+        )
+        chunk_seqs = [
+            list(_chunkify_stream(self._invalid_review_text())),
+            list(_chunkify_stream(self._valid_review_text())),
+        ]
+
+        def fake_completion(**kwargs: Any) -> Any:
+            return iter(chunk_seqs.pop(0))
+
+        with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
+            output = collect(
+                code_scanner.run("Confirm", session, session["llm_config"])
+            )
+        # The visible output should not contain the raw JSON of either turn.
+        assert "schema_version" not in output
+        assert "```json" not in output
+
+    def test_retry_failure_recovers_and_emits_fallback(self) -> None:
+        # Both turns emit invalid JSON; the agent should drop the retry
+        # exchange and surface a brief recoverable error.
+        session = make_session(
+            code_scanner_messages=[{"role": "user", "content": "seed"}]
+        )
+        chunk_seqs = [
+            list(_chunkify_stream(self._invalid_review_text())),
+            list(_chunkify_stream(self._invalid_review_text())),
+        ]
+
+        def fake_completion(**kwargs: Any) -> Any:
+            return iter(chunk_seqs.pop(0))
+
+        with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
+            collect(code_scanner.run("Confirm", session, session["llm_config"]))
+
+        # No completed state; no review committed.
+        assert session["code_scanner_state"] != STATE_REVIEW_COMPLETE
+        # Retry exchange dropped — no leftover "failed schema validation"
+        # user message clutters the conversation.
+        retry_user = [
+            m for m in session["code_scanner_messages"]
+            if m["role"] == "user" and "failed schema validation" in m["content"]
+        ]
+        assert retry_user == []
+        # Fallback assistant message in place of the bad JSON.
+        last = session["code_scanner_messages"][-1]
+        assert last["role"] == "assistant"
+        assert "validation" in last["content"].lower()
+
+    def test_retry_uses_response_format_when_supported(self) -> None:
+        session = make_session(
+            code_scanner_messages=[{"role": "user", "content": "seed"}]
+        )
+        chunk_seqs = [
+            list(_chunkify_stream(self._invalid_review_text())),
+            list(_chunkify_stream(self._valid_review_text())),
+        ]
+        call_kwargs: list[dict[str, Any]] = []
+
+        def fake_completion(**kwargs: Any) -> Any:
+            call_kwargs.append(kwargs)
+            return iter(chunk_seqs.pop(0))
+
+        with patch(
+            "spec4.tavily_mcp.litellm.completion", side_effect=fake_completion
+        ), patch(
+            "spec4.tavily_mcp.litellm.get_supported_openai_params",
+            return_value=["temperature", "response_format"],
+        ):
+            collect(code_scanner.run("Confirm", session, session["llm_config"]))
+
+        # First call: no response_format. Second call: response_format set.
+        assert "response_format" not in call_kwargs[0]
+        assert call_kwargs[1]["response_format"] == {"type": "json_object"}
+
+    def test_retry_skips_response_format_when_unsupported(self) -> None:
+        session = make_session(
+            code_scanner_messages=[{"role": "user", "content": "seed"}]
+        )
+        chunk_seqs = [
+            list(_chunkify_stream(self._invalid_review_text())),
+            list(_chunkify_stream(self._valid_review_text())),
+        ]
+        call_kwargs: list[dict[str, Any]] = []
+
+        def fake_completion(**kwargs: Any) -> Any:
+            call_kwargs.append(kwargs)
+            return iter(chunk_seqs.pop(0))
+
+        with patch(
+            "spec4.tavily_mcp.litellm.completion", side_effect=fake_completion
+        ), patch(
+            "spec4.tavily_mcp.litellm.get_supported_openai_params",
+            return_value=["temperature"],  # no response_format
+        ):
+            collect(code_scanner.run("Confirm", session, session["llm_config"]))
+
+        assert "response_format" not in call_kwargs[0]
+        assert "response_format" not in call_kwargs[1]
+
+    def test_retry_accepts_raw_json_response(self) -> None:
+        # When response_format is in effect, the retry body is raw JSON
+        # without a ```json fence. _extract_and_validate_review must
+        # still pick it up.
+        session = make_session(
+            code_scanner_messages=[{"role": "user", "content": "seed"}]
+        )
+        raw_valid = (
+            '{"code_review": {"schema_version": 1, "is_software_project": true}}'
+        )
+        chunk_seqs = [
+            list(_chunkify_stream(self._invalid_review_text())),
+            list(_chunkify_stream(raw_valid)),
+        ]
+
+        def fake_completion(**kwargs: Any) -> Any:
+            return iter(chunk_seqs.pop(0))
+
+        with patch(
+            "spec4.tavily_mcp.litellm.completion", side_effect=fake_completion
+        ), patch(
+            "spec4.tavily_mcp.litellm.get_supported_openai_params",
+            return_value=["response_format"],
+        ):
+            collect(code_scanner.run("Confirm", session, session["llm_config"]))
+
+        assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
+        assert session["code_review"]["code_review"]["schema_version"] == 1
+
+
+def _chunkify_stream(text: str) -> Iterable[MagicMock]:
+    """Helper: turn text into per-character mock chunks plus a stop sentinel."""
+    chunks = [make_stream_chunk(c) for c in text]
+    chunks.append(make_stream_chunk("", finish_reason="stop"))
+    return chunks
