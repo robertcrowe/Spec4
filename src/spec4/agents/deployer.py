@@ -6,7 +6,7 @@ from typing import Any
 
 from spec4 import tavily_mcp
 from spec4.agents._utils import (
-    _drop_orphan_trailing_user,
+    _drop_orphan_or_route_to_fresh_start,
     _last_assistant_text,
     _maybe_inject_resume_summary,
     _maybe_inject_staleness_question,
@@ -74,9 +74,16 @@ Start your guidance with these two points before anything else:
    the project directory, or navigate to it once the agent is running. All relative file paths\
    depend on this.
 2. **Where Spec4 files live.** Spec4 has created a `.spec4/` directory inside their project\
-   directory. All planning artifacts are stored there — vision, stack spec, code review, and the\
-   development phases. The phases are individual JSON files in `.spec4/phases/` (one file per\
-   phase: `phase1.json`, `phase2.json`, and so on).
+   directory. The planning artifacts live at exactly these paths — use these filenames verbatim,\
+   do not invent variants:
+   - `.spec4/vision.json` — the project vision statement
+   - `.spec4/stack.json` — the technology stack spec
+   - `.spec4/code_review.json` — the code review (brownfield projects only; may be absent)
+   - `.spec4/phases/phase1.md`, `.spec4/phases/phase2.md`, … — one Markdown file per development\
+     phase, each pairing a JSON frontmatter block (full structured payload) with a prose body the\
+     coding agent reads directly
+   - `.spec4/design/mock.html` — finalized UI design mock (only when Designer was used; may be\
+     absent)
 
 Then continue with agent-specific guidance:
 
@@ -297,7 +304,7 @@ def run(
         session["deployer_messages"] = []
 
     messages = session["deployer_messages"]
-    _drop_orphan_trailing_user(messages)
+    user_input = _drop_orphan_or_route_to_fresh_start(messages, user_input)
 
     if user_input is None:
         if messages:

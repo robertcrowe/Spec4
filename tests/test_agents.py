@@ -477,17 +477,47 @@ class TestOrphanTurnRecovery:
         # And history ends correctly with the new assistant turn.
         assert session["brainstormer_messages"][-1]["role"] == "assistant"
 
-    def test_user_submit_after_failure_drops_orphan_then_appends(self) -> None:
-        # Same orphan setup, but now the user submits a new message.
+    def test_user_submit_after_failure_routes_to_fresh_start(self) -> None:
+        # The previous turn failed before the assistant reply could be
+        # committed, leaving phaser_messages = [seed_orphan]. The user's new
+        # message is a reply to UI text the agent never actually committed —
+        # if we just dropped the orphan and appended the new message, the LLM
+        # would be called with that reply alone, stripped of all seed context,
+        # and would hallucinate an "I'm ready to help — please share your
+        # project info" greeting. The recovery instead routes through the
+        # fresh-start branch so the LLM gets the seed (or the static greeting
+        # for greenfield projects with no vision/code_review).
         session = make_session(
             brainstormer_messages=[
                 {"role": "user", "content": "earlier orphan"},
             ]
         )
         with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            output = collect(
+                brainstormer.run("new message", session, session["llm_config"])
+            )
+
+        # No vision and no code review → fresh-start branch yields a static
+        # greeting and does NOT call the LLM. The user's "new message" reply
+        # is silently discarded since it was responding to nothing real.
+        mock_llm.assert_not_called()
+        assert "Brainstormer" in output
+
+    def test_user_submit_after_failure_reseeds_brownfield_context(self) -> None:
+        # Same orphan setup but with a vision_statement present (brownfield
+        # revision mode). Recovery must re-seed the brownfield context rather
+        # than calling the LLM with just the new user reply.
+        vision = {"vision_statement": {"name": "CheckersApp"}}
+        session = make_session(
+            vision_statement=vision,
+            brainstormer_messages=[
+                {"role": "user", "content": "earlier orphan"},
+            ],
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
             mock_llm.return_value = iter(
                 [
-                    make_stream_chunk("ok"),
+                    make_stream_chunk("Welcome back"),
                     make_stream_chunk("", finish_reason="stop"),
                 ]
             )
@@ -495,11 +525,15 @@ class TestOrphanTurnRecovery:
                 brainstormer.run("new message", session, session["llm_config"])
             )
 
-        # The LLM must NOT receive two consecutive user messages — the orphan
-        # gets dropped before the new user turn is appended.
         sent = mock_llm.call_args[1]["messages"]
-        non_system = [m for m in sent if m["role"] != "system"]
-        assert non_system == [{"role": "user", "content": "new message"}]
+        user_content = " ".join(
+            m["content"] for m in sent
+            if m["role"] == "user" and isinstance(m["content"], str)
+        )
+        # The brownfield re-seed must include the existing vision so the
+        # LLM has context, not just the user's "new message" reply alone.
+        assert "CheckersApp" in user_content
+        assert "new message" not in user_content
 
 
 # ---------------------------------------------------------------------------
@@ -915,13 +949,13 @@ class TestCodeScanner:
         assert session["code_scanner_messages"] == []
 
     def test_user_input_calls_llm(self) -> None:
-        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}])
+        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}])
         with mock_litellm_stream("Here is my review."):
             output = collect(code_scanner.run("Looks good", session, session["llm_config"]))
         assert "Here is my review." in output
 
     def test_review_json_sets_state_complete(self) -> None:
-        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}])
+        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}])
         review_response = (
             '```json\n{"code_review": {"schema_version": 1, '
             '"is_software_project": true}}\n```'
@@ -934,7 +968,7 @@ class TestCodeScanner:
         }
 
     def test_non_review_response_stays_in_progress(self) -> None:
-        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}])
+        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}])
         with mock_litellm_stream("Tell me about section 1."):
             collect(code_scanner.run("Go on", session, session["llm_config"]))
         assert session["code_scanner_state"] == STATE_IN_PROGRESS
@@ -959,7 +993,7 @@ class TestCodeScanner:
         assert _extract_review_json("```json\n{bad}\n```") is None
 
     def test_initialises_code_scanner_messages_if_missing(self) -> None:
-        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}])
+        session = make_session(code_scanner_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}])
         del session["code_scanner_messages"]
         with mock_litellm_stream("Ok"):
             collect(code_scanner.run("Hi", session, session["llm_config"]))
@@ -1529,13 +1563,17 @@ class TestPhaser:
         assert "App" in user_content and "Python" in user_content
 
     def test_phases_json_sets_state_complete(self) -> None:
-        session = make_session(phaser_messages=[{"role": "user", "content": "seed"}])
+        session = make_session(phaser_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}])
         phase_response = (
             '```json\n{"phase_number": 1, "phase_title": "Steel Thread", '
-            '"total_phases": 1, "vision_statement": "v", "tech_stack_spec": '
-            '{"dependencies": [], "configurations": ""}, "instructions": [], '
-            '"risk_assessment": {"potential_bottlenecks": "", "mitigation_strategy": ""}, '  # noqa: E501
-            '"verification": "run tests", "references": []}\n```'
+            '"total_phases": 1, "phase_summary": "Boot the stack.", '
+            '"tech_stack_spec": '
+            '{"dependencies": ["fastapi"], "configurations": "PORT=8000"}, '
+            '"instructions": ["Create main.py with GET /health."], '
+            '"risk_assessment": '
+            '{"potential_bottlenecks": "Missing env vars.", '
+            '"mitigation_strategy": "Validate at startup."}, '
+            '"verification": "Run pytest.", "references": []}\n```'
         )
         with mock_litellm_stream(phase_response):
             collect(phaser.run("Approve", session, session["llm_config"]))
@@ -1543,7 +1581,7 @@ class TestPhaser:
         assert len(session["phases"]) == 1
 
     def test_non_phase_response_stays_incomplete(self) -> None:
-        session = make_session(phaser_messages=[{"role": "user", "content": "seed"}])
+        session = make_session(phaser_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}])
         with mock_litellm_stream("Here is a text description."):
             collect(phaser.run("Go ahead", session, session["llm_config"]))
         assert session["phaser_state"] is None
@@ -1591,6 +1629,49 @@ class TestPhaser:
         with mock_litellm_stream("Ok"):
             collect(phaser.run(None, session, session["llm_config"]))
         assert "phaser_messages" in session
+
+    def test_user_approval_after_failed_outline_reseeds_vision_and_stack(
+        self,
+    ) -> None:
+        # User's reported scenario: Phaser presents an outline, user types
+        # "approved", but Phaser responds with the "I'm ready to help — please
+        # share your project info" greeting instead of emitting phase JSON.
+        # Root cause: turn 1's stream raised after the seed was appended but
+        # before the assistant reply could be committed; phaser_messages =
+        # [seed_orphan]. On turn 2 the orphan was dropped, leaving the LLM
+        # with just ["approved"] and no vision/stack context. Recovery must
+        # re-seed so the LLM has the full context again.
+        vision = {"name": "KingMe", "vision": "checkers game"}
+        stack = {"stack_spec": {"languages": ["Python"]}}
+        session = make_session(
+            vision_statement=vision,
+            stack_statement=stack,
+            phaser_messages=[
+                {"role": "user", "content": "<seed content from failed turn 1>"},
+            ],
+        )
+        with patch("spec4.tavily_mcp.litellm.completion") as mock_llm:
+            mock_llm.return_value = iter(
+                [
+                    make_stream_chunk("Here is the outline..."),
+                    make_stream_chunk("", finish_reason="stop"),
+                ]
+            )
+            collect(phaser.run("approved", session, session["llm_config"]))
+
+        sent = mock_llm.call_args[1]["messages"]
+        user_content = " ".join(
+            m["content"] for m in sent
+            if m["role"] == "user" and isinstance(m["content"], str)
+        )
+        # The re-seeded user message must include vision/stack so the LLM
+        # produces a phase outline rather than the "I'm ready to help"
+        # contextless greeting.
+        assert "KingMe" in user_content
+        assert "Python" in user_content
+        # The user's "approved" reply is discarded — it was a response to UI
+        # text the agent never actually committed to phaser_messages.
+        assert "approved" not in user_content
 
 
 # ---------------------------------------------------------------------------
@@ -2489,7 +2570,7 @@ class TestCodeScannerValidationRetry:
 
     def test_valid_review_does_not_retry(self) -> None:
         session = make_session(
-            code_scanner_messages=[{"role": "user", "content": "seed"}]
+            code_scanner_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}]
         )
         with mock_litellm_stream(self._valid_review_text()) as mock_llm:
             collect(code_scanner.run("Confirm", session, session["llm_config"]))
@@ -2501,7 +2582,7 @@ class TestCodeScannerValidationRetry:
         # First LLM call returns invalid JSON; second returns valid JSON.
         # The retry user message must appear in msgs and reference the error.
         session = make_session(
-            code_scanner_messages=[{"role": "user", "content": "seed"}]
+            code_scanner_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}]
         )
         chunk_seqs = [
             list(_chunkify_stream(self._invalid_review_text())),
@@ -2530,7 +2611,7 @@ class TestCodeScannerValidationRetry:
         # to the user. The original suppression already swallows fenced JSON;
         # here we verify the retry pass adds nothing to the visible output.
         session = make_session(
-            code_scanner_messages=[{"role": "user", "content": "seed"}]
+            code_scanner_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}]
         )
         chunk_seqs = [
             list(_chunkify_stream(self._invalid_review_text())),
@@ -2552,7 +2633,7 @@ class TestCodeScannerValidationRetry:
         # Both turns emit invalid JSON; the agent should drop the retry
         # exchange and surface a brief recoverable error.
         session = make_session(
-            code_scanner_messages=[{"role": "user", "content": "seed"}]
+            code_scanner_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}]
         )
         chunk_seqs = [
             list(_chunkify_stream(self._invalid_review_text())),
@@ -2581,7 +2662,7 @@ class TestCodeScannerValidationRetry:
 
     def test_retry_uses_response_format_when_supported(self) -> None:
         session = make_session(
-            code_scanner_messages=[{"role": "user", "content": "seed"}]
+            code_scanner_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}]
         )
         chunk_seqs = [
             list(_chunkify_stream(self._invalid_review_text())),
@@ -2607,7 +2688,7 @@ class TestCodeScannerValidationRetry:
 
     def test_retry_skips_response_format_when_unsupported(self) -> None:
         session = make_session(
-            code_scanner_messages=[{"role": "user", "content": "seed"}]
+            code_scanner_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}]
         )
         chunk_seqs = [
             list(_chunkify_stream(self._invalid_review_text())),
@@ -2635,7 +2716,7 @@ class TestCodeScannerValidationRetry:
         # without a ```json fence. _extract_and_validate_review must
         # still pick it up.
         session = make_session(
-            code_scanner_messages=[{"role": "user", "content": "seed"}]
+            code_scanner_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}]
         )
         raw_valid = (
             '{"code_review": {"schema_version": 1, "is_software_project": true}}'
@@ -2665,3 +2746,266 @@ def _chunkify_stream(text: str) -> Iterable[MagicMock]:
     chunks = [make_stream_chunk(c) for c in text]
     chunks.append(make_stream_chunk("", finish_reason="stop"))
     return chunks
+
+
+# ---------------------------------------------------------------------------
+# Phase schema validation
+# ---------------------------------------------------------------------------
+
+
+def _valid_phase(**overrides: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "phase_number": 1,
+        "total_phases": 1,
+        "phase_title": "Steel Thread",
+        "phase_summary": "Boot the stack end-to-end.",
+        "tech_stack_spec": {
+            "dependencies": ["fastapi"],
+            "configurations": "PORT=8000",
+        },
+        "instructions": ["Create main.py with GET /health."],
+        "risk_assessment": {
+            "potential_bottlenecks": "Missing env vars.",
+            "mitigation_strategy": "Validate at startup.",
+        },
+        "verification": "Run pytest.",
+        "references": [],
+    }
+    base.update(overrides)
+    return base
+
+
+def _phase_block(phase: dict[str, Any]) -> str:
+    import json as _json
+
+    return "```json\n" + _json.dumps(phase) + "\n```"
+
+
+class TestPhaseSchema:
+    def test_accepts_valid_phase(self) -> None:
+        from spec4.agents._phase_schema import validate_phase
+
+        assert validate_phase(_valid_phase()) == []
+
+    def test_rejects_missing_required(self) -> None:
+        from spec4.agents._phase_schema import validate_phase
+
+        phase = _valid_phase()
+        del phase["phase_summary"]
+        errors = validate_phase(phase)
+        assert any("phase_summary" in e for e in errors)
+
+    def test_rejects_empty_instructions(self) -> None:
+        from spec4.agents._phase_schema import validate_phase
+
+        errors = validate_phase(_valid_phase(instructions=[]))
+        assert any("instructions" in e for e in errors)
+
+    def test_rejects_reference_missing_url(self) -> None:
+        from spec4.agents._phase_schema import validate_phase
+
+        errors = validate_phase(
+            _valid_phase(references=[{"standard": "FastAPI"}])
+        )
+        assert any("url" in e for e in errors)
+
+    def test_rejects_custom_top_level_key(self) -> None:
+        from spec4.agents._phase_schema import validate_phase
+
+        errors = validate_phase(_valid_phase(vision_statement="v"))
+        assert any("vision_statement" in e for e in errors)
+
+
+class TestPhaseFormatValidationErrorsForRetry:
+    def test_includes_each_error_with_phase_label(self) -> None:
+        from spec4.agents._phase_schema import format_validation_errors_for_retry
+
+        msg = format_validation_errors_for_retry(
+            [(1, ["instructions: too short"]), (2, ["verification: too short"])]
+        )
+        assert "Phase 1: instructions: too short" in msg
+        assert "Phase 2: verification: too short" in msg
+
+    def test_labels_unnumbered_phase(self) -> None:
+        from spec4.agents._phase_schema import format_validation_errors_for_retry
+
+        msg = format_validation_errors_for_retry([(None, ["root: bad"])])
+        assert "Phase (number unparseable)" in msg
+
+    def test_caps_at_limit(self) -> None:
+        from spec4.agents._phase_schema import format_validation_errors_for_retry
+
+        errs = [(1, [f"err{i}" for i in range(30)])]
+        msg = format_validation_errors_for_retry(errs, limit=5)
+        assert "(plus 25 more" in msg
+
+
+# ---------------------------------------------------------------------------
+# Phaser validation + retry flow
+# ---------------------------------------------------------------------------
+
+
+class TestPhaserValidationRetry:
+    def _invalid_phase_text(self) -> str:
+        # Missing required phase_summary AND empty instructions.
+        return _phase_block(
+            {
+                "phase_number": 1,
+                "total_phases": 1,
+                "phase_title": "Bad",
+                "tech_stack_spec": {"dependencies": [], "configurations": ""},
+                "instructions": [],
+                "risk_assessment": {
+                    "potential_bottlenecks": "x",
+                    "mitigation_strategy": "y",
+                },
+                "verification": "v",
+            }
+        )
+
+    def test_valid_phase_does_not_retry(self) -> None:
+        session = make_session(phaser_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}])
+        text = _phase_block(_valid_phase())
+        with mock_litellm_stream(text) as mock_llm:
+            collect(phaser.run("Approve", session, session["llm_config"]))
+        assert mock_llm.call_count == 1
+        assert session["phaser_state"] == STATE_PHASES_COMPLETE
+        assert len(session["phases"]) == 1
+
+    def test_invalid_phase_triggers_retry(self) -> None:
+        session = make_session(phaser_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}])
+        chunk_seqs = [
+            list(_chunkify_stream(self._invalid_phase_text())),
+            list(_chunkify_stream(_phase_block(_valid_phase()))),
+        ]
+
+        def fake_completion(**kwargs: Any) -> Any:
+            return iter(chunk_seqs.pop(0))
+
+        with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
+            collect(phaser.run("Approve", session, session["llm_config"]))
+
+        retry_msgs = [
+            m
+            for m in session["phaser_messages"]
+            if m["role"] == "user" and "failed schema validation" in m["content"]
+        ]
+        assert len(retry_msgs) == 1
+        assert session["phaser_state"] == STATE_PHASES_COMPLETE
+
+    def test_retry_failure_drops_exchange_and_emits_fallback(self) -> None:
+        session = make_session(phaser_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}])
+        chunk_seqs = [
+            list(_chunkify_stream(self._invalid_phase_text())),
+            list(_chunkify_stream(self._invalid_phase_text())),
+        ]
+
+        def fake_completion(**kwargs: Any) -> Any:
+            return iter(chunk_seqs.pop(0))
+
+        with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
+            collect(phaser.run("Approve", session, session["llm_config"]))
+
+        assert session["phaser_state"] != STATE_PHASES_COMPLETE
+        retry_user = [
+            m
+            for m in session["phaser_messages"]
+            if m["role"] == "user" and "failed schema validation" in m["content"]
+        ]
+        assert retry_user == []
+        last = session["phaser_messages"][-1]
+        assert last["role"] == "assistant"
+        assert "validation" in last["content"].lower()
+
+    def test_retry_uses_response_format_when_supported(self) -> None:
+        session = make_session(phaser_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}])
+        chunk_seqs = [
+            list(_chunkify_stream(self._invalid_phase_text())),
+            list(_chunkify_stream(_phase_block(_valid_phase()))),
+        ]
+        call_kwargs: list[dict[str, Any]] = []
+
+        def fake_completion(**kwargs: Any) -> Any:
+            call_kwargs.append(kwargs)
+            return iter(chunk_seqs.pop(0))
+
+        with patch(
+            "spec4.tavily_mcp.litellm.completion", side_effect=fake_completion
+        ), patch(
+            "spec4.tavily_mcp.litellm.get_supported_openai_params",
+            return_value=["temperature", "response_format"],
+        ):
+            collect(phaser.run("Approve", session, session["llm_config"]))
+
+        assert "response_format" not in call_kwargs[0]
+        assert call_kwargs[1]["response_format"] == {"type": "json_object"}
+
+    def test_display_override_is_rendered_markdown(self) -> None:
+        session = make_session(phaser_messages=[{"role": "user", "content": "seed"}, {"role": "assistant", "content": "draft"}])
+        text = _phase_block(_valid_phase())
+        with mock_litellm_stream(text):
+            collect(phaser.run("Approve", session, session["llm_config"]))
+        display = session.get("_display_override") or ""
+        # The display should be human-prose Markdown with frontmatter, not
+        # raw streamed JSON.
+        assert "# Phase 1 of 1: Steel Thread" in display
+        assert "## Instructions" in display
+        assert "## Verification" in display
+
+
+# ---------------------------------------------------------------------------
+# Phase Markdown serialization round-trip
+# ---------------------------------------------------------------------------
+
+
+class TestPhaseMarkdownRoundTrip:
+    def test_render_includes_all_sections(self) -> None:
+        from spec4 import project_manager
+
+        md = project_manager.render_phase_markdown(_valid_phase())
+        assert md.startswith("---\n")
+        assert "# Phase 1 of 1: Steel Thread" in md
+        assert "Boot the stack end-to-end." in md
+        assert "## Tech Stack" in md
+        assert "- fastapi" in md
+        assert "**Configurations:** PORT=8000" in md
+        assert "## Instructions" in md
+        assert "1. Create main.py with GET /health." in md
+        assert "## Risk Assessment" in md
+        assert "Missing env vars." in md
+        assert "Validate at startup." in md
+        assert "## Verification" in md
+        assert "Run pytest." in md
+
+    def test_renders_references_as_links(self) -> None:
+        from spec4 import project_manager
+
+        phase = _valid_phase(
+            references=[{"standard": "FastAPI", "url": "https://fastapi.tiangolo.com"}]
+        )
+        md = project_manager.render_phase_markdown(phase)
+        assert "## References" in md
+        assert "[FastAPI](https://fastapi.tiangolo.com)" in md
+
+    def test_round_trip_via_parse(self) -> None:
+        from spec4 import project_manager
+
+        phase = _valid_phase(
+            references=[{"standard": "Pydantic", "url": "https://docs.pydantic.dev"}]
+        )
+        md = project_manager.render_phase_markdown(phase)
+        parsed = project_manager.parse_phase_markdown(md)
+        assert parsed == phase
+
+    def test_parse_returns_none_without_frontmatter(self) -> None:
+        from spec4 import project_manager
+
+        assert project_manager.parse_phase_markdown("# Just a heading\n") is None
+
+    def test_parse_returns_none_for_bad_frontmatter_json(self) -> None:
+        from spec4 import project_manager
+
+        assert (
+            project_manager.parse_phase_markdown("---\n{not json}\n---\n\nbody\n")
+            is None
+        )

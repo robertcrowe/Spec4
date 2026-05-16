@@ -68,6 +68,38 @@ class TestLoadArtifacts:
         result = project_manager.load_spec4_artifacts(tmp_path)
         assert result["phases"] == []
 
+    def test_loads_legacy_json_phases(self, tmp_path: Path) -> None:
+        # Projects from earlier Spec4 versions only have phase{N}.json files;
+        # they must keep loading without a manual migration step.
+        phases_dir = project_manager.ensure_spec4_dir(tmp_path) / "phases"
+        phases_dir.mkdir()
+        (phases_dir / "phase1.json").write_text(
+            json.dumps({"phase_number": 1, "phase_title": "Legacy"})
+        )
+        result = project_manager.load_spec4_artifacts(tmp_path)["phases"]
+        assert len(result) == 1
+        assert result[0]["phase_title"] == "Legacy"
+
+    def test_md_takes_precedence_over_legacy_json(self, tmp_path: Path) -> None:
+        # If both exist for the same phase number (mid-migration), the .md is
+        # the source of truth — the .json was the older snapshot.
+        phases_dir = project_manager.ensure_spec4_dir(tmp_path) / "phases"
+        phases_dir.mkdir()
+        (phases_dir / "phase1.json").write_text(
+            json.dumps({"phase_number": 1, "phase_title": "Old"})
+        )
+        project_manager.save_phases(
+            tmp_path, [{"phase_number": 1, "phase_title": "New"}]
+        )
+        # save_phases already removed the legacy .json, but assert load is
+        # robust even if some other process leaves one behind.
+        (phases_dir / "phase1.json").write_text(
+            json.dumps({"phase_number": 1, "phase_title": "Old"})
+        )
+        result = project_manager.load_spec4_artifacts(tmp_path)["phases"]
+        assert len(result) == 1
+        assert result[0]["phase_title"] == "New"
+
 
 class TestSaveArtifacts:
     def test_save_vision_writes_json_file(self, tmp_path: Path) -> None:
@@ -97,8 +129,21 @@ class TestSaveArtifacts:
             {"phase_number": 2, "phase_title": "B"},
         ]
         project_manager.save_phases(tmp_path, phases)
-        assert (tmp_path / ".spec4" / "phases" / "phase1.json").exists()
-        assert (tmp_path / ".spec4" / "phases" / "phase2.json").exists()
+        assert (tmp_path / ".spec4" / "phases" / "phase1.md").exists()
+        assert (tmp_path / ".spec4" / "phases" / "phase2.md").exists()
+
+    def test_save_phases_removes_legacy_json(self, tmp_path: Path) -> None:
+        # A pre-existing phase{N}.json from an older Spec4 run must be cleaned
+        # up so the directory does not accumulate two copies per phase.
+        phases_dir = project_manager.ensure_spec4_dir(tmp_path) / "phases"
+        phases_dir.mkdir()
+        legacy = phases_dir / "phase1.json"
+        legacy.write_text(json.dumps({"phase_number": 1, "phase_title": "old"}))
+        project_manager.save_phases(
+            tmp_path, [{"phase_number": 1, "phase_title": "new"}]
+        )
+        assert not legacy.exists()
+        assert (phases_dir / "phase1.md").exists()
 
     def test_save_creates_spec4_dir_if_missing(self, tmp_path: Path) -> None:
         project_manager.save_vision(tmp_path, {"name": "App"})

@@ -10,7 +10,7 @@ from typing import Any
 
 from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
-from spec4 import providers, streaming, tavily_mcp
+from spec4 import project_manager, providers, streaming, tavily_mcp
 from spec4.agents._image_probe import probe_image_support
 from spec4.app_constants import PATH_TO_PHASE, STATE_IN_PROGRESS
 from spec4.session import (
@@ -716,7 +716,8 @@ def _build_phases_zip(session: dict[str, Any]) -> Any:
     with zipfile.ZipFile(buf, "w") as zf:
         for phase in phases:
             zf.writestr(
-                f"phase{phase['phase_number']}.json", json.dumps(phase, indent=2)
+                f"phase{phase['phase_number']}.md",
+                project_manager.render_phase_markdown(phase),
             )
     buf.seek(0)
     return dcc.send_bytes(buf.read(), "phases.zip")  # type: ignore[attr-defined, no-untyped-call]

@@ -99,42 +99,32 @@ def _reset_for_new_project(session: dict[str, Any]) -> dict[str, Any]:
 def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
     """Build a session dict for the given working directory, loading .spec4/ artifacts.
 
-    Preserves provider/model/llm_config/tavily_api_key from the incoming session
-    (via the spread) so a developer who has already configured an LLM can pick
-    a different working directory without redoing setup. Callers decide whether
-    to route the user through /setup or skip directly to /agents based on the
-    resulting llm_config.
+    Selecting a working directory in the browser starts work on a (potentially
+    different) project, so every project-specific field is cleared — chat
+    history, all `{agent}_messages` LLM logs, agent states, artifacts, the
+    Deployer plan flags, staleness acknowledgements, resume snapshots, the
+    active agent selection, and UI display flags. Only the developer's LLM
+    connection (`_PRESERVED_SETUP_KEYS`: provider/model/api_key/available_models/
+    llm_config/tavily_api_key) is carried over, so a configured developer who
+    picks a different directory isn't sent back through /setup. Callers route
+    to /setup or /agents based on the resulting llm_config.
     """
-    session = {
-        **session,
-        "working_dir": path,
-        "browser_path": path,
-        "phase": "setup",
-        "setup_error": None,
-        "vision_statement": None,
-        "brainstormer_state": STATE_IN_PROGRESS,
-        "stack_statement": None,
-        "stack_advisor_state": STATE_IN_PROGRESS,
-        "phases": [],
-        "phaser_state": None,
-        "code_review": None,
-        "code_scanner_state": STATE_IN_PROGRESS,
-        "deployer_state": STATE_IN_PROGRESS,
-        "brainstormer_stale_acknowledged": {},
-        "stack_advisor_stale_acknowledged": {},
-        "phaser_stale_acknowledged": {},
-        "deployer_stale_acknowledged": {},
-        "designer_stale_acknowledged": {},
-        "code_scanner_resumed": False,
-        "brainstormer_resumed": False,
-        "stack_advisor_resumed": False,
-        "deployer_resumed": False,
-        "code_scanner_artifact_msg_count": None,
-        "brainstormer_artifact_msg_count": None,
-        "stack_advisor_artifact_msg_count": None,
-        "deployer_artifact_msg_count": None,
-        "_warn_existing_content": False,
-    }
+    session = _reset_for_new_project(session)
+    session.update(
+        {
+            "working_dir": path,
+            "browser_path": path,
+            "phase": "setup",
+            "code_scanner_resumed": False,
+            "brainstormer_resumed": False,
+            "stack_advisor_resumed": False,
+            "deployer_resumed": False,
+            "code_scanner_artifact_msg_count": None,
+            "brainstormer_artifact_msg_count": None,
+            "stack_advisor_artifact_msg_count": None,
+            "deployer_artifact_msg_count": None,
+        }
+    )
     try:
         artifacts = project_manager.load_spec4_artifacts(path)
     except Exception:

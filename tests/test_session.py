@@ -346,6 +346,46 @@ class TestLoadWorkingDir:
         assert session["model"] is None
         assert session["available_models"] is None
 
+    def test_clears_previous_project_state(self, tmp_path: pathlib.Path) -> None:
+        # Switching directories starts work on a different project. Previous
+        # chat history, agent message logs, active-agent selection, and UI
+        # display flags must NOT bleed into the new project — only the LLM
+        # connection is preserved.
+        prior = self._base_session()
+        prior.update(
+            {
+                "working_dir": "/old/project",
+                "active_agent": "deployer",
+                "messages": [{"role": "user", "content": "old ui chat"}],
+                "brainstormer_messages": [{"role": "user", "content": "old"}],
+                "stack_advisor_messages": [{"role": "user", "content": "old"}],
+                "phaser_messages": [{"role": "user", "content": "old"}],
+                "code_scanner_messages": [{"role": "user", "content": "old"}],
+                "deployer_messages": [{"role": "user", "content": "old"}],
+                "_initial_turn_done": True,
+                "_display_override": "stale override",
+                "_stream_id": "abc-123",
+                "agent_select_error": "previous error",
+                "_deployer_plan_markdown": "# Old plan",
+                "_deployer_pending_plan": True,
+            }
+        )
+        session = _load_working_dir(str(tmp_path), prior)
+        assert session["working_dir"] == str(tmp_path)
+        assert session["messages"] == []
+        assert session["brainstormer_messages"] == []
+        assert session["stack_advisor_messages"] == []
+        assert session["phaser_messages"] == []
+        assert session["code_scanner_messages"] == []
+        assert session["deployer_messages"] == []
+        assert session["active_agent"] == "brainstormer"
+        assert session["_initial_turn_done"] is False
+        assert session.get("_display_override") in (None, "")
+        assert session.get("_stream_id") is None
+        assert session.get("agent_select_error") in (None, "")
+        assert session.get("_deployer_plan_markdown") in (None, "")
+        assert session.get("_deployer_pending_plan") in (None, False)
+
 
 class TestResetForNewProject:
     """The "Start New Project" action in Deployer must clear every

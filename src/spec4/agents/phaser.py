@@ -6,9 +6,13 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import Any
 
-from spec4 import tavily_mcp
+from spec4 import project_manager, tavily_mcp
+from spec4.agents._phase_schema import (
+    format_validation_errors_for_retry,
+    validate_phase,
+)
 from spec4.agents._utils import (
-    _drop_orphan_trailing_user,
+    _drop_orphan_or_route_to_fresh_start,
     _last_assistant_text,
     _maybe_inject_staleness_question,
     _replay_last_assistant,
@@ -37,6 +41,17 @@ At the start of the conversation you will receive one or more of the following:
 - **Design mock note** — a note about whether a finalized UI design mock exists; when\
   present, include a step in every UI-related phase directing the coding agent to\
   reference `.spec4/design/mock.html` for visual guidance
+
+**Spec4 file paths**
+
+If a phase ever needs to reference one of Spec4's own planning artifacts in its\
+ `instructions`, `verification`, or `references`, use these exact paths verbatim — do\
+ not invent variants like `stack-spec.json` or `tech-stack.json`:
+- `.spec4/vision.json`
+- `.spec4/stack.json`
+- `.spec4/code_review.json`
+- `.spec4/phases/phase{N}.md` (the phase files this agent generates)
+- `.spec4/design/mock.html` (finalized UI mock, when present)
 
 **Phase 1: The Steel Thread**
 
@@ -78,30 +93,61 @@ for approval. Do not assume approval.
 
 1. **Analyze.** Review the full vision, stack spec, code review (if present), and\
    existing phases (if present).
-2. **Steel Thread.** Identify the simplest architecturally-live version of the app.\
+2. **Clarify.** If any part of the inputs is ambiguous enough that drafting without\
+   resolving it would force you to guess (missing details about a key feature, an\
+   unstated integration target, an unclear deployment shape, conflicting signals\
+   between vision and stack, etc.), surface those ambiguities and wait for answers.\
+   Ask only what you actually need — do not pad with questions you could answer from\
+   the vision/stack yourself. If the inputs are already complete, skip this step\
+   entirely and go straight to step 3.
+
+   **Ask one clarification at a time.** Surface a single focused question per turn,\
+   wait for the user's answer, then either ask the next question or, if no further\
+   clarifications are needed, proceed to step 3. Never bundle multiple questions\
+   into a numbered list in one message — the user cannot give each question its\
+   full attention that way, and answers tend to drift into "I'll let you decide"\
+   for the questions buried lower in the list. If you anticipate needing N\
+   clarifications, tell the user up front ("I have a few clarifying questions\
+   before I draft phases — I'll ask them one at a time"), then proceed one question\
+   per turn.
+
+   **Acknowledging clarifications is not integrating them.** When answers come back,\
+   treat each answer as an authoritative input alongside the vision and stack —\
+   every relevant phase's `instructions`, `tech_stack_spec`, `verification`, and\
+   `references` MUST reflect the answers, not the pre-clarification assumptions you\
+   had drafted in your head. Before presenting phases in step 6, do a final\
+   self-check: for each clarification answer, name the specific phase and field\
+   where it landed (you do not have to surface this check to the user, but you must\
+   do it internally). A draft that reads as if the clarifications never happened is\
+   the most common failure mode for this agent — saying "Excellent, thank you for\
+   those clarifications" and then presenting phases that contradict or omit the\
+   answers is a hard fail.
+3. **Steel Thread.** Identify the simplest architecturally-live version of the app.\
    This is Phase 1.
-3. **Determine N.** Estimate the total phase count. Let the MVP key features in the\
+4. **Determine N.** Estimate the total phase count. Let the MVP key features in the\
    vision drive the count — each significant feature vertical typically warrants its own\
    phase. Prefer more smaller phases over fewer large ones.
-4. **Draft phases.** For each phase write the title, summary, instructions,\
+5. **Draft phases.** For each phase write the title, summary, instructions,\
    risk_assessment, and verification. Instructions must be concrete and unambiguous —\
    one actionable step per item, specific enough that an AI coder cannot misinterpret\
    it. In risk_assessment, identify: (a) likely execution bottlenecks (env issues,\
    integration timing, configuration complexity) and (b) areas where an AI coder might\
    hallucinate an incorrect implementation (complex auth flows, regex patterns,\
    third-party API quirks) — and provide an explicit mitigation_strategy for each.
-5. **Present.** Present all phases to the user as a numbered list with title and\
+6. **Present.** Present all phases to the user as a numbered list with title and\
    one-sentence summary per phase. Ask the user to review and approve — never phrase it\
    as "X or Y?", ask directly, and end with "(yes/no — you're also welcome to ask\
    questions, describe edits, or share comments either way)".
-6. **Revise.** If the user requests changes, revise the affected phases and re-present\
+7. **Revise.** If the user requests changes, revise the affected phases and re-present\
    the full list before generating any JSON.
-7. **Output.** When the user approves, immediately output ALL phase JSON blocks in a\
+8. **Output.** When the user approves, immediately output ALL phase JSON blocks in a\
    single response — one fenced JSON code block per phase, in order. Do NOT announce\
    that you are about to output them, do not say "I will now output", and do not add\
    any explanation before or between the blocks. Output the JSON blocks directly, back\
-   to back. The application will automatically detect them, package them into a zip\
-   file, and present a download button.
+   to back. The application will validate each block against the phase schema,\
+   automatically render the validated phases into Markdown files (one `phase{N}.md`\
+   per phase, each combining a JSON frontmatter block with a prose body for the\
+   coding agent), package them into a zip, and present a download button.
 
 **Brownfield — Existing phases**
 
@@ -259,6 +305,42 @@ def _extract_phases(text: str) -> list[dict[str, Any]]:
     return phases
 
 
+def _extract_and_validate_phases(
+    text: str,
+) -> tuple[list[dict[str, Any]], list[tuple[int | None, list[str]]]]:
+    """Extract phase JSON blocks and validate each against PHASE_SCHEMA.
+
+    Returns ``(phases, failures)``:
+
+    - ``phases`` — the full extracted list (whether or not individual phases
+      validated cleanly). Callers may use this for diagnostics, but should
+      only persist when ``failures`` is empty.
+    - ``failures`` — one ``(phase_number, errors)`` entry per phase that
+      failed validation. ``phase_number`` is ``None`` if the offending block
+      lacks a parseable integer phase_number.
+
+    An empty ``failures`` list means every extracted phase validated; an
+    empty extracted list means the assistant said something other than
+    phase JSON (the conversation is still in progress) — no retry needed.
+    """
+    phases = _extract_phases(text)
+    failures: list[tuple[int | None, list[str]]] = []
+    for phase in phases:
+        errors = validate_phase(phase)
+        if errors:
+            raw_num = phase.get("phase_number")
+            number = raw_num if isinstance(raw_num, int) else None
+            failures.append((number, errors))
+    return phases, failures
+
+
+def _format_phases_for_display(phases: list[dict[str, Any]]) -> str:
+    """Render every phase as Markdown for the in-chat display."""
+    return "\n\n---\n\n".join(
+        project_manager.render_phase_markdown(p) for p in phases
+    )
+
+
 def run(
     user_input: str | None,
     session: dict[str, Any],
@@ -273,7 +355,7 @@ def run(
         session["phaser_messages"] = []
 
     messages = session["phaser_messages"]
-    _drop_orphan_trailing_user(messages)
+    user_input = _drop_orphan_or_route_to_fresh_start(messages, user_input)
 
     if user_input is None:
         if messages:
@@ -379,8 +461,57 @@ def run(
         system, messages, llm_config, tavily_api_key, agent_name="phaser"
     )
 
-    phases = _extract_phases(_last_assistant_text(messages))
-    if phases:
+    phases, failures = _extract_and_validate_phases(_last_assistant_text(messages))
+    if phases and failures:
+        # JSON was emitted but at least one phase failed schema validation.
+        # Retry once with the specific errors surfaced back to the model. On
+        # providers that support it, force json_object mode so the retry
+        # response is pure JSON rather than a prose-wrapped re-explanation.
+        retry_user_msg = format_validation_errors_for_retry(failures)
+        messages.append({"role": "user", "content": retry_user_msg})
+        response_format: dict[str, Any] | None = None
+        if tavily_mcp.supports_response_format(llm_config.get("model", "")):
+            response_format = {"type": "json_object"}
+        # Drain the retry stream silently — its body is raw or fenced JSON
+        # the user should never see. stream_turn still mutates messages to
+        # record the assistant reply.
+        for _chunk in tavily_mcp.stream_turn(
+            system,
+            messages,
+            llm_config,
+            tavily_api_key,
+            agent_name="phaser",
+            response_format=response_format,
+        ):
+            pass
+        phases, failures = _extract_and_validate_phases(
+            _last_assistant_text(messages)
+        )
+        if failures:
+            # Retry also failed. Drop the synthesized correction exchange so
+            # the chat history does not carry a dead-end "validation failed"
+            # turn, surface a brief recoverable message in place of the bad
+            # JSON, and leave phaser_state untouched so the user can re-
+            # engage by chatting further.
+            if (
+                len(messages) >= 2
+                and messages[-2].get("role") == "user"
+                and messages[-2].get("content") == retry_user_msg
+            ):
+                del messages[-2:]
+            fallback = (
+                "I tried to emit the structured phases but they didn't pass "
+                "validation. Please point me to the phase or section to "
+                "correct, or reply 'try again' and I'll re-emit them."
+            )
+            if messages and messages[-1].get("role") == "assistant":
+                messages[-1]["content"] = fallback
+            else:
+                messages.append({"role": "assistant", "content": fallback})
+            session["_display_override"] = fallback
+            return
+
+    if phases and not failures:
         session["phaser_state"] = STATE_PHASES_COMPLETE
         session["phases"] = phases
         session["phaser_stale_acknowledged"] = {}
@@ -389,7 +520,7 @@ def run(
             "to your AI coding agent — one at a time, in order. The next step, "
             "**Deployer**, will show you exactly how to load and use these phases with "
             "your chosen coding agent.\n\n"
-            + _last_assistant_text(messages)
+            + _format_phases_for_display(phases)
         )
         messages[-1]["content"] = display
         session["_display_override"] = display

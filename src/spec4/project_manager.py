@@ -6,10 +6,18 @@ Handles working directory selection, .spec4 artifact storage, and SPECMEM.md upd
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 _SPECMEM_PLANNING_MARKER = "\n---\n\n## Spec4 Planning State"
+
+# Phase artifacts are stored as Markdown-with-frontmatter so the coding agent
+# consumes them as natural prose, while Spec4 retains a machine-readable copy
+# of the full phase object inside the frontmatter for round-trip. The
+# frontmatter payload is plain JSON (a YAML superset, so this remains
+# compatible with any frontmatter-aware tooling) — no extra YAML dep required.
+_PHASE_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +41,7 @@ def ensure_spec4_dir(working_dir: str | Path) -> Path:
 
 
 def load_spec4_artifacts(working_dir: str | Path) -> dict[str, Any]:
-    """Load vision.json, stack.json, code_review.json, and phases/*.json from .spec4/."""  # noqa: E501
+    """Load vision.json, stack.json, code_review.json, and phases/*.md (legacy *.json) from .spec4/."""  # noqa: E501
     spec4_dir = get_spec4_dir(working_dir)
     result: dict[str, Any] = {
         "vision": None,
@@ -53,11 +61,31 @@ def load_spec4_artifacts(working_dir: str | Path) -> dict[str, Any]:
             pass
 
     phases_dir = spec4_dir / "phases"
-    for pf in sorted(phases_dir.glob("phase*.json")):
+    # Primary format is .md (frontmatter holds the structured phase JSON).
+    # Legacy .json files are still read so projects produced by older Spec4
+    # versions keep working without a manual migration step.
+    seen_numbers: set[int] = set()
+
+    def _by_number(p: Path) -> tuple[int, str]:
+        m = re.match(r"phase(\d+)", p.stem)
+        return (int(m.group(1)) if m else 0, p.name)
+
+    for pf in sorted(phases_dir.glob("phase*.md"), key=_by_number):
+        phase = parse_phase_markdown(pf.read_text(encoding="utf-8"))
+        if phase is not None:
+            result["phases"].append(phase)
+            num = phase.get("phase_number")
+            if isinstance(num, int):
+                seen_numbers.add(num)
+    for pf in sorted(phases_dir.glob("phase*.json"), key=_by_number):
         try:
-            result["phases"].append(json.loads(pf.read_text()))
+            phase = json.loads(pf.read_text())
         except (OSError, json.JSONDecodeError):
-            pass
+            continue
+        num = phase.get("phase_number")
+        if isinstance(num, int) and num in seen_numbers:
+            continue
+        result["phases"].append(phase)
 
     return result
 
@@ -82,14 +110,125 @@ def save_code_review(working_dir: str | Path, review: dict[str, Any]) -> None:
 
 
 def save_phases(working_dir: str | Path, phases: list[dict[str, Any]]) -> None:
+    """Write each phase as a Markdown-with-JSON-frontmatter file.
+
+    The coding agent reads the prose body; Spec4 itself round-trips through
+    the frontmatter JSON when reloading the project. Any pre-existing
+    `phase{N}.json` from older Spec4 versions is removed once the matching
+    `.md` lands so the directory does not accumulate two copies of every
+    phase.
+    """
     spec4_dir = ensure_spec4_dir(working_dir)
     phases_dir = spec4_dir / "phases"
     phases_dir.mkdir(exist_ok=True)
     for phase in phases:
         num = phase.get("phase_number", 0)
-        (phases_dir / f"phase{num}.json").write_text(
-            json.dumps(phase, indent=2), encoding="utf-8"
-        )
+        md_path = phases_dir / f"phase{num}.md"
+        md_path.write_text(render_phase_markdown(phase), encoding="utf-8")
+        legacy = phases_dir / f"phase{num}.json"
+        if legacy.exists():
+            legacy.unlink()
+
+
+# ---------------------------------------------------------------------------
+# Phase Markdown serialization
+# ---------------------------------------------------------------------------
+
+
+def render_phase_markdown(phase: dict[str, Any]) -> str:
+    """Render a phase dict as Markdown with JSON frontmatter.
+
+    Frontmatter carries the canonical structured payload (full round-trip);
+    the body renders the same fields as prose for the coding agent.
+    """
+    frontmatter = json.dumps(phase, indent=2, ensure_ascii=False)
+
+    number = phase.get("phase_number", "?")
+    total = phase.get("total_phases", "?")
+    title = phase.get("phase_title", "")
+    summary = phase.get("phase_summary", "")
+    tech = phase.get("tech_stack_spec") or {}
+    deps = tech.get("dependencies") or []
+    configs = tech.get("configurations") or ""
+    instructions = phase.get("instructions") or []
+    risk = phase.get("risk_assessment") or {}
+    bottlenecks = risk.get("potential_bottlenecks", "")
+    mitigation = risk.get("mitigation_strategy", "")
+    verification = phase.get("verification", "")
+    references = phase.get("references") or []
+
+    lines: list[str] = [
+        "---",
+        frontmatter,
+        "---",
+        "",
+        f"# Phase {number} of {total}: {title}".rstrip(": "),
+        "",
+        summary,
+        "",
+        "## Tech Stack",
+        "",
+    ]
+    if deps:
+        lines.append("**Dependencies:**")
+        lines.append("")
+        lines.extend(f"- {d}" for d in deps)
+        lines.append("")
+    if configs:
+        lines.append(f"**Configurations:** {configs}")
+        lines.append("")
+    lines.append("## Instructions")
+    lines.append("")
+    for idx, step in enumerate(instructions, start=1):
+        lines.append(f"{idx}. {step}")
+    lines.append("")
+    lines.append("## Risk Assessment")
+    lines.append("")
+    if bottlenecks:
+        lines.append("**Potential bottlenecks:**")
+        lines.append("")
+        lines.append(bottlenecks)
+        lines.append("")
+    if mitigation:
+        lines.append("**Mitigation strategy:**")
+        lines.append("")
+        lines.append(mitigation)
+        lines.append("")
+    lines.append("## Verification")
+    lines.append("")
+    lines.append(verification)
+    lines.append("")
+    if references:
+        lines.append("## References")
+        lines.append("")
+        for ref in references:
+            standard = ref.get("standard", "")
+            url = ref.get("url", "")
+            if standard and url:
+                lines.append(f"- [{standard}]({url})")
+            elif standard:
+                lines.append(f"- {standard}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def parse_phase_markdown(text: str) -> dict[str, Any] | None:
+    """Parse a phase Markdown file back into its structured dict.
+
+    Reads only the JSON frontmatter — the prose body is a deterministic
+    rendering of the same fields, so re-parsing it would be redundant and
+    error-prone. Returns None when no frontmatter is present or it is not
+    valid JSON.
+    """
+    match = _PHASE_FRONTMATTER_RE.match(text)
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def save_deployment_plan(working_dir: str | Path, markdown: str) -> None:

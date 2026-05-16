@@ -237,6 +237,33 @@ def _drop_orphan_trailing_user(msgs: list[dict[str, Any]]) -> int:
     return removed
 
 
+def _drop_orphan_or_route_to_fresh_start(
+    msgs: list[dict[str, Any]], user_input: str | None
+) -> str | None:
+    """Drop orphan trailing user messages, returning adjusted ``user_input``.
+
+    Companion to :func:`_drop_orphan_trailing_user` for callers that follow
+    the standard ``if user_input is None: <fresh-start> else: append+LLM``
+    dispatch. When dropping orphans empties ``msgs`` AND a ``user_input`` was
+    supplied, the previous turn was interrupted before any assistant reply
+    could be committed — so the carefully-built seed context (vision/stack/
+    code review/etc.) is gone. Calling the LLM with only the new user reply
+    would strip all that context and produce a hallucinated "I'm ready to
+    help — please share your project info" greeting.
+
+    In that case we return ``None`` so the caller routes through its
+    fresh-start branch and re-seeds from session state. The user's reply is
+    silently discarded (they were responding to text the agent never
+    committed to ``msgs`` in the first place); the LLM re-emits its opening
+    turn and the user can re-engage from a known-good state.
+
+    Returns ``user_input`` unchanged in the common case.
+    """
+    if _drop_orphan_trailing_user(msgs) and user_input is not None and not msgs:
+        return None
+    return user_input
+
+
 def _stream_suppressing_json(
     chunks: Generator[str, None, None],
 ) -> Generator[str, None, None]:

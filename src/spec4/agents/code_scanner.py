@@ -11,7 +11,7 @@ from spec4.agents._code_review_schema import (
     validate_code_review,
 )
 from spec4.agents._utils import (
-    _drop_orphan_trailing_user,
+    _drop_orphan_or_route_to_fresh_start,
     _extract_json_block,
     _last_assistant_text,
     _maybe_inject_resume_summary,
@@ -1433,7 +1433,7 @@ def run(
         session["code_scanner_messages"] = []
 
     msgs = session["code_scanner_messages"]
-    _drop_orphan_trailing_user(msgs)
+    user_input = _drop_orphan_or_route_to_fresh_start(msgs, user_input)
 
     if user_input is None:
         if msgs:
