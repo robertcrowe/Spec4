@@ -43,6 +43,16 @@ PROVIDERS: dict[str, dict[str, Any]] = {
             "mistral/open-mistral-7b",
         ],
     },
+    "nebius": {
+        "label": "Nebius Token Factory",
+        "env_var": "NEBIUS_API_KEY",
+        "api_base": "https://api.tokenfactory.nebius.com/v1/",
+        "models": [
+            "openai/meta-llama/Meta-Llama-3.1-70B-Instruct",
+            "openai/meta-llama/Meta-Llama-3.1-8B-Instruct",
+            "openai/mistralai/Mixtral-8x7B-Instruct-v0.1",
+        ],
+    },
 }
 
 
@@ -118,6 +128,17 @@ def _fetch_models(provider_key: str, api_key: str) -> list[str]:
             f"mistral/{m['id']}"
             for m in data.get("data", [])
             if "embed" not in m.get("id", "")
+        ]
+
+    if provider_key == "nebius":
+        api_base = PROVIDERS["nebius"]["api_base"]
+        data = _json_get(
+            f"{api_base}models", {"Authorization": f"Bearer {api_key}"}
+        )
+        return [
+            f"openai/{m['id']}"
+            for m in data.get("data", [])
+            if "embed" not in m.get("id", "").lower()
         ]
 
     return []

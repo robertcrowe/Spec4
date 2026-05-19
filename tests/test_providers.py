@@ -7,8 +7,8 @@ from spec4.providers import PROVIDERS, list_models
 
 
 class TestProvidersRegistry:
-    def test_five_providers(self) -> None:
-        assert len(PROVIDERS) == 5
+    def test_six_providers(self) -> None:
+        assert len(PROVIDERS) == 6
 
     def test_provider_keys(self) -> None:
         assert set(PROVIDERS.keys()) == {
@@ -17,6 +17,7 @@ class TestProvidersRegistry:
             "gemini",
             "cohere",
             "mistral",
+            "nebius",
         }
 
     def test_each_provider_has_required_keys(self) -> None:

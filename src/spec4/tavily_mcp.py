@@ -7,6 +7,7 @@ from collections.abc import Coroutine, Generator
 from typing import Any
 
 import litellm
+from litellm.exceptions import BadRequestError as LiteLLMBadRequestError
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
@@ -155,6 +156,14 @@ def _history_has_tool_use(messages: list[dict[str, Any]]) -> bool:
     return False
 
 
+def _is_tool_incompatible_error(exc: Exception) -> bool:
+    """Return True if the error indicates the model rejects tool calling / tool_choice."""
+    msg = str(exc).lower()
+    return "tool" in msg and any(
+        p in msg for p in ("not support", "tool_choice", "unsupported")
+    )
+
+
 def supports_response_format(model: str) -> bool:
     """Return True if the provider/model accepts the `response_format` kwarg.
 
@@ -216,6 +225,8 @@ def stream_turn(
             api_key=llm_config["api_key"],
             stream=True,
         )
+        if "api_base" in llm_config:
+            kwargs["api_base"] = llm_config["api_base"]
         if temperature is not None:
             kwargs["temperature"] = temperature
         if tools:
@@ -223,7 +234,16 @@ def stream_turn(
         if response_format is not None:
             kwargs["response_format"] = response_format
 
-        response = litellm.completion(**kwargs)
+        try:
+            response = litellm.completion(**kwargs)
+        except LiteLLMBadRequestError as exc:
+            if tools and _is_tool_incompatible_error(exc):
+                tools = None
+                kwargs.pop("tools", None)
+                yield "\n\n> ⚠️ Web search disabled: this model does not support tool calling.\n\n"
+                response = litellm.completion(**kwargs)
+            else:
+                raise
 
         full_text = ""
         tool_call_acc: dict[int, dict[str, str]] = {}

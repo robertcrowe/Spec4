@@ -145,6 +145,7 @@ def _setup_tavily_layout(
     prefs: dict[str, Any],
     setup_error: str | None,
     image_support: bool | None = None,
+    tool_support: bool | None = None,
 ) -> html.Div:
     if image_support is True:
         image_alert: Any = dmc.Alert(
@@ -169,6 +170,21 @@ def _setup_tavily_layout(
         )
     else:
         image_alert = html.Div()
+
+    if tool_support is False:
+        tool_alert: Any = dmc.Alert(
+            "This model does not support tool calling — web search will be "
+            "unavailable even if you enter a Tavily key. Go back to choose a "
+            "different model if you need web search.",
+            title="No Tool Support",
+            icon="⚠️",
+            color="yellow",
+            variant="filled",
+            styles={"title": {"color": "#212121"}, "message": {"color": "#212121"}},
+            mb="md",
+        )
+    else:
+        tool_alert = html.Div()
     return html.Div(
         [
             dmc.Title("Connect to Tavily Web Search", order=3, mb="sm"),
@@ -182,6 +198,7 @@ def _setup_tavily_layout(
             _card(
                 dmc.Alert(f"LLM: {session['model']}", color="green", mb="md"),
                 image_alert,
+                tool_alert,
                 dmc.Text(
                     "Enables all agents to search the web for current information. "
                     "Optional — skip if you don't have a Tavily key.",
@@ -220,6 +237,7 @@ def _setup_layout(
     session: dict[str, Any],
     prefs: dict[str, Any],
     image_support: bool | None = None,
+    tool_support: bool | None = None,
 ) -> html.Div:
     labels = providers.all_provider_labels()
     setup_error = session.get("setup_error")
@@ -227,4 +245,4 @@ def _setup_layout(
         return _setup_provider_layout(session, prefs, labels, setup_error)
     if session.get("model") is None:
         return _setup_model_layout(session, prefs, setup_error)
-    return _setup_tavily_layout(session, prefs, setup_error, image_support)
+    return _setup_tavily_layout(session, prefs, setup_error, image_support, tool_support)

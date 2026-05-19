@@ -3,6 +3,10 @@ from collections.abc import Iterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import litellm
+import pytest
+from litellm.exceptions import BadRequestError as LiteLLMBadRequestError
+
 from spec4 import tavily_mcp
 
 
@@ -474,6 +478,123 @@ class TestSupportsResponseFormat:
 
     def test_returns_false_on_empty_model(self) -> None:
         assert tavily_mcp.supports_response_format("") is False
+
+
+class TestIsToolIncompatibleError:
+    def test_detects_not_support_auto_tool(self) -> None:
+        exc = Exception("This model does not support auto tool, please use tool_choice.")
+        assert tavily_mcp._is_tool_incompatible_error(exc) is True
+
+    def test_detects_tool_choice_phrase(self) -> None:
+        exc = Exception("Invalid request: tool_choice not allowed for this model")
+        assert tavily_mcp._is_tool_incompatible_error(exc) is True
+
+    def test_detects_unsupported_tool(self) -> None:
+        exc = Exception("unsupported parameter: tool")
+        assert tavily_mcp._is_tool_incompatible_error(exc) is True
+
+    def test_ignores_unrelated_error(self) -> None:
+        exc = Exception("rate limit exceeded")
+        assert tavily_mcp._is_tool_incompatible_error(exc) is False
+
+    def test_requires_tool_keyword(self) -> None:
+        exc = Exception("not support this feature")
+        assert tavily_mcp._is_tool_incompatible_error(exc) is False
+
+
+class TestStreamTurnToolFallback:
+    """stream_turn retries without tools when the model rejects tool_choice: auto."""
+
+    def _chunk(self, content: str | None, finish_reason: str | None = None) -> MagicMock:
+        chunk = MagicMock()
+        chunk.choices[0].delta.content = content
+        chunk.choices[0].delta.tool_calls = None
+        chunk.choices[0].finish_reason = finish_reason
+        return chunk
+
+    def test_retries_without_tools_on_tool_incompatible_error(self) -> None:
+        ok_chunks = [self._chunk("Hello"), self._chunk("", finish_reason="stop")]
+        call_count = 0
+
+        def fake_completion(**kwargs: Any) -> Any:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise LiteLLMBadRequestError(
+                    message="This model does not support auto tool, please use tool_choice.",
+                    model="qwen",
+                    llm_provider="openai",
+                )
+            return iter(ok_chunks)
+
+        messages: list[Any] = []
+        with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
+            output = "".join(
+                tavily_mcp.stream_turn(
+                    "sys", messages, {"model": "m", "api_key": "k"}, "tv-key"
+                )
+            )
+
+        assert call_count == 2
+        assert "Hello" in output
+        assert "Web search disabled" in output
+
+    def test_retry_call_omits_tools(self) -> None:
+        ok_chunks = [self._chunk("OK"), self._chunk("", finish_reason="stop")]
+        call_args_list: list[dict[str, Any]] = []
+
+        def fake_completion(**kwargs: Any) -> Any:
+            call_args_list.append(kwargs)
+            if len(call_args_list) == 1:
+                raise LiteLLMBadRequestError(
+                    message="does not support auto tool",
+                    model="qwen",
+                    llm_provider="openai",
+                )
+            return iter(ok_chunks)
+
+        with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
+            list(
+                tavily_mcp.stream_turn(
+                    "sys", [], {"model": "m", "api_key": "k"}, "tv-key"
+                )
+            )
+
+        assert "tools" in call_args_list[0]
+        assert "tools" not in call_args_list[1]
+
+    def test_unrelated_bad_request_reraises(self) -> None:
+        def fake_completion(**kwargs: Any) -> Any:
+            raise LiteLLMBadRequestError(
+                message="context window exceeded",
+                model="m",
+                llm_provider="openai",
+            )
+
+        with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
+            with pytest.raises(LiteLLMBadRequestError):
+                list(
+                    tavily_mcp.stream_turn(
+                        "sys", [], {"model": "m", "api_key": "k"}, "tv-key"
+                    )
+                )
+
+    def test_no_fallback_when_no_tools_configured(self) -> None:
+        """Without Tavily, tools=None — error should propagate normally."""
+        def fake_completion(**kwargs: Any) -> Any:
+            raise LiteLLMBadRequestError(
+                message="does not support auto tool",
+                model="m",
+                llm_provider="openai",
+            )
+
+        with patch("spec4.tavily_mcp.litellm.completion", side_effect=fake_completion):
+            with pytest.raises(LiteLLMBadRequestError):
+                list(
+                    tavily_mcp.stream_turn(
+                        "sys", [], {"model": "m", "api_key": "k"}, None
+                    )
+                )
 
 
 class TestResponseFormatPassthrough:

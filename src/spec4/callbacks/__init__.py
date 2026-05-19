@@ -12,6 +12,7 @@ from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
 from spec4 import project_manager, providers, streaming, tavily_mcp
 from spec4.agents._image_probe import probe_image_support
+from spec4.agents._tool_probe import probe_tool_support
 from spec4.app_constants import PATH_TO_PHASE, STATE_IN_PROGRESS
 from spec4.session import (
     _default_session,
@@ -259,6 +260,7 @@ def on_setup_back_provider(n: Any, session: Any) -> Any:
     Output("session", "data", allow_duplicate=True),
     Output("prefs", "data", allow_duplicate=True),
     Output("image-support-store", "data", allow_duplicate=True),
+    Output("tool-support-store", "data", allow_duplicate=True),
     Output("notifications-container", "children", allow_duplicate=True),
     Input("btn-setup-model-continue", "n_clicks"),
     State("setup-model", "value"),
@@ -268,22 +270,35 @@ def on_setup_back_provider(n: Any, session: Any) -> Any:
 )
 def on_setup_model_continue(n: Any, model: Any, session: Any, prefs: Any) -> Any:
     if not n or not model:
-        return no_update, no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update, no_update
+    provider_info = providers.PROVIDERS.get(session.get("provider") or "", {})
+    llm_config: dict[str, Any] = {"model": model, "api_key": session["api_key"]}
+    if "api_base" in provider_info:
+        llm_config["api_base"] = provider_info["api_base"]
     new_session = {
         **session,
         "model": model,
-        "llm_config": {"model": model, "api_key": session["api_key"]},
+        "llm_config": llm_config,
         "setup_error": None,
     }
     new_prefs = {**prefs, "model": model} if prefs.get("save_prefs") else prefs
 
+    api_key = session.get("api_key") or ""
+    api_base = llm_config.get("api_base")
+
     image_support: bool | None = None
     try:
-        image_support = probe_image_support(model, session.get("api_key") or "")
+        image_support = probe_image_support(model, api_key, api_base=api_base)
     except Exception:
         image_support = None
 
-    return new_session, new_prefs, image_support, no_update
+    tool_support: bool | None = None
+    try:
+        tool_support = probe_tool_support(model, api_key, api_base=api_base)
+    except Exception:
+        tool_support = None
+
+    return new_session, new_prefs, image_support, tool_support, no_update
 
 
 @callback(

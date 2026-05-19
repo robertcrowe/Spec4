@@ -81,6 +81,7 @@ app.layout = dmc.MantineProvider(
         dcc.Store(id="prefs", storage_type="local", data={}),
         dcc.Store(id="_last_render", data=0),
         dcc.Store(id="image-support-store", storage_type="local", data=None),
+        dcc.Store(id="tool-support-store", storage_type="local", data=None),
         html.Div(id="_designer-fs-dummy", style={"display": "none"}),
         # Polling interval for streaming agent responses; enabled (max_intervals=-1)
         # while a stream is active, disabled (max_intervals=0) otherwise.
@@ -286,9 +287,10 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
     Input("prefs", "data"),
     State("_last_render", "data"),
     State("image-support-store", "data"),
+    State("tool-support-store", "data"),
     prevent_initial_call="initial_duplicate",
 )
-def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any) -> Any:
+def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any, tool_support: Any) -> Any:
     session = session or _default_session()
     prefs = prefs or {}
 
@@ -309,7 +311,7 @@ def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any)
             new_session = session
         content = _working_dir_layout(session)
     elif phase == "setup":
-        content = _setup_layout(session, prefs, image_support)
+        content = _setup_layout(session, prefs, image_support, tool_support)
     elif phase == "agent_select":
         content = _agent_select_layout(session)
     elif phase == "chat":

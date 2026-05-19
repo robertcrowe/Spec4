@@ -56,14 +56,16 @@ _DELIVERY_TICKS = 6
 
 def _llm_params(
     session: dict[str, Any], image_support: Any
-) -> tuple[str, str, str | None, str | None, bool]:
+) -> tuple[str, str, str | None, str | None, bool, str | None]:
     """Extract LLM connection parameters from the main session dict."""
+    api_base: str | None = (session.get("llm_config") or {}).get("api_base")
     return (
         session.get("model") or "",
         session.get("api_key") or "",
         session.get("tavily_api_key"),
         session.get("working_dir"),
         bool(image_support) if image_support is not None else True,
+        api_base,
     )
 
 
@@ -94,6 +96,7 @@ def _start_gen(
     planning_context: dict[str, Any] | None = None,
     existing_html: str | None = None,
     capture_mode: bool = False,
+    api_base: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
     """Launch generation in a background thread.
 
@@ -123,6 +126,7 @@ def _start_gen(
             planning_context=planning_context,
             existing_html=existing_html,
             capture_mode=capture_mode,
+            api_base=api_base,
         ):
             buf_entry["text"] += chunk
             if _DEV_MODE and not chunk.startswith("__"):
@@ -288,9 +292,9 @@ def on_designer_step2_choice(
     if ctx.triggered_id == "btn-designer-create-new":
         return {**(store or {}), "step": 3}, no_update, no_update
     # "Modify existing" — capture the project's current look and feel
-    model, api_key, tavily_key, wd, support = _llm_params(session or {}, image_support)
+    model, api_key, tavily_key, wd, support, api_base = _llm_params(session or {}, image_support)
     new_store, buf, disabled = _start_gen(
-        store or {}, wd, model, api_key, tavily_key, support, capture_mode=True
+        store or {}, wd, model, api_key, tavily_key, support, capture_mode=True, api_base=api_base
     )
     return new_store, buf, disabled
 
@@ -371,14 +375,14 @@ def on_designer_generate_mock(
             screenshots[i] = {**screenshots[i], "annotation": ann or ""}
     updated = {**store, "screenshots": screenshots}
     sess = session or {}
-    model, api_key, tavily_key, wd, support = _llm_params(sess, image_support)
+    model, api_key, tavily_key, wd, support, api_base = _llm_params(sess, image_support)
     planning_ctx: dict[str, Any] | None = (
         {"vision_statement": sess.get("vision_statement")}
         if sess.get("vision_statement")
         else None
     )
     new_store, buf, disabled = _start_gen(
-        updated, wd, model, api_key, tavily_key, support, planning_ctx
+        updated, wd, model, api_key, tavily_key, support, planning_ctx, api_base=api_base
     )
     return new_store, buf, disabled
 
@@ -648,7 +652,7 @@ def on_designer_regenerate(
     existing_html: str | None = store.get("mock_html") or None
     updated = {**store, "preference_text": pref, "screenshots": screenshots}
     sess = session or {}
-    model, api_key, tavily_key, wd, support = _llm_params(sess, image_support)
+    model, api_key, tavily_key, wd, support, api_base = _llm_params(sess, image_support)
     planning_ctx: dict[str, Any] | None = (
         {"vision_statement": sess.get("vision_statement")}
         if sess.get("vision_statement")
@@ -658,6 +662,7 @@ def on_designer_regenerate(
         updated, wd, model, api_key, tavily_key, support,
         planning_ctx,
         existing_html=existing_html,
+        api_base=api_base,
     )
     return new_store, buf, disabled
 
@@ -729,7 +734,7 @@ def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> A
     if not n or not store:
         return no_update, no_update, no_update
     sess = session or {}
-    model, api_key, tavily_key, wd, support = _llm_params(sess, image_support)
+    model, api_key, tavily_key, wd, support, api_base = _llm_params(sess, image_support)
     existing_html: str | None = None
     if store.get("_has_existing_html") and wd:
         mock_path = pathlib.Path(wd) / ".spec4" / "design" / "mock.html"
@@ -746,5 +751,6 @@ def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> A
         store, wd, model, api_key, tavily_key, support,
         planning_ctx,
         existing_html=existing_html,
+        api_base=api_base,
     )
     return new_store, buf, disabled
