@@ -135,6 +135,26 @@ def _setup_model_layout(
                     ],
                     mt="sm",
                 ),
+                html.Div(
+                    [
+                        dmc.Text(
+                            "Checking model capabilities…",
+                            size="sm",
+                            c="dimmed",
+                            mb="xs",
+                            mt="md",
+                        ),
+                        dmc.Progress(
+                            value=100,
+                            animated=True,
+                            striped=True,
+                            color="blue",
+                            size="sm",
+                        ),
+                    ],
+                    id="setup-probe-progress-container",
+                    style={"display": "none"},
+                ),
             ),
         ]
     )

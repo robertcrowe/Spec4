@@ -83,6 +83,7 @@ app.layout = dmc.MantineProvider(
         html.Div(id="_scroll-dummy", style={"display": "none"}),
         html.Div(id="_progress-dummy", style={"display": "none"}),
         html.Div(id="_progress-show-dummy", style={"display": "none"}),
+        html.Div(id="_progress-probe-dummy", style={"display": "none"}),
         dcc.Store(id="session", storage_type="session", data=_default_session()),
         dcc.Store(id="prefs", storage_type="local", data={}),
         dcc.Store(id="_last_render", data=0),
@@ -231,12 +232,27 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
         if (session && session._stream_id) return window.dash_clientside.no_update;
         var el = document.getElementById('chat-progress-container');
         if (el) el.style.display = 'none';
+        var el2 = document.getElementById('setup-probe-progress-container');
+        if (el2) el2.style.display = 'none';
         return window.dash_clientside.no_update;
     }
     """,
     Output("_progress-dummy", "children"),
     Input("_last_render", "data"),
     State("session", "data"),
+    prevent_initial_call=True,
+)
+
+app.clientside_callback(  # type: ignore[no-untyped-call]
+    """
+    function(n_clicks) {
+        var el = document.getElementById('setup-probe-progress-container');
+        if (el) el.style.display = 'block';
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("_progress-probe-dummy", "children"),
+    Input("btn-setup-model-continue", "n_clicks"),
     prevent_initial_call=True,
 )
 
