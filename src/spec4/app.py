@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
+
+# Suppress litellm's startup warnings about optional AWS dependencies
+# (botocore/Bedrock/SageMaker) that are not used by Spec4.  Must be set
+# before litellm is first imported by any downstream module.
+os.environ.setdefault("LITELLM_LOG", "ERROR")
 
 import dash
 from dash import Input, Output, State, callback, dcc, html, no_update
