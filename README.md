@@ -53,7 +53,7 @@ The app will be available at [http://localhost:8050](http://localhost:8050) in b
 
 - **Six-stage pipeline** — CodeScanner (optional) → Brainstormer → Designer → StackAdvisor → Phaser → Deployer
 - **Designer** — optional parallel stage that generates [an HTML mock of your UI](https://spec4.ai/examples/mock.html) from a vision and (optionally) reference screenshots
-- **Any LLM provider** — works with OpenAI, Anthropic, Google Gemini, Cohere, and Mistral via LiteLLM
+- **Any LLM provider** — works with Anthropic, AWS Bedrock, Cohere, Google Gemini, Mistral, Nebius, and OpenAI via LiteLLM
 - **Web search grounding** — all agents can search the web via Tavily to find canonical documentation
 - **Saved credentials** — optionally remember your provider, model, and API keys in the browser (localStorage via `dcc.Store` — never sent to or stored on the server)
 - **Incremental output** — each agent produces a downloadable artifact you can reuse in a later session
@@ -154,13 +154,17 @@ uv add --dev <package>
 
 | Provider | Models fetched from |
 |----------|-------------------|
-| OpenAI | `api.openai.com/v1/models` |
 | Anthropic | `api.anthropic.com/v1/models` |
-| Google Gemini | `generativelanguage.googleapis.com` |
+| AWS Bedrock | `bedrock.amazonaws.com` |
 | Cohere | `api.cohere.com/v2/models` |
+| Google Gemini | `generativelanguage.googleapis.com` |
 | Mistral | `api.mistral.ai/v1/models` |
+| Nebius | `api.tokenfactory.nebius.com/v1/` |
+| OpenAI | `api.openai.com/v1/models` |
 
 Models are fetched live from each provider's API when you connect, with a hardcoded fallback list if the API is unavailable.
+
+**AWS Bedrock** authentication supports Bedrock API keys, IAM access keys, or ambient AWS credentials (environment variables, `~/.aws/credentials`, or IAM roles).
 
 ---
 
