@@ -9,6 +9,9 @@ from typing import Any
 # before litellm is first imported by any downstream module.
 os.environ.setdefault("LITELLM_LOG", "ERROR")
 
+import litellm as _litellm
+_litellm.suppress_debug_info = True
+
 import dash
 from dash import Input, Output, State, callback, dcc, html, no_update
 import dash_mantine_components as dmc

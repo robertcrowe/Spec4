@@ -306,7 +306,6 @@ def _stream_suppressing_json(
                 f"{type(exc).__name__}: {exc}",
                 flush=True,
             )
-            traceback.print_exc()
         raise
     finally:
         if _DEV_MODE:

@@ -8,11 +8,14 @@ import litellm
 _1PX_RED_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
 
 
-def probe_image_support(model: str, api_key: str, api_base: str | None = None) -> bool:
+def probe_image_support(
+    model: str, api_key: str, api_base: str | None = None, **extra: Any
+) -> bool:
     """Return True if the model accepts image inputs.
 
     Sends a real (minimal) API call with a 1×1 PNG.  A successful response
     means the model processed the image; any exception means it didn't.
+    Extra kwargs (e.g. aws_access_key_id) are forwarded to litellm.completion.
     """
     try:
         kwargs: dict[str, Any] = {
@@ -31,12 +34,14 @@ def probe_image_support(model: str, api_key: str, api_base: str | None = None) -
                     ],
                 }
             ],
-            "api_key": api_key,
             "max_tokens": 5,
             "stream": False,
         }
+        if api_key:
+            kwargs["api_key"] = api_key
         if api_base is not None:
             kwargs["api_base"] = api_base
+        kwargs.update(extra)
         litellm.completion(**kwargs)
         return True
     except Exception:

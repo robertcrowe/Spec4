@@ -353,6 +353,7 @@ def generate_mock_streaming(
     existing_html: str | None = None,
     capture_mode: bool = False,
     api_base: str | None = None,
+    extra_kwargs: dict[str, Any] | None = None,
 ) -> Iterator[str]:
     messages: list[dict[str, Any]] = build_mock_prompt(
         session, ui_source_snippets, image_support, planning_context, existing_html,
@@ -367,11 +368,14 @@ def generate_mock_streaming(
             kwargs: dict[str, Any] = {
                 "model": model,
                 "messages": messages,
-                "api_key": api_key,
                 "stream": True,
             }
+            if api_key:
+                kwargs["api_key"] = api_key
             if api_base is not None:
                 kwargs["api_base"] = api_base
+            if extra_kwargs:
+                kwargs.update(extra_kwargs)
             if tools:
                 kwargs["tools"] = tools
 

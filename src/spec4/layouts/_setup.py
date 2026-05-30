@@ -48,8 +48,9 @@ def _setup_provider_layout(
                     id="setup-api-key",
                     label="API Key",
                     value=prefs.get("api_key") or "",
-                    mb="md",
+                    mb="xs",
                 ),
+                html.Div(id="setup-api-key-hint", style={"marginBottom": "var(--mantine-spacing-md)"}),
                 dmc.Checkbox(
                     id="setup-save-prefs",
                     label="Remember provider and keys in this browser? (stored in localStorage only)",  # noqa: E501

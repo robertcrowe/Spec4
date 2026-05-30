@@ -21,24 +21,29 @@ _PROBE_TOOL: dict[str, Any] = {
 }
 
 
-def probe_tool_support(model: str, api_key: str, api_base: str | None = None) -> bool:
+def probe_tool_support(
+    model: str, api_key: str, api_base: str | None = None, **extra: Any
+) -> bool:
     """Return True if the model accepts tool/function calling.
 
     Sends a real minimal API call with a tool definition.  A successful
     response (text or tool call) means the model accepted the parameter;
     any exception means it didn't.
+    Extra kwargs (e.g. aws_access_key_id) are forwarded to litellm.completion.
     """
     try:
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": [{"role": "user", "content": "What color is a banana?"}],
             "tools": [_PROBE_TOOL],
-            "api_key": api_key,
             "max_tokens": 10,
             "stream": False,
         }
+        if api_key:
+            kwargs["api_key"] = api_key
         if api_base is not None:
             kwargs["api_base"] = api_base
+        kwargs.update(extra)
         litellm.completion(**kwargs)
         return True
     except Exception:

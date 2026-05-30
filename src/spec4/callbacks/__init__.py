@@ -8,7 +8,8 @@ import zipfile
 from typing import Any
 
 
-from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
+from dash import ALL, Input, Output, State, callback, ctx, dcc, html, no_update
+import dash_mantine_components as dmc
 
 from spec4 import project_manager, providers, streaming, tavily_mcp
 from spec4.agents._image_probe import probe_image_support
@@ -184,6 +185,23 @@ def on_create_folder(n: Any, name: Any, session: Any) -> Any:
 
 
 @callback(
+    Output("setup-api-key-hint", "children"),
+    Input("setup-provider", "value"),
+    prevent_initial_call=False,
+)
+def on_provider_hint(provider_label: Any) -> Any:
+    if providers.provider_key_for_label(provider_label or "") == "bedrock":
+        return dmc.Text(
+            "Bedrock API key: enter KEY:REGION (e.g. bdak_…:us-east-1). "
+            "IAM credentials: ACCESS_KEY_ID:SECRET_ACCESS_KEY:REGION[:SESSION_TOKEN]. "
+            "Leave blank to use ambient credentials (env vars, ~/.aws/credentials, IAM role).",
+            size="xs",
+            c="dimmed",
+        )
+    return html.Div()
+
+
+@callback(
     Output("session", "data", allow_duplicate=True),
     Output("prefs", "data", allow_duplicate=True),
     Input("btn-setup-connect", "n_clicks"),
@@ -199,16 +217,16 @@ def on_setup_connect(
 ) -> Any:
     if not n:
         return no_update, no_update
-    if not api_key or not api_key.strip():
+    provider_key = providers.provider_key_for_label(provider_label)
+    if provider_key != "bedrock" and (not api_key or not api_key.strip()):
         return {**session, "setup_error": "Please enter an API key."}, no_update
 
-    provider_key = providers.provider_key_for_label(provider_label)
-    models, err = providers.list_models(provider_key, api_key.strip())
+    models, err = providers.list_models(provider_key, (api_key or "").strip())
     if models:
         new_session = {
             **session,
             "provider": provider_key,
-            "api_key": api_key.strip(),
+            "api_key": (api_key or "").strip(),
             "available_models": models,
             "setup_error": None,
         }
@@ -217,13 +235,25 @@ def on_setup_connect(
             {
                 **prefs,
                 "provider": provider_key,
-                "api_key": api_key.strip(),
+                "api_key": (api_key or "").strip(),
                 "save_prefs": True,
             }
             if save_prefs
             else base
         )
         return new_session, new_prefs
+    if provider_key == "bedrock":
+        if "partial credentials" in err.lower():
+            err = (
+                "Partial IAM credentials — use ACCESS_KEY_ID:SECRET_ACCESS_KEY:REGION, "
+                "or switch to a Bedrock API key (KEY:REGION)."
+            )
+        elif "unrecognizedclientexception" in err.lower() or ("invalid" in err.lower() and "token" in err.lower()):
+            err = (
+                "AWS credentials rejected. "
+                "If you have a Bedrock API key, enter it as KEY:REGION (e.g. bdak_…:us-east-1). "
+                "For IAM credentials use ACCESS_KEY_ID:SECRET_ACCESS_KEY:REGION[:SESSION_TOKEN]."
+            )
     return {**session, "setup_error": f"Connection failed: {err}"}, no_update
 
 
@@ -271,10 +301,15 @@ def on_setup_back_provider(n: Any, session: Any) -> Any:
 def on_setup_model_continue(n: Any, model: Any, session: Any, prefs: Any) -> Any:
     if not n or not model:
         return no_update, no_update, no_update, no_update, no_update
-    provider_info = providers.PROVIDERS.get(session.get("provider") or "", {})
-    llm_config: dict[str, Any] = {"model": model, "api_key": session["api_key"]}
+    provider_key = session.get("provider") or ""
+    provider_info = providers.PROVIDERS.get(provider_key, {})
+    llm_config: dict[str, Any] = {"model": model}
     if "api_base" in provider_info:
         llm_config["api_base"] = provider_info["api_base"]
+    if provider_key == "bedrock":
+        llm_config.update(providers.bedrock_auth_kwargs(session.get("api_key") or ""))
+    else:
+        llm_config["api_key"] = session.get("api_key", "")
     new_session = {
         **session,
         "model": model,
@@ -283,18 +318,25 @@ def on_setup_model_continue(n: Any, model: Any, session: Any, prefs: Any) -> Any
     }
     new_prefs = {**prefs, "model": model} if prefs.get("save_prefs") else prefs
 
-    api_key = session.get("api_key") or ""
+    # Bedrock Converse is inherently multimodal and tool-capable; probing
+    # via non-streaming completion calls is unreliable against the Converse
+    # API, so skip it and assume both are supported.
+    if provider_key == "bedrock":
+        return new_session, new_prefs, True, True, no_update
+
+    api_key = llm_config.get("api_key") or ""
     api_base = llm_config.get("api_base")
+    aws_kwargs = {k: v for k, v in llm_config.items() if k.startswith("aws_")}
 
     image_support: bool | None = None
     try:
-        image_support = probe_image_support(model, api_key, api_base=api_base)
+        image_support = probe_image_support(model, api_key, api_base=api_base, **aws_kwargs)
     except Exception:
         image_support = None
 
     tool_support: bool | None = None
     try:
-        tool_support = probe_tool_support(model, api_key, api_base=api_base)
+        tool_support = probe_tool_support(model, api_key, api_base=api_base, **aws_kwargs)
     except Exception:
         tool_support = None
 

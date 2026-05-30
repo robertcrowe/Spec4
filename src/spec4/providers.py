@@ -5,69 +5,92 @@ import urllib.error
 import urllib.request
 from typing import Any
 
+import boto3
+
 PROVIDERS: dict[str, dict[str, Any]] = {
-    "openai": {
-        "label": "OpenAI",
-        "env_var": "OPENAI_API_KEY",
-        "models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
-    },
     "anthropic": {
         "label": "Anthropic",
         "env_var": "ANTHROPIC_API_KEY",
-        "models": [
-            "claude-opus-4-6",
-            "claude-sonnet-4-6",
-            "claude-haiku-4-5-20251001",
-        ],
     },
-    "gemini": {
-        "label": "Google Gemini",
-        "env_var": "GEMINI_API_KEY",
-        "models": [
-            "gemini/gemini-2.0-flash",
-            "gemini/gemini-1.5-pro",
-            "gemini/gemini-1.5-flash",
-        ],
+    "bedrock": {
+        "label": "AWS Bedrock",
+        "env_var": "AWS_ACCESS_KEY_ID",
     },
     "cohere": {
         "label": "Cohere",
         "env_var": "COHERE_API_KEY",
-        "models": ["command-r-plus", "command-r", "command"],
+    },
+    "gemini": {
+        "label": "Google Gemini",
+        "env_var": "GEMINI_API_KEY",
     },
     "mistral": {
         "label": "Mistral",
         "env_var": "MISTRAL_API_KEY",
-        "models": [
-            "mistral/mistral-large-latest",
-            "mistral/mistral-small-latest",
-            "mistral/open-mistral-7b",
-        ],
     },
     "nebius": {
         "label": "Nebius Token Factory",
         "env_var": "NEBIUS_API_KEY",
         "api_base": "https://api.tokenfactory.nebius.com/v1/",
-        "models": [
-            "openai/meta-llama/Meta-Llama-3.1-70B-Instruct",
-            "openai/meta-llama/Meta-Llama-3.1-8B-Instruct",
-            "openai/mistralai/Mixtral-8x7B-Instruct-v0.1",
-        ],
+    },
+    "openai": {
+        "label": "OpenAI",
+        "env_var": "OPENAI_API_KEY",
     },
 }
+
+
+def _is_iam_access_key(key: str) -> bool:
+    """Return True if key looks like an AWS IAM access key ID (AKIA…/ASIA… prefix)."""
+    return key.upper()[:4] in ("AKIA", "ASIA", "AROA", "AIPA", "ANPA", "ANVA", "APKA")
+
+
+def bedrock_auth_kwargs(api_key: str) -> dict[str, str]:
+    """Parse Bedrock credentials into litellm kwargs.
+
+    Bedrock API key (new-style, recommended):
+      API_KEY:REGION
+
+    IAM access key (legacy):
+      ACCESS_KEY_ID:SECRET_ACCESS_KEY:REGION
+      ACCESS_KEY_ID:SECRET_ACCESS_KEY:REGION:SESSION_TOKEN
+
+    Blank → ambient AWS credential chain (env vars, ~/.aws/credentials, IAM role).
+
+    Detection: if the first token starts with a known IAM prefix (AKIA/ASIA/…)
+    it is treated as an IAM access key; everything else is a Bedrock API key.
+    """
+    parts = (api_key or "").split(":", 3)
+    first = parts[0].strip()
+
+    if not first:
+        return {}
+
+    if _is_iam_access_key(first):
+        result: dict[str, str] = {"aws_access_key_id": first}
+        if len(parts) >= 2 and parts[1].strip():
+            result["aws_secret_access_key"] = parts[1].strip()
+        if len(parts) >= 3 and parts[2].strip():
+            result["aws_region_name"] = parts[2].strip()
+        if len(parts) >= 4 and parts[3].strip():
+            result["aws_session_token"] = parts[3].strip()
+        return result
+
+    # Bedrock API key
+    result = {"api_key": first}
+    if len(parts) >= 2 and parts[1].strip():
+        result["aws_region_name"] = parts[1].strip()
+    return result
 
 
 def list_models(provider_key: str, api_key: str) -> tuple[list[str], str]:
     """Fetch available chat models from the provider's API.
 
-    Returns (models, "") on success or ([], error_message) on HTTP/network failure.
-    Falls back to the hardcoded model list if the API returns an empty result.
+    Returns (models, "") on success or ([], error_message) on failure.
     """
-    fallback = PROVIDERS[provider_key]["models"]
     try:
         raw = _fetch_models(provider_key, api_key)
-        # Preserve order while removing duplicates (some APIs return the same model ID twice).  # noqa: E501
-        models = list(dict.fromkeys(raw))
-        return (models if models else fallback), ""
+        return sorted(dict.fromkeys(raw)), ""
     except urllib.error.HTTPError as exc:
         return [], f"HTTP {exc.code}: {exc.reason}"
     except Exception as exc:
@@ -99,6 +122,33 @@ def _fetch_models(provider_key: str, api_key: str) -> list[str]:
             {"x-api-key": api_key, "anthropic-version": "2023-06-01"},
         )
         return [m["id"] for m in data.get("data", [])]
+
+    if provider_key == "bedrock":
+        creds = bedrock_auth_kwargs(api_key)
+        region = creds.get("aws_region_name", "us-east-1")
+        if "api_key" in creds:
+            # New-style Bedrock API key — use REST API with bearer token.
+            data = _json_get(
+                f"https://bedrock.{region}.amazonaws.com/foundation-models",
+                {"Authorization": f"Bearer {creds['api_key']}"},
+            )
+            return [
+                f"bedrock/converse/{m['modelId']}"
+                for m in data.get("modelSummaries", [])
+                if "ON_DEMAND" in m.get("inferenceTypesSupported", [])
+            ]
+        # IAM or ambient credentials — use boto3/SigV4.
+        client_kwargs: dict[str, Any] = {"service_name": "bedrock", "region_name": region}
+        for k in ("aws_access_key_id", "aws_secret_access_key", "aws_session_token"):
+            if creds.get(k):
+                client_kwargs[k] = creds[k]
+        client = boto3.client(**client_kwargs)
+        response = client.list_foundation_models(byOutputModality="TEXT")
+        return [
+            f"bedrock/converse/{m['modelId']}"
+            for m in response.get("modelSummaries", [])
+            if "ON_DEMAND" in m.get("inferenceTypesSupported", [])
+        ]
 
     if provider_key == "gemini":
         data = _json_get(

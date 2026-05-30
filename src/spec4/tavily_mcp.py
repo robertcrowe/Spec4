@@ -222,9 +222,13 @@ def stream_turn(
         kwargs: dict[str, Any] = dict(
             model=llm_config["model"],
             messages=llm_messages,
-            api_key=llm_config["api_key"],
             stream=True,
         )
+        if llm_config.get("api_key"):
+            kwargs["api_key"] = llm_config["api_key"]
+        for _aws_key in ("aws_access_key_id", "aws_secret_access_key", "aws_region_name", "aws_session_token"):
+            if llm_config.get(_aws_key):
+                kwargs[_aws_key] = llm_config[_aws_key]
         if "api_base" in llm_config:
             kwargs["api_base"] = llm_config["api_base"]
         if temperature is not None:
