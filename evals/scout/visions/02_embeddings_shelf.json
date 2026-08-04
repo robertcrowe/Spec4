@@ -1,0 +1,28 @@
+{
+  "purpose": "A personal reading library where people save articles, notes, and highlights, then find them again by meaning rather than by remembering the exact words they contained.",
+  "target_audience": [
+    "Researchers and writers with large personal archives",
+    "Anyone who saves more than they can remember"
+  ],
+  "key_features_mvp": [
+    {
+      "meaning_search": {
+        "description": "A user describes what they are looking for in their own words and gets back the saved items that match in meaning, ranked by relevance, even when none of the words overlap. The result is the user's own saved items, ranked — never an invented answer.",
+        "example": "\"that essay about feeling behind at work\" surfaces a saved piece titled \"The Comparison Trap.\""
+      }
+    },
+    {
+      "related_items": {
+        "description": "On any saved item, show other saved items that are close to it in topic."
+      }
+    },
+    {
+      "quick_save": {
+        "description": "Save articles via a browser extension or share sheet."
+      }
+    }
+  ],
+  "differentiators": [
+    "Finds things by meaning and returns your own library ranked; it never writes an answer for you."
+  ]
+}

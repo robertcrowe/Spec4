@@ -15,12 +15,31 @@ Spec4 is a Dash app (using Dash Mantine Components) that guides you from idea to
 
 ---
 
+## Built With Spec4 (BWS4)
+
+<img align="right" src="https://github.com/robertcrowe/Spec4/raw/main/BWS4-logos/BWS4-white-100.png" alt="BWS4 logo" width="100" />
+
+**[Built With Spec4 (BWS4)](https://bw.spec4.ai)** is the companion showcase: a live gallery of small example apps, every one of them planned with Spec4 and built by AI coding agents working directly from Spec4's phase files. Each app demonstrates one rung of the nine-tier complexity ladder that Spec4's Agentifier recommends from, so you can see what each pattern looks like as working software — and what Spec4's artifacts turn into when a coding agent executes them.
+
+| Example app | Pattern demonstrated |
+|-------------|----------------------|
+| [Embeddings](https://bw.spec4.ai/embeddings) | Semantic similarity via vector representations |
+| [Single Call](https://bw.spec4.ai/single-call) | One prompt in, one response out — plain or schema-constrained |
+| [RAG](https://bw.spec4.ai/rag) | Retrieval-augmented generation with cited passages |
+| [Tool Use](https://bw.spec4.ai/tool-use) | A real function-calling loop with live web search |
+| [Chained Calls](https://bw.spec4.ai/chained-calls) | Sequential calls, each building on the last |
+| [Planning Agent](https://bw.spec4.ai/planning) | A model that plans its own research steps, streamed live |
+| [Orchestrated Subagents](https://bw.spec4.ai/orchestrated) | A coordinator briefing parallel specialists and merging their answers |
+| [Multi-Agent Collaboration](https://bw.spec4.ai/collab) | Peer agents negotiating with private, mutually invisible constraints |
+
+---
+
 ## Requirements
 
 - Python 3.12+
 - **[uv](https://docs.astral.sh/uv/) package manager**
 - An API key for at least one supported LLM provider
-- _(Optional)_ A [Tavily](https://tavily.com/) API key for web search
+- _(Optional)_ A [Tavily](https://tavily.com/) or [Exa](https://exa.ai/) API key for web search
 
 ---
 
@@ -49,12 +68,38 @@ The app will be available at [http://localhost:8050](http://localhost:8050) in b
 
 ---
 
+## Upgrading
+
+**If you installed from PyPI:**
+
+```bash
+uv tool upgrade spec4
+spec4 --version   # confirm the new version
+```
+
+**If you run from source:**
+
+```bash
+cd spec4
+git pull
+make install      # re-sync .venv with any changed dependencies
+make run
+```
+
+Upgrades never touch your project artifacts: everything Spec4 has produced for a
+project lives in the `.spec4/` folder inside that project's directory and is
+picked up again the next time you select it. Saved provider credentials live in
+your browser's localStorage and also carry over.
+
+---
+
 ## Features
 
-- **Six-stage pipeline** — CodeScanner (optional) → Brainstormer → Designer → StackAdvisor → Phaser → Deployer
+- **Seven-stage pipeline** — CodeScanner (optional) → Brainstormer → Agentifier → Designer (optional) → StackAdvisor → Phaser → Deployer
+- **Agentifier** — identifies AI/LLM integration opportunities in your vision, recommends the right complexity tier and implementation mechanisms for each, drafts a full implementation spec per feature, and produces `ai_features.json` consumed by StackAdvisor, Phaser, and Deployer
 - **Designer** — optional parallel stage that generates [an HTML mock of your UI](https://spec4.ai/examples/mock.html) from a vision and (optionally) reference screenshots
 - **Any LLM provider** — works with Anthropic, AWS Bedrock, Cohere, Google Gemini, Mistral, Nebius, and OpenAI via LiteLLM
-- **Web search grounding** — all agents can search the web via Tavily to find canonical documentation
+- **Web search grounding** — all agents can search the web via Tavily or Exa to find canonical documentation
 - **Saved credentials** — optionally remember your provider, model, and API keys in the browser (localStorage via `dcc.Store` — never sent to or stored on the server)
 - **Incremental output** — each agent produces a downloadable artifact you can reuse in a later session
 - **Jump-in anywhere** — pick up at any stage by selecting a project directory with previously saved artifacts
@@ -69,7 +114,10 @@ The app will be available at [http://localhost:8050](http://localhost:8050) in b
 Analyzes an existing project directory to understand its architecture, technology stack, and coding style. Results inform Brainstormer and StackAdvisor when working on brownfield projects. Produces `code_review.json`.
 
 ### 🧠 Brainstormer
-Develops a clear project vision through focused, one-at-a-time questions. Identifies technical standards via web search and embeds canonical documentation links in the output. Produces `vision.json`.
+Develops a clear project vision through focused, one-at-a-time questions. Identifies technical standards via web search and embeds canonical documentation links in the output. On completion it also derives a technology-agnostic behavioral spec for every MVP feature (inputs, outputs, success criteria, failure modes). Produces `vision.json` and `feature_specs.json`.
+
+### 🤖 Agentifier
+Identifies every AI/LLM integration opportunity in your project vision, recommends the right complexity tier for each (from a nine-level ladder: deterministic → embeddings → single_call → RAG → tool agent → chained calls → planning agent → orchestrated subagents → multi-agent collaboration), and selects the implementation mechanisms that genuinely apply from a six-pattern library (structured outputs, retrieval reranking, parallel fan-out, reflection, human-in-the-loop, MCP reuse). Both decisions are grounded in a versioned Markdown pattern library whose when-to-use and over-engineering guidance is injected into the analysis prompts — wanting a mechanism never inflates a tier, and each chosen mechanism's canonical definition travels into the phase files the coding agent receives. Drafts a full implementation spec per feature (inputs, outputs, evals, budgets, failure modes, mechanisms) and produces system-level cross-cutting recommendations (observability, eval cadence, provider strategy, tool protocol strategy, and more). Produces `ai_features.json`, consumed downstream by StackAdvisor, Phaser, and Deployer. Supports both greenfield and brownfield projects.
 
 ### 🎨 Designer *(optional, parallel)*
 Generates a single-file HTML mock of your UI from your vision and reference screenshots. Supports two modes — create from scratch, or modify an existing UI while preserving its look and feel — with iterative refinement. Skipped automatically for CLI/terminal projects. Produces `design/mock.html`. [Sample Design Mock](https://spec4.ai/examples/mock.html)
@@ -96,7 +144,7 @@ Plans the path from working code to a running production deployment. Walks throu
 ## Usage
 
 1. **Select a project directory** — new or existing; artifacts are saved to `.spec4/` inside it.
-2. **Connect** — select a provider, enter your API key, and choose a model. Optionally add a Tavily key for web search.
+2. **Connect** — select a provider, enter your API key, and choose a model. Optionally pick a web search provider (Tavily or Exa) and add its key.
 3. **Choose a starting point** — pick an agent to begin with.
 4. **Plan** — chat with each agent. When an agent completes, download the result and continue to the next agent.
 
@@ -115,18 +163,40 @@ src/spec4/
 ├── session.py              # Session defaults, agent runner, artifact persistence
 ├── streaming.py            # Background-thread streaming + provider error formatting
 ├── providers.py            # Provider/model registry, live model fetching
-├── tavily_mcp.py           # Tavily web search integration (async bridge)
-├── project_manager.py      # .spec4/ artifact persistence
+├── llm.py                  # LLM conversation turns + web search tool loop
+├── websearch.py            # Web search providers (Tavily, Exa) — MCP async bridge
+├── project_manager.py      # .spec4/ artifact persistence + phase-file assembly
+├── feature_specs.py        # Shared spec renderer (Phaser context + phase files)
+├── design_manifest.py      # Design-mock manifest joins for Phaser
+├── stack_routing.py        # Deterministic stack→phase and NFR→phase joins
 ├── agents/
 │   ├── code_scanner.py     # Code review agent
 │   ├── brainstormer.py     # Vision development agent
+│   ├── feature_speccer.py  # Post-vision behavioral feature specs (feature_specs.json)
 │   ├── stack_advisor.py    # Technology stack recommendation agent
 │   ├── phaser.py           # Incremental phase planning agent
 │   ├── deployer.py         # Deployment planning agent (terminal pipeline stage)
 │   └── designer.py         # UI mock generation agent (parallel, optional)
+├── agentifier/             # AI feature identification and specification pipeline
+│   ├── agentifier.py       # Orchestrator: catalog → spec → cross-cutting → priority
+│   ├── scout.py            # Sub-agent: surface AI opportunity candidates
+│   ├── tier_analyst.py     # Sub-agent: recommend complexity tier per candidate
+│   ├── spec_drafter.py     # StreamingSubAgent: draft per-feature implementation spec
+│   ├── cross_cutting_analyst.py  # StreamingSubAgent: system-level recommendations
+│   ├── reference_verifier.py     # Web-search-backed reference URL enrichment
+│   ├── pattern_loader.py   # Load and validate the tier/mechanism pattern library
+│   ├── subagents.py        # Sub-agent protocol, registry, and error types
+│   └── patterns/           # Markdown pattern library (tiers/ and mechanisms/)
 ├── callbacks/              # Dash server-side callbacks (main pipeline + designer)
 └── layouts/                # Page layout functions (chat, setup, designer, shared)
-tests/                      # pytest test suite
+tests/
+├── agentifier/             # Agentifier unit tests
+├── integration/            # End-to-end pipeline tests (mocked LLMs)
+└── test_*.py               # Agent and utility unit tests
+evals/                      # On-demand measurement harnesses (real LLM calls;
+├── agentifier/             #   not part of make test) — mechanism probe,
+├── tier_calibration/       #   tier calibration, Scout/Phaser/Deployer/
+└── ...                     #   StackAdvisor/Designer probes
 Makefile                    # Common commands
 ```
 
@@ -148,9 +218,13 @@ uv add <package>
 uv add --dev <package>
 ```
 
+On-demand eval harnesses live in `evals/` — they make real LLM calls, are never
+run by `make test`, and exist to measure prompt/pattern changes before and after
+(see `evals/agentifier/README.md` and `evals/tier_calibration/README.md`).
+
 ---
 
-## Supported providers
+## Supported Model Providers
 
 | Provider | Models fetched from |
 |----------|-------------------|
@@ -161,10 +235,24 @@ uv add --dev <package>
 | Mistral | `api.mistral.ai/v1/models` |
 | Nebius | `api.tokenfactory.nebius.com/v1/` |
 | OpenAI | `api.openai.com/v1/models` |
+| OpenRouter | `openrouter.ai/api/v1/models` |
 
 Models are fetched live from each provider's API when you connect, with a hardcoded fallback list if the API is unavailable.
 
 **AWS Bedrock** authentication supports Bedrock API keys, IAM access keys, or ambient AWS credentials (environment variables, `~/.aws/credentials`, or IAM roles).
+
+---
+
+## Supported Search Providers
+
+Web search grounds agent recommendations in live documentation and is available to every agent in the pipeline. It is optional — without a key the agents still run, just without live grounding. Both providers are reached through their hosted MCP servers, so there is nothing extra to install:
+
+| Provider | Connected via | Get a key |
+|----------|---------------|-----------|
+| Tavily *(default)* | `mcp.tavily.com` | [tavily.com](https://tavily.com/) |
+| Exa | `mcp.exa.ai` | [exa.ai](https://exa.ai/) |
+
+Pick the search provider and enter its API key on the Connect screen, alongside your model provider.
 
 ---
 

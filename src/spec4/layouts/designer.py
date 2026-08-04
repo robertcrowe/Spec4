@@ -7,7 +7,13 @@ from dash import dcc, html
 import dash_mantine_components as dmc
 
 from spec4 import project_manager
-from spec4.agents.designer import detect_has_ui_source, detect_no_ui, load_session
+from spec4.app_constants import PROJECT_MODE_NEW
+from spec4.agents.designer import (
+    detect_has_ui_source,
+    detect_no_ui,
+    load_session,
+    revision_delta,
+)
 
 _PLACEHOLDER_HTML = (
     "<!DOCTYPE html><html><head><meta charset='utf-8'>"
@@ -24,8 +30,8 @@ _PLACEHOLDER_HTML = (
 )
 
 
-def _design_dir(working_dir: str | None) -> pathlib.Path:
-    return pathlib.Path(working_dir or ".") / ".spec4" / "design"
+def _design_dir(working_dir: str | None, version: int) -> pathlib.Path:
+    return pathlib.Path(working_dir or ".") / ".spec4" / f"v{version}" / "design"
 
 
 def _default_designer_session(step: int = 2) -> dict[str, Any]:
@@ -64,24 +70,46 @@ def _step1_content() -> Any:
     )
 
 
-def _step2_content(has_existing_ui: bool = True) -> Any:
-    prompt = (
-        "Would you like to modify an existing look and feel, or create a brand-new design?"
-        if has_existing_ui
-        else "Would you like to create a brand-new design for your application?"
-    )
+def _step2_content(has_existing_ui: bool = True, is_revision: bool = False) -> Any:
+    if is_revision:
+        prompt = (
+            "This revision updates your project. Carry your existing design "
+            "forward and update it for these changes, or start over with a "
+            "brand-new design?"
+        )
+    elif has_existing_ui:
+        prompt = (
+            "Would you like to modify an existing look and feel, "
+            "or create a brand-new design?"
+        )
+    else:
+        prompt = "Would you like to create a brand-new design for your application?"
+
+    primary: Any
+    if is_revision:
+        primary = dmc.Button(
+            "Carry design forward & update",
+            id="btn-designer-carry-forward",
+        )
+    else:
+        primary = dmc.Button(
+            "Modify existing look and feel",
+            id="btn-designer-modify-existing",
+            variant="outline",
+            style={"display": "none"} if not has_existing_ui else {},
+        )
+    create_kwargs: dict[str, Any] = {"variant": "outline"} if is_revision else {}
     return dmc.Stack(
         [
             dmc.Text(prompt, c="dimmed"),
             dmc.Group(
                 [
+                    primary,
                     dmc.Button(
-                        "Modify existing look and feel",
-                        id="btn-designer-modify-existing",
-                        variant="outline",
-                        style={"display": "none"} if not has_existing_ui else {},
+                        "Create new design",
+                        id="btn-designer-create-new",
+                        **create_kwargs,
                     ),
-                    dmc.Button("Create new design", id="btn-designer-create-new"),
                     dmc.Button(
                         "Skip Designer",
                         id="btn-designer-skip-2",
@@ -225,7 +253,9 @@ def _step5_content(buffer_data: dict[str, Any] | None = None) -> Any:
         dmc.Alert(error, color="red", variant="light", title="Generation Error")
         if error
         else dmc.Alert(
-            "Generating your mock — this may take several minutes.",
+            "Generating your mock — this may take several minutes. "
+            "If you think it may have finished but did not display "
+            "your mock, try refreshing the page.",
             color="blue",
             variant="light",
         ),
@@ -237,7 +267,7 @@ def _step5_content(buffer_data: dict[str, Any] | None = None) -> Any:
             color="red" if error else "blue",
         ),
         dmc.Text(
-            f"Tokens received: {tokens}",
+            f"Chars received: {tokens}",
             id="mock-token-count",
             c="dimmed",
             size="sm",
@@ -260,6 +290,30 @@ _MOCK_DISCLAIMER = dmc.Alert(
 )
 
 
+def _fullscreen_row() -> Any:
+    """Full Screen control for a mock preview.
+
+    Shared by the preview (step 6) and refine (step 7) views. Both render a
+    ``mock-iframe`` at 600px, and both need the escape hatch — a brownfield
+    revision round enters at step 7 by way of carry-forward, so the refine view
+    is the first (and until the regenerate finishes, only) place the developer
+    sees the carried mock. Only one step renders at a time, so the shared button
+    id is unambiguous; the clientside handler reads ``mock_html`` from the
+    designer store, which both steps populate.
+    """
+    return dmc.Group(
+        [
+            dmc.Button(
+                "⛶ Full Screen",
+                id="mock-fullscreen-btn",
+                variant="outline",
+                size="sm",
+            ),
+        ],
+        justify="flex-end",
+    )
+
+
 def _stale_banner(stale: list[str]) -> Any:
     """Banner shown above the mock preview when the vision is newer than the mock."""
     parts = (
@@ -270,27 +324,16 @@ def _stale_banner(stale: list[str]) -> Any:
     return dmc.Alert(
         [
             dmc.Text(
-                f"I notice that {parts} has been updated since this mock was "
-                f"generated. Would you like me to revise the mock?",
+                f"The mock is out of date: {parts} has been updated since it "
+                "was generated. Regenerating will discard this mock and create "
+                "an entirely new one from the current vision and AI features.",
                 mb="sm",
             ),
-            dmc.Group(
-                [
-                    dmc.Button(
-                        "Revise mock",
-                        id="btn-designer-revise-stale",
-                        color="blue",
-                        size="sm",
-                    ),
-                    dmc.Button(
-                        "Keep as is",
-                        id="btn-designer-keep-stale",
-                        variant="outline",
-                        color="gray",
-                        size="sm",
-                    ),
-                ],
-                gap="sm",
+            dmc.Button(
+                "Regenerate mock",
+                id="btn-designer-revise-stale",
+                color="blue",
+                size="sm",
             ),
         ],
         title="Upstream changes detected",
@@ -306,17 +349,7 @@ def _step6_content(store: dict[str, Any]) -> Any:
         children.append(_stale_banner(stale_inputs))
     children.extend(
         [
-            dmc.Group(
-                [
-                    dmc.Button(
-                        "⛶ Full Screen",
-                        id="mock-fullscreen-btn",
-                        variant="outline",
-                        size="sm",
-                    ),
-                ],
-                justify="flex-end",
-            ),
+            _fullscreen_row(),
             _MOCK_DISCLAIMER,
             html.Iframe(
                 id="mock-iframe",
@@ -329,6 +362,42 @@ def _step6_content(store: dict[str, Any]) -> Any:
                     "borderRadius": "8px",
                 },
             ),
+        ]
+    )
+    if store.get("finalized"):
+        children.append(
+            dmc.Alert(
+                "Mock approved and saved. You can now continue to Stack Advisor.",
+                color="green",
+                variant="light",
+            )
+        )
+        children.append(
+            dmc.Group(
+                [
+                    dmc.Button(
+                        "Continue to Stack Advisor →",
+                        id="btn-designer-continue-stack",
+                        color="green",
+                    ),
+                    dmc.Button(
+                        "✏ Refine",
+                        id="btn-designer-refine",
+                        color="blue",
+                        variant="outline",
+                    ),
+                    dmc.Button(
+                        "↺ Start Over",
+                        id="btn-designer-start-over",
+                        variant="outline",
+                        color="red",
+                    ),
+                ],
+                gap="sm",
+            )
+        )
+    else:
+        children.append(
             dmc.Group(
                 [
                     dmc.Button(
@@ -349,9 +418,8 @@ def _step6_content(store: dict[str, Any]) -> Any:
                     ),
                 ],
                 gap="sm",
-            ),
-        ]
-    )
+            )
+        )
     return dmc.Stack(children, gap="sm")
 
 
@@ -380,6 +448,7 @@ def _refine_image_row(idx: int, filename: str) -> Any:
 def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> Any:
     refine_images: list[dict[str, str]] = store.get("refine_images", [])
     children: list[Any] = [
+        _fullscreen_row(),
         _MOCK_DISCLAIMER,
         html.Iframe(
             id="mock-iframe",
@@ -456,10 +525,33 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
     working_dir: str | None = session.get("working_dir")
     vision: dict[str, Any] = session.get("vision_statement") or {}
     code_review: dict[str, Any] = session.get("code_review") or {}
-    design_dir = _design_dir(working_dir)
+    design_dir = _design_dir(
+        working_dir, project_manager.active_version(working_dir, session)
+    )
     saved = load_session(design_dir) if working_dir else None
-    has_existing_ui = (
-        detect_has_ui_source(pathlib.Path(working_dir), design_dir) if working_dir else False
+    # D-PM1: "Modify existing" only makes sense for a project the developer has
+    # said is theirs. When they told us this is a new project, UI files in the
+    # directory are scaffolding, and offering to reproduce their look and feel
+    # would capture a starter template as the design baseline. A mock already
+    # saved under .spec4/ is Spec4's own output and still counts either way.
+    if session.get("project_mode") == PROJECT_MODE_NEW:
+        has_existing_ui = bool(
+            working_dir and (design_dir / "mock.html").exists()
+        )
+    else:
+        has_existing_ui = (
+            detect_has_ui_source(pathlib.Path(working_dir), design_dir)
+            if working_dir
+            else False
+        )
+    # Revision round: a prior *implemented* round left an approved mock to carry
+    # forward, and the vision carries this round's delta. When both hold, step 2
+    # offers carry-forward-and-update as the default. The prior mock itself is
+    # loaded lazily in the carry-forward callback, not here (keeps the store lean).
+    is_revision = bool(
+        working_dir
+        and project_manager.load_prior_mock(working_dir) is not None
+        and revision_delta(vision) is not None
     )
 
     if saved and saved["mock_html"]:
@@ -493,6 +585,7 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
             }
 
     initial_store["_has_existing_ui"] = has_existing_ui
+    initial_store["_is_revision"] = is_revision
 
     return html.Div(
         [
@@ -511,7 +604,21 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
                 interval=250,
                 disabled=True,
             ),
-            dmc.Title("Designer", order=3, mb="sm"),
+            dmc.Group(
+                [
+                    dmc.Title("Designer", order=3),
+                    dmc.Button(
+                        "← Back",
+                        id="btn-designer-back",
+                        variant="filled",
+                        size="xs",
+                        color="blue",
+                    ),
+                ],
+                justify="space-between",
+                align="center",
+                mb="sm",
+            ),
             dmc.Text(
                 [
                     "Hello! I'm the ",
@@ -536,28 +643,36 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
                         dmc.AccordionPanel(
                             dcc.Markdown(
                                 "Designer works in a few short steps:\n\n"
-                                "1. **Choose your starting point** — create a fresh design, "
-                                "or let Designer scan your existing project files and capture "
-                                "their current look and feel.\n"
-                                "2. **Describe the style** — enter your visual preferences: "
-                                "theme (light/dark), colors, layout style, mood, typography, "
-                                "or any other design direction you have in mind.\n"
-                                "3. **Add reference screenshots** *(optional)* — upload images "
-                                "of designs you like. For each one you can add a note describing "
-                                "what you want to take from it or avoid.\n"
-                                "4. **Review the mock** — Designer generates a complete, "
-                                "self-contained HTML file. You can **Approve** it to move on, "
-                                "**Refine** it with a description of changes (and optional "
-                                "reference images), or **Start Over** from scratch.\n\n"
-                                "The finished mock is saved to `.spec4/design/mock.html` in "
-                                "your project directory. Phaser will direct your coding agent "
+                                "1. **Choose your starting point** — create a "
+                                "fresh design, or let Designer scan your existing "
+                                "project files and capture their current look "
+                                "and feel.\n"
+                                "2. **Describe the style** — enter your visual "
+                                "preferences: theme (light/dark), colors, layout "
+                                "style, mood, typography, or any other design "
+                                "direction you have in mind.\n"
+                                "3. **Add reference screenshots** *(optional)* — "
+                                "upload images of designs you like. For each one "
+                                "you can add a note describing what you want to "
+                                "take from it or avoid.\n"
+                                "4. **Review the mock** — Designer generates a "
+                                "complete, self-contained HTML file. You can "
+                                "**Approve** it to move on, **Refine** it with a "
+                                "description of changes (and optional reference "
+                                "images), or **Start Over** from scratch.\n\n"
+                                "The finished mock is saved to "
+                                "`.spec4/v{N}/design/mock.html` (the current "
+                                "round's version) in your project directory. "
+                                "Phaser will direct your coding agent "
                                 "to reference it during implementation.\n\n"
                                 "**Tips for better results:**\n"
-                                "- Be specific — *\"dark navy background, orange accent, "
-                                "card-based layout\"* produces better output than *\"modern\"*.\n"
-                                "- The mock covers the starting screen only, not every page.\n"
-                                "- Use the Refine step rather than Start Over when you just "
-                                "want to tweak details.",
+                                "- Be specific — *\"dark navy background, orange "
+                                "accent, card-based layout\"* produces better "
+                                "output than *\"modern\"*.\n"
+                                "- The mock covers the starting screen only, not "
+                                "every page.\n"
+                                "- Use the Refine step rather than Start Over "
+                                "when you just want to tweak details.",
                                 style={"color": "var(--mantine-color-dark-1)"},
                             )
                         ),

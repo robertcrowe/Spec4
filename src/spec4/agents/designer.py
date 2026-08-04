@@ -9,7 +9,8 @@ from typing import Any, TypedDict
 
 import litellm
 
-from spec4.tavily_mcp import WEB_SEARCH_TOOL, search as tavily_search
+from spec4.agents._manifest import MANIFEST_END, MANIFEST_START
+from spec4.websearch import WEB_SEARCH_TOOL, search as web_search
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +26,30 @@ _NO_UI_KEYWORDS = (
 
 _SYSTEM_PROMPT = (
     "You are an expert UI/UX designer generating a self-contained HTML mock-up "
-    "for a software project. A project vision describing the purpose, audience, "
-    "and key features will be provided — use it as your primary design input. "
+    "of a working software application. You are given a project vision (purpose, "
+    "target audiences, and key features) and, when the product has AI features, "
+    "a list of user-facing AI surfaces describing what each AI feature does, what "
+    "the user provides, what result it returns, and how it should be presented. "
+    "Use both as your primary design input. "
+    "Design the actual application, not a marketing landing page. Organise it as "
+    "one screen per target audience (for example, an end-user screen and an "
+    "administrator screen), all within the single HTML document and reachable "
+    "through in-page navigation — a nav bar or tabs. Give each audience the "
+    "screen it needs. "
+    "Turn every user-facing AI surface into a real, in-context interaction on the "
+    "relevant screen: build its inputs into real form controls, show its output "
+    "as a realistic result, trigger it as described, and apply its noted "
+    "affordance — suggestion, confirmation, streaming, background notification, or "
+    "multi-step progress. Nest each surface's component-step outputs (citations, "
+    "confidence, routing, related items) inside that surface rather than as "
+    "separate cards. Also design the vision's user-facing features that are not "
+    "AI-driven. Do not reduce features to a 'how it works' marketing grid — show "
+    "them working. "
     "The mock-up will be shown to the project owner for approval and will serve "
-    "as a visual reference for downstream development, so it must be polished "
-    "and realistic: use the project's actual name and feature names (not Lorem "
-    "ipsum or generic placeholder text), apply a coherent colour scheme and "
-    "typography, and faithfully represent the layout and key interactions of the "
-    "starting screen. "
+    "as a visual reference for downstream development, so it must be polished and "
+    "realistic: use the project's actual name and feature names (not Lorem ipsum "
+    "or generic placeholder text) and realistic sample content drawn from the "
+    "vision and AI-surface data, with a coherent colour scheme and typography. "
     "You write HTML, CSS, and JavaScript directly — no frameworks, no external "
     "assets, no CDN links. All CSS goes inside a <style> block in <head> and all "
     "JavaScript goes inside a <script> block at the end of <body>. The output "
@@ -53,10 +70,14 @@ _SYSTEM_PROMPT_REFINE = (
 )
 
 _HTML_INSTRUCTION = (
-    "Generate a single self-contained HTML file for the landing page or starting "
-    "screen. Use the project vision above — name, purpose, key features, and "
-    "target audience — to inform every design decision: layout, colour, "
-    "typography, and content. Use realistic content drawn from the vision rather "
+    "Generate a single self-contained HTML file for the working application, "
+    "organised as one screen per target audience with in-page navigation between "
+    "them. Use the project vision above — name, purpose, key features, and target "
+    "audiences — and the user-facing AI surfaces to inform every design decision: "
+    "which screens exist, their layout, colour, typography, and content. Design "
+    "each AI surface as a real interaction (its inputs as controls, its output as "
+    "a result, its affordance applied), design the non-AI user-facing features "
+    "too, and use realistic content drawn from the vision and surface data rather "
     "than placeholder text. "
     "Place all CSS inside a <style> block in <head> and all JavaScript inside a "
     "<script> block at the bottom of <body>. Do not use external CDN links or "
@@ -84,9 +105,9 @@ _SYSTEM_PROMPT_CAPTURE = (
 _HTML_REFINEMENT_INSTRUCTION = (
     "Apply the requested changes to the existing mock shown above. Preserve "
     "everything not explicitly changed — do not improve, refactor, or redesign "
-    "unrequested parts. Place all CSS inside a <style> block in <head> and all "
-    "JavaScript inside a <script> block at the bottom of <body>. Do not use "
-    "external CDN links or import statements. "
+    "unrequested parts. Place all CSS inside a <style> block in "
+    "<head> and all JavaScript inside a <script> block at the bottom of <body>. "
+    "Do not use external CDN links or import statements. "
     "Output ONLY the complete updated HTML document — no introduction, no "
     "explanation, no recap, no markdown commentary before or after the code."
 )
@@ -172,12 +193,6 @@ def detect_no_ui(
     return False
 
 
-def detect_greenfield(project_root: Path) -> bool:
-    """Return True if project_root contains only the .spec4/ directory."""
-    entries = list(project_root.iterdir())
-    return len(entries) == 1 and entries[0].name == ".spec4"
-
-
 def detect_has_ui_source(project_root: Path, design_dir: Path | None = None) -> bool:
     """Return True if mock.html exists or the project contains UI source files."""
     if design_dir is not None and (design_dir / "mock.html").exists():
@@ -224,12 +239,161 @@ def save_mock(html: str, design_dir: Path) -> None:
     (design_dir / "mock.html").write_text(html, encoding="utf-8")
 
 
+def save_manifest(manifest: dict[str, Any], design_dir: Path) -> None:
+    """Write the design manifest to design_dir/manifest.json (D-DM)."""
+    design_dir.mkdir(parents=True, exist_ok=True)
+    (design_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2), encoding="utf-8"
+    )
+
+
 def clear_session(design_dir: Path) -> None:
     """Delete session.json and mock.html from design_dir if they exist."""
-    for name in ("session.json", "mock.html"):
+    for name in ("session.json", "mock.html", "manifest.json"):
         f = design_dir / name
         if f.exists():
             f.unlink()
+
+
+# ---------------------------------------------------------------------------
+# Revision mode — deterministic helpers (no LLM)
+# ---------------------------------------------------------------------------
+
+
+def revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return this round's revision delta, or ``None`` for a greenfield vision.
+
+    A revision round's vision carries an accumulating ``revision_history`` (each
+    round contributes one entry, stamped deterministically by Brainstormer); its
+    final entry is the delta for the current round — ``goal``, the
+    ``key_features_mvp`` name changes (``added`` / ``modified`` / ``removed``),
+    and ``rationale``. A greenfield vision has no ``revision_history``. The input
+    is the session-form vision envelope (``{"vision_statement": {...}}``).
+    """
+    vs = (vision or {}).get("vision_statement") if isinstance(vision, dict) else None
+    history = vs.get("revision_history") if isinstance(vs, dict) else None
+    if isinstance(history, list) and history:
+        last = history[-1]
+        return last if isinstance(last, dict) else None
+    return None
+
+
+def build_revision_note(delta: dict[str, Any]) -> str:
+    """Render a revision delta into a refinement note for the carry-forward flow.
+
+    Produces a single bracketed instruction (same shape as the staleness note)
+    that scopes the refine to this revision's ``key_features_mvp`` changes while
+    preserving the established look and feel. Deterministic — the
+    ``added`` / ``modified`` / ``removed`` names come straight from the
+    Brainstormer-stamped delta; the model never authors them.
+    """
+    changes = delta.get("changes") or {}
+    added = list(changes.get("added") or [])
+    modified = list(changes.get("modified") or [])
+    removed = list(changes.get("removed") or [])
+    goal = (delta.get("goal") or "").strip()
+
+    segments: list[str] = ["[This is a design revision of the existing mock."]
+    if goal:
+        segments.append(f" Goal: {goal}")
+    clauses: list[str] = []
+    if added:
+        clauses.append("added features (" + ", ".join(added) + ")")
+    if modified:
+        clauses.append("changed features (" + ", ".join(modified) + ")")
+    if removed:
+        clauses.append("removed features (" + ", ".join(removed) + ")")
+    if clauses:
+        segments.append(
+            " Update the mock to reflect this revision's " + "; ".join(clauses) + "."
+        )
+    segments.append(
+        " Preserve the existing look and feel — colour scheme, typography, "
+        "spacing, layout, and every screen or element these changes do not "
+        "touch. Change only what these feature updates require.]"
+    )
+    return "".join(segments)
+
+
+_MANIFEST_INSTRUCTION = (
+    "## Output format: plan the manifest, then build the mock\n\n"
+    "Produce your response in exactly two parts, in this order, with nothing "
+    "else before, between (other than the sentinels), or after:\n\n"
+    "1. A **design manifest** — a single JSON object describing what you are about "
+    "to build — wrapped exactly in these sentinel lines:\n\n"
+    "" + MANIFEST_START + "\n"
+    "{ ...the JSON object... }\n"
+    "" + MANIFEST_END + "\n\n"
+    "2. The complete HTML document. The HTML-output rules stated above apply to "
+    "this part, and the HTML must realize the manifest exactly — the same screens "
+    "with the same surfaces placed on them. Design the manifest first, then render "
+    "the HTML to match it.\n\n"
+    "Manifest schema:\n"
+    "- `entities`: [{name, fields[]}] — the conceptual data the UI presents and "
+    "edits (e.g. Policy, Question). This is a shared vocabulary, NOT a database "
+    "schema; do not invent storage or endpoints. Reflect the Domain vocabulary "
+    "from the feature specifications above where those concepts are data the UI "
+    "presents or edits, adding UI-specific entities as needed.\n"
+    "- `screens`: [{id, audience, purpose, surfaces[]}] — one screen per target "
+    "audience; `surfaces` lists the surface names placed on that screen.\n"
+    "- `surfaces`: [{name, kind, screen, implements_features[], inputs[], output, "
+    "states[], reads[], writes[], depends_on[]}] — one entry per user-facing UI "
+    "surface. Cover every user-facing non-AI vision feature (kind: \"non_ai\"), "
+    "and realize every AI surface listed above through one or more UI surfaces "
+    "(kind: \"ai\"). `implements_features` names only the vision feature(s) this "
+    "surface genuinely realizes — leave it empty (`[]`) for a surface that no MVP "
+    "feature covers (setup/config, history, or a surface serving an audience whose "
+    "needs are not in the feature set), rather than attributing it to an unrelated "
+    "feature; "
+    "`inputs` are the form controls; `output` is the result shown; `states` are "
+    "the UI states to design (e.g. idle, loading, empty, error); `reads`/`writes` "
+    "name `entities`; `depends_on` names other surfaces that must exist first (a "
+    "detail needs its list, an edit needs the record). For kind \"ai\" also "
+    "include `affordance`, `invocation`, and `catalog_surface` — the exact name "
+    "from the AI-surfaces list above that this surface realizes (if you split one "
+    "AI capability across several UI surfaces, each names the same "
+    "`catalog_surface`).\n"
+    "- `shared_layout`: {nav, shell[]} — the app frame (nav style and shell "
+    "components), built before per-screen features.\n"
+)
+
+# Capture mode recreates the UI that already exists, so the manifest must
+# describe that — not the app the vision plans. Without this the schema above
+# ("one screen per target audience", "cover every user-facing vision feature")
+# reads as an instruction to invent screens the source code does not have, or
+# to skip the manifest entirely as inapplicable (D-DM7). Surfaces that no
+# planned feature covers are a legitimate outcome here — `design_manifest`
+# calls them scaffolding and attaches them to no phase.
+_MANIFEST_CAPTURE_NOTE = (
+    "\n**Capture mode — describe what you recreated.** The manifest above must "
+    "describe the existing UI you are reproducing, not the application the "
+    "vision plans. Include one screen entry per screen you actually recreated, "
+    "and one surface per UI surface actually present in the source. Do not "
+    "invent screens, surfaces, or audiences that the existing UI does not "
+    "have. Use the vision and feature specifications only to *name* what you "
+    "found: set `implements_features` where a surface genuinely realizes a "
+    "planned feature, and leave it empty (`[]`) otherwise — most surfaces in a "
+    "baseline capture will have it empty, which is correct and expected.\n"
+)
+
+# A refinement changes the mock, so it must change the manifest too (D-DM9).
+# Before this, the manifest was written once by the initial draw and never
+# revisited, so a heavily-refined mock shipped a manifest describing a design
+# that no longer existed — and Phaser attached UI work per surface from that
+# stale record. Re-emitting in full rather than as a diff matches how the
+# artifact is consumed (whole-file load) and how `design_manifest` treats it:
+# names and counts are expected to vary across draws, and the stable join
+# surface is the derived id pair, which `enrich_manifest` re-pins every time.
+_MANIFEST_REFINE_NOTE = (
+    "\n**Refinement — re-state the manifest for the updated mock.** Emit the "
+    "complete manifest describing the mock *after* your changes, not a diff and "
+    "not the manifest of the mock you were given. Carry every screen, surface, "
+    "and entity that survives the refinement through unchanged, add entries for "
+    "anything the refinement introduces, and drop entries for anything it "
+    "removes. If the refinement is purely visual (colour, spacing, copy, "
+    "typography) the manifest will be identical to the design it describes — "
+    "re-state it anyway.\n"
+)
 
 
 def build_mock_prompt(
@@ -254,16 +418,37 @@ def build_mock_prompt(
             ),
         })
     if planning_context and planning_context.get("vision_statement"):
-        parts.append({
-            "type": "text",
-            "text": (
-                "## Project Vision\n\n"
-                "Use the following project vision to inform the UI design "
-                "(purpose, audience, and key features):\n\n"
-                + json.dumps(planning_context["vision_statement"], indent=2)
-                + "\n\n---"
-            ),
-        })
+        from spec4.agents._utils import _slim_vision_framing
+        framing = _slim_vision_framing(planning_context["vision_statement"])
+        if framing:
+            parts.append({
+                "type": "text",
+                "text": (
+                    "## Project Vision\n\n"
+                    "Use the following project framing to inform global design "
+                    "(purpose, UI surface, audiences, and differentiators). The "
+                    "per-feature substance is in the feature specifications "
+                    "below:\n\n"
+                    + json.dumps(framing, indent=2)
+                    + "\n\n---"
+                ),
+            })
+    if planning_context and planning_context.get("feature_specs"):
+        from spec4.agents._utils import _feature_specs_for_designer
+        specs_note = _feature_specs_for_designer(planning_context["feature_specs"])
+        if specs_note:
+            parts.append({
+                "type": "text",
+                "text": "## Feature Specifications\n\n" + specs_note + "\n---",
+            })
+    if planning_context and planning_context.get("ai_features"):
+        from spec4.agents._utils import _ai_features_for_designer
+        ai_note = _ai_features_for_designer(planning_context["ai_features"])
+        if ai_note:
+            parts.append({
+                "type": "text",
+                "text": "## User-Facing AI Surfaces\n\n" + ai_note + "\n---",
+            })
 
     if session["preference_text"]:
         parts.append({"type": "text", "text": session["preference_text"]})
@@ -291,6 +476,14 @@ def build_mock_prompt(
         instruction = _HTML_INSTRUCTION
         system = _SYSTEM_PROMPT
     parts.append({"type": "text", "text": instruction})
+    # Every draw is manifest-bearing (D-DM9). The mode-specific note comes
+    # after the shared schema; a refine is a refine even if the flag is set.
+    manifest_text = _MANIFEST_INSTRUCTION
+    if existing_html:
+        manifest_text += _MANIFEST_REFINE_NOTE
+    elif capture_mode:
+        manifest_text += _MANIFEST_CAPTURE_NOTE
+    parts.append({"type": "text", "text": manifest_text})
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": parts},
@@ -347,7 +540,7 @@ def generate_mock_streaming(
     api_key: str,
     ui_source_snippets: list[str],
     image_support: bool,
-    tavily_api_key: str | None = None,
+    search_config: Any = None,
     stop_event: threading.Event | None = None,
     planning_context: dict[str, Any] | None = None,
     existing_html: str | None = None,
@@ -359,7 +552,7 @@ def generate_mock_streaming(
         session, ui_source_snippets, image_support, planning_context, existing_html,
         capture_mode,
     )
-    tools: list[dict[str, Any]] | None = [WEB_SEARCH_TOOL] if tavily_api_key else None
+    tools: list[dict[str, Any]] | None = [WEB_SEARCH_TOOL] if search_config else None
 
     logger.debug("Sending input to model...")
 
@@ -451,7 +644,7 @@ def generate_mock_streaming(
                         except (json.JSONDecodeError, KeyError):
                             query = tc["arguments"]
                         logger.debug("Web search: %r", query)
-                        result = tavily_search(query, tavily_api_key or "")
+                        result = web_search(query, search_config)
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tc["id"],

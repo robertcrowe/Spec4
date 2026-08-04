@@ -1,0 +1,23 @@
+{
+  "purpose": "A tool that turns a recorded interview into a publish-ready article, running every recording through the same editorial production process.",
+  "target_audience": [
+    "Content teams that publish interview write-ups regularly",
+    "Solo writers who record and want a consistent output"
+  ],
+  "key_features_mvp": [
+    {
+      "article_production": {
+        "description": "A user uploads an interview recording and receives a finished, house-styled article. Every recording goes through the same production: a transcript is produced, the key quotes and themes are pulled out, a draft is written around them, and the house style is applied — the same stages in the same order for every upload, each intermediate available to review.",
+        "example": "A 30-minute recording becomes a 900-word styled article, with the transcript and pulled quotes viewable underneath."
+      }
+    },
+    {
+      "review_intermediates": {
+        "description": "Users can open the transcript, the pulled quotes, and the draft at each stage and re-run from any point."
+      }
+    }
+  ],
+  "differentiators": [
+    "The same reliable production process for every recording, with every stage reviewable."
+  ]
+}

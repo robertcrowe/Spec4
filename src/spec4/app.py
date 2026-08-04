@@ -16,7 +16,7 @@ import dash
 from dash import Input, Output, State, callback, dcc, html, no_update
 import dash_mantine_components as dmc
 
-from spec4 import __version__
+from spec4 import __version__, version_check
 from spec4.app_constants import DARK_THEME, GOOGLE_FONTS
 from spec4.session import _default_session, _load_working_dir
 from spec4.layouts import (
@@ -92,10 +92,34 @@ app.layout = dmc.MantineProvider(
         dcc.Store(id="_last_render", data=0),
         dcc.Store(id="image-support-store", storage_type="local", data=None),
         dcc.Store(id="tool-support-store", storage_type="local", data=None),
+        # Live developer intent for the Agentifier breadth panel, kept distinct
+        # from the checkbox value so panel closure can force-check/lock producers
+        # without losing an independently-picked producer. Keyed by the panel's
+        # breadth nonce so a new panel starts from a clean intent.
+        dcc.Store(id="breadth-intent-store", data={}),
+        # Wall-clock start of the in-flight stream, stamped client-side by the
+        # elapsed-time ticker. Held outside `session` deliberately: the server
+        # never reads it, and writing it into the session store would make every
+        # tick a session mutation and re-render the page (D-SC-P2).
+        dcc.Store(id="stream-start-ts", data=None),
         html.Div(id="_designer-fs-dummy", style={"display": "none"}),
         # Polling interval for streaming agent responses; enabled (max_intervals=-1)
         # while a stream is active, disabled (max_intervals=0) otherwise.
         dcc.Interval(id="stream-poll-interval", interval=500, max_intervals=0),
+        # Fires once, shortly after page load, to run the PyPI version check
+        # off the render path — the page never waits on the network. The
+        # check itself is once-per-process (version_check caches).
+        dcc.Interval(id="version-check-interval", interval=1500, max_intervals=1),
+        # Once-per-browser-session guard for the upgrade dialog: flipped to
+        # True the first time the dialog opens, so reloads within the same
+        # tab don't re-nag. A new tab/session starts fresh.
+        dcc.Store(id="version-notice-shown", storage_type="session", data=False),
+        dmc.Modal(
+            id="version-check-modal",
+            title="A newer version of Spec4 is available",
+            opened=False,
+            styles={"content": {"border": "1px solid #ffffff"}},
+        ),
         dmc.AppShell(
             children=[
                 dmc.AppShellHeader(
@@ -259,6 +283,44 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
     prevent_initial_call=True,
 )
 
+# D-SC-P2: elapsed-time ticker for the in-flight stream.
+#
+# The long wait in an agent turn is the provider's prefill before the first
+# token — no session state changes during it, so nothing server-side can
+# re-render and the animated bar is the only sign of life. The poll interval
+# keeps firing client-side even when its server callback returns no_update, so
+# it doubles as a 500ms tick source here.
+#
+# `_last_render` is a second input purely to repaint: every page re-render
+# recreates `chat-elapsed` with the server's empty children, which would blank
+# the readout until the next tick.
+app.clientside_callback(  # type: ignore[no-untyped-call]
+    """
+    function(n_intervals, render_n, session, start) {
+        var el = document.getElementById('chat-elapsed');
+        if (!session || !session._stream_id) {
+            if (el) el.textContent = '';
+            return start === null ? window.dash_clientside.no_update : null;
+        }
+        var now = Date.now();
+        var began = start || now;
+        var secs = Math.floor((now - began) / 1000);
+        if (el) {
+            el.textContent = secs < 60
+                ? ('Elapsed: ' + secs + 's')
+                : ('Elapsed: ' + Math.floor(secs / 60) + 'm ' + (secs % 60) + 's');
+        }
+        return start ? window.dash_clientside.no_update : began;
+    }
+    """,
+    Output("stream-start-ts", "data"),
+    Input("stream-poll-interval", "n_intervals"),
+    Input("_last_render", "data"),
+    State("session", "data"),
+    State("stream-start-ts", "data"),
+    prevent_initial_call=True,
+)
+
 app.clientside_callback(  # type: ignore[no-untyped-call]
     """
     function(n_clicks, store_data) {
@@ -346,6 +408,44 @@ def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any,
     else:
         content = _landing_layout()
     return html.Div([content, _footer()]), (render_count or 0) + 1, new_session
+
+
+@callback(
+    Output("version-check-modal", "opened"),
+    Output("version-check-modal", "children"),
+    Output("version-notice-shown", "data"),
+    Input("version-check-interval", "n_intervals"),
+    State("version-notice-shown", "data"),
+    prevent_initial_call=True,
+)
+def on_version_check(_n: Any, already_shown: Any) -> Any:
+    """Open the upgrade dialog when PyPI has a newer release than this one.
+
+    Shown at most once per browser session (the version-notice-shown session
+    store); the PyPI fetch behind it runs once per server process
+    (version_check caches, and any failure reads as up-to-date). The modal
+    closes itself client-side, like ff-info-modal.
+    """
+    if already_shown:
+        return no_update, no_update, no_update
+    info = version_check.check_for_update()
+    if not info:
+        return no_update, no_update, no_update
+    body = dmc.Stack(
+        [
+            dmc.Text(
+                f"You're running Spec4 {info['current']} — the latest release "
+                f"is {info['latest']}. Upgrading is recommended.",
+                size="sm",
+            ),
+            dmc.Text("If you installed from PyPI:", size="sm"),
+            dmc.Code("uv tool upgrade spec4", block=True),
+            dmc.Text("If you run from source:", size="sm"),
+            dmc.Code("git pull && make install", block=True),
+        ],
+        gap="xs",
+    )
+    return True, body, True
 
 
 # ---------------------------------------------------------------------------

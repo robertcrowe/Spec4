@@ -1,0 +1,103 @@
+{
+  "_note": "CALIBRATION gold set C (APInvoices) — labels are Claude's best guess for Robert to CORRECT. Reinforces tiers 6 (chained_calls) and 7 (planning_agent). Distinct domain from the others and the nine scoring visions. 'tier' tags per candidate (NOT sent to the judge). gold_borderline=true marks adjacent<->off_domain seams. pair_id C_exc links a matched 6<->7 pair (same relevance, two tiers; mismatch = tier drift).",
+  "vision": {
+    "purpose": "A tool for an accounts-payable clerk that turns incoming vendor invoices into validated, ready-to-post accounting entries.",
+    "target_audience": [
+      "AP clerks processing high volumes of vendor invoices",
+      "Finance teams that want fewer manual invoice-entry errors"
+    ],
+    "key_features_mvp": [
+      {
+        "invoice_extraction": {
+          "description": "Extracts structured fields (vendor, line items, totals, PO number) from an invoice image or PDF."
+        }
+      },
+      {
+        "three_way_match": {
+          "description": "Runs a fixed pipeline that extracts the invoice, matches it against the purchase order and the receiving record, and flags any discrepancies."
+        }
+      },
+      {
+        "exception_summary": {
+          "description": "Summarizes why an invoice failed matching so the clerk knows what to fix."
+        }
+      }
+    ]
+  },
+  "candidates": [
+    {
+      "name": "invoice_field_extraction",
+      "rough_description": "Extracts the structured fields from an invoice document.",
+      "tier": "single_call",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "invoice_extraction IS this. Necessity, cite invoice_extraction."
+    },
+    {
+      "name": "three_way_match_pipeline",
+      "rough_description": "The fixed extract, then match-to-PO, then match-to-receiving, then flag-discrepancy sequence that produces the match result.",
+      "tier": "chained_calls",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "three_way_match IS this fixed pipeline. Necessity, cite three_way_match."
+    },
+    {
+      "name": "discrepancy_explanation",
+      "rough_description": "Explains, in plain language, why an invoice failed the match.",
+      "tier": "single_call",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "exception_summary IS this. Necessity, cite exception_summary."
+    },
+    {
+      "name": "fixed_exception_triage",
+      "rough_description": "On a match failure, a fixed pipeline pulls the PO, pulls the vendor's recent invoices, and produces a suggested resolution for the clerk.",
+      "tier": "chained_calls",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "pair_id": "C_exc",
+      "note": "Matched pair C_exc (low tier). Resolving a flagged exception serves the validated-entries purpose; three_way_match only flags, it does not resolve. Adjacent."
+    },
+    {
+      "name": "autonomous_exception_investigator",
+      "rough_description": "On a match failure, an autonomous agent decides at each step whether to query the PO, the receiving record, vendor history, or prior corrections, until it proposes a resolution.",
+      "tier": "planning_agent",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "pair_id": "C_exc",
+      "note": "Matched pair C_exc (high tier). Relevance (resolve the flagged exception) is IDENTICAL to fixed_exception_triage; only mechanism/tier differs. Should also be adjacent. Difference = tier drift."
+    },
+    {
+      "name": "ap_policy_qa",
+      "rough_description": "Answers the clerk's questions about payment terms and tax handling by retrieving from the company's AP policy documents, with citations.",
+      "tier": "rag",
+      "gold_label": "adjacent",
+      "gold_borderline": true,
+      "note": "SEAM (alpha): no purpose phrase mentions policy Q&A, so a phrase-anchored judge has little to cite (likely off_domain); but producing a correct entry (the stated job) is plausibly served by resolving a terms/tax question. Proposed adjacent."
+    },
+    {
+      "name": "autonomous_spend_optimizer",
+      "rough_description": "An autonomous agent that analyzes all past invoices to find savings and drafts renegotiations of vendor contracts.",
+      "tier": "planning_agent",
+      "gold_label": "off_domain",
+      "gold_borderline": true,
+      "note": "SEAM (beta): the 'invoices/spend' surface tempts a phrase-anchored judge, but the vision turns one invoice into one validated entry; spend optimization and contract renegotiation serve no stated job. Proposed off_domain."
+    },
+    {
+      "name": "employee_expense_reimbursement",
+      "rough_description": "Handles employee expense reports and reimbursements.",
+      "tier": "single_call",
+      "gold_label": "off_domain",
+      "gold_borderline": false,
+      "note": "Employee expenses are a different flow from vendor invoices. Guardrail."
+    },
+    {
+      "name": "duplicate_invoice_detection",
+      "rough_description": "Flags when an incoming invoice is a likely duplicate of one already processed.",
+      "tier": "embeddings",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "note": "Serves the fewer-errors purpose; not required by any stated feature. Enhancement."
+    }
+  ]
+}

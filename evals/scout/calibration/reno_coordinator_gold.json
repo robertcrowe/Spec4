@@ -1,0 +1,103 @@
+{
+  "_note": "CALIBRATION gold set D (RenoCoordinator) — labels are Claude's best guess for Robert to CORRECT. Reinforces tiers 7 (planning_agent) and 9 (multi_agent_collaboration). Distinct domain from the others and the nine scoring visions. 'tier' tags per candidate (NOT sent to the judge). gold_borderline=true marks adjacent<->off_domain seams. pair_id D_book links a matched 5<->9 pair (same relevance, two tiers; mismatch = tier drift).",
+  "vision": {
+    "purpose": "A tool that helps a homeowner coordinate a renovation across the independent tradespeople they have already hired.",
+    "target_audience": [
+      "Homeowners managing a renovation with several independent contractors",
+      "People who want the trades sequenced in the right order without playing phone tag"
+    ],
+    "key_features_mvp": [
+      {
+        "scope_capture": {
+          "description": "Turns the homeowner's description of the job into a structured scope of work per trade."
+        }
+      },
+      {
+        "dependency_scheduling": {
+          "description": "Builds and adapts a schedule that sequences the trades in the right order (e.g. plumbing rough-in before drywall) and replans when a trade slips."
+        }
+      },
+      {
+        "contractor_coordination": {
+          "description": "The homeowner's agent and each hired contractor's own scheduling agent exchange availability and confirmations across their separate systems to lock in dates."
+        }
+      }
+    ]
+  },
+  "candidates": [
+    {
+      "name": "scope_structuring",
+      "rough_description": "Structures the homeowner's free-text job description into a per-trade scope of work.",
+      "tier": "single_call",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "scope_capture IS this. Necessity, cite scope_capture."
+    },
+    {
+      "name": "trade_dependency_planner",
+      "rough_description": "The autonomous planner that orders the trades by dependency and replans the schedule when a trade slips.",
+      "tier": "planning_agent",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "dependency_scheduling IS this autonomous, replanning mechanism. Necessity, cite dependency_scheduling."
+    },
+    {
+      "name": "cross_contractor_agent_exchange",
+      "rough_description": "The protocol exchange in which the homeowner's agent and each contractor's separate agent confirm dates across their systems.",
+      "tier": "multi_agent_collaboration",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "contractor_coordination IS this cross-organization exchange. Necessity, cite contractor_coordination."
+    },
+    {
+      "name": "calendar_tool_booking",
+      "rough_description": "Books a confirmed slot with a contractor by calling that contractor's booking API directly.",
+      "tier": "tool_agent",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "pair_id": "D_book",
+      "note": "Matched pair D_book (low tier). Locking a date with a contractor IS what contractor_coordination delivers. Grounded, cite contractor_coordination."
+    },
+    {
+      "name": "agent_coordinated_booking",
+      "rough_description": "Locks a slot by having the homeowner's agent and the contractor's agent exchange availability proposals over A2A until both commit.",
+      "tier": "multi_agent_collaboration",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "pair_id": "D_book",
+      "note": "Matched pair D_book (high tier). Relevance (lock a confirmed date with a contractor) is IDENTICAL to calendar_tool_booking; only mechanism/tier differs. Should also be grounded. Difference = tier drift."
+    },
+    {
+      "name": "permit_and_code_lookup",
+      "rough_description": "Answers the homeowner's questions about local building codes and permit requirements from a code corpus, with citations.",
+      "tier": "rag",
+      "gold_label": "adjacent",
+      "gold_borderline": true,
+      "note": "SEAM (alpha): no purpose phrase mentions codes/permits, so a phrase-anchored judge has little to cite (likely off_domain); but getting the hired reno done correctly (the coordination purpose) is plausibly served. Proposed adjacent."
+    },
+    {
+      "name": "autonomous_home_improvement_advisor",
+      "rough_description": "An autonomous agent that studies the home and proposes and prioritizes renovation projects the homeowner has not asked for.",
+      "tier": "planning_agent",
+      "gold_label": "off_domain",
+      "gold_borderline": true,
+      "note": "SEAM (beta): the 'renovation' surface tempts a phrase-anchored judge, but the vision coordinates a reno the homeowner already decided on; proposing new projects serves no stated coordination job. Proposed off_domain."
+    },
+    {
+      "name": "contractor_marketplace_reviews",
+      "rough_description": "Helps the homeowner find and compare new contractors to hire, with ratings and reviews.",
+      "tier": "embeddings",
+      "gold_label": "off_domain",
+      "gold_borderline": false,
+      "note": "Discovery and hiring; the vision coordinates trades the homeowner has already hired. Guardrail."
+    },
+    {
+      "name": "progress_photo_logging",
+      "rough_description": "The homeowner photographs progress and it logs which scope-of-work items are now complete.",
+      "tier": "single_call",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "note": "Serves the manage-the-reno purpose; not required by any stated feature. Enhancement."
+    }
+  ]
+}

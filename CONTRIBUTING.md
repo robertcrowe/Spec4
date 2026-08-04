@@ -31,6 +31,20 @@ This model keeps the project coherent and moving quickly, especially at its curr
 3. Describe the problem you're trying to solve, not just the solution you have in mind.
 4. Be prepared for the possibility that a suggestion may be declined if it doesn't fit the project's vision — and that's okay.
 
+### Contributing to the Pattern Library
+
+The `src/spec4/agentifier/patterns/` directory contains the tier and mechanism pattern library that drives Agentifier's recommendations. Each pattern is a Markdown file with YAML frontmatter — see `patterns/SCHEMA.md` for the required structure.
+
+**Good contributions to the pattern library include:**
+
+- **New mechanism patterns** — a novel technique or architectural pattern with clear when-it-works and when-it-doesn't guidance (e.g., a new agentic evaluation pattern, a new memory mechanism)
+- **Anti-pattern additions** — concrete over-engineering and under-engineering signs drawn from real-world experience, added to existing patterns
+- **Reference updates** — updated canonical URLs or new authoritative references for existing patterns
+
+Each pattern file must pass `make test` (the loader validates every pattern against the schema). Keep pattern descriptions grounded in observable trade-offs, not vendor marketing.
+
+To check whether a tier-pattern or Tier Analyst prompt change affects calibration, run the eval harness in `evals/tier_calibration/` (see its README) before and after your change and compare the over-engineering rate. This harness is **not part of `make test`** — it makes real LLM calls and costs tokens.
+
 ### Submitting Code
 
 1. **Open an issue first** before starting significant work. This avoids wasted effort if the change isn't a good fit.

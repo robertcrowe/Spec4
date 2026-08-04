@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-import pathlib
 from typing import Any
 
 from dash import dcc, html
 import dash_mantine_components as dmc
 
+from spec4 import project_manager
 from spec4.app_constants import (
+    STATE_AGENTIFIER_COMPLETE,
     STATE_DEPLOYER_COMPLETE,
     STATE_PHASES_COMPLETE,
     STATE_REVIEW_COMPLETE,
     STATE_STACK_COMPLETE,
     STATE_VISION_COMPLETE,
 )
+from spec4.agentifier.panel_closure import close_selection, pool_from_dicts
 from spec4.layouts._shared import _render_message
 from spec4.session import _validate_agent_preconditions
 
@@ -30,7 +32,11 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
     active = session.get("active_agent", "brainstormer")
     working_dir = session.get("working_dir", "")
     _mock = (
-        pathlib.Path(working_dir) / ".spec4" / "design" / "mock.html"
+        project_manager.get_version_dir(
+            working_dir, project_manager.active_version(working_dir, session)
+        )
+        / "design"
+        / "mock.html"
         if working_dir
         else None
     )
@@ -42,6 +48,11 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
             "🧠 Brainstormer",
             session.get("vision_statement") is not None,
         ),
+        (
+            "agentifier",
+            "🤖 Agentifier",
+            session.get("agentifier_state") == STATE_AGENTIFIER_COMPLETE,
+        ),
         ("designer", "🎨 Designer", designer_done),
         ("stack_advisor", "⚙️ StackAdvisor", session.get("stack_statement") is not None),
         ("phaser", "📋 Phaser", session.get("phaser_state") == STATE_PHASES_COMPLETE),
@@ -51,11 +62,11 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
     for i, (key, label, done) in enumerate(agents):
         is_active = key == active
         if is_active:
-            badge: Any = dmc.Badge(label, color="green", variant="filled", size="md")
+            badge: Any = dmc.Badge(label, color="green", variant="filled", size="xs")
         elif done:
-            badge = dmc.Badge(f"✓ {label}", color="gray", variant="light", size="md")
+            badge = dmc.Badge(f"✓ {label}", color="gray", variant="light", size="xs")
         else:
-            badge = dmc.Badge(label, color="gray", variant="outline", size="md")
+            badge = dmc.Badge(label, color="gray", variant="outline", size="xs")
         # Active pill is rendered as a plain badge — clicking it would just
         # navigate to where you already are.
         if is_active:
@@ -78,12 +89,12 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
                 )
             )
         if i < len(agents) - 1:
-            items.append(dmc.Text("→", c="dimmed", size="sm"))
+            items.append(dmc.Text("→", c="dimmed", size="xs"))
     return html.Div(
         [
             dmc.Group(
                 [
-                    dmc.Group(items, gap="xs"),
+                    dmc.Group(items, gap="4px"),
                     dmc.Button(
                         "← Back",
                         id="btn-chat-back",
@@ -100,11 +111,28 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
     )
 
 
-_TOKEN_COUNTER_AGENTS = ("phaser", "deployer")
+_TOKEN_COUNTER_AGENTS = (
+    "code_scanner",
+    "brainstormer",
+    "agentifier",
+    "stack_advisor",
+    "phaser",
+    "deployer",
+)
 
 
 def _streamed_token_count(session: dict[str, Any]) -> int:
-    """Length of the in-flight assistant message, used as a token-count proxy."""
+    """Characters received so far, used as a token-count proxy.
+
+    D-PH9: during the phaser validation-retry drain the visible assistant
+    message stops growing (the retry body is swallowed), so the length of the
+    displayed message freezes. When the generator has published a cumulative
+    received-character total, prefer it so the counter tracks real receipt;
+    otherwise fall back to the in-flight assistant message length.
+    """
+    received = session.get("_stream_received_chars")
+    if isinstance(received, int):
+        return received
     messages = session.get("messages") or []
     if not messages:
         return 0
@@ -115,41 +143,160 @@ def _streamed_token_count(session: dict[str, Any]) -> int:
 
 
 def _token_count_text(session: dict[str, Any]) -> str:
-    """Render text for the token counter, or empty when it shouldn't show."""
+    """Render text for the chars counter, or empty when it shouldn't show."""
     if session.get("active_agent") not in _TOKEN_COUNTER_AGENTS:
         return ""
     if not session.get("_stream_id") and _streamed_token_count(session) == 0:
         return ""
-    return f"Tokens received: {_streamed_token_count(session)}"
+    return f"Chars received: {_streamed_token_count(session)}"
+
+
+def _ff_controls(agent_label: str) -> list[Any]:
+    """Fast Forward button, (i) icon, and info dialog for one agent.
+
+    The same component ids serve every agent because only the active agent's
+    buttons render at a time; ``on_fast_forward`` routes via ``active_agent``
+    in session, so extending FF to an agent is purely a layout change.
+    """
+    return [
+        dmc.Button(
+            "⏩ Fast Forward",
+            id="btn-chat-fast-forward",
+            variant="outline",
+        ),
+        dmc.ActionIcon(
+            "ⓘ",
+            id="btn-ff-info",
+            variant="subtle",
+            size="sm",
+            color="gray",
+        ),
+        dmc.Modal(
+            dmc.Text(
+                f"Fast Forward asks {agent_label} to work through all "
+                "remaining topics on its own, adopting its best "
+                "recommendation for each instead of pausing to ask "
+                "you topic by topic. Before anything is finalized, "
+                "the complete set of recommendations is presented "
+                "for your review, and you can still change any of "
+                "them.",
+                size="sm",
+            ),
+            id="ff-info-modal",
+            title="What does Fast Forward do?",
+            opened=False,
+        ),
+    ]
 
 
 def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
     active = session.get("active_agent")
     buttons = []
 
-    if active == "code_scanner" and session.get("code_scanner_state") == STATE_REVIEW_COMPLETE:
-        buttons = [
-            dmc.Button(
-                "💾 Download code_review.json", id="btn-dl-review", variant="outline"
-            ),
-            dmc.Button(
-                "🔄 Re-scan Project",
-                id="btn-rescan-project",
-                variant="outline",
-                color="orange",
-            ),
-            dmc.Button("Continue to Brainstormer →", id="btn-review-to-brainstormer"),
-        ]
-    elif (
-        active == "brainstormer"
-        and session.get("brainstormer_state") == STATE_VISION_COMPLETE
-    ):
-        buttons = [
-            dmc.Button(
-                "💾 Download vision.json", id="btn-dl-vision", variant="outline"
-            ),
-            dmc.Button("Continue to Designer →", id="btn-brainstormer-to-designer"),
-        ]
+    if active == "code_scanner":
+        token_counter = dmc.Text(
+            _token_count_text(session),
+            id="chat-token-count",
+            c="dimmed",
+            size="sm",
+        )
+        if session.get("code_scanner_state") == STATE_REVIEW_COMPLETE:
+            buttons = [
+                token_counter,
+                dmc.Button(
+                    "💾 Download code_review.json",
+                    id="btn-dl-review",
+                    variant="outline",
+                ),
+                dmc.Button(
+                    "🔄 Re-scan Project",
+                    id="btn-rescan-project",
+                    variant="outline",
+                    color="orange",
+                ),
+                dmc.Button(
+                    "Continue to Brainstormer →", id="btn-review-to-brainstormer"
+                ),
+            ]
+        elif _token_count_text(session):
+            # Mid-scan CodeScanner has no other controls, so the bar exists
+            # only to carry the counter — render it only once there is a count
+            # to show, otherwise the divider would sit above an empty row.
+            buttons = [token_counter]
+        else:
+            buttons = []
+    elif active == "brainstormer":
+        token_counter = dmc.Text(
+            _token_count_text(session),
+            id="chat-token-count",
+            c="dimmed",
+            size="sm",
+        )
+        if session.get("brainstormer_state") == STATE_VISION_COMPLETE:
+            buttons = [
+                token_counter,
+                dmc.Button(
+                    "💾 Download vision.json", id="btn-dl-vision", variant="outline"
+                ),
+                dmc.Button(
+                    "Continue to Designer →",
+                    id="btn-brainstormer-to-designer",
+                    variant="outline",
+                    color="gray",
+                ),
+                dmc.Button(
+                    "Continue to Agentifier →", id="btn-brainstormer-to-agentifier"
+                ),
+            ]
+        elif _token_count_text(session):
+            # Like mid-scan CodeScanner, Brainstormer has no other controls
+            # before the vision lands, so the bar exists only to carry the
+            # counter — render it once there is a count, not before, or the
+            # divider would sit above an empty row.
+            buttons = [token_counter]
+        else:
+            buttons = []
+    elif active == "agentifier":
+        token_counter = dmc.Text(
+            _token_count_text(session),
+            id="chat-token-count",
+            c="dimmed",
+            size="sm",
+        )
+        if session.get("agentifier_state") == STATE_AGENTIFIER_COMPLETE:
+            buttons = [
+                token_counter,
+                dmc.Button(
+                    "💾 Download ai_features.json",
+                    id="btn-dl-features",
+                    variant="outline",
+                ),
+                dmc.Button(
+                    "Continue to Designer →",
+                    id="btn-agentifier-to-designer",
+                ),
+            ]
+        elif session.get("agentifier_breadth_chosen") or session.get(
+            "agentifier_catalog_done"
+        ):
+            # Fast Forward only after the breadth panel has completed: the
+            # pre-panel catalog build has nothing to sweep, and the panel
+            # itself is a hard UI stop. catalog_done covers resumed sessions
+            # that load past the panel without replaying it.
+            buttons = [token_counter, *_ff_controls("Agentifier")]
+        elif session.get("agentifier_breadth_groups") and session.get("_stream_id"):
+            # D-AT2: the panel has just been submitted and the post-panel turn
+            # is streaming. agentifier_breadth_chosen is set by the generator,
+            # but mid-stream the poll merges only messages and the char total,
+            # so that flag does not reach the layout until the turn ends —
+            # leaving tier analysis and the briefing draw with no counter.
+            # breadth_groups is populated only when the panel is presented, so
+            # groups plus a live stream identifies a post-panel turn: the
+            # pre-panel build has a stream but no groups, and stays bare
+            # (D-AT5). Counter only — the Fast Forward gate above is unchanged.
+            buttons = [token_counter]
+        else:
+            buttons = []
     elif active == "stack_advisor":
         back = dmc.Button(
             "← Back to Designer",
@@ -157,16 +304,23 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
             variant="outline",
             color="gray",
         )
+        token_counter = dmc.Text(
+            _token_count_text(session),
+            id="chat-token-count",
+            c="dimmed",
+            size="sm",
+        )
         if session.get("stack_advisor_state") == STATE_STACK_COMPLETE:
             buttons = [
                 back,
+                token_counter,
                 dmc.Button(
                     "💾 Download stack.json", id="btn-dl-stack", variant="outline"
                 ),
                 dmc.Button("Send to Phaser →", id="btn-stack-to-phaser"),
             ]
         else:
-            buttons = [back]
+            buttons = [back, token_counter, *_ff_controls("StackAdvisor")]
     elif active == "phaser":
         back = dmc.Button(
             "← Back to Stack Advisor",
@@ -190,7 +344,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
                 dmc.Button("Continue to Deployer →", id="btn-phaser-to-deployer"),
             ]
         else:
-            buttons = [back, token_counter]
+            buttons = [back, token_counter, *_ff_controls("Phaser")]
     elif active == "deployer":
         back = dmc.Button(
             "← Back to Phaser",
@@ -218,21 +372,184 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
                 ),
             ]
         else:
-            buttons = [back, token_counter]
+            buttons = [back, token_counter, *_ff_controls("Deployer")]
 
-    if not buttons:
+    # D-SC-P2: the elapsed readout shares this row with the chars counter
+    # instead of sitting under the progress bar. The two describe the same
+    # in-flight turn and read as a pair, so it goes immediately after the
+    # counter when there is one — otherwise a Fast Forward button lands between
+    # them. Its text is always empty here; the client-side ticker owns it for
+    # the life of the stream (see the ticker in app.py).
+    # `size="sm"` matches the chars counter: the two sit side by side now, and
+    # the xs it carried under the progress bar read as a footnote next to it.
+    elapsed = dmc.Text("", id="chat-elapsed", c="dimmed", size="sm")
+    if not buttons and not session.get("_stream_id"):
         return html.Div()
+    # A live stream renders the row even when the agent contributes no buttons
+    # (pre-panel Agentifier, D-AT5), so the elapsed readout is never homeless
+    # mid-turn — the same guarantee it had inside the progress container.
+    row = list(buttons)
+    counter_at = next(
+        (
+            i
+            for i, b in enumerate(row)
+            if getattr(b, "id", None) == "chat-token-count"
+        ),
+        None,
+    )
+    row.insert(len(row) if counter_at is None else counter_at + 1, elapsed)
     return html.Div(
         [
-            dmc.Divider(mb="sm"),
-            dmc.Group(buttons, mb="md"),
+            dmc.Divider(mb="xs"),
+            dmc.Group(row, mb="md"),
         ]
+    )
+
+
+def _retry_panel(session: dict[str, Any]) -> Any | None:
+    """Recovery affordance for a turn that died on a provider error (D-ER1).
+
+    Renders only once the failed stream has been finalised — mid-stream the
+    progress bar owns the space, and a retry button there would compete with a
+    turn that may still succeed. Returns None when there is nothing to recover
+    so the caller can omit it from the tree.
+
+    The wording is deliberately concrete about what is and isn't lost: provider
+    overloads are transient and the same request usually succeeds on a second
+    attempt, but the user has no way to know that from the exception text alone.
+    """
+    if not session.get("_stream_error") or session.get("_stream_id"):
+        return None
+    # The panel retries the assistant turn at the end of the transcript, so it
+    # only makes sense while that turn is still on screen. This also makes the
+    # panel immune to a flag that outlived its turn: every path that starts the
+    # chat over (agent switch, re-scan, skip-into-agent) empties `messages`, so
+    # a leftover flag renders nothing regardless of who forgot to clear it.
+    messages = session.get("messages") or []
+    if not messages or messages[-1].get("role") != "assistant":
+        return None
+    return dmc.Alert(
+        [
+            dmc.Text(
+                "That request didn't complete. Provider errors like "
+                "overload or rate limits are usually temporary — retrying "
+                "runs the same step again. Nothing already saved is lost.",
+                size="sm",
+                mb="sm",
+            ),
+            dmc.Button(
+                "↺ Try Again",
+                id="btn-chat-retry",
+                variant="outline",
+                color="orange",
+                size="sm",
+            ),
+        ],
+        title="The last step failed",
+        color="orange",
+        variant="light",
+        mb="md",
+    )
+
+
+def _breadth_panel(session: dict[str, Any]) -> Any | None:
+    """Checkbox panel for Agentifier breadth selection.
+
+    Renders only when agentifier_breadth_groups is set and the user has not yet
+    submitted their selection. Returns None when inactive so the caller can
+    omit it from the component tree.
+    """
+    candidates: list[dict[str, str]] | None = session.get(
+        "agentifier_breadth_groups"
+    )
+    if not candidates:
+        return None
+    if session.get("agentifier_breadth_chosen"):
+        return None
+    if session.get("_stream_id"):
+        # The selection has just been submitted and a stream is running. Hide
+        # the panel immediately on Continue instead of waiting for the backend
+        # to flip agentifier_breadth_chosen mid-stream.
+        return None
+
+    # First paint already reflects panel closure: pre-checked features (the
+    # reselection path seeds these) pull in their producers and turn on their
+    # coordinators, and the derived/required set is locked. The live callback
+    # keeps this in sync as the developer toggles.
+    pool = pool_from_dicts(session.get("agentifier_scout_pool") or [])
+    closure = close_selection(pool, session.get("agentifier_breadth_selection") or [])
+    locked = closure.locked
+
+    # One flat list — there is no relevance ranking to band on, so candidates
+    # appear in pool (Composer) order.
+    checkboxes: list[Any] = [
+        dmc.Checkbox(
+            id={"type": "breadth-cb", "name": item["name"]},
+            value=item["name"],
+            label=html.Strong(item["name"]),
+            description=item.get("description", ""),
+            disabled=item["name"] in locked,
+            # Name and description both render as ordinary chat text:
+            # chat-text size (md matches the unstyled Markdown body) and
+            # the bubble's own colour, picked up via `inherit` from the
+            # enclosing .chat-bubble-assistant so the two never drift.
+            # `inherit` also keeps an auto-selected (disabled) candidate
+            # readable — the disabled state greys label/description via a
+            # zero-specificity rule that these inline styles override, so
+            # only the checkbox box shows the disabled cue. The name's
+            # weight comes from the <strong> wrapper on the label; the
+            # description pins 400 rather than inheriting, since it sits
+            # inside the same <label> element and would otherwise pick up
+            # whatever weight the cascade lands on.
+            styles={
+                "label": {
+                    "fontSize": "var(--mantine-font-size-md)",
+                    "color": "inherit",
+                },
+                "description": {
+                    "fontSize": "var(--mantine-font-size-md)",
+                    "fontWeight": 400,
+                    "color": "inherit",
+                },
+            },
+            mb="xs",
+        )
+        for item in candidates
+    ]
+
+    return dmc.Paper(
+        [
+            dmc.CheckboxGroup(
+                id="breadth-checkbox-group",
+                value=sorted(closure.selected),
+                children=checkboxes,
+                mb="md",
+            ),
+            dmc.Group(
+                [
+                    dmc.Button("Continue →", id="btn-breadth-submit"),
+                    dmc.Button(
+                        "↺ Try Again",
+                        id="btn-breadth-try-again",
+                        variant="outline",
+                        color="gray",
+                    ),
+                ],
+                gap="sm",
+            ),
+        ],
+        p="md",
+        radius="md",
+        className="chat-bubble-assistant",
+        mb="md",
     )
 
 
 def _chat_layout(session: dict[str, Any]) -> html.Div:
     messages = session.get("messages", [])
     needs_init = not messages and not session.get("_initial_turn_done")
+    breadth_panel = _breadth_panel(session)
+    retry_panel = _retry_panel(session)
 
     return html.Div(
         [
@@ -250,6 +567,7 @@ def _chat_layout(session: dict[str, Any]) -> html.Div:
             dcc.Download(id="dl-code-review"),
             dcc.Download(id="dl-phases"),
             dcc.Download(id="dl-deployment"),
+            dcc.Download(id="dl-features"),
             _agent_status_bar(session),
             html.Div(
                 html.Div(
@@ -265,14 +583,24 @@ def _chat_layout(session: dict[str, Any]) -> html.Div:
                 style={
                     "height": "450px",
                     "overflowY": "auto",
-                    "marginBottom": "var(--mantine-spacing-md)",
+                    # Tight against the action row below: the divider that opens
+                    # that row already reads as the separator, so md here just
+                    # stranded the buttons.
+                    "marginBottom": "var(--mantine-spacing-xs)",
                 },
             ),
             _chat_action_buttons(session),
+            *([retry_panel] if retry_panel is not None else []),
+            *([breadth_panel] if breadth_panel is not None else []),
             html.Div(
-                dmc.Progress(
-                    value=100, animated=True, striped=True, color="blue", size="sm"
-                ),
+                [
+                    dmc.Progress(
+                        value=100, animated=True, striped=True, color="blue", size="sm"
+                    ),
+                    # The elapsed readout that used to sit here now rides in the
+                    # action row, next to the chars counter — see
+                    # _chat_action_buttons.
+                ],
                 id="chat-progress-container",
                 style={
                     "display": "block" if session.get("_stream_id") else "none",
@@ -292,7 +620,12 @@ def _chat_layout(session: dict[str, Any]) -> html.Div:
                     dmc.Button("Send", id="btn-chat-submit"),
                 ],
                 style={
-                    "display": "flex",
+                    # Hide the text input + Send button while the breadth
+                    # checkbox panel is active — the user acts via checkboxes at
+                    # this step. Components stay mounted (display:none) so
+                    # on_chat_submit's State references remain valid under
+                    # suppress_callback_exceptions.
+                    "display": "none" if breadth_panel is not None else "flex",
                     "alignItems": "stretch",
                     "gap": "var(--mantine-spacing-sm)",
                     "width": "100%",

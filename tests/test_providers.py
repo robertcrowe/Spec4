@@ -7,12 +7,13 @@ from spec4.providers import PROVIDERS, list_models
 
 
 class TestProvidersRegistry:
-    def test_seven_providers(self) -> None:
-        assert len(PROVIDERS) == 7
+    def test_eight_providers(self) -> None:
+        assert len(PROVIDERS) == 8
 
     def test_provider_keys(self) -> None:
         assert set(PROVIDERS.keys()) == {
             "openai",
+            "openrouter",
             "anthropic",
             "gemini",
             "cohere",
@@ -75,7 +76,9 @@ class TestListModels:
         assert "connection refused" in err
 
     def test_models_are_sorted(self) -> None:
-        raw = {"data": [{"id": "gpt-4o-mini"}, {"id": "gpt-3.5-turbo"}, {"id": "gpt-4o"}]}
+        raw = {
+            "data": [{"id": "gpt-4o-mini"}, {"id": "gpt-3.5-turbo"}, {"id": "gpt-4o"}]
+        }
         with patch("spec4.providers._json_get", return_value=raw):
             models, _ = list_models("openai", "sk-test")
         assert models == sorted(models)
@@ -115,6 +118,29 @@ class TestListModels:
             models, _ = list_models("gemini", "key")
         assert models == ["gemini/gemini-1.5-pro"]
 
+    def test_openrouter_adds_prefix(self) -> None:
+        raw = {
+            "data": [
+                {"id": "anthropic/claude-sonnet-4-6"},
+                {"id": "openai/gpt-4o-mini"},
+                {"id": ""},
+            ]
+        }
+        with patch("spec4.providers._json_get", return_value=raw):
+            models, _ = list_models("openrouter", "key")
+        assert "openrouter/anthropic/claude-sonnet-4-6" in models
+        assert "openrouter/openai/gpt-4o-mini" in models
+        assert len(models) == 2  # blank id dropped
+
+    def test_openrouter_sends_bearer_only_with_a_key(self) -> None:
+        raw: dict[str, Any] = {"data": []}
+        with patch("spec4.providers._json_get", return_value=raw) as mock_get:
+            list_models("openrouter", "sk-or-test")
+        assert mock_get.call_args[0][1] == {"Authorization": "Bearer sk-or-test"}
+        with patch("spec4.providers._json_get", return_value=raw) as mock_get:
+            list_models("openrouter", "")
+        assert mock_get.call_args[0][1] == {}
+
     def test_mistral_excludes_embed_models(self) -> None:
         raw = {
             "data": [
@@ -151,7 +177,10 @@ class TestListModels:
     def test_bedrock_new_api_key_uses_bearer_token(self) -> None:
         fake_response = {
             "modelSummaries": [
-                {"modelId": "anthropic.claude-3-5-sonnet-20241022-v2:0", "inferenceTypesSupported": ["ON_DEMAND"]},
+                {
+                    "modelId": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "inferenceTypesSupported": ["ON_DEMAND"],
+                },
             ]
         }
         with patch("spec4.providers._json_get", return_value=fake_response) as mock_get:
@@ -165,7 +194,9 @@ class TestListModels:
     def test_bedrock_iam_key_uses_boto3(self) -> None:
         mock_client = MagicMock()
         mock_client.list_foundation_models.return_value = {"modelSummaries": []}
-        with patch("spec4.providers.boto3.client", return_value=mock_client) as mock_boto:
+        with patch(
+            "spec4.providers.boto3.client", return_value=mock_client
+        ) as mock_boto:
             list_models("bedrock", "AKIAKEY:mysecret:eu-west-1")
         call_kwargs = mock_boto.call_args[1]
         assert call_kwargs["aws_access_key_id"] == "AKIAKEY"

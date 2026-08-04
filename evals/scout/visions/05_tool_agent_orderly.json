@@ -1,0 +1,23 @@
+{
+  "purpose": "A customer-support chat assistant for an online store that helps shoppers with their orders — checking status, seeing whether an item can be returned, and starting a return — right in the conversation.",
+  "target_audience": [
+    "Shoppers with a question about a recent order",
+    "A support team that wants routine order questions handled"
+  ],
+  "key_features_mvp": [
+    {
+      "order_help_chat": {
+        "description": "In a chat, a shopper asks about their orders and the assistant answers by pulling the relevant live details (order status, delivery estimate, return eligibility) and, when the shopper asks, starting a return. It works from the store's handful of order functions and usually settles a request within the same exchange.",
+        "example": "\"Where's my order and can I return the blue one?\" gets a status, a delivery date, and a started return."
+      }
+    },
+    {
+      "account_orders": {
+        "description": "The assistant identifies the shopper's recent orders to ground its answers."
+      }
+    }
+  ],
+  "differentiators": [
+    "Resolves routine order questions in the chat instead of sending shoppers to a help center."
+  ]
+}

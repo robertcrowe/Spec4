@@ -1,0 +1,23 @@
+{
+  "purpose": "An internal assistant that answers employees' questions about company policy — leave, expenses, benefits, conduct — grounded in the current policy library and always citing the exact document and section it drew from.",
+  "target_audience": [
+    "Employees with day-to-day policy questions",
+    "HR, who maintain the policies and field the repeats"
+  ],
+  "key_features_mvp": [
+    {
+      "policy_answers": {
+        "description": "An employee asks a policy question in plain language and gets an answer drawn from the company's own policy documents, with a citation to the source document and section so they can verify it. The policy library is large, updated often by HR, and answers must come only from it — never from general knowledge.",
+        "example": "\"How many days of bereavement leave do I get?\" returns the answer plus a link to Leave Policy section 4.2."
+      }
+    },
+    {
+      "source_links": {
+        "description": "Every answer links back to the underlying policy documents it was drawn from."
+      }
+    }
+  ],
+  "differentiators": [
+    "Answers come only from current company policy and always cite their source."
+  ]
+}

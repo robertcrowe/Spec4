@@ -16,7 +16,8 @@ Total: **96%** (1435 statements, 64 missed)
 | `spec4/project_manager.py` | 91% | lines 72-78, 121-122 |
 | `spec4/providers.py` | 70% | provider-specific fetch paths not all exercised |
 | `spec4/session.py` | 90% | lines 93-94, 96-97, 103, 109-110 |
-| `spec4/tavily_mcp.py` | 78% | MCP async paths, lines 57-61, 65-80, 183-184, 187, 194 |
+| `spec4/llm.py` | 78% | formerly `tavily_mcp.py`; line numbers below are stale |
+| `spec4/websearch.py` | — | Tavily/Exa registry + the MCP async paths that moved out of `llm.py` |
 | **`spec4/app.py`** | **0%** | UI entry point — not tested |
 | **`spec4/layouts.py`** | **0%** | UI layouts — not tested |
 | **`spec4/callbacks.py`** | **0%** | Dash callbacks — not tested |

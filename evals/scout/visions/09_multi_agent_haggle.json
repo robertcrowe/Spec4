@@ -1,0 +1,23 @@
+{
+  "purpose": "A wholesale marketplace where buyers and suppliers each bring their own assistant, and the two sides' assistants negotiate deals on their behalf.",
+  "target_audience": [
+    "Wholesale buyers who negotiate many supplier deals",
+    "Suppliers with their own pricing rules and inventory"
+  ],
+  "key_features_mvp": [
+    {
+      "represented_negotiation": {
+        "description": "A buyer sets their needs and limits with their own assistant; each supplier runs their own assistant with their own pricing rules and inventory. When a buyer wants to purchase, the two independent assistants — owned by different parties, each acting only for its own side — negotiate quantity, price, and terms over the marketplace's shared protocol and bring back a proposed deal. Neither side controls or sees the other's assistant.",
+        "example": "A buyer's assistant and three suppliers' assistants settle on a price and lead time; the buyer is handed the best proposed deal to approve."
+      }
+    },
+    {
+      "deal_approval": {
+        "description": "Each party reviews and approves the negotiated terms before anything is committed."
+      }
+    }
+  ],
+  "differentiators": [
+    "Your assistant works only for you and the other side's works only for them; the marketplace just lets them talk."
+  ]
+}

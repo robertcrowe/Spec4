@@ -1,0 +1,89 @@
+{
+  "project": "shelflife",
+  "search_level": "focused",
+  "fidelity": "representative_descriptions",
+  "note": "Frozen from a real Scout run (2026-06-09, focused breadth, 9 candidates). Candidate names are VERBATIM Scout output — the aspirational framing is part of what is being tested. rough_description values are representative rather than verbatim; replace them with the actual Scout output for highest fidelity (see README).",
+  "candidates": [
+    {
+      "candidate": {
+        "name": "receipt_photo_ocr_parsing",
+        "scope": "feature",
+        "rough_description": "Extract line items (product name, quantity, price) from a photographed grocery receipt and convert them into structured inventory entries.",
+        "linked_vision_features": ["add_items_to_inventory"]
+      },
+      "expected_tier": "single_call"
+    },
+    {
+      "candidate": {
+        "name": "barcode_data_enrichment",
+        "scope": "sub_feature",
+        "rough_description": "Look up product details (name, category, typical shelf life) from a barcode scan using a product database API.",
+        "linked_vision_features": ["add_items_to_inventory", "product_lookup"]
+      },
+      "expected_tier": "deterministic"
+    },
+    {
+      "candidate": {
+        "name": "smart_expiry_prediction",
+        "scope": "feature",
+        "rough_description": "Given a product category and purchase date, compute an estimated expiry date using a shelf-life reference table.",
+        "linked_vision_features": ["expiry_tracking", "food_waste_reduction"]
+      },
+      "expected_tier": "deterministic"
+    },
+    {
+      "candidate": {
+        "name": "expiration_alert_optimization",
+        "scope": "sub_feature",
+        "rough_description": "Determine when to send an expiry reminder notification based on item category, days-until-expiry threshold, and user notification preferences.",
+        "linked_vision_features": ["expiry_tracking", "notifications"]
+      },
+      "expected_tier": "deterministic"
+    },
+    {
+      "candidate": {
+        "name": "recipe_suggestion_engine",
+        "scope": "feature",
+        "rough_description": "Given the user's current inventory, suggest recipes that use ingredients expiring soonest, generating a short list with instructions.",
+        "linked_vision_features": ["recipe_suggestions", "food_waste_reduction"]
+      },
+      "expected_tier": "single_call"
+    },
+    {
+      "candidate": {
+        "name": "recipe_personalization",
+        "scope": "sub_feature",
+        "rough_description": "Learn a user's dietary preferences, restrictions, and past recipe choices to rank and filter recipe suggestions to match their taste profile.",
+        "linked_vision_features": ["recipe_suggestions", "user_preferences"]
+      },
+      "expected_tier": "embeddings"
+    },
+    {
+      "candidate": {
+        "name": "intelligent_shopping_list_generation",
+        "scope": "feature",
+        "rough_description": "Generate a shopping list by comparing current inventory levels against a user-defined par stock for each product category.",
+        "linked_vision_features": ["shopping_list", "inventory_management"]
+      },
+      "expected_tier": "deterministic"
+    },
+    {
+      "candidate": {
+        "name": "shopping_list_optimization",
+        "scope": "sub_feature",
+        "rough_description": "Sort and group a shopping list by store section (produce, dairy, frozen, etc.) using a fixed aisle-mapping table for a given store.",
+        "linked_vision_features": ["shopping_list"]
+      },
+      "expected_tier": "deterministic"
+    },
+    {
+      "candidate": {
+        "name": "inventory_sort_and_prioritization",
+        "scope": "feature",
+        "rough_description": "Sort and display inventory items in order of expiry date, with items expiring soonest shown first.",
+        "linked_vision_features": ["inventory_display", "expiry_tracking"]
+      },
+      "expected_tier": "deterministic"
+    }
+  ]
+}

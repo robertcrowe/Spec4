@@ -1,0 +1,25 @@
+{
+  "purpose": "A tool for busy professionals that turns a long email thread into a short catch-up and a suggested reply they can edit before sending.",
+  "target_audience": [
+    "People returning to overflowing inboxes",
+    "Anyone cc'd late into a long thread"
+  ],
+  "key_features_mvp": [
+    {
+      "thread_catchup": {
+        "description": "The user forwards or pastes a single email thread and gets back a concise catch-up of what has been decided and what is still open.",
+        "example": "A 40-message thread becomes five lines: three decisions, two open questions."
+      }
+    },
+    {
+      "suggested_reply": {
+        "description": "From the same thread, produce a short draft reply in a chosen tone for the user to edit and send."
+      }
+    },
+    {
+      "tone_choice": {
+        "description": "The user picks a tone (brief, warm, formal) for the draft."
+      }
+    }
+  ]
+}

@@ -37,6 +37,10 @@ PROVIDERS: dict[str, dict[str, Any]] = {
         "label": "OpenAI",
         "env_var": "OPENAI_API_KEY",
     },
+    "openrouter": {
+        "label": "OpenRouter",
+        "env_var": "OPENROUTER_API_KEY",
+    },
 }
 
 
@@ -138,7 +142,10 @@ def _fetch_models(provider_key: str, api_key: str) -> list[str]:
                 if "ON_DEMAND" in m.get("inferenceTypesSupported", [])
             ]
         # IAM or ambient credentials — use boto3/SigV4.
-        client_kwargs: dict[str, Any] = {"service_name": "bedrock", "region_name": region}
+        client_kwargs: dict[str, Any] = {
+            "service_name": "bedrock",
+            "region_name": region,
+        }
         for k in ("aws_access_key_id", "aws_secret_access_key", "aws_session_token"):
             if creds.get(k):
                 client_kwargs[k] = creds[k]
@@ -178,6 +185,19 @@ def _fetch_models(provider_key: str, api_key: str) -> list[str]:
             f"mistral/{m['id']}"
             for m in data.get("data", [])
             if "embed" not in m.get("id", "")
+        ]
+
+    if provider_key == "openrouter":
+        # The model list is public; the bearer token is sent when present so
+        # any account-scoped visibility still applies.
+        data = _json_get(
+            "https://openrouter.ai/api/v1/models",
+            {"Authorization": f"Bearer {api_key}"} if api_key else {},
+        )
+        return [
+            f"openrouter/{m['id']}"
+            for m in data.get("data", [])
+            if m.get("id")
         ]
 
     if provider_key == "nebius":

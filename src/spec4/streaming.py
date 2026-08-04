@@ -207,8 +207,25 @@ def _format_error(exc: BaseException) -> str:
 def start(gen: Generator[str, None, None], session: dict[str, Any]) -> str:
     """Exhaust gen in a background thread, accumulating text. Returns stream_id."""
     stream_id = str(uuid.uuid4())
-    entry: dict[str, Any] = {"text": "", "done": False, "session": session}
+    # ``error`` is the recovery flag (D-ER1): a turn that died mid-flight leaves
+    # the formatted exception as the assistant message and no state transition,
+    # which reads to the user as a dead end. The poll lifts this onto the session
+    # so the chat can offer a retry instead of just an error bubble.
+    entry: dict[str, Any] = {
+        "text": "",
+        "done": False,
+        "session": session,
+        "error": False,
+    }
     with _lock:
+        # Evict finished streams here rather than in the poll's done branch.
+        # Submit is guarded on _stream_id, so no live stream can coexist with a
+        # new start(); any leftover entries are completed streams whose terminal
+        # store was already applied. Done-branch polls now READ the entry (get)
+        # without removing it, so finalisation is idempotent across racing polls
+        # — eviction therefore has to happen here at start(), not in pop().
+        for sid in [s for s, e in _STREAMS.items() if e.get("done")]:
+            del _STREAMS[sid]
         _STREAMS[stream_id] = entry
     short = stream_id[:8]
     if _DEV_MODE:
@@ -229,6 +246,7 @@ def start(gen: Generator[str, None, None], session: dict[str, Any]) -> str:
         except Exception as exc:
             formatted = _format_error(exc)
             _STREAMS[stream_id]["text"] += formatted
+            _STREAMS[stream_id]["error"] = True
             if _DEV_MODE:
                 print(
                     f"[stream {short}] EXCEPTION after {chunks} chunks: "
@@ -258,5 +276,7 @@ def get(stream_id: str) -> dict[str, Any] | None:
 
 
 def pop(stream_id: str) -> dict[str, Any] | None:
+    """Remove and return an entry. Retained as a primitive (and for tests); the
+    poll done branch no longer calls this — eviction happens in start()."""
     with _lock:
         return _STREAMS.pop(stream_id, None)

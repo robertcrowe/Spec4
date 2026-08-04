@@ -1,0 +1,25 @@
+{
+  "purpose": "A fare calculator for a regional rail network. Riders enter their origin and destination stations, their rider category, and their travel time, and get the exact fare they will be charged, matching the transit authority's published fare table.",
+  "target_audience": [
+    "Daily commuters checking a fare before they travel",
+    "Occasional and visiting riders unfamiliar with the zones"
+  ],
+  "key_features_mvp": [
+    {
+      "fare_lookup": {
+        "description": "Given an origin zone, a destination zone, a rider category (adult, senior, student, child), and whether travel is peak or off-peak, return the exact published fare. The fare table is fixed and set by the transit authority; every quoted fare must match it to the cent and be auditable.",
+        "example": "Zone 2 to Zone 5, senior, off-peak: $3.40."
+      }
+    },
+    {
+      "trip_history": {
+        "description": "A list of the rider's past fare lookups for reference."
+      }
+    },
+    {
+      "saved_trips": {
+        "description": "Riders can save frequent origin/destination pairs for one-tap lookup."
+      }
+    }
+  ]
+}

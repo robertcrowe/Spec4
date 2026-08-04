@@ -1,0 +1,103 @@
+{
+  "_note": "CALIBRATION gold set A (IncidentResponse) — labels are Claude's best guess for Robert to CORRECT. Distinct domain from recipebox/apptrail and from the nine scoring visions. Each candidate carries a 'tier' tag (Spec4's _VALID_TIERS ladder; NOT sent to the judge). gold_borderline=true marks adjacent<->off_domain seams. pair_id links matched-tier pairs: the SAME relevance relationship at two tiers, which the judge should label identically (a mismatch = tier drift). Seam tags: alpha=job-derivable-but-no-phrase, beta=broad-surface-but-off-the-job.",
+  "vision": {
+    "purpose": "A copilot for the on-call engineer that helps them understand and resolve a production incident faster.",
+    "target_audience": [
+      "On-call engineers triaging production incidents under time pressure",
+      "SRE teams who want to cut mean-time-to-resolution"
+    ],
+    "key_features_mvp": [
+      {
+        "incident_summary": {
+          "description": "Summarizes a firing alert and its recent related alerts into a one-paragraph situation brief for the responder."
+        }
+      },
+      {
+        "runbook_answers": {
+          "description": "Answers 'how do we handle this' by retrieving from the team's runbooks and past post-mortems and composing a cited answer."
+        }
+      },
+      {
+        "guided_remediation": {
+          "description": "With a small fixed set of tools (metrics, logs, deploy history), fetches the signals the engineer asks for and can trigger a bounded, pre-approved action such as a rollback."
+        }
+      }
+    ]
+  },
+  "candidates": [
+    {
+      "name": "alert_correlation_grouping",
+      "rough_description": "Groups the firing alert with recent alerts that are semantically related, so the brief reflects one incident rather than twenty separate pages.",
+      "tier": "embeddings",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "incident_summary cannot describe one coherent incident without knowing which alerts belong together. Necessity, cite incident_summary."
+    },
+    {
+      "name": "runbook_grounded_answer",
+      "rough_description": "Retrieves the most relevant runbook and post-mortem passages for the current incident and composes a cited answer to the responder's question.",
+      "tier": "rag",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "runbook_answers IS this mechanism. Necessity, cite runbook_answers."
+    },
+    {
+      "name": "metrics_and_logs_tool_calls",
+      "rough_description": "Calls the metrics and logs tools the engineer asks for and returns the readings inline in the conversation.",
+      "tier": "tool_agent",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "guided_remediation's stated outcome requires fetching the requested signals. Necessity, cite guided_remediation."
+    },
+    {
+      "name": "single_pass_incident_brief",
+      "rough_description": "Produces the incident situation brief in one LLM pass over the correlated alert payload.",
+      "tier": "single_call",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "pair_id": "A_brief",
+      "note": "Matched pair A_brief (low tier). This is a direct mechanism for incident_summary. Grounded, cite incident_summary."
+    },
+    {
+      "name": "subagent_incident_brief",
+      "rough_description": "Produces the same incident situation brief by dispatching subagents that each analyze one subsystem (database, network, application) and synthesizing their findings.",
+      "tier": "orchestrated_subagents",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "pair_id": "A_brief",
+      "note": "Matched pair A_brief (high tier). Relevance to incident_summary is IDENTICAL to single_pass_incident_brief; only the mechanism/tier differs. The judge (told to ignore tier) should also label this grounded. A downgrade here = tier drift."
+    },
+    {
+      "name": "severity_classification",
+      "rough_description": "Classifies the incident's severity (SEV1 to SEV4) from the alert and current signals to aid triage.",
+      "tier": "single_call",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "note": "Serves the understand-and-triage purpose; no stated feature requires it. Enhancement."
+    },
+    {
+      "name": "post_incident_rca_pipeline",
+      "rough_description": "After resolution, runs a fixed pipeline that chains extract-timeline, classify-root-cause, and draft-post-mortem to produce a first-draft post-mortem.",
+      "tier": "chained_calls",
+      "gold_label": "adjacent",
+      "gold_borderline": true,
+      "note": "SEAM (alpha): the purpose is resolving the incident faster, with no phrase about post-mortems; but a job around the team's runbooks/post-mortems (runbook_answers) is plausibly served by generating the next one. Proposed adjacent."
+    },
+    {
+      "name": "autonomous_infra_optimizer",
+      "rough_description": "An autonomous agent that continuously explores the infrastructure, forms hypotheses about cost and performance improvements, and opens pull requests to implement them.",
+      "tier": "planning_agent",
+      "gold_label": "off_domain",
+      "gold_borderline": true,
+      "note": "SEAM (beta): the 'infrastructure' surface may tempt a phrase-anchored judge, but the vision is resolving an incident in the moment, not standing autonomous optimization; serves no incident-resolution job. Proposed off_domain."
+    },
+    {
+      "name": "oncall_rotation_scheduling",
+      "rough_description": "Manages the team's on-call rotation calendar and pages the next engineer when needed.",
+      "tier": "deterministic",
+      "gold_label": "off_domain",
+      "gold_borderline": false,
+      "note": "Scheduling/paging is a separate product; the vision is understanding and resolving the incident in front of you. Guardrail."
+    }
+  ]
+}

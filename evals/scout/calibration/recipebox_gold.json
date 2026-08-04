@@ -1,0 +1,120 @@
+{
+  "_note": "STARTER calibration gold set — labels are Claude's best guess for Robert to CORRECT. Distinct from the nine scoring visions. gold_borderline=true marks the deliberate adjacent<->off_domain seam plants.",
+  "vision": {
+    "purpose": "A personal cookbook where a home cook saves recipes and pulls up something to make from what's already in the kitchen tonight.",
+    "target_audience": [
+      "Home cooks who save recipes from around the web",
+      "People deciding what to cook with what they have on hand"
+    ],
+    "key_features_mvp": [
+      {
+        "pantry_match": {
+          "description": "The cook lists what they have on hand and gets saved recipes they can make right now, ranked by how well the recipe fits the available ingredients."
+        }
+      },
+      {
+        "recipe_capture": {
+          "description": "Save a recipe from a URL or a photo of a page into the personal cookbook as clean, structured recipe text."
+        }
+      }
+    ]
+  },
+  "candidates": [
+    {
+      "name": "ingredient_semantic_matching",
+      "rough_description": "Matches the cook's on-hand ingredients to recipe ingredient lists by meaning (e.g. 'scallions' matches a recipe calling for 'green onions'), so pantry_match ranks recipes the cook can actually make.",
+      "tier": "embeddings",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "pantry_match cannot produce its ranked result without fuzzy ingredient matching — necessity, cite pantry_match."
+    },
+    {
+      "name": "recipe_extraction_from_page",
+      "rough_description": "Takes a recipe URL or photo and extracts structured fields (title, ingredients, steps) for storage.",
+      "tier": "single_call",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "recipe_capture's stated outcome (clean structured recipe text) requires this — necessity, cite recipe_capture."
+    },
+    {
+      "name": "quantity_normalization",
+      "rough_description": "Normalizes messy ingredient quantities and units ('a couple cloves', '1 c.') into a consistent structured form during capture.",
+      "tier": "single_call",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "Part of producing clean structured recipe text for recipe_capture."
+    },
+    {
+      "name": "ingredient_substitution_suggestions",
+      "rough_description": "When the cook is missing an ingredient, suggests plausible substitutions they could use instead.",
+      "tier": "single_call",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "note": "Fits the 'cook from what you have tonight' purpose, but no feature requires it — enhancement, not necessity. Cite purpose."
+    },
+    {
+      "name": "dietary_tagging",
+      "rough_description": "Automatically tags saved recipes (vegetarian, gluten-free, dairy-free) from their ingredients.",
+      "tier": "single_call",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "note": "Reasonable for a personal cookbook audience; not required by any stated feature."
+    },
+    {
+      "name": "shopping_list_generation",
+      "rough_description": "Builds a shopping list of the ingredients the cook is missing for a chosen recipe.",
+      "tier": "deterministic",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "note": "Fits home-cook purpose; adjacent to pantry_match but not necessary to it."
+    },
+    {
+      "name": "restaurant_recommendation",
+      "rough_description": "Recommends nearby restaurants serving dishes similar to the cook's saved recipes.",
+      "tier": "embeddings",
+      "gold_label": "off_domain",
+      "gold_borderline": false,
+      "note": "The vision is a personal cookbook for cooking at home; dining out is a different product."
+    },
+    {
+      "name": "fitness_calorie_sync",
+      "rough_description": "Estimates calories per recipe and syncs them to the cook's fitness tracker.",
+      "tier": "single_call",
+      "gold_label": "off_domain",
+      "gold_borderline": false,
+      "note": "No health/fitness signal anywhere in the vision's purpose or audience."
+    },
+    {
+      "name": "social_cooking_feed",
+      "rough_description": "A social feed showing what recipes the cook's friends are making and letting them comment.",
+      "tier": "deterministic",
+      "gold_label": "off_domain",
+      "gold_borderline": false,
+      "note": "Vision is explicitly personal; no social/community surface is implied."
+    },
+    {
+      "name": "multilingual_recipe_translation",
+      "rough_description": "Detects a saved recipe's language and translates it into the cook's language.",
+      "tier": "single_call",
+      "gold_label": "adjacent",
+      "gold_borderline": true,
+      "note": "SEAM: home cooks 'save recipes from around the web' (audience) makes translation arguably a purpose fit — but there is no explicit language signal, so it could be off_domain. Genuinely close."
+    },
+    {
+      "name": "meal_plan_calendar",
+      "rough_description": "Lays saved recipes across a weekly calendar to plan meals ahead.",
+      "tier": "single_call",
+      "gold_label": "adjacent",
+      "gold_borderline": true,
+      "note": "SEAM: plausible for the audience, but 'plan ahead' pulls against the vision's stated 'what to make tonight' framing — could be off_domain."
+    },
+    {
+      "name": "wine_pairing_suggestions",
+      "rough_description": "Suggests a wine to pair with a chosen recipe.",
+      "tier": "single_call",
+      "gold_label": "off_domain",
+      "gold_borderline": true,
+      "note": "SEAM: pairing touches cooking, but nothing in the vision's purpose (save + cook from pantry) implies beverages — leaning off_domain, but a defensible adjacent."
+    }
+  ]
+}

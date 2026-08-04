@@ -1,0 +1,109 @@
+{
+  "_note": "CALIBRATION gold set #4 (AppTrail) — labels are Claude's best guess for Robert to CORRECT. Distinct domain from recipebox and from the nine scoring visions. gold_borderline=true marks the deliberate adjacent<->off_domain seam plants. Seam tags in notes: alpha=job-derivable-but-no-citable-phrase (favors audience_goal), beta=broad-phrase-but-off-the-stated-job (stresses off_domain recall), delta=purpose-fit-but-orthogonal-to-every-per-feature-job (expected to stress audience_goal, the reverse failure). No gamma here; delta plays the discriminating third seam.",
+  "vision": {
+    "purpose": "A tracker that helps an active job seeker keep every application organized and never miss a follow-up on the applications they already have going.",
+    "target_audience": [
+      "Job seekers running many applications at once who lose track of stages and deadlines",
+      "People who want to know the right next step on each application they have open"
+    ],
+    "key_features_mvp": [
+      {
+        "application_pipeline": {
+          "description": "Tracks each application through stages (applied, screen, interview, offer) on a board the seeker moves cards across."
+        }
+      },
+      {
+        "followup_reminders": {
+          "description": "Reminds the seeker when an application has gone quiet long enough that it is time to follow up."
+        }
+      },
+      {
+        "status_extraction_from_email": {
+          "description": "Reads the seeker's job-related email and updates the matching application's stage automatically (e.g. detecting an interview invite or a rejection)."
+        }
+      }
+    ]
+  },
+  "candidates": [
+    {
+      "name": "email_intent_classification",
+      "rough_description": "Classifies an incoming job-related email as rejection, interview invite, offer, or other, so the application's stage can be updated.",
+      "tier": "single_call",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "status_extraction_from_email cannot update the stage without reading the email's intent. Necessity, cite status_extraction_from_email."
+    },
+    {
+      "name": "email_to_application_threading",
+      "rough_description": "Matches each incoming email to the correct application by employer/thread so the right card updates.",
+      "tier": "embeddings",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "status_extraction_from_email must update the matching application; this is necessary to do that correctly. Cite status_extraction_from_email."
+    },
+    {
+      "name": "quiet_application_timing_model",
+      "rough_description": "Decides when an application has gone quiet long enough to warrant a follow-up nudge.",
+      "tier": "deterministic",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "followup_reminders' stated outcome (remind when it is time to follow up) requires this. Necessity, cite followup_reminders."
+    },
+    {
+      "name": "followup_message_drafting",
+      "rough_description": "Drafts a polite follow-up email for an application that has gone quiet, ready for the seeker to send.",
+      "tier": "single_call",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "note": "Serves the never-miss-a-follow-up purpose; followup_reminders works without it. Enhancement, cite purpose."
+    },
+    {
+      "name": "interview_prep_reminder_for_scheduled_interview",
+      "rough_description": "For an interview already on a tracked application's card, reminds the seeker to prepare beforehand and links their notes for that application.",
+      "tier": "deterministic",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "note": "Tied to a tracked application and the 'right next step' purpose; not required by a feature. Enhancement. (Contrast with the generic practice bank below.)"
+    },
+    {
+      "name": "job_board_scraper",
+      "rough_description": "Scrapes external job boards to find and surface new openings matching the seeker's profile.",
+      "tier": "tool_agent",
+      "gold_label": "off_domain",
+      "gold_borderline": false,
+      "note": "Discovery of new jobs; the vision is organizing applications the seeker already has open. Different job. Guardrail."
+    },
+    {
+      "name": "job_seeker_networking_feed",
+      "rough_description": "A social feed where job seekers connect, share tips, and post about their search.",
+      "tier": "deterministic",
+      "gold_label": "off_domain",
+      "gold_borderline": false,
+      "note": "Social/community surface; the vision is a personal organizing tool. Guardrail."
+    },
+    {
+      "name": "generic_interview_question_practice_bank",
+      "rough_description": "A large searchable library of common interview questions the seeker can browse and rehearse against, not connected to any specific tracked application.",
+      "tier": "rag",
+      "gold_label": "off_domain",
+      "gold_borderline": true,
+      "note": "SEAM (beta): 'job seekers' and 'next step' offer a broad surface a phrase-anchored judge may credit, but this is a standalone study tool tied to no tracked application and serves none of the per-application jobs (track, follow up, auto-update). Proposed off_domain; contestable. Deliberately paired against the application-tied prep reminder above."
+    },
+    {
+      "name": "per_application_resume_tailoring",
+      "rough_description": "For a specific tracked application, suggests tweaks to the seeker's resume to better match that job's posting.",
+      "tier": "single_call",
+      "gold_label": "adjacent",
+      "gold_borderline": true,
+      "note": "SEAM (alpha): no purpose/audience phrase mentions resumes, so a phrase-anchored judge has little to cite (likely off_domain); but a job derived from application_pipeline (advance a tracked application / know the next step) is plausibly served. Proposed adjacent."
+    },
+    {
+      "name": "search_wide_stats_dashboard",
+      "rough_description": "Shows the seeker aggregate stats across all their applications: response rate, average time-to-interview, and where applications stall.",
+      "tier": "deterministic",
+      "gold_label": "adjacent",
+      "gold_borderline": true,
+      "note": "SEAM (delta): fits the stated purpose (keep the whole search organized; audience runs 'many applications at once') at a cross-application level, but maps to no single per-feature job, each of which is scoped to one application. A phrase-anchored judge should cite the purpose and land adjacent; a job-deriving judge that over-narrows to per-feature jobs may wrongly reject as off_domain. Proposed adjacent; the reverse-direction discriminator."
+    }
+  ]
+}

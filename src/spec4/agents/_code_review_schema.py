@@ -206,6 +206,42 @@ _AUTH_SCHEMA: dict[str, Any] = {
 }
 
 
+# Closed enum — load-bearing for the Agentifier bias-toward-reuse passes
+# (tier_analyst._existing_ai_context and the cross-cutting analyst), which
+# render `kind` verbatim into prompts.
+_AI_CAPABILITY_KINDS: list[str] = [
+    "llm_api",
+    "embedding",
+    "vector_store",
+    "ml_model",
+    "rag",
+    "agent_framework",
+    "other",
+]
+
+
+# Existing AI/ML usage, recorded once at scan time by the model that read the
+# code. Without this field Agentifier reconstructs "what AI already exists"
+# from a keyword scan of dependency names, which misses local models, in-house
+# pipelines, and anything with a non-obvious package name — and existing AI
+# infrastructure gets re-proposed from scratch.
+_AI_CAPABILITIES_SCHEMA: dict[str, Any] = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "kind": {"type": "string", "enum": _AI_CAPABILITY_KINDS},
+            "description": {"type": "string"},
+            "location": {"type": "string"},
+            **_PROVENANCE_FIELDS,
+        },
+        "required": ["name"],
+        "additionalProperties": False,
+    },
+}
+
+
 CODE_REVIEW_SCHEMA: dict[str, Any] = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "Spec4 code_review (schema_version 1)",
@@ -321,6 +357,9 @@ CODE_REVIEW_SCHEMA: dict[str, Any] = {
                 # and library keeps the discriminator stable while letting the
                 # long tail of IdPs and libraries live as string values.
                 "auth": _AUTH_SCHEMA,
+                # Existing AI/ML usage — first-class so Agentifier's reuse
+                # bias does not depend on keyword-matching dependency names.
+                "ai_capabilities": _AI_CAPABILITIES_SCHEMA,
                 # CLOSED canonical key set — load-bearing for Phaser lookups.
                 "commands": {
                     "type": "object",
@@ -515,6 +554,8 @@ def format_validation_errors_for_retry(errors: list[str], limit: int = 15) -> st
         "Custom keys go in `notes.other_notes` as one-line strings.\n"
         "- `ui_summary.kind` must be one of: spa, mpa, mobile, desktop, "
         "tui, none.\n"
+        "- `ai_capabilities[].kind` must be one of: llm_api, embedding, "
+        "vector_store, ml_model, rag, agent_framework, other.\n"
         "- Do not add custom sub-keys anywhere in the schema; route "
         "extras to `notes.other_notes`.\n"
         "- Each canonical key takes a single invocation, never a "

@@ -5,7 +5,7 @@ from typing import Any
 from dash import html
 import dash_mantine_components as dmc
 
-from spec4 import providers
+from spec4 import providers, websearch
 from spec4.layouts._shared import _card, _error
 
 
@@ -50,7 +50,10 @@ def _setup_provider_layout(
                     value=prefs.get("api_key") or "",
                     mb="xs",
                 ),
-                html.Div(id="setup-api-key-hint", style={"marginBottom": "var(--mantine-spacing-md)"}),
+                html.Div(
+                    id="setup-api-key-hint",
+                    style={"marginBottom": "var(--mantine-spacing-md)"},
+                ),
                 dmc.Checkbox(
                     id="setup-save-prefs",
                     label="Remember provider and keys in this browser? (stored in localStorage only)",  # noqa: E501
@@ -107,8 +110,10 @@ def _setup_model_layout(
             _card(
                 dmc.Alert(f"Connected to {provider_label}", color="green", mb="md"),
                 dmc.Alert(
-                    "Please be aware that the Google free tier has recently excluded the Pro models. "
-                    "Selecting a Pro model when using the free tier may throw an error (or not, if that's changed recently). "
+                    "Please be aware that the Google free tier has recently "
+                    "excluded the Pro models. "
+                    "Selecting a Pro model when using the free tier may throw "
+                    "an error (or not, if that's changed recently). "
                     "If that happens your best bet is probably to close and restart.",
                     color="yellow",
                     variant="light",
@@ -161,7 +166,7 @@ def _setup_model_layout(
     )
 
 
-def _setup_tavily_layout(
+def _setup_search_layout(
     session: dict[str, Any],
     prefs: dict[str, Any],
     setup_error: str | None,
@@ -195,7 +200,7 @@ def _setup_tavily_layout(
     if tool_support is False:
         tool_alert: Any = dmc.Alert(
             "This model does not support tool calling — web search will be "
-            "unavailable even if you enter a Tavily key. Go back to choose a "
+            "unavailable even if you enter a key. Go back to choose a "
             "different model if you need web search.",
             title="No Tool Support",
             icon="⚠️",
@@ -206,9 +211,17 @@ def _setup_tavily_layout(
         )
     else:
         tool_alert = html.Div()
+    # `tavily_key` is the pre-Exa preference name. Read as a fallback so a
+    # developer upgrading does not find their saved key gone from the field.
+    saved_provider = prefs.get("search_provider")
+    if saved_provider not in websearch.PROVIDERS:
+        saved_provider = websearch.DEFAULT_PROVIDER
+    saved_key = prefs.get("search_key") or prefs.get("tavily_key") or ""
+    spec = websearch.PROVIDERS[saved_provider]
+
     return html.Div(
         [
-            dmc.Title("Connect to Tavily Web Search", order=3, mb="sm"),
+            dmc.Title("Connect a Web Search Provider", order=3, mb="sm"),
             dmc.Text(
                 "Web search tends to be fairly useful when you're creating a spec for an application. "  # noqa: E501
                 "It will allow Spec4 to do things like look up the features of a library you might want "  # noqa: E501
@@ -222,16 +235,28 @@ def _setup_tavily_layout(
                 tool_alert,
                 dmc.Text(
                     "Enables all agents to search the web for current information. "
-                    "Optional — skip if you don't have a Tavily key.",
+                    "Choose a provider and enter its API key — or skip if you "
+                    "don't have one.",
                     c="dimmed",
                     mb="md",
                 ),
-                dmc.PasswordInput(
-                    id="setup-tavily-key",
-                    label="Tavily API Key",
-                    placeholder="tvly-…",
-                    value=prefs.get("tavily_key") or "",
+                dmc.Select(
+                    id="setup-search-provider",
+                    label="Search Provider",
+                    data=websearch.all_provider_labels(),
+                    value=spec["label"],
                     mb="md",
+                ),
+                dmc.PasswordInput(
+                    id="setup-search-key",
+                    label=spec["key_label"],
+                    placeholder=spec["placeholder"],
+                    value=saved_key,
+                    mb="xs",
+                ),
+                html.Div(
+                    id="setup-search-hint",
+                    style={"marginBottom": "var(--mantine-spacing-md)"},
                 ),
                 _error(setup_error) if setup_error else html.Div(),
                 dmc.Group(
@@ -243,9 +268,9 @@ def _setup_tavily_layout(
                             color="gray",
                         ),
                         dmc.Button(
-                            "Skip →", id="btn-setup-tavily-skip", variant="outline"
+                            "Skip →", id="btn-setup-search-skip", variant="outline"
                         ),
-                        dmc.Button("Connect & Start →", id="btn-setup-tavily-connect"),
+                        dmc.Button("Connect & Start →", id="btn-setup-search-connect"),
                     ],
                     mt="sm",
                 ),
@@ -266,4 +291,6 @@ def _setup_layout(
         return _setup_provider_layout(session, prefs, labels, setup_error)
     if session.get("model") is None:
         return _setup_model_layout(session, prefs, setup_error)
-    return _setup_tavily_layout(session, prefs, setup_error, image_support, tool_support)
+    return _setup_search_layout(
+        session, prefs, setup_error, image_support, tool_support
+    )

@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from spec4 import streaming
 from spec4.streaming import _format_error
 
 
@@ -322,3 +323,25 @@ class TestGoogleNonRateLimit:
         assert "Request contains an invalid argument." in out
         assert "Retry after" not in out
         assert "Docs:" not in out
+
+
+# ---------------------------------------------------------------------------
+# start() — eviction of finished entries
+# ---------------------------------------------------------------------------
+
+
+class TestStartEviction:
+    def test_start_evicts_finished_entries(self) -> None:
+        """start() must evict done entries before inserting the new stream."""
+        fake_id = "dead0000-0000-0000-0000-000000000000"
+        streaming._STREAMS[fake_id] = {"text": "x", "done": True, "session": {}}
+
+        new_id = None
+        try:
+            new_id = streaming.start(iter(()), {})
+            assert fake_id not in streaming._STREAMS, (
+                "finished entry must be evicted by start()"
+            )
+            assert new_id in streaming._STREAMS
+        finally:
+            streaming._STREAMS.pop(new_id, None)

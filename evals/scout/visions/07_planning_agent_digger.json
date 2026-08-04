@@ -1,0 +1,23 @@
+{
+  "purpose": "An analyst's assistant that investigates open-ended questions about a business's own data — the kind where you don't know in advance where the answer lies.",
+  "target_audience": [
+    "Data and operations analysts chasing 'why did X happen'",
+    "Teams without the time to hand-trace every anomaly"
+  ],
+  "key_features_mvp": [
+    {
+      "investigation": {
+        "description": "An analyst poses an open question and the assistant investigates across the company's data sources, choosing what to look at next based on what each step reveals, following the trail until it can explain what it found. Different questions lead down different paths and no two investigations look alike.",
+        "example": "\"Why did checkout completions drop last week?\" leads it from funnel metrics to a specific browser to a shipped front-end change."
+      }
+    },
+    {
+      "findings_writeup": {
+        "description": "When it has enough, it writes up what it found and the path it took to get there."
+      }
+    }
+  ],
+  "differentiators": [
+    "Handles questions with no predefined path; it works the way an analyst does, following the evidence where it leads."
+  ]
+}

@@ -35,6 +35,8 @@ PHASE_SCHEMA: dict[str, Any] = {
         "total_phases",
         "phase_title",
         "phase_summary",
+        "features",
+        "capabilities",
         "tech_stack_spec",
         "instructions",
         "risk_assessment",
@@ -45,6 +47,44 @@ PHASE_SCHEMA: dict[str, Any] = {
         "total_phases": {"type": "integer", "minimum": 1},
         "phase_title": {"type": "string", "minLength": 1},
         "phase_summary": {"type": "string", "minLength": 1},
+        # D-PH2a: two declaration arrays, two id spaces — the array determines
+        # the space, so a capability named after the feature it serves never
+        # collides. `features[]` declares product-feature ids from the
+        # Brainstormer spine (feature_specs.json); `capabilities[]` declares
+        # AI catalog-node ids (ai_features.json, including infrastructure).
+        # In both: `id` joins to the source artifact; `role` distinguishes the
+        # phase that introduces the item from later phases that extend it; the
+        # full spec attaches at every touching phase, so `scope_note` is the
+        # sole place a phase's partial coverage is recorded — the spec is
+        # never sliced. Both arrays are required but legitimately empty (a
+        # steel-thread scaffold declares neither; a no-AI project always has
+        # an empty `capabilities`).
+        "features": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "role", "scope_note"],
+                "properties": {
+                    "id": {"type": "string", "minLength": 1},
+                    "role": {"enum": ["introduced", "extended"]},
+                    "scope_note": {"type": "string"},
+                },
+            },
+        },
+        "capabilities": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "role", "scope_note"],
+                "properties": {
+                    "id": {"type": "string", "minLength": 1},
+                    "role": {"enum": ["introduced", "extended"]},
+                    "scope_note": {"type": "string"},
+                },
+            },
+        },
         "tech_stack_spec": {
             "type": "object",
             "additionalProperties": False,
@@ -144,7 +184,10 @@ def format_validation_errors_for_retry(
         f"{bullet_list}{truncated_note}\n\n"
         "Reminders that match the most common drift:\n"
         "- Every phase must include: phase_number (int), total_phases (int), "
-        "phase_title (non-empty), phase_summary (non-empty), tech_stack_spec "
+        "phase_title (non-empty), phase_summary (non-empty), features (array; "
+        "product-feature ids from the Feature specifications), capabilities "
+        "(array; AI catalog-node ids — empty for a project with no AI "
+        "features), tech_stack_spec "
         "(with both dependencies and configurations), instructions (non-empty "
         "list of strings), risk_assessment (with both potential_bottlenecks "
         "and mitigation_strategy), and verification (non-empty).\n"

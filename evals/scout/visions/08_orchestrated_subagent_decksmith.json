@@ -1,0 +1,23 @@
+{
+  "purpose": "A tool that turns a founder's rough idea into a complete pitch deck, handled behind one conversation by a set of specialists working in different disciplines.",
+  "target_audience": [
+    "Early founders preparing to raise",
+    "Accelerators standardizing deck quality across cohorts"
+  ],
+  "key_features_mvp": [
+    {
+      "deck_build": {
+        "description": "A founder describes their idea and gets back a full pitch deck. Behind a single assistant that owns the conversation, the work is handled by distinct specialists — one researching the market, one building the financial model, one shaping the narrative, one handling visual design — each working in its own discipline with its own sources and tools, their outputs brought together into one coherent deck.",
+        "example": "\"An app for booking last-minute dog walkers\" comes back as a 12-slide deck with market sizing, a revenue model, a story arc, and consistent design."
+      }
+    },
+    {
+      "targeted_revision": {
+        "description": "The founder asks for changes and the specialist suited to each change handles it, keeping the deck coherent."
+      }
+    }
+  ],
+  "differentiators": [
+    "Market research, financial modeling, storytelling, and design are each handled by a specialist suited to them rather than competing for one generalist's attention."
+  ]
+}

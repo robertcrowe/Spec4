@@ -5,7 +5,7 @@ import pathlib
 from collections.abc import Generator
 from typing import Any
 
-from spec4 import tavily_mcp
+from spec4 import llm, websearch
 from spec4.agents._code_review_schema import (
     format_validation_errors_for_retry,
     validate_code_review,
@@ -15,9 +15,12 @@ from spec4.agents._utils import (
     _extract_json_block,
     _last_assistant_text,
     _maybe_inject_resume_summary,
+    _abandon_reask,
+    _reask_for_artifact,
     _render_coding_style,
     _replay_last_assistant,
     _stream_suppressing_json,
+    _suppressed_as_artifact,
 )
 from spec4.app_constants import STATE_REVIEW_COMPLETE
 
@@ -152,10 +155,13 @@ def _read_text_safely(path: pathlib.Path, limit: int) -> str | None:
         return None
 
 
-def _gather_project_context(working_dir: str) -> str:
-    root = pathlib.Path(working_dir)
-    lines: list[str] = [f"## Project Directory: `{root}`\n"]
+def _collect_files(root: pathlib.Path) -> list[pathlib.Path]:
+    """Walk the project tree, skipping vendored/build directories.
 
+    Split out of `_gather_project_context` so `run()` can perform the walk
+    itself, report the file count as progress, and hand the result back for
+    formatting instead of walking the tree twice (D-SC-P1).
+    """
     all_files: list[pathlib.Path] = []
     for path in sorted(root.rglob("*")):
         if not path.is_file():
@@ -164,6 +170,17 @@ def _gather_project_context(working_dir: str) -> str:
         if any(part in _SKIP_DIRS for part in rel_parts):
             continue
         all_files.append(path)
+    return all_files
+
+
+def _gather_project_context(
+    working_dir: str, all_files: list[pathlib.Path] | None = None
+) -> str:
+    root = pathlib.Path(working_dir)
+    lines: list[str] = [f"## Project Directory: `{root}`\n"]
+
+    if all_files is None:
+        all_files = _collect_files(root)
 
     if not all_files:
         lines.append("The directory appears to be empty (no non-hidden files found).\n")
@@ -302,15 +319,31 @@ def _format_deployment_signals(
 
 
 SYSTEM_PROMPT = """\
-You are an expert software architect and code reviewer. You have been given the file\
-listing and selected contents of a software project directory. Your job is to produce a\
-structured code review for Spec4, a project-planning tool. The review is consumed\
-verbatim by four downstream agents — quality here directly determines theirs.
+You are an expert software architect and code reviewer. You have been given the file \
+listing and selected contents of a software project directory. Your job is to produce a \
+structured code review for Spec4, a project-planning tool. The review is consumed \
+verbatim by six downstream agents — quality here directly determines theirs.
 
 **Downstream consumers — what each one will use:**
 
 - **Brainstormer** (vision agent) — reads `existing_self_description`, `project_type`,
   and `ui_summary.has_ui` to ground the vision conversation in what already exists.
+- **Agentifier** (AI-opportunity agent) — the only consumer handed the review
+  **verbatim in full**, so any field may be drawn on. Its discovery pass hunts for
+  manual or rule-based workflows AI could improve and rudimentary AI worth
+  upgrading, leaning on `existing_self_description`, `project_type`, and
+  `api_surface` for what the system does today, and on `commands` and
+  `notes.incomplete_or_dead_code` for repeated manual steps and operational
+  bottlenecks; every candidate it raises must name the current implementation it
+  would replace, so concrete descriptions of existing behaviour carry more weight
+  here than anywhere else. Its tier and cross-cutting passes read
+  `ai_capabilities` first — falling back to matching `dependencies` and
+  `frameworks` names against known AI/LLM packages — and bias tier and tooling
+  choices toward reusing what is already installed; so record every existing
+  AI/ML usage in `ai_capabilities`, and give AI/LLM libraries their exact
+  package names (`anthropic`, `langchain`, `chromadb`); a generic gloss like
+  "ML utilities" makes existing AI infrastructure invisible and it will be
+  re-proposed from scratch.
 - **StackAdvisor** — reads `languages`, `frameworks`, `runtime_versions`,
   `dependencies`, `protocols_implemented`, `persistence`, `auth`, and
   `commands.deploy` to flag stack conflicts and migration costs.
@@ -448,10 +481,11 @@ minimal JSON (see Empty Project Format below). Do not ask follow-up questions.
    the full review, organized under these section names: Project Type, Architecture,
    Languages & Frameworks, Build System & Dependencies, Commands & Entrypoints,
    Directory Map, UI Summary, Persistence, Environment Variables, Deployment,
-   API Surface, Authentication, Coding Style, Test Coverage & CI, Notable
-   Observations. Only include the sections that apply to this project — for
-   example, skip Persistence for a project with no database, skip API Surface
-   for a CLI, skip Deployment for a library. Present it once, in full.
+   API Surface, Authentication, AI Capabilities, Coding Style, Test Coverage &
+   CI, Notable Observations. Only include the sections that apply to this
+   project — for example, skip Persistence for a project with no database, skip
+   API Surface for a CLI, skip Deployment for a library, skip AI Capabilities
+   when the project has no AI/ML usage. Present it once, in full.
 2. **Ask.** End with: "Anything to correct? Reference sections by name, or reply
    'looks good' to finalize." Do not solicit per-section confirmation; the user will
    point out what needs fixing.
@@ -593,6 +627,22 @@ minimal JSON (see Empty Project Format below). Do not ask follow-up questions.
       "library": "authlib",
       "source": "src/spec4/auth.py"
     },
+    "ai_capabilities": [
+      {
+        "name": "anthropic",
+        "kind": "llm_api",
+        "description": "Claude API client drafting support replies in the ticket workflow",
+        "location": "src/app/ai/reply_drafter.py",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "chromadb",
+        "kind": "vector_store",
+        "description": "Local vector store of embedded help-center articles for retrieval",
+        "location": "src/app/ai/retrieval.py",
+        "source": "pyproject.toml"
+      }
+    ],
     "ui_summary": {
       "has_ui": true,
       "kind": "spa  // one of: spa | mpa | mobile | desktop | tui | none",
@@ -867,6 +917,19 @@ minimal JSON (see Empty Project Format below). Do not ask follow-up questions.
   client secret, or credential value — only the auth MECHANISM. The
   schema rejects custom sub-keys; do not add `secret`, `signing_key`,
   `client_secret`, or similar.
+- **`ai_capabilities`** — include when the project ALREADY uses AI/ML in any
+  form: LLM API clients (`anthropic`, `openai`, `litellm`, `ollama`),
+  embedding pipelines, vector stores (`chromadb`, `pinecone`, `faiss`,
+  `pgvector`), local or hosted ML models, RAG plumbing, or agent frameworks
+  (`langchain`, `crewai`). One entry per capability. `kind` is a CLOSED enum:
+  `"llm_api"`, `"embedding"`, `"vector_store"`, `"ml_model"`, `"rag"`,
+  `"agent_framework"`, `"other"` — do NOT invent values. `name` is the exact
+  package or service name; `description` is one sentence naming the workflow
+  this capability powers TODAY (not what it could do); `location` cites the
+  file or directory where it is wired in. Evidence: an AI/ML package in a
+  manifest, model files in the tree, or API-client construction in a source
+  sample. Omit the field entirely when the project has no AI/ML usage — do
+  not emit an empty array.
 - `notes.ci_cd.present` is REQUIRED (boolean) whenever `notes` is present.
 - `notes.test_coverage` shape (when `has_tests` is `true`): EITHER include both
   `covered_modules` and `uncovered_modules` arrays, OR include a single
@@ -1151,6 +1214,7 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
     _render_deployment(cr.get("deployment"), lines)
     _render_api_surface(cr.get("api_surface"), lines)
     _render_auth(cr.get("auth"), lines)
+    _render_ai_capabilities(cr.get("ai_capabilities"), lines)
 
     ui = cr.get("ui_summary")
     if isinstance(ui, dict) and ui:
@@ -1313,6 +1377,27 @@ def _render_auth(auth: Any, lines: list[str]) -> None:
         lines.append(f"**Authentication:** {' · '.join(bits)}\n")
 
 
+def _render_ai_capabilities(ai_caps: Any, lines: list[str]) -> None:
+    if not isinstance(ai_caps, list) or not ai_caps:
+        return
+    lines.append("**AI Capabilities:**")
+    for entry in ai_caps:
+        if not isinstance(entry, dict):
+            lines.append(f"- {entry}")
+            continue
+        name = entry.get("name", "")
+        kind = entry.get("kind", "")
+        location = entry.get("location", "")
+        head = f"{name} [{kind}]" if name and kind else name or str(entry)
+        tail_bits = [b for b in (
+            entry.get("description", ""),
+            f"`{location}`" if location else "",
+        ) if b]
+        tail = f" — {' · '.join(tail_bits)}" if tail_bits else ""
+        lines.append(f"- {head}{tail}")
+    lines.append("")
+
+
 def _render_typed_notes(notes: dict[str, Any], lines: list[str]) -> None:
     tc = notes.get("test_coverage")
     if isinstance(tc, dict):
@@ -1382,8 +1467,21 @@ def _render_typed_notes(notes: dict[str, Any], lines: list[str]) -> None:
         lines.append("")
 
 
-def _build_fresh_scan_seed(working_dir: str) -> str:
-    context = _gather_project_context(working_dir)
+def _approx_tokens(text: str) -> int:
+    """Rough token count for display only (D-SC-P2).
+
+    Four characters per token is the usual English-prose rule of thumb and is
+    close enough to set an expectation about request size. It is never used for
+    truncation, budgeting, or any request decision — only to tell the user how
+    much was sent — so no tokenizer dependency is warranted.
+    """
+    return len(text) // 4
+
+
+def _build_fresh_scan_seed(
+    working_dir: str, all_files: list[pathlib.Path] | None = None
+) -> str:
+    context = _gather_project_context(working_dir, all_files)
     return (
         "Please introduce yourself as CodeScanner, then analyze this project "
         "directory and produce the full draft review in one shot as described in "
@@ -1392,8 +1490,12 @@ def _build_fresh_scan_seed(working_dir: str) -> str:
     )
 
 
-def _build_update_scan_seed(working_dir: str, prior_review: dict[str, Any]) -> str:
-    context = _gather_project_context(working_dir)
+def _build_update_scan_seed(
+    working_dir: str,
+    prior_review: dict[str, Any],
+    all_files: list[pathlib.Path] | None = None,
+) -> str:
+    context = _gather_project_context(working_dir, all_files)
     prior_json = json.dumps(prior_review, indent=2)
     return (
         "Please introduce yourself as CodeScanner. The user has asked you to "
@@ -1434,6 +1536,15 @@ def run(
 
     msgs = session["code_scanner_messages"]
     user_input = _drop_orphan_or_route_to_fresh_start(msgs, user_input)
+    # D-SC-P1: characters yielded as scan-progress text before the LLM stream
+    # opens. Seeded into the chars counter below so it stays monotonic across
+    # the scan-to-analysis handover instead of resetting to zero.
+    pre_stream_chars = 0
+
+    # Hoisted above the branch so the scan narration can size the request it is
+    # about to make (D-SC-P2). Both are pure string work — no I/O.
+    search_cfg = websearch.from_session(session)
+    system = llm.build_system_prompt(SYSTEM_PROMPT, search_cfg)
 
     if user_input is None:
         if msgs:
@@ -1478,74 +1589,124 @@ def run(
                 )
                 return
 
+            # D-SC-P1: the directory walk and the sample reads that follow it
+            # run for seconds on a large tree, and until now yielded nothing —
+            # the user watched an empty bubble with no indication the agent was
+            # working. Narrate the two phases as they happen. This text is
+            # display-only: on the artifact turn `_display_override` replaces
+            # the visible message wholesale, and the message history records
+            # only what `stream_turn` appends.
+            mode = "Re-scanning" if existing_review is not None else "Scanning"
+            intro_line = f"🔍 **{mode}** `{working_dir}`…\n\n"
+            pre_stream_chars += len(intro_line)
+            yield intro_line
+
+            all_files = _collect_files(pathlib.Path(working_dir))
+            n = len(all_files)
+            count_line = (
+                f"- Indexed **{n}** file{'' if n == 1 else 's'} — reading "
+                "manifests, README, and source samples…\n"
+            )
+            pre_stream_chars += len(count_line)
+            yield count_line
+
             if existing_review is not None:
-                seed = _build_update_scan_seed(working_dir, existing_review)
+                seed = _build_update_scan_seed(working_dir, existing_review, all_files)
             else:
-                seed = _build_fresh_scan_seed(working_dir)
+                seed = _build_fresh_scan_seed(working_dir, all_files)
             msgs.append({"role": "user", "content": seed})
+
+            # D-SC-P2: what follows is a single completion call, and the wait
+            # before its first token is dominated by prefill over this request.
+            # Nothing runs locally in that window, so name the size and the
+            # model rather than leaving "analyzing…" to imply local work.
+            approx = _approx_tokens(system) + _approx_tokens(seed)
+            model = llm_config.get("model") or "the configured model"
+            done_line = (
+                f"\n✅ Scan complete — sent ~{approx:,} tokens to "
+                f"`{model}`.\n\n"
+                "_Waiting for the first response. Large projects can take a "
+                "couple of minutes before text starts appearing._\n\n---\n\n"
+            )
+            pre_stream_chars += len(done_line)
+            yield done_line
     else:
         msgs.append({"role": "user", "content": user_input})
 
-    tavily_api_key = session.get("tavily_api_key")
-    system = tavily_mcp.build_system_prompt(SYSTEM_PROMPT, tavily_api_key)
-
     yield from _stream_suppressing_json(
-        tavily_mcp.stream_turn(
-            system, msgs, llm_config, tavily_api_key, agent_name="code_scanner"
-        )
+        llm.stream_turn(
+            system, msgs, llm_config, search_cfg, agent_name="code_scanner"
+        ),
+        session,
+        seed=pre_stream_chars,
     )
 
-    review, errors = _extract_and_validate_review(_last_assistant_text(msgs))
+    raw_reply = _last_assistant_text(msgs)
+    review, errors = _extract_and_validate_review(raw_reply)
+    if review is None and not errors and _suppressed_as_artifact(raw_reply):
+        # D-SC-P3: `(None, [])` normally means "no JSON here, still conversing"
+        # — and that is a legitimate turn, because the reply was shown to the
+        # developer. It means something else entirely when the reply opened with
+        # a fence: the whole response was suppressed on its way to the screen, so
+        # a finalize turn whose block is malformed or truncated before its
+        # closing fence ends with nothing displayed, no state change, and no
+        # code_review.json — an empty bubble and no controls, which is what the
+        # developer sees as "it finalized and then nothing happened". Fail it
+        # into the retry path below instead, which already knows how to re-ask
+        # for the artifact and how to explain itself if the re-ask fails too.
+        errors = [
+            "<root>: the fenced JSON block could not be parsed — it was "
+            "malformed, or truncated before its closing fence"
+        ]
     if review is None and errors:
         # JSON was emitted but failed schema validation. Retry once,
         # surfacing the specific errors back to the model. On providers
         # that support it, force json_object mode so the retry response
         # is pure JSON instead of prose-wrapped re-explanation.
         retry_user_msg = format_validation_errors_for_retry(errors)
-        msgs.append({"role": "user", "content": retry_user_msg})
         response_format: dict[str, Any] | None = None
-        if tavily_mcp.supports_response_format(llm_config.get("model", "")):
+        if llm.supports_response_format(llm_config.get("model", "")):
             response_format = {"type": "json_object"}
-        # Drain the retry stream silently — its body is raw or fenced
-        # JSON that the user should never see. The stream_turn generator
-        # still mutates msgs to record the assistant reply.
-        for _chunk in tavily_mcp.stream_turn(
-            system,
-            msgs,
-            llm_config,
-            tavily_api_key,
+        # The re-ask drains silently — its body is raw or fenced JSON the user
+        # should never see — while publishing the running char total so the
+        # counter does not freeze for its duration (D-SC-P1 / D-PH9).
+        yield from _reask_for_artifact(
+            system=system,
+            msgs=msgs,
+            llm_config=llm_config,
+            search_config=search_cfg,
             agent_name="code_scanner",
+            correction=retry_user_msg,
+            status_line=(
+                "\n\n_The structured review needs a correction pass — "
+                "re-emitting…_\n"
+            ),
             response_format=response_format,
-        ):
-            pass
+            session=session,
+            seed=pre_stream_chars + len(_last_assistant_text(msgs)),
+        )
         review, _ = _extract_and_validate_review(_last_assistant_text(msgs))
         if review is None:
-            # Retry failed too. Drop the synthesized correction exchange
-            # so the chat history does not carry a dead-end user turn,
-            # surface a brief recoverable message in place of the bad
-            # JSON, and leave code_scanner_state untouched so the user
-            # can re-engage by chatting further.
-            if (
-                len(msgs) >= 2
-                and msgs[-2].get("role") == "user"
-                and msgs[-2].get("content") == retry_user_msg
-            ):
-                del msgs[-2:]
-            fallback = (
+            # Retry failed too. Drop the synthesized correction exchange so the
+            # chat history does not carry a dead-end user turn, surface a brief
+            # recoverable message in place of the bad JSON, and leave
+            # code_scanner_state untouched so the user can re-engage by chatting.
+            _abandon_reask(
+                msgs,
+                retry_user_msg,
                 "I tried to emit the structured review but it didn't pass "
                 "validation. Please point me to the section to correct, "
-                "or reply 'try again' and I'll re-emit it."
+                "or reply 'try again' and I'll re-emit it.",
+                session,
             )
-            if msgs and msgs[-1].get("role") == "assistant":
-                msgs[-1]["content"] = fallback
-            else:
-                msgs.append({"role": "assistant", "content": fallback})
-            session["_display_override"] = fallback
 
     if review:
+        # D-SC18a: render before committing state — the COMPLETE flag gates the
+        # save in session.py, so a formatter failure after it persists the output
+        # of a crashed turn. See the stack_advisor note for the observed case.
+        display = _format_review_as_text(review)
         session["code_scanner_state"] = STATE_REVIEW_COMPLETE
         session["code_review"] = review
-        display = _format_review_as_text(review)
         msgs[-1]["content"] = display
         session["_display_override"] = display
         session["code_scanner_artifact_msg_count"] = len(msgs)

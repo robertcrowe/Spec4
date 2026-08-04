@@ -1,6 +1,6 @@
 """Project directory management for Spec4.
 
-Handles working directory selection, .spec4 artifact storage, and SPECMEM.md updates.
+Handles working directory selection and .spec4 artifact storage.
 """
 
 from __future__ import annotations
@@ -10,7 +10,24 @@ import re
 from pathlib import Path
 from typing import Any
 
-_SPECMEM_PLANNING_MARKER = "\n---\n\n## Spec4 Planning State"
+from spec4.app_constants import PROJECT_MODES
+from spec4.design_manifest import (
+    surface_detail_lines,
+    surfaces_for_declarations,
+)
+from spec4.stack_routing import (
+    baseline_library_names,
+    entries_for_declarations,
+    nfr_threads,
+)
+from spec4.feature_specs import (
+    PHASE_EXCLUDED_CROSS_CUTTING,
+    PHASE_SPEC_FIELDS,
+    PHASER_PRODUCT_SPEC_FIELDS,
+    render_cross_cutting,
+    render_feature_block,
+    spec_index,
+)
 
 # Phase artifacts are stored as Markdown-with-frontmatter so the coding agent
 # consumes them as natural prose, while Spec4 retains a machine-readable copy
@@ -35,36 +52,65 @@ def ensure_spec4_dir(working_dir: str | Path) -> Path:
     return d
 
 
+def get_version_dir(working_dir: str | Path, version: int) -> Path:
+    """Return ``.spec4/v{version}`` — the per-round artifact root.
+
+    Every artifact for a round (vision, stack, code_review, ai_*, design/,
+    phases/, deployment-plan, the IMPLEMENTED marker) lives under this
+    directory. Each version is self-contained; lower versions are prior,
+    implemented rounds.
+    """
+    return get_spec4_dir(working_dir) / f"v{version}"
+
+
+def ensure_version_dir(working_dir: str | Path, version: int) -> Path:
+    d = get_version_dir(working_dir, version)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 # ---------------------------------------------------------------------------
 # Artifact I/O
 # ---------------------------------------------------------------------------
 
 
 def load_spec4_artifacts(working_dir: str | Path) -> dict[str, Any]:
-    """Load vision.json, stack.json, code_review.json, and phases/*.md (legacy *.json) from .spec4/."""  # noqa: E501
-    spec4_dir = get_spec4_dir(working_dir)
+    """Load vision/stack/code_review and phases from the latest ``.spec4/v{N}/``.
+
+    All artifacts are version-scoped under ``.spec4/v{N}/``. The highest version
+    directory is the latest round (in-progress or implemented); the session and
+    Deployer track that round. Each version is a self-contained 1..k phase set;
+    lower versions are prior, implemented rounds. There is no flat-layout
+    fallback — a project with no version directories loads as empty.
+    """
     result: dict[str, Any] = {
         "vision": None,
         "stack": None,
         "code_review": None,
         "phases": [],
+        "phase_version": None,
+        "feature_specs": None,
     }
+
+    version = latest_phase_version(working_dir)
+    result["phase_version"] = version
+    if version is None:
+        return result
+
+    version_dir = get_version_dir(working_dir, version)
 
     for key, filename in (
         ("vision", "vision.json"),
         ("stack", "stack.json"),
         ("code_review", "code_review.json"),
+        ("feature_specs", "feature_specs.json"),
     ):
         try:
-            result[key] = json.loads((spec4_dir / filename).read_text())
+            result[key] = json.loads((version_dir / filename).read_text())
         except (OSError, json.JSONDecodeError):
             pass
 
-    phases_dir = spec4_dir / "phases"
-    # Primary format is .md (frontmatter holds the structured phase JSON).
-    # Legacy .json files are still read so projects produced by older Spec4
-    # versions keep working without a manual migration step.
-    seen_numbers: set[int] = set()
+    phases_dir = version_dir / "phases"
 
     def _by_number(p: Path) -> tuple[int, str]:
         m = re.match(r"phase(\d+)", p.stem)
@@ -74,60 +120,276 @@ def load_spec4_artifacts(working_dir: str | Path) -> dict[str, Any]:
         phase = parse_phase_markdown(pf.read_text(encoding="utf-8"))
         if phase is not None:
             result["phases"].append(phase)
-            num = phase.get("phase_number")
-            if isinstance(num, int):
-                seen_numbers.add(num)
-    for pf in sorted(phases_dir.glob("phase*.json"), key=_by_number):
-        try:
-            phase = json.loads(pf.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-        num = phase.get("phase_number")
-        if isinstance(num, int) and num in seen_numbers:
-            continue
-        result["phases"].append(phase)
 
     return result
 
 
-def save_vision(working_dir: str | Path, vision: dict[str, Any]) -> None:
-    spec4_dir = ensure_spec4_dir(working_dir)
-    (spec4_dir / "vision.json").write_text(
-        json.dumps(vision, indent=2), encoding="utf-8"
-    )
+def _write_text_if_changed(path: Path, content: str) -> None:
+    """Write ``content`` to ``path`` only when it differs from what is on disk.
 
-
-def save_stack(working_dir: str | Path, stack: dict[str, Any]) -> None:
-    spec4_dir = ensure_spec4_dir(working_dir)
-    (spec4_dir / "stack.json").write_text(json.dumps(stack, indent=2), encoding="utf-8")
-
-
-def save_code_review(working_dir: str | Path, review: dict[str, Any]) -> None:
-    spec4_dir = ensure_spec4_dir(working_dir)
-    (spec4_dir / "code_review.json").write_text(
-        json.dumps(review, indent=2), encoding="utf-8"
-    )
-
-
-def save_phases(working_dir: str | Path, phases: list[dict[str, Any]]) -> None:
-    """Write each phase as a Markdown-with-JSON-frontmatter file.
-
-    The coding agent reads the prose body; Spec4 itself round-trips through
-    the frontmatter JSON when reloading the project. Any pre-existing
-    `phase{N}.json` from older Spec4 versions is removed once the matching
-    `.md` lands so the directory does not accumulate two copies of every
-    phase.
+    Re-persisting an unchanged artifact must not bump its mtime: the agent-select
+    freshness model and ``detect_stale_inputs`` both treat a newer input mtime as
+    a semantic change, so a no-op re-save (the persist funnel re-writes every
+    COMPLETE artifact on every later turn) would otherwise make untouched
+    upstream artifacts look newer than the outputs they precede.
     """
-    spec4_dir = ensure_spec4_dir(working_dir)
-    phases_dir = spec4_dir / "phases"
-    phases_dir.mkdir(exist_ok=True)
-    for phase in phases:
-        num = phase.get("phase_number", 0)
-        md_path = phases_dir / f"phase{num}.md"
-        md_path.write_text(render_phase_markdown(phase), encoding="utf-8")
-        legacy = phases_dir / f"phase{num}.json"
-        if legacy.exists():
-            legacy.unlink()
+    try:
+        if path.exists() and path.read_text(encoding="utf-8") == content:
+            return
+    except OSError:
+        pass
+    path.write_text(content, encoding="utf-8")
+
+
+def save_vision(
+    working_dir: str | Path, vision: dict[str, Any], version: int
+) -> None:
+    version_dir = ensure_version_dir(working_dir, version)
+    _write_text_if_changed(
+        version_dir / "vision.json", json.dumps(vision, indent=2)
+    )
+
+
+def save_stack(
+    working_dir: str | Path, stack: dict[str, Any], version: int
+) -> None:
+    version_dir = ensure_version_dir(working_dir, version)
+    _write_text_if_changed(
+        version_dir / "stack.json", json.dumps(stack, indent=2)
+    )
+
+
+def merge_library_additions(
+    stack: dict[str, Any] | None,
+    additions: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Merge human-confirmed library additions into a stack spec.
+
+    Each addition is a dict with at least ``name`` and ``tier`` (one of
+    ``backend`` / ``frontend`` / ``infrastructure``); ``category`` and
+    ``purpose`` are optional and carried through when present, as are the
+    join keys ``serves_features`` / ``serves_capabilities`` /
+    ``satisfies_nfr`` (D-PH7d — each sanitized to a list of non-empty
+    strings and dropped when nothing survives). Preserving the join keys is
+    what keeps a purpose-made addition attributable across rounds: without
+    them it reads as a global staple and any NFR it satisfied reads as
+    orphaned forever. Additions land in ``stack_spec.libraries[tier]`` in
+    the same shape StackAdvisor's own entries occupy, so a later
+    StackAdvisor re-entry treats them as its own.
+
+    Guard: **dedup by name within the tier.** An addition whose ``name``
+    already appears in that tier (case-insensitive) is dropped — the only
+    deterministic redundancy. A same-category, different-name library (e.g. a
+    second ``external_api``) is a distinct, legitimate entry and is kept.
+
+    Pure and idempotent: returns a new merged stack and does not mutate the
+    input. Re-applying the same additions is a no-op. Malformed additions
+    (missing ``name`` or ``tier``, or an unknown tier) are skipped rather than
+    raising, so a bad parse never strands the caller.
+    """
+    import copy
+
+    valid_tiers = ("backend", "frontend", "infrastructure")
+    merged = copy.deepcopy(stack) if isinstance(stack, dict) else {}
+
+    # Locate (or create) the inner spec and its libraries map, tolerating both
+    # the wrapped ({"stack_spec": {...}}) and bare shapes.
+    _inner = merged.get("stack_spec")
+    spec = _inner if isinstance(_inner, dict) else None
+    if spec is None:
+        if "stack_spec" in merged:
+            merged["stack_spec"] = {}
+            spec = merged["stack_spec"]
+        else:
+            spec = merged
+    libraries = spec.get("libraries")
+    if not isinstance(libraries, dict):
+        libraries = {}
+        spec["libraries"] = libraries
+
+    for entry in additions:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("name", "")).strip()
+        tier = str(entry.get("tier", "")).strip().lower()
+        if not name or tier not in valid_tiers:
+            continue
+        tier_libs = libraries.get(tier)
+        if not isinstance(tier_libs, list):
+            tier_libs = []
+            libraries[tier] = tier_libs
+        if any(
+            isinstance(lib, dict)
+            and str(lib.get("name", "")).strip().lower() == name.lower()
+            for lib in tier_libs
+        ):
+            continue  # dedup-by-name guard
+        new_lib: dict[str, Any] = {"name": name}
+        category = str(entry.get("category", "")).strip()
+        purpose = str(entry.get("purpose", "")).strip()
+        if category:
+            new_lib["category"] = category
+        if purpose:
+            new_lib["purpose"] = purpose
+        # D-PH7d: preserve the join keys so the addition stays attributable
+        # (stack routing / NFR threading read these; an unkeyed entry is a
+        # global staple). List-of-non-empty-strings only; drop when empty.
+        for join_key in ("serves_features", "serves_capabilities", "satisfies_nfr"):
+            raw = entry.get(join_key)
+            if not isinstance(raw, list):
+                continue
+            ids = [s.strip() for s in raw if isinstance(s, str) and s.strip()]
+            if ids:
+                new_lib[join_key] = ids
+        tier_libs.append(new_lib)
+
+    return merged
+
+
+def save_code_review(
+    working_dir: str | Path, review: dict[str, Any], version: int
+) -> None:
+    version_dir = ensure_version_dir(working_dir, version)
+    _write_text_if_changed(
+        version_dir / "code_review.json", json.dumps(review, indent=2)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Phase-set versioning
+# ---------------------------------------------------------------------------
+
+_PHASE_VERSION_RE = re.compile(r"^v(\d+)$")
+
+
+def _phase_version_dirs(working_dir: str | Path) -> dict[int, Path]:
+    """Map version number -> existing ``.spec4/v{N}`` directory."""
+    spec4_dir = get_spec4_dir(working_dir)
+    out: dict[int, Path] = {}
+    if spec4_dir.is_dir():
+        for d in spec4_dir.iterdir():
+            m = _PHASE_VERSION_RE.match(d.name)
+            if m and d.is_dir():
+                out[int(m.group(1))] = d
+    return out
+
+
+def latest_phase_version(working_dir: str | Path) -> int | None:
+    """Highest existing phase-set version, or None when no version dirs exist."""
+    dirs = _phase_version_dirs(working_dir)
+    return max(dirs) if dirs else None
+
+
+def latest_implemented_version(working_dir: str | Path) -> int | None:
+    """Highest version whose ``.spec4/v{N}/`` holds an ``IMPLEMENTED`` marker.
+
+    This is the most recent *completed* round — the round whose vision is the
+    established product identity a new revision builds on. It differs from
+    ``latest_phase_version`` (which returns the highest dir regardless of
+    completion): once a new round's ``v{N+1}`` dir exists but is not yet
+    implemented, the latest phase version is ``N+1`` while the latest
+    *implemented* version is still ``N``. Returns ``None`` when no round has
+    been implemented.
+    """
+    dirs = _phase_version_dirs(working_dir)
+    implemented = [v for v, d in dirs.items() if (d / "IMPLEMENTED").exists()]
+    return max(implemented) if implemented else None
+
+
+def load_prior_vision(working_dir: str | Path) -> dict[str, Any] | None:
+    """Read the vision of the latest *implemented* round, as read-only reference.
+
+    Used by Brainstormer's revision mode to carry the established product
+    identity (name, purpose, audience, the prior feature set, and the
+    accumulated ``revision_history``) into a new revision round without loading
+    it as the active working artifact. Returns ``None`` when no implemented
+    round exists or its ``vision.json`` is missing/unreadable.
+    """
+    version = latest_implemented_version(working_dir)
+    if version is None:
+        return None
+    vision_path = get_version_dir(working_dir, version) / "vision.json"
+    if not vision_path.exists():
+        return None
+    try:
+        return json.loads(vision_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def active_version(
+    working_dir: str | Path, session: dict[str, Any] | None = None
+) -> int:
+    """Return the version to read/write artifacts for the current round.
+
+    Prefers the session's pinned ``phase_version`` (set once at flow start);
+    falls back to the latest on-disk version directory, then ``0``. Used by the
+    design-path reads/writes that need the active round but do not themselves
+    drive the persist funnel (which pins the version). This is a read helper —
+    it never resolves a *new* round; that is the persist funnel's job.
+    """
+    if session is not None:
+        v = session.get("phase_version")
+        if v is not None:
+            return int(v)
+    return latest_phase_version(working_dir) or 0
+
+
+def resolve_phase_version(
+    working_dir: str | Path, has_code_review: bool
+) -> tuple[int, bool]:
+    """Resolve the active version for the current flow.
+
+    Returns ``(version, is_greenfield)``. A round counts as implemented once its
+    ``.spec4/v{N}/`` directory holds an ``IMPLEMENTED`` marker (the coding agent
+    touches it after finishing the round's last phase). This is resolved once at
+    flow start (the first agent that persists an artifact) and pinned in the
+    session; every artifact for the round is then written under that version.
+
+    - No version dirs: ``v0`` greenfield with no code review; ``v1`` brownfield
+      when an existing codebase has been scanned (the no-v0 case).
+    - Highest version dir lacks ``IMPLEMENTED``: the in-progress round — target
+      it (it is being defined/overwritten). ``is_greenfield`` iff it is ``v0``.
+    - Highest version dir is implemented: a new brownfield round — ``max + 1``.
+    """
+    dirs = _phase_version_dirs(working_dir)
+    if not dirs:
+        return (1, False) if has_code_review else (0, True)
+    highest = max(dirs)
+    if (dirs[highest] / "IMPLEMENTED").exists():
+        return highest + 1, False
+    return highest, highest == 0
+
+
+def save_phases(
+    working_dir: str | Path,
+    phases: list[dict[str, Any]],
+    version: int,
+    context: dict[str, Any] | None = None,
+) -> None:
+    """Write each phase as a Markdown-with-JSON-frontmatter file under
+    ``.spec4/v{version}/phases/``.
+
+    The coding agent reads the prose body; Spec4 round-trips through the
+    frontmatter JSON when reloading. The target ``phases/`` directory's existing
+    ``phase*.md`` files are cleared first — a re-defined set may be shorter than
+    the one it replaces — then the new set is written. The round's
+    ``IMPLEMENTED`` marker lives at ``.spec4/v{version}/IMPLEMENTED`` (one level
+    up) and is therefore untouched by clearing the phases directory.
+    """
+    phases_dir = ensure_version_dir(working_dir, version) / "phases"
+    phases_dir.mkdir(parents=True, exist_ok=True)
+    desired = {
+        f"phase{phase.get('phase_number', 0)}.md": render_phase_markdown(phase, context)
+        for phase in phases
+    }
+    # Remove only phase files no longer in the set; rewrite the rest in place so
+    # an unchanged phase keeps its mtime (see _write_text_if_changed).
+    for stale in phases_dir.glob("phase*.md"):
+        if stale.name not in desired:
+            stale.unlink()
+    for name, content in desired.items():
+        _write_text_if_changed(phases_dir / name, content)
 
 
 # ---------------------------------------------------------------------------
@@ -135,11 +397,349 @@ def save_phases(working_dir: str | Path, phases: list[dict[str, Any]]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def render_phase_markdown(phase: dict[str, Any]) -> str:
+def _phase_spec_preamble(
+    phase: dict[str, Any], context: dict[str, Any] | None
+) -> list[str]:
+    """Render the binding spec preamble for the features this phase builds.
+
+    The phase file is the *sole* deliverable to the coding agent — it never sees
+    ``ai_features.json`` — so the Spec Drafter's output has to reach the build
+    through here or not at all. Assembly is deterministic and verbatim: Phaser
+    sequences and writes the glue, code attaches the specs, and no model
+    re-drafts an already-drafted spec.
+
+    A **preamble**, not an appendix: the coding agent must read what a feature's
+    inputs and failure modes are before it reads step 3 of the instructions, and
+    a preamble reads as binding where an appendix reads as optional.
+
+    The whole spec attaches at *every* phase that touches the feature — the spec
+    describes the finished feature and has no principled cut into "the phase-2
+    half". A phase's partial coverage is stated in Phaser's ``scope_note``, never
+    by slicing the spec. Duplication across files is cheap; a dangling
+    cross-phase reference would break the self-containment that makes each phase
+    handable to the coder alone.
+
+    Specs are resolved from ``context["ai_features"]`` at render time rather than
+    frozen into the phase dict, so they are stored once and cannot drift from the
+    catalog. ``context`` is a bundle (D-PS11) so later consumers — a StackAdvisor
+    stack↔feature linkage, say — can be added without re-breaking every caller.
+    Returns ``[]`` when the phase declares no features or no catalog is supplied.
+    """
+    # D-PH2/D-PH5a: two declaration arrays, two spec altitudes, each attached
+    # from its own source. `features[]` attaches the Brainstormer behavioural
+    # spec (what the product feature is and when it is done); `capabilities[]`
+    # attaches the Agentifier implementation spec (how the AI capability is
+    # built at its tier). Never merged: a phase building a feature AND the
+    # capability serving it gets both blocks, the serves-relation stated on
+    # the capability side. The legacy `or features` fallback keeps pre-D-PH2
+    # sets rendering (AI ids lived in features[] then); either lookup simply
+    # misses for ids from the other era's space.
+    feature_decls = [
+        d for d in (phase.get("features") or []) if isinstance(d, dict)
+    ]
+    # Era detection is KEY PRESENCE, not truthiness: a new-schema phase with
+    # an empty `capabilities` array declares no capabilities — falling back to
+    # `features[]` there would read product ids against the AI catalog and
+    # resurrect the collision misread the two-array schema exists to kill.
+    legacy = "capabilities" not in phase
+    capability_decls = [
+        d
+        for d in (
+            (phase.get("features") if legacy else phase.get("capabilities"))
+            or []
+        )
+        if isinstance(d, dict)
+    ]
+    if not feature_decls and not capability_decls:
+        return []
+
+    ai_index = spec_index((context or {}).get("ai_features"))
+    product_index = {
+        str(f["id"]): f
+        for f in (((context or {}).get("feature_specs") or {}).get("features") or [])
+        if isinstance(f, dict) and f.get("id")
+    }
+    declared_feature_ids = {
+        str(d.get("id")) for d in feature_decls if d.get("id")
+    }
+    declared_capability_ids = {
+        str(d.get("id")) for d in capability_decls if d.get("id")
+    }
+
+    def _decl_heading(name: str, altitude: str, decl: dict[str, Any]) -> list[str]:
+        role = str(decl.get("role") or "").strip()
+        heading = f"### {name} — {altitude}"
+        if role:
+            heading += f" — {role} in this phase"
+        lines = [heading, ""]
+        scope_note = str(decl.get("scope_note") or "").strip()
+        if scope_note:
+            lines.append(f"*Scope for this phase: {scope_note}*")
+            lines.append("")
+        return lines
+
+    # --- product feature blocks (D-PH5a) -----------------------------------
+    product_blocks: list[str] = []
+    for decl in feature_decls:
+        feature = product_index.get(str(decl.get("id") or ""))
+        if feature is None:
+            continue  # unknown/legacy id: coverage owns validation
+        name = feature.get("name") or decl.get("id")
+        product_blocks.extend(_decl_heading(str(name), "product feature", decl))
+        product_blocks.extend(
+            render_feature_block(
+                feature, fields=PHASER_PRODUCT_SPEC_FIELDS, include_graph=False
+            )
+        )
+        deps = [
+            str(d).strip()
+            for d in (feature.get("dependencies") or [])
+            if str(d).strip()
+        ]
+        if deps:
+            product_blocks.append(
+                f"- depends on: {', '.join(deps)} (build these no later than "
+                f"`{decl.get('id')}`)"
+            )
+        entities = [
+            str(e) for e in (feature.get("entities") or []) if isinstance(e, str)
+        ]
+        if entities:
+            product_blocks.append(f"- entities: {', '.join(entities)}")
+        product_blocks.append("")
+
+    # --- UI surfaces block (D-PH5b/c) ---------------------------------------
+    surface_blocks: list[str] = []
+    attached = surfaces_for_declarations(
+        (context or {}).get("manifest"),
+        declared_feature_ids,
+        declared_capability_ids,
+    )
+    if attached:
+        surface_blocks.append("### UI surfaces for this phase (from the design)")
+        surface_blocks.append("")
+        by_catalog: dict[str, list[dict[str, Any]]] = {}
+        plain: list[dict[str, Any]] = []
+        for rec in attached:
+            cid = str(rec["surface"].get("catalog_surface_id") or "")
+            if cid:
+                by_catalog.setdefault(cid, []).append(rec)
+            else:
+                plain.append(rec)
+        for rec in plain:
+            surface_blocks.extend(surface_detail_lines(rec["surface"]))
+        for cid, recs in by_catalog.items():
+            surface_blocks.append(
+                f"The following surface(s) realize the AI capability `{cid}` "
+                "— one unit of work; the surfaces are views onto it:"
+            )
+            for rec in recs:
+                surface_blocks.extend(surface_detail_lines(rec["surface"]))
+        surface_blocks.append("")
+
+    # --- AI capability blocks (existing altitude, serves-relation stated) ---
+    ai_blocks: list[str] = []
+    for decl in capability_decls:
+        feature = ai_index.get(str(decl.get("id") or ""))
+        if feature is None:
+            continue  # unknown id: _phase_coverage fails the set before here
+        name = feature.get("name") or decl.get("id")
+        ai_blocks.extend(_decl_heading(str(name), "AI capability", decl))
+        grounding = feature.get("vision_grounding") or {}
+        served = sorted({
+            str(sf.get("id"))
+            for sf in (grounding.get("served_features") or [])
+            if isinstance(sf, dict) and sf.get("id")
+        } & declared_feature_ids)
+        if served:
+            ai_blocks.append(
+                "Serves product feature(s): "
+                + ", ".join(f"`{s}`" for s in served)
+                + " (specified above)."
+            )
+            ai_blocks.append("")
+        ai_blocks.extend(render_feature_block(feature, fields=PHASE_SPEC_FIELDS))
+
+    if not product_blocks and not surface_blocks and not ai_blocks:
+        return []
+
+    lines = [
+        "## Feature Specifications",
+        "",
+        "These specifications are authoritative for this phase. Implement to "
+        "them; the instructions below tell you how and in what order.",
+        "",
+        *product_blocks,
+        *surface_blocks,
+        *ai_blocks,
+    ]
+    # Project-wide AI decisions, rendered only where AI capabilities are
+    # actually being built (D-PH5 gate — cross-cutting is catalog-level
+    # guidance and has no place in a product-only phase). `provider_strategy`
+    # is excluded — StackAdvisor's `tech_stack_spec` above is the ratified
+    # stack authority and must not be contradicted here.
+    if ai_blocks:
+        lines.extend(
+            render_cross_cutting(
+                (context or {}).get("ai_features", {}).get("cross_cutting"),
+                exclude=PHASE_EXCLUDED_CROSS_CUTTING,
+            )
+        )
+    return lines
+
+
+def _attribution_directive() -> list[str]:
+    """Deterministic Spec4 attribution directive (D-BS series).
+
+    A fixed, LLM-free block instructing the coding agent to stamp every new
+    file it creates with a single "Built with Spec4 AI" line, formatted for the
+    file type. Rendered verbatim in every phase body so each phase file stays
+    self-contained; the builder — not Phaser — decides which files a phase
+    creates, so the rule is stated once and applied at build time.
+
+    Carve-outs (D-BS3): pure-data formats with no comment syntax (JSON, CSV)
+    and all images/binaries are skipped; the line goes *after* any shebang or
+    document declaration, never before it; a file is stamped once, on creation
+    only, never on a later edit.
+    """
+    return [
+        "## Attribution",
+        "",
+        "When you create a **new** file in this phase, add one Spec4 "
+        "attribution line at the top of that file. Place it immediately "
+        "after any shebang, encoding line, or document declaration (`#!`, "
+        "`<?php`, `<?xml`, a YAML `---` marker) — never before it. Stamp a "
+        "file once, on creation only: never add the line to a file you are "
+        "merely editing, and never add it twice.",
+        "",
+        "Format the line for the file type:",
+        "",
+        "- Markdown or reStructuredText: "
+        "`[Built with Spec4 AI](https://spec4.ai)`",
+        "- Plain text: `Built with Spec4 AI - https://spec4.ai`",
+        "- Source code: a single-line comment in that language's syntax, "
+        "e.g. `# Built with Spec4 AI - https://spec4.ai` or "
+        "`// Built with Spec4 AI - https://spec4.ai`",
+        "",
+        "Skip any file that cannot carry a comment without breaking: JSON, "
+        "CSV, and other pure-data formats, plus all images and binary files.",
+        "",
+    ]
+
+
+def _declared_ids(phase: dict[str, Any], key: str) -> set[str]:
+    """Ids a phase declares in one array (two-array schema, D-PH2a)."""
+    return {
+        str(d.get("id"))
+        for d in (phase.get(key) or [])
+        if isinstance(d, dict) and d.get("id")
+    }
+
+
+def _phase_stack_lines(
+    phase: dict[str, Any], context: dict[str, Any] | None
+) -> list[str]:
+    """Deterministic stack routing for one phase's Tech Stack section (D-PH3).
+
+    Renders the serving entries whose ``serves_features`` /
+    ``serves_capabilities`` intersect this phase's declarations (each key
+    against its own array), then the project-wide baseline staples that render
+    in every phase. Renderer-added body only — the frontmatter stays the
+    model's artifact verbatim. Returns ``[]`` when the context carries no
+    stack (older sessions), so a stack-less render is unchanged.
+    """
+    stack = (context or {}).get("stack")
+    if not stack:
+        return []
+    routed = entries_for_declarations(
+        stack,
+        _declared_ids(phase, "features"),
+        _declared_ids(phase, "capabilities"),
+    )
+    baseline = baseline_library_names(stack)
+    if not routed and not baseline:
+        return []
+    lines: list[str] = []
+    if routed:
+        lines.append(
+            "**Approved stack for this phase's declared work** "
+            "(deterministic, from the stack spec):"
+        )
+        lines.append("")
+        for rec in routed:
+            label = rec["label"]
+            if rec["section"] and rec["section"] not in label:
+                label = f"{label} ({rec['section']})"
+            served = ", ".join(f"`{m}`" for m in rec["matched"])
+            purpose = str(rec["entry"].get("purpose") or "").strip()
+            detail = f": {purpose}" if purpose else ""
+            lines.append(f"- {label}{detail} — serves {served}")
+        lines.append("")
+    if baseline:
+        lines.append("**Project-wide stack** (applies to every phase):")
+        lines.append("")
+        lines.extend(f"- {name}" for name in baseline)
+        lines.append("")
+    return lines
+
+
+def _phase_nfr_lines(
+    phase: dict[str, Any], context: dict[str, Any] | None
+) -> list[str]:
+    """Deterministic NFR threading for one phase's Verification section (D-PH4).
+
+    A claimed goal threads into every phase whose declarations intersect the
+    claiming entries' served ids; a goal claimed only by global entries (no
+    serves keys) threads into the final phase as project-wide acceptance.
+    Orphaned goals never appear. Returns ``[]`` when nothing threads here.
+    """
+    stack = (context or {}).get("stack")
+    specs = (context or {}).get("feature_specs")
+    if not stack or not specs:
+        return []
+    features = _declared_ids(phase, "features")
+    capabilities = _declared_ids(phase, "capabilities")
+    number = phase.get("phase_number")
+    total = phase.get("total_phases")
+    is_final = (
+        isinstance(number, int) and isinstance(total, int) and number == total
+    )
+    hits: list[str] = []
+    for thread in nfr_threads(stack, specs):
+        if thread["global"]:
+            if not is_final:
+                continue
+            scope = "project-wide acceptance"
+        else:
+            matched = (thread["serves_features"] & features) | (
+                thread["serves_capabilities"] & capabilities
+            )
+            if not matched:
+                continue
+            scope = "delivered by " + ", ".join(thread["claimers"])
+        hits.append(f"- `{thread['nfr_id']}`: {thread['goal']} — {scope}")
+    if not hits:
+        return []
+    return [
+        "",
+        "**Non-functional acceptance** (deterministic, from the stack spec):",
+        "",
+        *hits,
+        "",
+    ]
+
+
+def render_phase_markdown(
+    phase: dict[str, Any], context: dict[str, Any] | None = None
+) -> str:
     """Render a phase dict as Markdown with JSON frontmatter.
 
     Frontmatter carries the canonical structured payload (full round-trip);
-    the body renders the same fields as prose for the coding agent.
+    the body renders the same fields as prose for the coding agent, plus the
+    verbatim spec preamble resolved from ``context`` (see
+    ``_phase_spec_preamble``). ``context`` defaults to ``None``, which renders
+    exactly as before — the round-trip through ``parse_phase_markdown`` reads
+    only the frontmatter, so a spec-less render loses nothing.
     """
     frontmatter = json.dumps(phase, indent=2, ensure_ascii=False)
 
@@ -166,9 +766,12 @@ def render_phase_markdown(phase: dict[str, Any]) -> str:
         "",
         summary,
         "",
+    ]
+    lines.extend(_phase_spec_preamble(phase, context))
+    lines.extend([
         "## Tech Stack",
         "",
-    ]
+    ])
     if deps:
         lines.append("**Dependencies:**")
         lines.append("")
@@ -177,6 +780,7 @@ def render_phase_markdown(phase: dict[str, Any]) -> str:
     if configs:
         lines.append(f"**Configurations:** {configs}")
         lines.append("")
+    lines.extend(_phase_stack_lines(phase, context))
     lines.append("## Instructions")
     lines.append("")
     for idx, step in enumerate(instructions, start=1):
@@ -197,6 +801,7 @@ def render_phase_markdown(phase: dict[str, Any]) -> str:
     lines.append("## Verification")
     lines.append("")
     lines.append(verification)
+    lines.extend(_phase_nfr_lines(phase, context))
     lines.append("")
     if references:
         lines.append("## References")
@@ -209,6 +814,10 @@ def render_phase_markdown(phase: dict[str, Any]) -> str:
             elif standard:
                 lines.append(f"- {standard}")
         lines.append("")
+
+    # Unconditional (D-BS5): every phase file is self-contained, so the
+    # attribution directive rides on each one regardless of what it builds.
+    lines.extend(_attribution_directive())
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -231,17 +840,304 @@ def parse_phase_markdown(text: str) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
-def save_deployment_plan(working_dir: str | Path, markdown: str) -> None:
-    spec4_dir = ensure_spec4_dir(working_dir)
-    (spec4_dir / "deployment-plan.md").write_text(markdown, encoding="utf-8")
+def save_ai_catalog(
+    working_dir: str | Path, catalog: dict[str, Any], version: int
+) -> None:
+    version_dir = ensure_version_dir(working_dir, version)
+    _write_text_if_changed(
+        version_dir / "ai_catalog.json", json.dumps(catalog, indent=2)
+    )
+
+
+def load_ai_catalog(working_dir: str | Path) -> dict[str, Any] | None:
+    version = latest_phase_version(working_dir)
+    if version is None:
+        return None
+    path = get_version_dir(working_dir, version) / "ai_catalog.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def save_ai_features(
+    working_dir: str | Path, features: dict[str, Any], version: int
+) -> None:
+    version_dir = ensure_version_dir(working_dir, version)
+    _write_text_if_changed(
+        version_dir / "ai_features.json", json.dumps(features, indent=2)
+    )
+
+
+def load_ai_features(working_dir: str | Path) -> dict[str, Any] | None:
+    version = latest_phase_version(working_dir)
+    if version is None:
+        return None
+    path = get_version_dir(working_dir, version) / "ai_features.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def save_feature_specs(
+    working_dir: str | Path, feature_specs: dict[str, Any], version: int
+) -> None:
+    version_dir = ensure_version_dir(working_dir, version)
+    _write_text_if_changed(
+        version_dir / "feature_specs.json", json.dumps(feature_specs, indent=2)
+    )
+
+
+def load_design_manifest(
+    working_dir: str | Path, version: int
+) -> dict[str, Any] | None:
+    """Load Designer's finalized ``design/manifest.json`` for a version.
+
+    Absent or unparseable manifests return ``None`` (older projects, or a
+    design round that never finalized); consumers render nothing in that case.
+    Single loader shared by the Phaser seed projection and the ``save_phases``
+    context bundle (D-PH5b).
+    """
+    path = get_version_dir(working_dir, version) / "design" / "manifest.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def load_feature_specs(working_dir: str | Path) -> dict[str, Any] | None:
+    version = latest_phase_version(working_dir)
+    if version is None:
+        return None
+    path = get_version_dir(working_dir, version) / "feature_specs.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def load_vision(
+    working_dir: str | Path, session: dict[str, Any] | None = None
+) -> dict[str, Any] | None:
+    """Read the current ``vision.json`` for the active round from disk.
+
+    Uses the same version resolution (``active_version``) as ``agent_button_state``
+    so that Brainstormer's entry decision and the agent button agree on whether a
+    vision exists. Returns ``None`` when the file is absent or unreadable.
+    """
+    version = active_version(working_dir, session)
+    path = get_version_dir(working_dir, version) / "vision.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def save_deployment_plan(
+    working_dir: str | Path, markdown: str, version: int
+) -> None:
+    version_dir = ensure_version_dir(working_dir, version)
+    _write_text_if_changed(version_dir / "deployment-plan.md", markdown)
+
+
+def load_prior_ai_features(working_dir: str | Path) -> dict[str, Any] | None:
+    """Read the ai_features of the latest *implemented* round, as reference.
+
+    Twin of :func:`load_prior_vision`. Used by Agentifier's revision mode to
+    carry the established AI surface (the features already built in the previous
+    implemented version, plus their cross-cutting decisions) into a new revision
+    round without loading it as the active working artifact — the current round
+    has no ai_features of its own yet. It reads from ``latest_implemented_version``
+    (the highest round bearing an ``IMPLEMENTED`` marker), in contrast to
+    :func:`load_ai_features`, which reads the highest dir regardless of
+    completion. Returns ``None`` when no implemented round exists or its
+    ``ai_features.json`` is missing/unreadable.
+    """
+    version = latest_implemented_version(working_dir)
+    if version is None:
+        return None
+    path = get_version_dir(working_dir, version) / "ai_features.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def load_prior_mock(working_dir: str | Path) -> str | None:
+    """Read the UI mock of the latest *implemented* round, as read-only reference.
+
+    Twin of :func:`load_prior_vision` / :func:`load_prior_ai_features`, but for
+    Designer's ``design/mock.html``. Used by Designer's revision mode to carry the
+    established, approved look and feel into a new revision round as the baseline
+    the revision's delta is applied onto — the current round has no mock of its
+    own yet. It reads from ``latest_implemented_version`` (the highest round
+    bearing an ``IMPLEMENTED`` marker). Returns ``None`` when no implemented round
+    exists or its ``design/mock.html`` is missing/unreadable/empty.
+    """
+    version = latest_implemented_version(working_dir)
+    if version is None:
+        return None
+    path = get_version_dir(working_dir, version) / "design" / "mock.html"
+    if not path.exists():
+        return None
+    try:
+        html = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return html if html.strip() else None
+
+
+def load_prior_stack(working_dir: str | Path) -> dict[str, Any] | None:
+    """Read the stack spec of the latest *implemented* round, as reference.
+
+    Twin of :func:`load_prior_vision` / :func:`load_prior_ai_features`, but for
+    StackAdvisor's ``stack.json``. Used by StackAdvisor's revision mode to carry
+    the established technology stack (the languages, deployment, libraries, and
+    coding style already chosen in the previous implemented version) into a new
+    revision round as the baseline its delta-scoped recommendations build on —
+    the current round has no stack of its own yet. It reads from
+    ``latest_implemented_version`` (the highest round bearing an ``IMPLEMENTED``
+    marker), in contrast to :func:`load_spec4_artifacts`, which hydrates the
+    active round's stack regardless of completion. Returns ``None`` when no
+    implemented round exists or its ``stack.json`` is missing/unreadable.
+    """
+    version = latest_implemented_version(working_dir)
+    if version is None:
+        return None
+    path = get_version_dir(working_dir, version) / "stack.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def load_deployment_plan(working_dir: str | Path) -> str | None:
-    path = get_spec4_dir(working_dir) / "deployment-plan.md"
+    version = latest_phase_version(working_dir)
+    if version is None:
+        return None
+    path = get_version_dir(working_dir, version) / "deployment-plan.md"
     try:
         return path.read_text(encoding="utf-8")
     except (OSError, FileNotFoundError):
         return None
+
+
+def load_prior_deployment_plan(working_dir: str | Path) -> str | None:
+    """Read the deployment plan of the latest *implemented* round, as reference.
+
+    Twin of :func:`load_prior_mock` / :func:`load_prior_stack`, but for Deployer's
+    ``deployment-plan.md``. Used by Deployer's revision mode to carry the
+    established deployment plan (the provider, service, containerization, CI/CD,
+    environment, and infrastructure already in place in the previous implemented
+    version) into a new revision round as the baseline the revision's delta-scoped
+    update builds on — the current round has no deployment plan of its own yet. It
+    reads from ``latest_implemented_version`` (the highest round bearing an
+    ``IMPLEMENTED`` marker), in contrast to :func:`load_deployment_plan`, which
+    reads the active round's plan regardless of completion. Returns ``None`` when
+    no implemented round exists or its ``deployment-plan.md`` is
+    missing/unreadable/empty (the prior round may have skipped Deployer).
+    """
+    version = latest_implemented_version(working_dir)
+    if version is None:
+        return None
+    path = get_version_dir(working_dir, version) / "deployment-plan.md"
+    if not path.exists():
+        return None
+    try:
+        markdown = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return markdown if markdown.strip() else None
+
+
+SPEC4_README_ATTRIBUTION = "[Built with Spec4 AI](https://spec4.ai)"
+
+
+def _with_readme_attribution(markdown: str) -> str:
+    """Return ``markdown`` ending with the Spec4 attribution line, exactly once.
+
+    Applied deterministically at write time rather than asked of the model: the
+    line then appears whether the README was authored fresh or updated in place,
+    and cannot be dropped by a re-generation.
+
+    Idempotent by design, and position-correcting. Deployer updates an existing
+    README in place and is given the current file as a baseline, so a previously
+    stamped README arrives already carrying the line — and once the model
+    appends a new section after it, the line is no longer last. Any existing
+    occurrence is therefore removed and re-appended, which keeps it at the
+    bottom exactly once however the document was assembled.
+
+    Unlike the coding agent's per-file attribution, which is stamped at the top
+    of a new source file, a README carries it as the closing line: it is the
+    document's footer, not a header comment.
+    """
+    raw = markdown.rstrip()
+    if not raw:
+        return markdown
+    kept: list[str] = []
+    for line in raw.split("\n"):
+        if line.strip() == SPEC4_README_ATTRIBUTION:
+            # Drop the blank line that separated it too, or each revision round
+            # would leave one behind at the seam.
+            if kept and not kept[-1].strip():
+                kept.pop()
+            continue
+        kept.append(line)
+    body = "\n".join(kept).rstrip()
+    if not body:
+        return f"{SPEC4_README_ATTRIBUTION}\n"
+    return f"{body}\n\n{SPEC4_README_ATTRIBUTION}\n"
+
+
+def save_readme(working_dir: str | Path, markdown: str) -> None:
+    """Write the project ``README.md`` to the project **root** (not ``.spec4``).
+
+    The README is the one Spec4 artifact that lives at the project root rather
+    than under ``.spec4/v{N}/``: it is the human-facing entry point for the
+    repository — vision, features, install, and usage in one document — so it
+    belongs where anyone (or any coding agent) opening the repo will find it.
+    The Spec4 attribution line is appended as the closing line here rather than
+    requested of the model, so it survives every authoring and revision path.
+    Routed through :func:`_write_text_if_changed` so an unchanged README is a
+    no-op and does not bump mtimes the freshness model watches.
+    """
+    _write_text_if_changed(
+        Path(working_dir) / "README.md", _with_readme_attribution(markdown)
+    )
+
+
+def load_existing_readme(working_dir: str | Path) -> str | None:
+    """Return the project-root ``README.md`` as a baseline, or ``None`` if absent.
+
+    Twin of :func:`load_prior_deployment_plan`, but reads the project **root**
+    rather than a version dir — the README is not version-scoped. Deployer's
+    README authoring uses it to update an existing README in place rather than
+    overwriting it from scratch. A missing, unreadable, or blank/whitespace-only
+    file is treated as absent (``None``) so the caller falls back to authoring a
+    fresh README.
+    """
+    path = Path(working_dir) / "README.md"
+    if not path.exists():
+        return None
+    try:
+        markdown = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    return markdown if markdown.strip() else None
 
 
 # ---------------------------------------------------------------------------
@@ -253,32 +1149,54 @@ def load_deployment_plan(working_dir: str | Path) -> str | None:
 # newest mtime among its files.
 _STALE_DEPENDENCIES: dict[str, tuple[str, list[tuple[str, str]]]] = {
     "brainstormer": ("vision.json", [("code review", "code_review.json")]),
+    "agentifier": (
+        "ai_features.json",
+        [("vision", "vision.json"), ("code review", "code_review.json")],
+    ),
+    # StackAdvisor depends on Designer's *manifest* (the data model and screen
+    # structure), not the visual mock: a purely visual change cannot invalidate a
+    # stack choice, and inlining the mock's markup only crowded the context
+    # (D-SC5c). The mock remains Phaser's and Deployer's dependency — they hand it
+    # to the coding agent.
     "stack_advisor": (
         "stack.json",
         [
             ("vision", "vision.json"),
+            ("AI features", "ai_features.json"),
             ("code review", "code_review.json"),
-            ("UI mock", "design/mock.html"),
+            ("design manifest", "design/manifest.json"),
         ],
     ),
     "phaser": (
         "phases",
         [
             ("vision", "vision.json"),
+            ("AI features", "ai_features.json"),
             ("stack", "stack.json"),
             ("code review", "code_review.json"),
             ("UI mock", "design/mock.html"),
         ],
     ),
+    # Deployer reads `feature_specs.json` for the project's non-functional goals
+    # (D-DE6), so an edit to it can invalidate a deployment plan. Note this is
+    # tracked by `detect_stale_inputs` (the in-conversation staleness prompt) but
+    # not yet by `agent_button_state`, which only considers inputs listed in
+    # `_PIPELINE_ARTIFACT_ORDER` — feature_specs.json is absent from that list
+    # pipeline-wide, which is a broader reconciliation than this entry.
     "deployer": (
         "deployment-plan.md",
         [
+            ("AI features", "ai_features.json"),
             ("stack", "stack.json"),
+            ("feature specs", "feature_specs.json"),
             ("phases", "phases"),
             ("UI mock", "design/mock.html"),
         ],
     ),
-    "designer": ("design/mock.html", [("vision", "vision.json")]),
+    "designer": (
+        "design/mock.html",
+        [("vision", "vision.json"), ("AI features", "ai_features.json")],
+    ),
 }
 
 
@@ -308,74 +1226,172 @@ def detect_stale_inputs(working_dir: str | Path, agent: str) -> dict[str, float]
     if not spec:
         return {}
     output_rel, inputs = spec
-    spec4_dir = get_spec4_dir(working_dir)
-    output_mtime = _path_mtime(spec4_dir / output_rel)
+    base = get_version_dir(working_dir, active_version(working_dir))
+    output_mtime = _path_mtime(base / output_rel)
     if output_mtime is None:
         return {}
     stale: dict[str, float] = {}
     for name, rel in inputs:
-        input_mtime = _path_mtime(spec4_dir / rel)
+        input_mtime = _path_mtime(base / rel)
         if input_mtime is not None and input_mtime > output_mtime:
             stale[name] = input_mtime
     return stale
 
 
 # ---------------------------------------------------------------------------
-# SPECMEM helpers
+# Agent-select button state
 # ---------------------------------------------------------------------------
 
+# Canonical pipeline order of artifacts (earliest stage -> latest), relative to
+# .spec4/v{N}/. The freshness chain is evaluated against this order: each
+# upstream artifact must be older than the one downstream of it.
+_PIPELINE_ARTIFACT_ORDER: list[str] = [
+    "code_review.json",
+    "vision.json",
+    "ai_features.json",
+    "design/mock.html",
+    "stack.json",
+    "phases",
+    "deployment-plan.md",
+]
 
-def read_specmem(working_dir: str | Path) -> str | None:
-    path = get_spec4_dir(working_dir) / "SPECMEM.md"
-    if path.exists():
-        try:
-            return path.read_text()
-        except OSError:
-            pass
-    return None
+# Inputs that must exist for an agent to be runnable at all (the Not-Ready gate),
+# derived from `_validate_agent_preconditions`. Every other input listed in
+# `_STALE_DEPENDENCIES` is optional: it joins the freshness chain only when
+# present and never blocks. Agents absent from this map have no required inputs.
+_REQUIRED_INPUTS: dict[str, list[str]] = {
+    "agentifier": ["vision.json"],
+    "designer": ["vision.json"],
+    "stack_advisor": ["vision.json"],
+    "phaser": ["vision.json", "stack.json"],
+    "deployer": ["phases"],
+}
+
+# Button states for the /agents page.
+AGENT_BTN_START = "start"
+AGENT_BTN_MODIFY = "modify"
+AGENT_BTN_NEEDS_UPDATE = "needs_update"
+AGENT_BTN_NOT_READY = "not_ready"
+AGENT_BTN_REQUIRED = "required"
 
 
-def write_specmem(working_dir: str | Path, content: str) -> None:
-    spec4_dir = ensure_spec4_dir(working_dir)
-    (spec4_dir / "SPECMEM.md").write_text(content, encoding="utf-8")
+def brownfield_new_round_pending(working_dir: str | Path | None) -> bool:
+    """True when the highest on-disk round is implemented and the next has not
+    started yet — the initial state of a new brownfield round.
+
+    When the highest ``.spec4/v{N}/`` holds an ``IMPLEMENTED`` marker, ``v{N+1}``
+    does not exist yet (it would otherwise be the highest), so the only allowed
+    action is to re-scan: CodeScanner is *required* and every other agent is
+    blocked until a fresh ``code_review.json`` creates ``v{N+1}``.
+    """
+    if not working_dir:
+        return False
+    latest = latest_phase_version(working_dir)
+    if latest is None:
+        return False
+    return (get_version_dir(working_dir, latest) / "IMPLEMENTED").exists()
 
 
-def update_specmem_planning_state(
-    working_dir: str | Path, session: dict[str, Any]
-) -> None:
-    """Append or replace the Spec4 Planning State section in SPECMEM.md."""
-    existing = read_specmem(working_dir) or ""
+def directory_has_content(working_dir: str | Path | None) -> bool:
+    """True when the working directory holds anything of the developer's own.
 
-    # Strip any existing planning state section
-    if _SPECMEM_PLANNING_MARKER in existing:
-        existing = existing[: existing.index(_SPECMEM_PLANNING_MARKER)]
-
-    vision = session.get("vision_statement")
-    stack = session.get("stack_statement")
-    phases = session.get("phases", [])
-
-    vision_section = (
-        f"### Vision Statement\n```json\n{json.dumps(vision, indent=2)}\n```\n\n"
-        if vision
-        else ""
-    )
-    stack_section = (
-        f"### Stack Spec\n```json\n{json.dumps(stack, indent=2)}\n```\n\n"
-        if stack
-        else ""
-    )
-    if phases:
-        phase_lines = "\n".join(
-            f"- Phase {p.get('phase_number')}: {p.get('phase_title', '')}"
-            for p in phases
+    Dot-entries are ignored, which excludes Spec4's own ``.spec4/`` bookkeeping
+    (counting it would make every directory Spec4 has touched look occupied)
+    along with `.git/`, `.venv/`, and similar tooling state. An unreadable or
+    missing directory reads as empty.
+    """
+    if not working_dir:
+        return False
+    try:
+        return any(
+            not item.name.startswith(".") for item in Path(working_dir).iterdir()
         )
-        phases_section = f"### Phases ({len(phases)} total)\n{phase_lines}\n\n"
-    else:
-        phases_section = ""
+    except OSError:
+        return False
 
-    addition = (
-        f"{_SPECMEM_PLANNING_MARKER}\n\n"
-        f"*Last updated by Spec4*\n\n"
-        f"{vision_section}{stack_section}{phases_section}"
+
+def needs_project_mode(
+    working_dir: str | Path | None, session: dict[str, Any] | None = None
+) -> bool:
+    """True when the developer still has to say whether this is a new project.
+
+    Asked whenever the directory is non-empty and the current session carries
+    no answer. Deliberately *not* short-circuited by on-disk artifacts: a
+    ``code_review.json`` can legitimately exist for a greenfield project (the
+    developer may run CodeScanner on a skeleton), so its presence does not
+    establish that we are modifying an existing codebase. The answer is read
+    from the session, which is per-browser-session storage, so quitting and
+    restarting asks again — by design (D-PM1).
+    """
+    if not working_dir or not directory_has_content(working_dir):
+        return False
+    return (session or {}).get("project_mode") not in PROJECT_MODES
+
+
+def agent_button_state(
+    working_dir: str | Path | None,
+    agent: str,
+    session: dict[str, Any] | None = None,
+) -> str:
+    """Resolve the /agents button state for ``agent`` from the artifacts in the
+    active version directory.
+
+    State machine (after the brownfield new-round gate):
+
+    - A required input is missing -> ``not_ready``.
+    - The existing input chain is internally out of order (some upstream
+      artifact is newer than one downstream of it in pipeline order) ->
+      ``not_ready``.
+    - Otherwise, with the input chain in order: no output -> ``start``; output
+      newer than (or equal to) the nearest input -> ``modify``; output older
+      than the nearest input -> ``needs_update``.
+
+    CodeScanner has no inputs: ``start`` with no ``code_review.json`` in the
+    active version, ``modify`` once one exists. During a pending brownfield
+    round it is ``required`` while every other agent is ``not_ready``. With no
+    working directory yet, artifacts are treated as absent (empty project).
+    """
+    if brownfield_new_round_pending(working_dir):
+        return AGENT_BTN_REQUIRED if agent == "code_scanner" else AGENT_BTN_NOT_READY
+
+    base = (
+        get_version_dir(working_dir, active_version(working_dir, session))
+        if working_dir
+        else None
     )
-    write_specmem(working_dir, existing.rstrip() + addition)
+
+    def mtime(rel: str) -> float | None:
+        return _path_mtime(base / rel) if base is not None else None
+
+    if agent == "code_scanner":
+        if mtime("code_review.json") is not None:
+            return AGENT_BTN_MODIFY
+        return AGENT_BTN_START
+
+    spec = _STALE_DEPENDENCIES.get(agent)
+    if spec is None:
+        return AGENT_BTN_NOT_READY
+    output_rel, raw_inputs = spec
+
+    for rel in _REQUIRED_INPUTS.get(agent, []):
+        if mtime(rel) is None:
+            return AGENT_BTN_NOT_READY
+
+    input_rels = {rel for _name, rel in raw_inputs}
+    ordered = [rel for rel in _PIPELINE_ARTIFACT_ORDER if rel in input_rels]
+    chain = [(rel, mtime(rel)) for rel in ordered]
+    chain = [(rel, m) for rel, m in chain if m is not None]
+
+    for (_, m_prev), (_, m_next) in zip(chain, chain[1:]):
+        if m_prev > m_next:
+            return AGENT_BTN_NOT_READY
+
+    output_mtime = mtime(output_rel)
+    if output_mtime is None:
+        return AGENT_BTN_START
+    if not chain:
+        return AGENT_BTN_MODIFY
+    nearest_mtime = chain[-1][1]
+    if output_mtime >= nearest_mtime:
+        return AGENT_BTN_MODIFY
+    return AGENT_BTN_NEEDS_UPDATE

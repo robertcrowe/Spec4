@@ -33,7 +33,8 @@ class TestDefaultSession:
             "model",
             "api_key",
             "available_models",
-            "tavily_api_key",
+            "search_provider",
+            "search_api_key",
             "setup_error",
             "agent_select_error",
             "llm_config",
@@ -51,8 +52,7 @@ class TestDefaultSession:
             "phaser_state",
             "phaser_messages",
             "phases",
-            "_warn_existing_content",
-            "_dir_has_content",
+            "project_mode",
             "_initial_turn_done",
         ]
         for key in required:
@@ -144,6 +144,7 @@ class TestPersistArtifacts:
     def _base_session(self, **overrides: Any) -> dict[str, Any]:
         base: dict[str, Any] = {
             "working_dir": "/some/dir",
+            "phase_version": 0,
             "brainstormer_state": STATE_IN_PROGRESS,
             "vision_statement": None,
             "stack_advisor_state": STATE_IN_PROGRESS,
@@ -172,7 +173,7 @@ class TestPersistArtifacts:
         )
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
-        mock_pm.save_vision.assert_called_once_with("/some/dir", vision)
+        mock_pm.save_vision.assert_called_once_with("/some/dir", vision, 0)
 
     def test_does_not_save_vision_when_state_in_progress(self) -> None:
         session = self._base_session(
@@ -189,14 +190,74 @@ class TestPersistArtifacts:
         )
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
-        mock_pm.save_stack.assert_called_once_with("/some/dir", stack)
+        mock_pm.save_stack.assert_called_once_with("/some/dir", stack, 0)
 
     def test_saves_phases_when_complete(self) -> None:
         phases = [{"phase_number": 1}]
-        session = self._base_session(phaser_state=STATE_PHASES_COMPLETE, phases=phases)
+        session = self._base_session(
+            phaser_state=STATE_PHASES_COMPLETE, phases=phases, phase_version=2
+        )
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
-        mock_pm.save_phases.assert_called_once_with("/some/dir", phases)
+        mock_pm.save_phases.assert_called_once_with(
+            "/some/dir",
+            phases,
+            2,
+            {
+                "ai_features": None,
+                "feature_specs": None,
+                "stack": None,
+                "manifest": mock_pm.load_design_manifest.return_value,
+            },
+        )
+
+    def test_saves_phases_defaults_to_v0_without_version(self) -> None:
+        phases = [{"phase_number": 1}]
+        session = self._base_session(
+            phaser_state=STATE_PHASES_COMPLETE, phases=phases, phase_version=0
+        )
+        with patch("spec4.session.project_manager") as mock_pm:
+            _persist_artifacts(session)
+        mock_pm.save_phases.assert_called_once_with(
+            "/some/dir",
+            phases,
+            0,
+            {
+                "ai_features": None,
+                "feature_specs": None,
+                "stack": None,
+                "manifest": mock_pm.load_design_manifest.return_value,
+            },
+        )
+
+    def test_pins_v0_on_first_write_without_code_review(self) -> None:
+        """When phase_version is None and no code_review, resolve pins v0."""
+        vision = {"name": "App"}
+        session = self._base_session(
+            brainstormer_state=STATE_VISION_COMPLETE,
+            vision_statement=vision,
+            phase_version=None,
+            code_review=None,
+        )
+        with patch("spec4.session.project_manager") as mock_pm:
+            mock_pm.resolve_phase_version.return_value = (0, True)
+            _persist_artifacts(session)
+        assert session["phase_version"] == 0
+        mock_pm.save_vision.assert_called_once_with("/some/dir", vision, 0)
+
+    def test_saves_code_review_and_pins_v1(self) -> None:
+        """When phase_version is None and code_review exists, resolve pins v1."""
+        review: dict[str, Any] = {"schema_version": 1}
+        session = self._base_session(
+            code_scanner_state=STATE_REVIEW_COMPLETE,
+            code_review=review,
+            phase_version=None,
+        )
+        with patch("spec4.session.project_manager") as mock_pm:
+            mock_pm.resolve_phase_version.return_value = (1, False)
+            _persist_artifacts(session)
+        assert session["phase_version"] == 1
+        mock_pm.save_code_review.assert_called_once_with("/some/dir", review, 1)
 
     def test_saves_code_review_when_complete(self) -> None:
         review: dict[str, Any] = {"code_review": {}}
@@ -205,16 +266,7 @@ class TestPersistArtifacts:
         )
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
-        mock_pm.save_code_review.assert_called_once_with("/some/dir", review)
-
-    def test_updates_specmem_after_saving_vision(self) -> None:
-        vision = {"name": "App"}
-        session = self._base_session(
-            brainstormer_state=STATE_VISION_COMPLETE, vision_statement=vision
-        )
-        with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
-        mock_pm.update_specmem_planning_state.assert_called()
+        mock_pm.save_code_review.assert_called_once_with("/some/dir", review, 0)
 
     def test_does_not_save_deployment_plan_without_markdown(self) -> None:
         """A returning user lands in Deployer with deployer_state=COMPLETE
@@ -252,7 +304,7 @@ class TestPersistArtifacts:
         )
         with patch("spec4.session.project_manager") as mock_pm:
             _persist_artifacts(session)
-        mock_pm.save_deployment_plan.assert_called_once_with("/some/dir", plan)
+        mock_pm.save_deployment_plan.assert_called_once_with("/some/dir", plan, 0)
 
     def test_clears_markdown_and_marks_existed_after_save(self) -> None:
         plan = "# Deployment Plan\n\n## Deployment Steps\n\n…"
@@ -268,6 +320,37 @@ class TestPersistArtifacts:
         # Don't re-save the same content on the next persist tick.
         assert session["_deployer_plan_markdown"] is None
 
+    def test_saves_readme_to_project_root_when_staged(self) -> None:
+        readme = "# My App\n\nOverview.\n\n## Install\n\n`pip install .`\n"
+        session = self._base_session(
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_plan_markdown=None,
+            _deployer_readme_markdown=readme,
+        )
+        with patch("spec4.session.project_manager") as mock_pm:
+            _persist_artifacts(session)
+        mock_pm.save_readme.assert_called_once_with("/some/dir", readme)
+        # Cleared so it is not re-written on the next persist tick.
+        assert session["_deployer_readme_markdown"] is None
+
+    def test_does_not_save_readme_when_blank(self) -> None:
+        session = self._base_session(
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_readme_markdown="   \n  ",
+        )
+        with patch("spec4.session.project_manager") as mock_pm:
+            _persist_artifacts(session)
+        mock_pm.save_readme.assert_not_called()
+
+    def test_does_not_save_readme_when_unstaged(self) -> None:
+        session = self._base_session(
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_plan_markdown=None,
+        )
+        with patch("spec4.session.project_manager") as mock_pm:
+            _persist_artifacts(session)
+        mock_pm.save_readme.assert_not_called()
+
 
 class TestLoadWorkingDir:
     def _base_session(self) -> dict[str, Any]:
@@ -281,33 +364,37 @@ class TestLoadWorkingDir:
         assert session["working_dir"] == str(tmp_path)
         assert session["phase"] == "setup"
 
-    def test_empty_dir_has_no_content_flags(self, tmp_path: pathlib.Path) -> None:
+    def test_project_mode_starts_unanswered(self, tmp_path: pathlib.Path) -> None:
         session = _load_working_dir(str(tmp_path), self._base_session())
-        assert session["_dir_has_content"] is False
-        assert session["_warn_existing_content"] is False
+        assert session["project_mode"] is None
 
-    def test_dir_with_file_sets_content_flags(self, tmp_path: pathlib.Path) -> None:
-        (tmp_path / "app.py").write_text("x = 1")
-        session = _load_working_dir(str(tmp_path), self._base_session())
-        assert session["_dir_has_content"] is True
-        assert session["_warn_existing_content"] is True
+    def test_picking_a_directory_reopens_the_question(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """D-PM1: an answer belongs to the directory it was given for."""
+        prior = self._base_session()
+        prior["project_mode"] = "existing"
+        session = _load_working_dir(str(tmp_path), prior)
+        assert session["project_mode"] is None
 
-    def test_dir_with_code_review_suppresses_warn(self, tmp_path: pathlib.Path) -> None:
+    def test_code_review_still_loads(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "app.py").write_text("x = 1")
-        spec4_dir = tmp_path / ".spec4"
-        spec4_dir.mkdir()
-        (spec4_dir / "code_review.json").write_text(
+        v0_dir = tmp_path / ".spec4" / "v0"
+        v0_dir.mkdir(parents=True)
+        (v0_dir / "code_review.json").write_text(
             json.dumps({"code_review": {"is_software_project": True}})
         )
         session = _load_working_dir(str(tmp_path), self._base_session())
-        assert session["_warn_existing_content"] is False
         assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
+        # ...and does not answer the question on the developer's behalf: a
+        # code review can legitimately exist for a greenfield skeleton.
+        assert session["project_mode"] is None
 
     def test_loads_vision_artifact(self, tmp_path: pathlib.Path) -> None:
         vision = {"vision_statement": {"name": "App"}}
-        spec4_dir = tmp_path / ".spec4"
-        spec4_dir.mkdir()
-        (spec4_dir / "vision.json").write_text(json.dumps(vision))
+        v0_dir = tmp_path / ".spec4" / "v0"
+        v0_dir.mkdir(parents=True)
+        (v0_dir / "vision.json").write_text(json.dumps(vision))
         session = _load_working_dir(str(tmp_path), self._base_session())
         assert session["vision_statement"] == vision
         assert session["brainstormer_state"] == STATE_VISION_COMPLETE
@@ -385,6 +472,75 @@ class TestLoadWorkingDir:
         assert session.get("agent_select_error") in (None, "")
         assert session.get("_deployer_plan_markdown") in (None, "")
         assert session.get("_deployer_pending_plan") in (None, False)
+
+
+class TestLoadWorkingDirNewRound:
+    """A pending brownfield round (the highest .spec4/v{N}/ holds an IMPLEMENTED
+    marker, so the active round is v{N+1}) starts blank on technical artifacts.
+
+    The prior round's vision/stack/phases/code_review are completed plans,
+    superseded by the fresh CodeScanner review the new round is Required to
+    produce first. Hydrating them as active/COMPLETE would let the persist
+    funnel copy stale v{N} content into v{N+1} and pin phase_version to the old
+    round. Only the prior product name is carried, as read-only reference.
+    """
+
+    def _base_session(self) -> dict[str, Any]:
+        s = _default_session()
+        s["provider"] = "openai"
+        s["api_key"] = "sk-test"
+        return s
+
+    def _implemented_v0(self, tmp_path: pathlib.Path) -> None:
+        v0 = tmp_path / ".spec4" / "v0"
+        (v0 / "phases").mkdir(parents=True)
+        (v0 / "vision.json").write_text(json.dumps({"name": "ShelfLife"}))
+        (v0 / "stack.json").write_text(json.dumps({"libraries": {}}))
+        (v0 / "code_review.json").write_text(
+            json.dumps({"code_review": {"is_software_project": True}})
+        )
+        (v0 / "phases" / "phase1.md").write_text(
+            '---\n{"phase_number": 1, "title": "P1"}\n---\n\n# Phase 1\n'
+        )
+        (v0 / "IMPLEMENTED").write_text("")
+
+    def test_does_not_hydrate_prior_artifacts(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        self._implemented_v0(tmp_path)
+        session = _load_working_dir(str(tmp_path), self._base_session())
+        assert session["vision_statement"] is None
+        assert session["stack_statement"] is None
+        assert session["phases"] == []
+        assert session["code_review"] is None
+        assert session["brainstormer_state"] == STATE_IN_PROGRESS
+        assert session["stack_advisor_state"] == STATE_IN_PROGRESS
+        assert session["code_scanner_state"] == STATE_IN_PROGRESS
+
+    def test_leaves_phase_version_none(self, tmp_path: pathlib.Path) -> None:
+        # phase_version None lets the persist funnel resolve the new round's
+        # version (max + 1) rather than overwriting the implemented round.
+        self._implemented_v0(tmp_path)
+        session = _load_working_dir(str(tmp_path), self._base_session())
+        assert session["phase_version"] is None
+
+    def test_stashes_prior_app_name(self, tmp_path: pathlib.Path) -> None:
+        self._implemented_v0(tmp_path)
+        session = _load_working_dir(str(tmp_path), self._base_session())
+        assert session["_prior_app_name"] == "ShelfLife"
+
+    def test_in_progress_round_still_hydrates(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # No IMPLEMENTED marker: the highest round is in progress and must still
+        # load for resume — the new-round guard must not fire here.
+        v0 = tmp_path / ".spec4" / "v0"
+        v0.mkdir(parents=True)
+        (v0 / "vision.json").write_text(json.dumps({"name": "ShelfLife"}))
+        session = _load_working_dir(str(tmp_path), self._base_session())
+        assert session["vision_statement"] == {"name": "ShelfLife"}
+        assert session["brainstormer_state"] == STATE_VISION_COMPLETE
+        assert session.get("_prior_app_name") is None
 
 
 class TestResetForNewProject:

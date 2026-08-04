@@ -52,7 +52,28 @@ DARK_THEME: dict[str, Any] = {
 # Agent state values
 STATE_IN_PROGRESS = "in_progress"
 STATE_VISION_COMPLETE = "vision_complete"
+STATE_AGENTIFIER_COMPLETE = "agentifier_complete"
 STATE_STACK_COMPLETE = "stack_complete"
 STATE_PHASES_COMPLETE = "phases_complete"
 STATE_REVIEW_COMPLETE = "review_complete"
 STATE_DEPLOYER_COMPLETE = "deployer_complete"
+
+# Whether the working directory holds a project we are modifying, or is where
+# a brand-new project will be built (D-PM1). Spec4 cannot infer this from the
+# files alone — a `uv init` skeleton is indistinguishable from a real codebase
+# by directory contents — so the developer is asked once per session and the
+# answer lives only in the session store (never on disk), which is what makes
+# it re-ask after a quit and restart.
+PROJECT_MODE_EXISTING = "existing"
+PROJECT_MODE_NEW = "new"
+PROJECT_MODES = (PROJECT_MODE_EXISTING, PROJECT_MODE_NEW)
+
+# The Fast Forward sweep instruction, validated across live draws. Injected
+# verbatim by the FF button and honoured by LLM-conversational phases
+# directly; the Python-paced Agentifier phases (spec drafting,
+# cross-cutting) detect it by exact match (D-AF1) and run their own sweep.
+FF_PROMPT = (
+    "For this and all of the remaining topics please create a comprehensive "
+    "set of recommendations, which I will review and potentially modify as a "
+    "whole before finalizing."
+)

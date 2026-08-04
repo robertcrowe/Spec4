@@ -1,0 +1,95 @@
+{
+  "_note": "CALIBRATION gold set B (ServiceDesk) — labels are Claude's best guess for Robert to CORRECT. Distinct domain from the other visions and the nine scoring visions. 'tier' tags per candidate (NOT sent to the judge). gold_borderline=true marks adjacent<->off_domain seams. pair_id links matched-tier pairs (same relevance, two tiers; mismatch = tier drift). Seam tags: alpha/beta as before; the tier-9 handoff is the crux borderline label.",
+  "vision": {
+    "purpose": "A copilot for a support agent that helps them resolve customer tickets quickly and consistently.",
+    "target_audience": [
+      "Support agents handling a high volume of customer tickets",
+      "Support teams that want faster, more consistent ticket resolutions"
+    ],
+    "key_features_mvp": [
+      {
+        "ticket_triage": {
+          "description": "Routes an incoming ticket to the right queue and flags when it duplicates an existing open ticket."
+        }
+      },
+      {
+        "suggested_reply": {
+          "description": "Drafts a suggested reply to the customer that the agent can edit and send."
+        }
+      },
+      {
+        "kb_grounded_answer": {
+          "description": "Answers the customer's question from the company's knowledge base and links the source articles."
+        }
+      }
+    ]
+  },
+  "candidates": [
+    {
+      "name": "duplicate_ticket_detection",
+      "rough_description": "Detects when a new ticket is a semantic duplicate of an open one so it can be linked instead of re-worked.",
+      "tier": "embeddings",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "ticket_triage's stated flagging of duplicates cannot happen without this. Necessity, cite ticket_triage."
+    },
+    {
+      "name": "reply_draft_generation",
+      "rough_description": "Generates the suggested reply from the ticket text and the customer's recent history.",
+      "tier": "single_call",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "note": "suggested_reply IS this mechanism. Necessity, cite suggested_reply."
+    },
+    {
+      "name": "kb_retrieval_cited_answer",
+      "rough_description": "Retrieves the relevant knowledge-base articles and composes a cited answer to the customer's question.",
+      "tier": "rag",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "pair_id": "B_answer",
+      "note": "Matched pair B_answer (low tier). kb_grounded_answer IS this. Grounded, cite kb_grounded_answer."
+    },
+    {
+      "name": "multi_source_research_answer",
+      "rough_description": "Answers a hard customer question by dispatching subagents that each search a different source (knowledge base, past tickets, engineering docs) and synthesizing one cited answer.",
+      "tier": "orchestrated_subagents",
+      "gold_label": "grounded",
+      "gold_borderline": false,
+      "pair_id": "B_answer",
+      "note": "Matched pair B_answer (high tier). Relevance to kb_grounded_answer (answer the customer's question with sources) is IDENTICAL to kb_retrieval_cited_answer; only the mechanism/tier differs. Should also be grounded. Downgrade = tier drift."
+    },
+    {
+      "name": "order_status_tool_lookup",
+      "rough_description": "Looks up the customer's order status via the fulfillment API so it can be included in the reply.",
+      "tier": "tool_agent",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "note": "Serves the resolve-the-ticket purpose for order questions; no stated feature requires a live lookup. Enhancement."
+    },
+    {
+      "name": "at_risk_sentiment_flagging",
+      "rough_description": "Flags angry or at-risk customers so the agent can prioritize and adjust tone.",
+      "tier": "single_call",
+      "gold_label": "adjacent",
+      "gold_borderline": false,
+      "note": "Fits the resolve-consistently purpose for the stated audience; not required by a feature. Enhancement."
+    },
+    {
+      "name": "external_warranty_agent_handoff",
+      "rough_description": "For a warranty claim, hands the ticket to the manufacturer's own agent over an A2A protocol so the two companies' agents settle the claim between themselves.",
+      "tier": "multi_agent_collaboration",
+      "gold_label": "adjacent",
+      "gold_borderline": true,
+      "note": "SEAM (crux tier-9 label): resolving the customer's ticket IS the purpose, so handing off to settle a warranty claim arguably serves it (adjacent); but it crosses into cross-organization claims processing, which may be a different product (off_domain). Proposed adjacent; genuinely contestable and the key tier-9 call to ratify."
+    },
+    {
+      "name": "agent_performance_analytics",
+      "rough_description": "Dashboards each support agent's resolution time and CSAT for team leads.",
+      "tier": "deterministic",
+      "gold_label": "off_domain",
+      "gold_borderline": false,
+      "note": "Team analytics about agents, not resolving a customer's ticket. Guardrail."
+    }
+  ]
+}

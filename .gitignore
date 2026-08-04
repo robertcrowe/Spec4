@@ -16,9 +16,9 @@ wheels/
 .spec4/
 
 # My stuff
-NOTES.txt
+mystuff/
 CLAUDE.md
-PROMPTS.md
-v3-design/*
-PACKAGING.md
 .vscode/
+working-notes/
+blocks/
+evals/agentifier/probe_visions/
