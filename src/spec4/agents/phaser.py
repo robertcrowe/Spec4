@@ -21,6 +21,7 @@ from spec4.agents._utils import (
     _manifest_for_phaser,
     _maybe_inject_staleness_question,
     _replay_last_assistant,
+    _set_status,
     _stack_digest_for_phaser,
 )
 from spec4.app_constants import STATE_PHASES_COMPLETE
@@ -1212,6 +1213,10 @@ def run(
             "corrections. This can take a few minutes…_\n"
         )
         yield status_line
+        _set_status(
+            session,
+            "Validating phase structure — re-emitting with corrections…",
+        )
         # Drain the retry stream — its body is raw or fenced JSON the user
         # should never see, so the content itself is swallowed. stream_turn
         # still mutates messages to record the assistant reply. D-PH9: the
@@ -1352,7 +1357,9 @@ def run(
         # blocks or retries. Run only on the greenfield (v0) set — a brownfield
         # round is an intentional delta whose partial graph would false-positive.
         if is_greenfield:
-            advisory = run_seam_check(phases, session.get("ai_features"), llm_config)
+            advisory = run_seam_check(
+                phases, session.get("ai_features"), llm_config, session
+            )
             if advisory:
                 display = display + "\n\n---\n\n" + advisory
         messages[-1]["content"] = display

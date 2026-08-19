@@ -517,6 +517,143 @@ class TestStreamPollReceivedCounter:
         assert result[0]["_stream_received_chars"] is None
 
 
+class TestStreamPollStatusLine:
+    """The one-line status agents publish to session["_stream_status"] is
+    surfaced mid-stream and cleared on finalisation, mirroring the
+    received-chars scalar's threading."""
+
+    def test_not_done_threads_status(self) -> None:
+        session = _session_with_stream()
+        agent_sess = _default_session()
+        agent_sess["_stream_status"] = "Scout is scanning your vision…"
+        entry = {"text": "hello", "done": False, "session": agent_sess}
+
+        with patch("spec4.callbacks.streaming.get", return_value=entry):
+            result = on_stream_poll(1, session)
+
+        assert result[0] is not no_update
+        assert result[0]["_stream_status"] == "Scout is scanning your vision…"
+
+    def test_not_done_rerenders_when_only_status_changes(self) -> None:
+        # Displayed text and received scalar are unchanged, but the agent
+        # replaced the status message — the poll must still return an update
+        # so the status line repaints.
+        session = _session_with_stream()
+        session["messages"][-1] = {"role": "assistant", "content": "frozen"}
+        session["_stream_received_chars"] = 50000
+        session["_stream_status"] = "Scout is scanning your vision…"
+        agent_sess = _default_session()
+        agent_sess["_stream_received_chars"] = 50000
+        agent_sess["_stream_status"] = "Composer is grouping candidates…"
+        entry = {"text": "frozen", "done": False, "session": agent_sess}
+
+        with patch("spec4.callbacks.streaming.get", return_value=entry):
+            result = on_stream_poll(1, session)
+
+        assert result[0] is not no_update
+        assert result[0]["_stream_status"] == "Composer is grouping candidates…"
+
+    def test_not_done_no_update_when_status_unchanged(self) -> None:
+        session = _session_with_stream()
+        session["messages"][-1] = {"role": "assistant", "content": "frozen"}
+        session["_stream_received_chars"] = 50000
+        session["_stream_status"] = "Same status…"
+        agent_sess = _default_session()
+        agent_sess["_stream_received_chars"] = 50000
+        agent_sess["_stream_status"] = "Same status…"
+        entry = {"text": "frozen", "done": False, "session": agent_sess}
+
+        with patch("spec4.callbacks.streaming.get", return_value=entry):
+            result = on_stream_poll(1, session)
+
+        assert result[0] is no_update
+
+    def test_done_clears_status(self) -> None:
+        session = _session_with_stream()
+        agent_sess = _default_session()
+        agent_sess["_display_override"] = None
+        agent_sess["_stream_status"] = "Still working…"
+        entry = {"text": "final", "done": True, "session": agent_sess}
+
+        with (
+            patch("spec4.callbacks.streaming.get", return_value=entry),
+            patch("spec4.callbacks._persist_artifacts", return_value=None),
+        ):
+            result = on_stream_poll(1, session)
+
+        assert result[0]["_stream_status"] is None
+
+
+class TestChatStatusLine:
+    """The status line renders under the chat input from session state."""
+
+    def _find_status_line(self, layout: Any) -> Any:
+        return _find_component(
+            layout, lambda c: getattr(c, "id", None) == "chat-status-line"
+        )
+
+    def test_renders_session_status(self) -> None:
+        session = _default_session()
+        session["_stream_status"] = "Tier Analyst is sizing chat_bot (2/5)…"
+        line = self._find_status_line(_chat_layout(session))
+        assert line is not None
+        assert line.children == "Tier Analyst is sizing chat_bot (2/5)…"
+
+    def test_empty_when_no_status(self) -> None:
+        session = _default_session()
+        line = self._find_status_line(_chat_layout(session))
+        assert line is not None
+        assert line.children == ""
+
+    def test_is_single_smaller_line(self) -> None:
+        session = _default_session()
+        session["_stream_status"] = "Working…"
+        line = self._find_status_line(_chat_layout(session))
+        assert line.size == "xs", "status line must be smaller than body text"
+        assert line.style["whiteSpace"] == "nowrap", (
+            "status line must never wrap to a second line"
+        )
+        assert line.style["textOverflow"] == "ellipsis"
+
+    def test_mounted_while_breadth_panel_active(self) -> None:
+        # The input row hides during the breadth panel; the status line stays
+        # mounted (it is empty then — no stream runs while the panel waits).
+        session = _make_active_breadth_session()
+        line = self._find_status_line(_chat_layout(session))
+        assert line is not None
+
+
+class TestAgentStatusSeed:
+    """_get_agent_gen seeds a per-agent status before the generator runs."""
+
+    def test_seeds_status_on_session(self) -> None:
+        from spec4.session import _get_agent_gen
+
+        session = _default_session()
+        session["active_agent"] = "brainstormer"
+        session["llm_config"] = {"model": "test-model"}
+        _get_agent_gen("hi", session)
+        assert session["_stream_status"] == "Brainstormer is thinking…"
+
+    def test_every_agent_has_a_seed(self) -> None:
+        from spec4.session import _AGENT_STATUS_SEED, _get_agent_gen
+
+        for agent in (
+            "code_scanner",
+            "brainstormer",
+            "agentifier",
+            "stack_advisor",
+            "phaser",
+            "deployer",
+        ):
+            assert agent in _AGENT_STATUS_SEED
+            session = _default_session()
+            session["active_agent"] = agent
+            session["llm_config"] = {"model": "test-model"}
+            _get_agent_gen(None, session)
+            assert session["_stream_status"] == _AGENT_STATUS_SEED[agent]
+
+
 class TestStreamedTokenCounter:
     """D-PH9: _streamed_token_count prefers the published received total, and
     otherwise falls back to the in-flight assistant message length."""

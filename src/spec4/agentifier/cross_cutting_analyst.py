@@ -18,7 +18,7 @@ from typing import Any
 from spec4.agentifier.pattern_loader import MechanismPattern
 from spec4.agentifier.spec_drafter import _TIER_ORDER
 from spec4.agentifier.subagents import validate_dataclass_input
-from spec4.llm import acomplete
+from spec4.llm import LLM_STREAM_TIMEOUT, acomplete
 
 CROSS_CUTTING_TOPICS = (
     "provider_strategy",
@@ -310,6 +310,7 @@ class CrossCuttingAnalyst:
             ],
             agent_name="cross_cutting_analyst",
             stream=True,
+            timeout=LLM_STREAM_TIMEOUT,
         )
         async for chunk in response:
             delta = (chunk.choices[0].delta.content or "") if chunk.choices else ""

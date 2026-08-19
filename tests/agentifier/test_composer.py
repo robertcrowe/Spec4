@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from spec4.agentifier.composer import (
     ComposerAgent,
@@ -43,10 +43,9 @@ def _c(
     )
 
 
-def _mock_response(text: str) -> MagicMock:
-    resp = MagicMock()
-    resp.choices[0].message.content = text
-    return resp
+def _mock_response(text: str) -> Any:
+    """Iterator of text deltas, the shape complete_stream yields."""
+    return iter([text])
 
 
 def _run(candidates: list[Candidate]) -> Any:
@@ -73,7 +72,7 @@ class TestHeadPresent:
             _c("member_a", scope="sub_feature", features=["deck"], composed_under="orch"),
             _c("member_b", scope="sub_feature", features=["deck"], composed_under="orch"),
         ]
-        with patch("spec4.agentifier.composer.complete") as mock_complete:
+        with patch("spec4.agentifier.composer.complete_stream") as mock_complete:
             out = _run(cands)
         mock_complete.assert_not_called()  # deterministic when heads are present
         assert len(out.candidates) == 3
@@ -89,7 +88,7 @@ class TestHeadPresent:
             _c("orch", features=["deck"], desc="Runs the show."),
             _c("member_a", scope="sub_feature", features=["deck"], composed_under="orch"),
         ]
-        with patch("spec4.agentifier.composer.complete") as mock_complete:
+        with patch("spec4.agentifier.composer.complete_stream") as mock_complete:
             out = _run(cands)
         mock_complete.assert_not_called()
         assert out.compositions == []
@@ -107,7 +106,7 @@ class TestHeadPresent:
             _c("solo", features=["deck"], scope="cross_feature"),
             _c("shared", features=["deck", "revise"], scope="feature"),
         ]
-        with patch("spec4.agentifier.composer.complete") as mock_complete:
+        with patch("spec4.agentifier.composer.complete_stream") as mock_complete:
             out = _run(cands)
         mock_complete.assert_not_called()
         assert out.n_synthesized == 0
@@ -140,7 +139,7 @@ class TestHeadlessSynthesis:
 
     def test_headless_group_gets_synthesized_head(self) -> None:
         with patch(
-            "spec4.agentifier.composer.complete",
+            "spec4.agentifier.composer.complete_stream",
             return_value=_mock_response("Runs the two-stage production pipeline."),
         ) as mock_complete:
             out = _run(self._headless_fixture())
@@ -155,7 +154,7 @@ class TestHeadlessSynthesis:
 
     def test_synthesized_head_inserted_before_its_members(self) -> None:
         with patch(
-            "spec4.agentifier.composer.complete",
+            "spec4.agentifier.composer.complete_stream",
             return_value=_mock_response("A production pipeline."),
         ):
             out = _run(self._headless_fixture())
@@ -164,7 +163,7 @@ class TestHeadlessSynthesis:
 
     def test_synthesis_failure_presents_flat(self) -> None:
         # complete raising → group detaches, members stand alone, nothing lost.
-        with patch("spec4.agentifier.composer.complete", side_effect=RuntimeError("boom")):
+        with patch("spec4.agentifier.composer.complete_stream", side_effect=RuntimeError("boom")):
             out = _run(self._headless_fixture())
         assert out.n_synthesized == 0
         by = _by_name(out.candidates)
@@ -175,7 +174,7 @@ class TestHeadlessSynthesis:
 
     def test_empty_synthesis_text_presents_flat(self) -> None:
         with patch(
-            "spec4.agentifier.composer.complete", return_value=_mock_response("   ")
+            "spec4.agentifier.composer.complete_stream", return_value=_mock_response("   ")
         ):
             out = _run(self._headless_fixture())
         assert out.n_synthesized == 0

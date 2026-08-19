@@ -9,7 +9,7 @@ to the DAG pruner, and the end-to-end path through build_feature_specs.
 
 import json
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from spec4.agents import feature_speccer
 
@@ -33,10 +33,11 @@ def _deps(features: list[dict[str, Any]]) -> dict[str, list[str]]:
 
 
 def _complete_returning(payload: Any) -> Any:
-    resp = MagicMock()
     text = payload if isinstance(payload, str) else json.dumps(payload)
-    resp.choices[0].message.content = f"```json\n{text}\n```"
-    return patch("spec4.llm.complete", return_value=resp)
+    fenced = f"```json\n{text}\n```"
+    return patch(
+        "spec4.llm.complete_stream", side_effect=lambda **kw: iter([fenced])
+    )
 
 
 def _vision(*ids: str) -> dict[str, Any]:

@@ -19,7 +19,7 @@ import queue
 import re
 import threading
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -76,11 +76,13 @@ from spec4.agents._utils import (
     _artifact_fallback,
     _artifact_reask_prompt,
     _artifact_reask_status,
+    _drain_stream,
     _drop_orphan_or_route_to_fresh_start,
     _extract_json_block,
     _last_assistant_text,
     _reask_for_artifact,
     _replay_last_assistant,
+    _set_status,
     _stream_suppressing_json,
     _suppressed_as_artifact,
     slug,
@@ -266,11 +268,34 @@ Here are the nine approaches I choose from, cheapest → most complex:
 # ---------------------------------------------------------------------------
 
 
+def _session_counter(
+    session: dict[str, Any], seed: int
+) -> tuple[Callable[[str], None], Callable[[], int]]:
+    """Build an ``on_chunk`` callback that publishes the receipt counter.
+
+    Returns ``(on_chunk, get_total)``: the callback adds each delta's length
+    to a running total seeded at ``seed`` and publishes it to
+    ``session["_stream_received_chars"]`` (D-PH9); ``get_total`` reads the
+    final total back so the caller can fold it into ``pre_stream_chars`` and
+    keep later seeds monotonic (D-AT3). The seed is published immediately so
+    a stale prior-turn value is overwritten before the first chunk arrives.
+    """
+    total = [seed]
+    session["_stream_received_chars"] = seed
+
+    def _on_chunk(delta: str) -> None:
+        total[0] += len(delta)
+        session["_stream_received_chars"] = total[0]
+
+    return _on_chunk, lambda: total[0]
+
+
 def _call_scout(
     vision: dict[str, Any],
     code_review: dict[str, Any] | None,
     llm_config: dict[str, Any],
     revision: dict[str, Any] | None = None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> ScoutOutput:
     """Invoke Scout synchronously via the registry."""
     scout_input = ScoutInput(
@@ -278,6 +303,7 @@ def _call_scout(
         code_review=code_review,
         llm_config=llm_config,
         revision=revision,
+        on_chunk=on_chunk,
     )
     return asyncio.run(_registry.run("scout", scout_input))
 
@@ -324,12 +350,14 @@ def _call_linker(
     candidates: list[Candidate],
     vision: dict[str, Any],
     llm_config: dict[str, Any],
+    on_chunk: Callable[[str], None] | None = None,
 ):
     """Invoke the Linker synchronously via the registry, returning its output."""
     li = LinkerInput(
         candidates=candidates,
         vision_purpose=_vision_purpose(vision),
         llm_config=llm_config,
+        on_chunk=on_chunk,
     )
     return asyncio.run(_registry.run("linker", li))
 
@@ -338,9 +366,15 @@ def _call_composer(
     candidates: list[Candidate],
     vision: dict[str, Any],
     llm_config: dict[str, Any],
+    on_chunk: Callable[[str], None] | None = None,
 ) -> ComposerOutput:
     """Invoke Composer synchronously via the registry."""
-    ci = ComposerInput(candidates=candidates, vision=vision, llm_config=llm_config)
+    ci = ComposerInput(
+        candidates=candidates,
+        vision=vision,
+        llm_config=llm_config,
+        on_chunk=on_chunk,
+    )
     return asyncio.run(_registry.run("composer", ci))
 
 
@@ -349,6 +383,7 @@ def _call_prioritizer(
     vision: dict[str, Any],
     llm_config: dict[str, Any],
     carried_forward: list[dict[str, Any]],
+    on_chunk: Callable[[str], None] | None = None,
 ):
     """Invoke the Prioritizer synchronously via the registry, returning its output."""
     pi = PrioritizerInput(
@@ -357,6 +392,7 @@ def _call_prioritizer(
         llm_config=llm_config,
         carried_forward=carried_forward,
         mvp_vision_features=_vision_mvp_feature_names(vision),
+        on_chunk=on_chunk,
     )
     return asyncio.run(_registry.run("prioritizer", pi))
 
@@ -438,6 +474,7 @@ def _call_tier_analyst(
     candidate: Candidate,
     llm_config: dict[str, Any],
     code_review: dict[str, Any] | None = None,
+    on_chunk: Callable[[str], None] | None = None,
 ) -> TierAnalystOutput:
     """Invoke TierAnalyst synchronously via the registry."""
     tiers, mechanisms = load_patterns()
@@ -447,6 +484,7 @@ def _call_tier_analyst(
         tier_patterns=tiers,
         code_review=code_review,
         mechanism_patterns=mechanisms,
+        on_chunk=on_chunk,
     )
     return asyncio.run(_registry.run("tier_analyst", ta_input))
 
@@ -1126,6 +1164,9 @@ def _draft_spec(
 
     header = f"\n\n{action} spec for **`{feature_name}`** ({spec_index + 1}/{n})…\n\n"
     yield header
+    _set_status(
+        session, f"{action} spec for {feature_name} ({spec_index + 1}/{n})…"
+    )
 
     tiers, mechanisms = load_patterns()
     candidates_data = session.get("agentifier_candidates") or []
@@ -1149,9 +1190,15 @@ def _draft_spec(
     spec_text = ""
     for attempt in (1, 2):  # D-AF6: one automatic retry on unreadable output
         try:
-            spec_text = ""
-            for chunk in _iter_async_gen(_registry.stream("spec_drafter", spec_input)):
-                spec_text += chunk
+            # D-PH9: drain with a live receipt counter; attempt 2 seeds from
+            # the total attempt 1 left, so the count is cumulative across the
+            # retry boundary (same convention as Phaser's validation retry).
+            spec_text, _ = _drain_stream(
+                _iter_async_gen(_registry.stream("spec_drafter", spec_input)),
+                session=session,
+                seed=session.get("_stream_received_chars") or 0,
+                ttft_label="spec_drafter",
+            )
         except Exception as exc:
             error = f"Spec Drafter failed for `{feature_name}`: {exc}. Please try again."
             _append_assistant(session, error)
@@ -1171,6 +1218,9 @@ def _draft_spec(
         _dump_subagent_failure(session, "spec_drafter", feature_name, spec_text)
         if attempt == 1:
             yield f"Draft output for `{feature_name}` was unreadable — retrying…\n\n"
+            _set_status(
+                session, f"Re-drafting spec for {feature_name} (retry)…"
+            )
 
     if not spec:
         error = (
@@ -1283,6 +1333,7 @@ def _finalize_specs(
     session["agentifier_spec_done"] = True
 
     yield "\n\nAll feature specs complete! Analysing cross-cutting system concerns…\n\n"
+    _set_status(session, "Analysing cross-cutting system concerns…")
 
     topics = warranted_topics(features)
     if not topics:
@@ -1302,9 +1353,12 @@ def _finalize_specs(
         code_review=session.get("code_review"),
     )
     try:
-        raw = ""
-        for chunk in _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)):
-            raw += chunk
+        raw, _ = _drain_stream(
+            _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
+            session=session,
+            seed=session.get("_stream_received_chars") or 0,
+            ttft_label="cross_cutting_analyst",
+        )
     except Exception as exc:
         err = f"Cross-Cutting Analyst failed: {exc}. Reply **retry** to try again or continue."
         msgs.append({"role": "assistant", "content": err})
@@ -1592,12 +1646,14 @@ def _handle_cc_ff_review(
             code_review=session.get("code_review"),
         )
         yield f"\n\nRevising **{topic}**…\n\n"
+        _set_status(session, f"Revising cross-cutting topic: {topic}…")
         try:
-            raw = ""
-            for chunk in _iter_async_gen(
-                _registry.stream("cross_cutting_analyst", cc_input)
-            ):
-                raw += chunk
+            raw, _ = _drain_stream(
+                _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
+                session=session,
+                seed=session.get("_stream_received_chars") or 0,
+                ttft_label="cross_cutting_analyst",
+            )
         except Exception as exc:
             yield f"Cross-Cutting Analyst revision failed for `{topic}`: {exc}. Please try again."
             continue
@@ -2098,6 +2154,7 @@ def _run_cross_cutting_phase(
     # If no analysis yet (e.g. page reload lost it), re-run analyst
     if analysis is None:
         yield "\n\nRunning cross-cutting analysis…\n\n"
+        _set_status(session, "Analysing cross-cutting system concerns…")
         _, mechanisms = load_patterns()
         features = (session.get("ai_features") or {}).get("ai_features") or []
         topics = session.get("agentifier_cross_cutting_topics") or warranted_topics(
@@ -2117,9 +2174,12 @@ def _run_cross_cutting_phase(
             code_review=session.get("code_review"),
         )
         try:
-            raw = ""
-            for chunk in _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)):
-                raw += chunk
+            raw, _ = _drain_stream(
+                _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
+                session=session,
+                seed=session.get("_stream_received_chars") or 0,
+                ttft_label="cross_cutting_analyst",
+            )
         except Exception as exc:
             err = f"Cross-Cutting Analyst failed: {exc}. Please try again."
             msgs.append({"role": "assistant", "content": err})
@@ -2191,10 +2251,14 @@ def _run_cross_cutting_phase(
             code_review=session.get("code_review"),
         )
         yield f"\n\nRevising **{current_topic}**…\n\n"
+        _set_status(session, f"Revising cross-cutting topic: {current_topic}…")
         try:
-            raw = ""
-            for chunk in _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)):
-                raw += chunk
+            raw, _ = _drain_stream(
+                _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
+                session=session,
+                seed=session.get("_stream_received_chars") or 0,
+                ttft_label="cross_cutting_analyst",
+            )
         except Exception as exc:
             err = f"Cross-Cutting Analyst revision failed: {exc}. Please try again."
             msgs.append({"role": "assistant", "content": err})
@@ -2242,14 +2306,22 @@ def _begin_priority_phase(
         "Working out what belongs in the steel thread, and what can wait…\n\n"
         "_This usually takes a few seconds._\n\n"
     )
+    _set_status(session, "Prioritizer is deciding what belongs in the steel thread…")
     if _DEV_MODE:
         print("[agentifier] calling Prioritizer…", flush=True)
 
     outcome = PrioritizerOutcome.UNREADABLE
     overlay: dict[str, str] = {}
+    _on_chunk, _ = _session_counter(
+        session, seed=session.get("_stream_received_chars") or 0
+    )
     try:
         out = _call_prioritizer(
-            features, session.get("vision_statement") or {}, llm_config, carried
+            features,
+            session.get("vision_statement") or {},
+            llm_config,
+            carried,
+            on_chunk=_on_chunk,
         )
         overlay, outcome = out.overlay, out.outcome
     except Exception as exc:
@@ -2595,25 +2667,46 @@ def _run_catalog_phase(
             _project_name = (_vs.get("name", "") if isinstance(_vs, dict) else "") or ""
             _project_note = f" for **{_project_name}**" if _project_name else ""
 
-            yield (
+            _scout_banner = (
                 f"### 🔍 Scout\n\n"
                 f"Scanning your vision{_project_note} for AI/LLM integration opportunities…\n\n"
                 f"Scout reads your vision statement and identifies every place where an LLM, "
                 f"embedding model, or AI agent could add meaningful value. "
                 f"It maps each candidate back to the vision features that motivated it, "
                 f"and — on brownfield projects — notes which existing workflows it would replace.\n\n"
-                f"_This usually takes 15–30 seconds._\n\n"
+                f"_This can take from a few seconds to a few minutes on large "
+                f"brownfield projects — the character counter below shows live "
+                f"progress._\n\n"
+            )
+            pre_stream_chars += len(_scout_banner)
+            yield _scout_banner
+            _set_status(
+                session, "Scout is scanning your vision for AI opportunities…"
             )
 
             if _DEV_MODE:
                 print("[agentifier] calling Scout…", flush=True)
+            # D-AT3: seed turn-locally from the text this turn has yielded
+            # (plus prior drains' write-backs) — the live session key is never
+            # cleared between turns, so seeding from it would carry the
+            # previous turn's total into this turn's accounting.
+            _on_chunk, _drained_total = _session_counter(
+                session, seed=pre_stream_chars
+            )
             try:
                 scout_output = _call_scout(
-                    vision, code_review, llm_config, revision=_scout_revision
+                    vision,
+                    code_review,
+                    llm_config,
+                    revision=_scout_revision,
+                    on_chunk=_on_chunk,
                 )
             except Exception as exc:
                 yield f"\n\nScout failed to analyse the vision: {exc}. Please try again."
                 return
+            # D-AT3: fold the drained total back into the turn's running count
+            # so every later seed in this turn stays monotonic.
+            pre_stream_chars = _drained_total()
             candidates = scout_output.candidates
             if not candidates:
                 if scout_output.outcome is ScoutOutcome.UNREADABLE:
@@ -2705,15 +2798,29 @@ def _run_catalog_phase(
             # the Composer materialises coordinators from the labels. Skipped
             # below two candidates — no edge is possible, so no draw.
             if len(candidates) >= 2:
-                yield (
+                _linker_banner = (
                     "### 🔗 Linker\n\n"
                     "Mapping how these features depend on each other…\n\n"
                     "_This usually takes a few seconds._\n\n"
                 )
+                pre_stream_chars += len(_linker_banner)
+                yield _linker_banner
+                _set_status(
+                    session, "Linker is mapping dependencies between features…"
+                )
                 if _DEV_MODE:
                     print("[agentifier] calling Linker…", flush=True)
+                # D-AT3: seed turn-locally from the text this turn has yielded
+                # (plus prior drains' write-backs) — the live session key is never
+                # cleared between turns, so seeding from it would carry the
+                # previous turn's total into this turn's accounting.
+                _on_chunk, _drained_total = _session_counter(
+                    session, seed=pre_stream_chars
+                )
                 try:
-                    linker_out = _call_linker(candidates, vision, llm_config)
+                    linker_out = _call_linker(
+                        candidates, vision, llm_config, on_chunk=_on_chunk
+                    )
                     overlay, linker_outcome = linker_out.overlay, linker_out.outcome
                 except Exception as exc:
                     if _DEV_MODE:
@@ -2722,6 +2829,9 @@ def _run_catalog_phase(
                             flush=True,
                         )
                     overlay, linker_outcome = {}, LinkerOutcome.UNREADABLE
+                # D-AT3: fold the drained total back into the turn's running
+                # count so every later seed in this turn stays monotonic.
+                pre_stream_chars = _drained_total()
                 candidates = apply_overlay(candidates, overlay)
                 if linker_outcome is LinkerOutcome.UNREADABLE:
                     # Genuine failure (unreadable even after one reparse) — an
@@ -2756,10 +2866,15 @@ def _run_catalog_phase(
             # Composition pass — group coordinated candidates under their
             # coordinators (synthesizing a head only when Scout emitted none) —
             # runs ONCE before breadth selection and before any Tier Analyst call.
-            yield (
+            _composer_banner = (
                 "### 🧬 Composer\n\n"
                 "Grouping coordinated candidates under their coordinators…\n\n"
                 "_This usually takes a few seconds._\n\n"
+            )
+            pre_stream_chars += len(_composer_banner)
+            yield _composer_banner
+            _set_status(
+                session, "Composer is grouping coordinated candidates…"
             )
             _input_candidates = list(candidates)  # snapshot for diagnostics
             if _DEV_MODE:
@@ -2774,8 +2889,17 @@ def _run_catalog_phase(
                         f"[agentifier] composer:   {_i}. {_c.name} [{_c.scope}] — {_desc}",
                         flush=True,
                     )
+            # D-AT3: seed turn-locally from the text this turn has yielded
+            # (plus prior drains' write-backs) — the live session key is never
+            # cleared between turns, so seeding from it would carry the
+            # previous turn's total into this turn's accounting.
+            _on_chunk, _drained_total = _session_counter(
+                session, seed=pre_stream_chars
+            )
             try:
-                composed = _call_composer(candidates, vision, llm_config)
+                composed = _call_composer(
+                    candidates, vision, llm_config, on_chunk=_on_chunk
+                )
             except Exception as exc:
                 if _DEV_MODE:
                     print(
@@ -2783,6 +2907,8 @@ def _run_catalog_phase(
                         flush=True,
                     )
                 composed = ComposerOutput(candidates=candidates)
+            # D-AT3: fold the drained total back into the turn's running count.
+            pre_stream_chars = _drained_total()
 
             _log_composition(_input_candidates, composed)
 
@@ -2952,7 +3078,27 @@ def _run_catalog_phase(
                 _progress_line = f"- Analysing **`{_cand.name}`** ({_i}/{n_s})…\n"
                 pre_stream_chars += len(_progress_line)
                 yield _progress_line
-                breadth_analyses.append(_call_tier_analyst(_cand, llm_config, code_review))
+                _set_status(
+                    session,
+                    f"Tier Analyst is sizing {_cand.name} ({_i}/{n_s})…",
+                )
+                # D-AT3: each per-candidate drain continues from the turn's
+                # running count (progress lines + prior drains) and folds its
+                # total back, so the counter interleaves line jumps with live
+                # drain growth and never dips.
+                # D-AT3: seed turn-locally from the text this turn has yielded
+                # (plus prior drains' write-backs) — the live session key is never
+                # cleared between turns, so seeding from it would carry the
+                # previous turn's total into this turn's accounting.
+                _on_chunk, _drained_total = _session_counter(
+                    session, seed=pre_stream_chars
+                )
+                breadth_analyses.append(
+                    _call_tier_analyst(
+                        _cand, llm_config, code_review, on_chunk=_on_chunk
+                    )
+                )
+                pre_stream_chars = _drained_total()
         except Exception as exc:
             yield f"\nTier Analyst failed: {exc}. Please try again."
             return
@@ -2960,6 +3106,7 @@ def _run_catalog_phase(
         _done_line = "\n✅ Tier analysis complete.\n\n---\n\n_Preparing your briefing…_\n\n"
         pre_stream_chars += len(_done_line)
         yield _done_line
+        _set_status(session, "Preparing your feature briefing…")
 
         session["agentifier_candidates"] = _candidates_to_dicts(to_analyze)
         session["agentifier_analyses"] = _analyses_to_dicts(breadth_analyses, to_analyze)

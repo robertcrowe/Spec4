@@ -92,6 +92,10 @@ def _default_session() -> dict[str, Any]:
         # D-ER1: set by the poll when a turn dies on a provider error, which is
         # what puts the Try Again panel in the chat. Cleared by every turn start.
         "_stream_error": None,
+        # One-line status shown under the chat input while a stream runs.
+        # Seeded per-agent at turn start, overwritten by agents as stages
+        # progress, cleared by the poll when the stream finalises.
+        "_stream_status": None,
     }
 
 
@@ -307,12 +311,30 @@ def _validate_agent_preconditions(agent: str, session: dict[str, Any]) -> str | 
 _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
 
 
+# Opening message for the chat status line, per agent. Deliberately generic —
+# it covers the provider prefill before the first stage-specific status lands.
+_AGENT_STATUS_SEED: dict[str, str] = {
+    "code_scanner": "CodeScanner is examining your codebase…",
+    "brainstormer": "Brainstormer is thinking…",
+    "agentifier": "Agentifier is working…",
+    "stack_advisor": "StackAdvisor is thinking…",
+    "phaser": "Phaser is planning your development phases…",
+    "deployer": "Deployer is preparing your deployment plan…",
+}
+
+
 def _get_agent_gen(
     user_input: str | None, session: dict[str, Any]
 ) -> Generator[str, None, None]:
     """Return the generator for one agent turn without starting it."""
     llm_config = session["llm_config"]
     active = session["active_agent"]
+
+    # Seed the status line before the generator runs: every stream-starting
+    # callback spreads this session into the store after calling here, so the
+    # seed shows the moment the turn begins — agents then overwrite it with
+    # stage-specific text on the same (live) dict as they work.
+    session["_stream_status"] = _AGENT_STATUS_SEED.get(active, "Working…")
 
     if _DEV_MODE:
         agent_msgs = session.get(f"{active}_messages") or []

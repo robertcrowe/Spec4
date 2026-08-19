@@ -26,12 +26,13 @@ from __future__ import annotations
 
 import os
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from spec4.agentifier.scout import Candidate
 from spec4.agentifier.subagents import validate_dataclass_input
-from spec4.llm import complete
+from spec4.llm import complete_stream
 
 _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
 
@@ -58,6 +59,10 @@ class ComposerInput:
     candidates: list[Candidate]
     vision: dict[str, Any]
     llm_config: dict[str, Any]
+    # Receipt-counter hook (D-PH9): called with each streamed text delta as it
+    # arrives, so the orchestrator can publish liveness while the response is
+    # drained internally. ``None`` drains silently (the prior behavior).
+    on_chunk: Callable[[str], None] | None = field(default=None)
 
 
 @dataclass
@@ -106,6 +111,7 @@ def _synthesize_head_description(
     members: list[Candidate],
     vision_features: list[str],
     llm_config: dict[str, Any],
+    on_chunk: Callable[[str], None] | None = None,
 ) -> str | None:
     """The one generative act: write a headless coordinator's description.
 
@@ -121,16 +127,19 @@ def _synthesize_head_description(
         "Write the coordinator's description."
     )
     try:
-        response = complete(
+        buf: list[str] = []
+        for delta in complete_stream(
             llm_config=llm_config,
             messages=[
                 {"role": "system", "content": _HEAD_SYNTHESIS_SYSTEM_PROMPT},
                 {"role": "user", "content": user_content},
             ],
             agent_name="composer",
-            stream=False,
-        )
-        text = (response.choices[0].message.content or "").strip()
+        ):
+            buf.append(delta)
+            if on_chunk is not None:
+                on_chunk(delta)
+        text = "".join(buf).strip()
         return text or None
     except Exception:
         return None
@@ -216,7 +225,7 @@ class ComposerAgent:
             # Headless group (>=2 guaranteed by the parser). Crown it.
             vision_features = _union_features(members)
             desc = _synthesize_head_description(
-                label, members, vision_features, input.llm_config
+                label, members, vision_features, input.llm_config, input.on_chunk
             )
             if desc is None:
                 # Present flat — detach so the members stand alone. Nothing lost.

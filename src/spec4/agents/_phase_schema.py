@@ -194,5 +194,8 @@ def format_validation_errors_for_retry(
         "- `references` items must each have both `standard` and `url`. "
         "Omit the array (or pass `[]`) if there are no references — never "
         "emit a reference with a missing or empty URL.\n"
-        "- Do not add custom top-level keys; the schema is closed."
+        "- Do not add custom top-level keys; the schema is closed. When "
+        "removing a disallowed key, merge its content into the nearest "
+        "allowed field (e.g. fold a configurations note into "
+        "`configurations`) rather than dropping it."
     )

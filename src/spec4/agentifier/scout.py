@@ -11,12 +11,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 from spec4.agentifier.subagents import validate_dataclass_input
-from spec4.llm import complete
+from spec4.llm import complete_stream
 
 _log = logging.getLogger(__name__)
 
@@ -295,6 +296,10 @@ class ScoutInput:
     # the AI features already built, so Scout scopes to the changed surface and
     # does not re-surface existing AI features. ``None`` for a greenfield run.
     revision: dict[str, Any] | None = field(default=None)
+    # Receipt-counter hook (D-PH9): called with each streamed text delta as it
+    # arrives, so the orchestrator can publish liveness while the response is
+    # drained internally. ``None`` drains silently (the prior behavior).
+    on_chunk: Callable[[str], None] | None = field(default=None)
 
 
 class ScoutOutcome(str, Enum):
@@ -433,15 +438,18 @@ class ScoutAgent:
         )
 
         llm_config = input.llm_config
-        response = complete(
+        buf: list[str] = []
+        for delta in complete_stream(
             llm_config=llm_config,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
             agent_name="scout",
-            stream=False,
-        )
-        raw = (response.choices[0].message.content or "").strip()
+        ):
+            buf.append(delta)
+            if input.on_chunk is not None:
+                input.on_chunk(delta)
+        raw = "".join(buf).strip()
         candidates, outcome = _parse_candidates(raw)
         return ScoutOutput(candidates=candidates, outcome=outcome)

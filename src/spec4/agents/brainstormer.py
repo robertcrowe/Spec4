@@ -826,7 +826,7 @@ def run(
         session["brainstormer_state"] = STATE_VISION_COMPLETE
         session["vision_statement"] = vision
         session["feature_specs"] = feature_speccer.build_feature_specs(
-            vision, llm_config
+            vision, llm_config, session
         )
         session["brainstormer_stale_acknowledged"] = {}
         footer_included = False

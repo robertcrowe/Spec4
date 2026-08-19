@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -56,10 +57,9 @@ _SAMPLE_TIER_OUTPUT = {
 }
 
 
-def _make_mock_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.choices[0].message.content = content
-    return response
+def _make_mock_response(content: str) -> Any:
+    """Iterator of text deltas, the shape complete_stream yields."""
+    return iter([content])
 
 
 def _make_tier_input(
@@ -238,7 +238,7 @@ class TestTierAnalystAgentRun:
     def test_returns_tier_analyst_output(self) -> None:
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ):
             output = asyncio.run(TierAnalystAgent().run(_make_tier_input()))
@@ -247,7 +247,7 @@ class TestTierAnalystAgentRun:
     def test_recommended_tier_is_valid(self) -> None:
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ):
             output = asyncio.run(TierAnalystAgent().run(_make_tier_input()))
@@ -264,7 +264,7 @@ class TestTierAnalystAgentRun:
         )
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ) as mock_llm:
             asyncio.run(TierAnalystAgent().run(input_no_patterns))
@@ -290,7 +290,7 @@ class TestTierAnalystAgentRun:
         )
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ) as mock_llm:
             asyncio.run(TierAnalystAgent().run(input_no_mechanisms))
@@ -310,7 +310,7 @@ class TestTierAnalystAgentRun:
         )
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ) as mock_llm:
             asyncio.run(TierAnalystAgent().run(input_obj))
@@ -334,7 +334,7 @@ class TestTierAnalystAgentRun:
         input_obj = _make_tier_input(tier_patterns=tiers)
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ) as mock_llm:
             asyncio.run(TierAnalystAgent().run(input_obj))
@@ -347,7 +347,7 @@ class TestTierAnalystAgentRun:
     def test_passes_candidate_name_to_user_message(self) -> None:
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ) as mock_llm:
             asyncio.run(TierAnalystAgent().run(_make_tier_input()))
@@ -366,7 +366,7 @@ class TestTierAnalystAgentRun:
         )
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ) as mock_llm:
             asyncio.run(TierAnalystAgent().run(_make_tier_input(candidate=brownfield)))
@@ -380,7 +380,7 @@ class TestTierAnalystAgentRun:
         # no empty-string key to spend attention on.
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ) as mock_llm:
             asyncio.run(TierAnalystAgent().run(_make_tier_input()))
@@ -394,7 +394,7 @@ class TestTierAnalystAgentRun:
         }
         mock_response = _make_mock_response(json.dumps(output_data))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ):
             output = asyncio.run(TierAnalystAgent().run(_make_tier_input()))
@@ -410,7 +410,7 @@ class TestTierAnalystAgentRun:
         }
         mock_response = _make_mock_response(json.dumps(output_data))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ):
             output = asyncio.run(TierAnalystAgent().run(_make_tier_input()))
@@ -421,7 +421,7 @@ class TestTierAnalystAgentRun:
         output_data = {**_SAMPLE_TIER_OUTPUT, "recommended_tier": "made_up_tier"}
         mock_response = _make_mock_response(json.dumps(output_data))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ):
             output = asyncio.run(TierAnalystAgent().run(_make_tier_input()))
@@ -430,7 +430,7 @@ class TestTierAnalystAgentRun:
     def test_passes_agent_name(self) -> None:
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ) as mock_llm:
             asyncio.run(TierAnalystAgent().run(_make_tier_input()))
@@ -439,16 +439,19 @@ class TestTierAnalystAgentRun:
         # The agent identifies itself to complete() via agent_name.
         assert call_kwargs.get("agent_name") == "tier_analyst"
 
-    def test_uses_non_streaming_call(self) -> None:
+    def test_uses_streamed_transport(self) -> None:
+        """The response is drained internally via complete_stream, which owns
+        stream=True and the stall timeout — run() must not override either."""
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ) as mock_llm:
             asyncio.run(TierAnalystAgent().run(_make_tier_input()))
 
         call_kwargs = mock_llm.call_args[1]
-        assert call_kwargs.get("stream") is False
+        assert "stream" not in call_kwargs
+        assert "timeout" not in call_kwargs
 
     def test_agent_name_is_tier_analyst(self) -> None:
         assert TierAnalystAgent().name == "tier_analyst"
@@ -460,7 +463,7 @@ class TestTierAnalystAgentRun:
     def test_output_has_all_required_fields(self) -> None:
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ):
             output = asyncio.run(TierAnalystAgent().run(_make_tier_input()))
@@ -475,7 +478,7 @@ class TestTierAnalystAgentRun:
     def test_compared_to_next_tier_down_is_populated(self) -> None:
         mock_response = _make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT))
         with patch(
-            "spec4.agentifier.tier_analyst.complete",
+            "spec4.agentifier.tier_analyst.complete_stream",
             return_value=mock_response,
         ):
             output = asyncio.run(TierAnalystAgent().run(_make_tier_input()))

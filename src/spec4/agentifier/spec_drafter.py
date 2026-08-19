@@ -14,7 +14,7 @@ from typing import Any
 from spec4.agentifier.grounding import render_grounding_for_prompt
 from spec4.agentifier.pattern_loader import MechanismPattern, TierPattern
 from spec4.agentifier.subagents import validate_dataclass_input
-from spec4.llm import acomplete
+from spec4.llm import LLM_STREAM_TIMEOUT, acomplete
 
 # Maps tier name → position on the ladder (1 = cheapest).
 _TIER_ORDER: dict[str, int] = {
@@ -381,6 +381,7 @@ class SpecDrafterAgent:
             ],
             agent_name="spec_drafter",
             stream=True,
+            timeout=LLM_STREAM_TIMEOUT,
         )
         async for chunk in response:
             delta = (chunk.choices[0].delta.content or "") if chunk.choices else ""

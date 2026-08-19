@@ -53,12 +53,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
 from spec4.agentifier.subagents import validate_dataclass_input
-from spec4.llm import complete
+from spec4.llm import complete_stream
 
 _log = logging.getLogger(__name__)
 
@@ -143,6 +144,10 @@ class PrioritizerInput:
     #: ``linked_vision_features`` meets this set is committed to the first
     #: release (D-PP14) and is marked ``[MVP]`` in the prompt.
     mvp_vision_features: list[str] = field(default_factory=list)
+    #: Receipt-counter hook (D-PH9): called with each streamed text delta as
+    #: it arrives, so the orchestrator can publish liveness while the response
+    #: is drained internally. ``None`` drains silently (the prior behavior).
+    on_chunk: Callable[[str], None] | None = field(default=None)
 
 
 class PrioritizerOutcome(str, Enum):
@@ -472,16 +477,19 @@ class PrioritizerAgent:
         # Draw, and reparse ONCE on a hard parse failure. A readable object with
         # no usable assignment is a result, not a retry: rule 1 defaults it.
         for _ in range(2):
-            response = complete(
+            buf: list[str] = []
+            for delta in complete_stream(
                 llm_config=llm_config,
                 messages=[
                     {"role": "system", "content": _PRIORITIZER_SYSTEM_PROMPT},
                     {"role": "user", "content": user_content},
                 ],
                 agent_name="prioritizer",
-                stream=False,
-            )
-            raw = (response.choices[0].message.content or "").strip()
+            ):
+                buf.append(delta)
+                if input.on_chunk is not None:
+                    input.on_chunk(delta)
+            raw = "".join(buf).strip()
             overlay, outcome = _parse_overlay(raw)
             if outcome is not PrioritizerOutcome.UNREADABLE:
                 break

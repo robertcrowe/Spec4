@@ -894,13 +894,22 @@ def on_stream_poll(n: Any, session: Any) -> Any:
     # Surface that scalar so the token counter keeps climbing during the drain,
     # and re-render when it advances even though the displayed text has not.
     received = stream["session"].get("_stream_received_chars")
+    # The one-line status under the chat input rides the same live-session
+    # channel as the received-chars scalar: agents overwrite it stage by stage,
+    # and the poll surfaces the latest value mid-stream.
+    status = stream["session"].get("_stream_status")
 
     if not stream["done"]:
         prev = (session.get("messages") or [{}])[-1].get("content", "")
-        if text == prev and received == session.get("_stream_received_chars"):
+        if (
+            text == prev
+            and received == session.get("_stream_received_chars")
+            and status == session.get("_stream_status")
+        ):
             return no_update, no_update
         updated = {**session, "messages": messages}
         updated["_stream_received_chars"] = received
+        updated["_stream_status"] = status
         return updated, no_update
 
     # Stream complete — merge agent-mutated session and finalise
@@ -966,6 +975,7 @@ def on_stream_poll(n: Any, session: Any) -> Any:
             "_initial_turn_done": True,
             "_display_override": None,
             "_stream_received_chars": None,
+            "_stream_status": None,
             # D-ER1: the turn died and the error text is the whole assistant
             # message. Record that so the chat can offer Try Again; a clean
             # finish writes None here and retires any earlier failure.

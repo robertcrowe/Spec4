@@ -339,6 +339,27 @@ class TestSpecDrafterAgentLlmCalls:
         # The agent identifies itself to acomplete() via agent_name.
         assert captured[0].get("agent_name") == "spec_drafter"
 
+    def test_stall_timeout_set(self) -> None:
+        from spec4.llm import LLM_STREAM_TIMEOUT
+
+        captured: list[dict[str, Any]] = []
+
+        async def _cap(**kwargs: Any) -> Any:
+            captured.append(kwargs)
+
+            async def _gen() -> Any:
+                c = MagicMock()
+                c.choices = [MagicMock()]
+                c.choices[0].delta.content = '```json\n{"purpose":"x"}\n```'
+                yield c
+
+            return _gen()
+
+        with patch("spec4.agentifier.spec_drafter.acomplete", new=_cap):
+            asyncio.run(_drain(_make_input()))
+
+        assert captured[0].get("timeout") is LLM_STREAM_TIMEOUT
+
     def test_uses_streaming_call(self) -> None:
         captured: list[dict[str, Any]] = []
 

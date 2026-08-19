@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -63,10 +63,9 @@ _SAMPLE_CANDIDATES_JSON = json.dumps(
 )
 
 
-def _make_mock_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.choices[0].message.content = content
-    return response
+def _make_mock_response(content: str) -> Any:
+    """Iterator of text deltas, the shape complete_stream yields."""
+    return iter([content])
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +180,7 @@ class TestScoutAgentRun:
         import asyncio
         mock_response = _make_mock_response(_SAMPLE_CANDIDATES_JSON)
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ):
             output = asyncio.run(ScoutAgent().run(self._make_input()))
         assert isinstance(output, ScoutOutput)
@@ -190,7 +189,7 @@ class TestScoutAgentRun:
     def test_passes_vision_content_to_llm(self) -> None:
         mock_response = _make_mock_response("[]")
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
             asyncio.run(ScoutAgent().run(self._make_input()))
@@ -204,7 +203,7 @@ class TestScoutAgentRun:
         code_review = {"is_software_project": True, "languages": []}
         mock_response = _make_mock_response("[]")
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
             asyncio.run(ScoutAgent().run(self._make_input(code_review=code_review)))
@@ -217,7 +216,7 @@ class TestScoutAgentRun:
     def test_omits_code_review_block_when_none(self) -> None:
         mock_response = _make_mock_response("[]")
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
             asyncio.run(ScoutAgent().run(self._make_input(code_review=None)))
@@ -231,7 +230,7 @@ class TestScoutAgentRun:
         import asyncio
         mock_response = _make_mock_response("I cannot find any candidates.")
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ):
             output = asyncio.run(ScoutAgent().run(self._make_input()))
         assert output.candidates == []
@@ -241,27 +240,30 @@ class TestScoutAgentRun:
         import asyncio
         mock_response = _make_mock_response("[]")
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ):
             output = asyncio.run(ScoutAgent().run(self._make_input()))
         assert output.candidates == []
         assert output.outcome is ScoutOutcome.EMPTY
 
-    def test_uses_non_streaming_call(self) -> None:
+    def test_uses_streamed_transport(self) -> None:
+        """The response is drained internally via complete_stream, which owns
+        stream=True and the stall timeout — run() must not override either."""
         mock_response = _make_mock_response("[]")
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
             asyncio.run(ScoutAgent().run(self._make_input()))
 
         call_kwargs = mock_llm.call_args[1]
-        assert call_kwargs.get("stream") is False
+        assert "stream" not in call_kwargs
+        assert "timeout" not in call_kwargs
 
     def test_system_prompt_is_first_message(self) -> None:
         mock_response = _make_mock_response("[]")
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
             asyncio.run(ScoutAgent().run(self._make_input()))
@@ -283,7 +285,7 @@ class TestScoutAgentRun:
     def test_uses_api_key_from_llm_config(self) -> None:
         mock_response = _make_mock_response("[]")
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
             asyncio.run(ScoutAgent().run(self._make_input()))
@@ -296,7 +298,7 @@ class TestScoutAgentRun:
         scout_input = ScoutInput(vision=_SAMPLE_VISION, llm_config=llm_config)
         mock_response = _make_mock_response("[]")
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
             asyncio.run(ScoutAgent().run(scout_input))
@@ -384,7 +386,7 @@ class TestScoutAgentRevisionWiring:
         import asyncio
         mock_response = _make_mock_response("[]")
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             asyncio.run(ScoutAgent().run(self._input(_SAMPLE_REVISION)))
         messages = mock_llm.call_args[1]["messages"]
@@ -396,9 +398,45 @@ class TestScoutAgentRevisionWiring:
         import asyncio
         mock_response = _make_mock_response("[]")
         with patch(
-            "spec4.agentifier.scout.complete", return_value=mock_response
+            "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             asyncio.run(ScoutAgent().run(self._input(None)))
         messages = mock_llm.call_args[1]["messages"]
         assert "Revision mode" not in messages[0]["content"]
         assert "REVISION MODE" not in messages[1]["content"]
+
+# ---------------------------------------------------------------------------
+# on_chunk receipt hook (D-PH9)
+# ---------------------------------------------------------------------------
+
+
+class TestOnChunk:
+    def test_on_chunk_receives_every_delta(self) -> None:
+        import asyncio
+
+        deltas = ["[", '{"name": "a"},', '{"name": "b"}', "]"]
+        seen: list[str] = []
+        inp = ScoutInput(
+            vision=_SAMPLE_VISION,
+            llm_config=_LLM_CONFIG,
+            on_chunk=seen.append,
+        )
+        with patch(
+            "spec4.agentifier.scout.complete_stream",
+            side_effect=lambda **kw: iter(deltas),
+        ):
+            output = asyncio.run(ScoutAgent().run(inp))
+        assert seen == deltas
+        assert len(output.candidates) == 2
+
+    def test_on_chunk_default_none_drains_silently(self) -> None:
+        import asyncio
+
+        inp = ScoutInput(vision=_SAMPLE_VISION, llm_config=_LLM_CONFIG)
+        assert inp.on_chunk is None
+        with patch(
+            "spec4.agentifier.scout.complete_stream",
+            side_effect=lambda **kw: iter([_SAMPLE_CANDIDATES_JSON]),
+        ):
+            output = asyncio.run(ScoutAgent().run(inp))
+        assert len(output.candidates) == 3

@@ -14,6 +14,7 @@ dependencies = [
     "dash-iconify>=0.1.2,<1",
     "dash-mantine-components>=0.14.0,<3",
     "gunicorn>=21.2,<26",
+    "httpx>=0.27,<1",
     "jsonschema>=4.26.0",
     "litellm>=1.82.0,<2",
     "mcp>=1.26.0,<2",

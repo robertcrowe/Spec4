@@ -647,3 +647,93 @@ class TestFullPipeline:
         assert len(cross_cutting) == len(_CC_TOPICS)
         for t in _CC_TOPICS:
             assert t in cross_cutting
+
+
+# ---------------------------------------------------------------------------
+# Receipt counter during internal drains (D-PH9): the orchestrator's
+# spec-drafter and cross-cutting drains publish _stream_received_chars
+# ---------------------------------------------------------------------------
+
+
+class _CounterSpySession(dict):
+    """Session dict that records every _stream_received_chars publish."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.published: list[int] = []
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key == "_stream_received_chars":
+            self.published.append(value)
+        super().__setitem__(key, value)
+
+
+class TestReceiptCounterDuringDrains:
+    def test_counter_climbs_during_spec_draft(self) -> None:
+        session = _CounterSpySession(TestOrchestratorSpecPhase()._make_session())
+
+        with patch("litellm.acompletion", new=_make_streaming_mock(_WORDS)):
+            from spec4.agentifier.agentifier import run as agentifier_run
+
+            list(agentifier_run("yes", session, _LLM_CONFIG))
+
+        streamed = sum(len(w) + 1 for w in _WORDS)
+        assert session.published, "the spec-draft drain published nothing"
+        assert session.published == sorted(session.published)
+        assert max(session.published) >= streamed
+
+    def test_counter_cumulative_across_daf6_retry(self) -> None:
+        """Attempt 2 seeds from the total attempt 1 left, so the published
+        count keeps climbing across the unreadable-output retry boundary."""
+        session = _CounterSpySession(TestOrchestratorSpecPhase()._make_session())
+        garbage_words = ["totally", "unparseable", "output"]
+        calls = [0]
+
+        async def _flaky(**kwargs: Any) -> Any:
+            calls[0] += 1
+            words = garbage_words if calls[0] == 1 else _WORDS
+
+            async def _gen() -> Any:
+                for word in words:
+                    chunk = MagicMock()
+                    chunk.choices = [MagicMock()]
+                    chunk.choices[0].delta.content = word + " "
+                    yield chunk
+
+            return _gen()
+
+        with patch("litellm.acompletion", new=_flaky):
+            from spec4.agentifier.agentifier import run as agentifier_run
+
+            list(agentifier_run("yes", session, _LLM_CONFIG))
+
+        assert calls[0] == 2
+        first_attempt = sum(len(w) + 1 for w in garbage_words)
+        second_attempt = sum(len(w) + 1 for w in _WORDS)
+        assert session.published == sorted(session.published)
+        assert max(session.published) >= first_attempt + second_attempt
+
+    def test_counter_climbs_during_cross_cutting_revision(self) -> None:
+        session = _CounterSpySession(_make_cc_session())
+        cc_revised = {
+            "provider_strategy": {
+                "recommendation": "revised",
+                "rationale": "new",
+                "cited_patterns": [],
+            }
+        }
+        cc_text = "```json\n" + json.dumps(cc_revised) + "\n```"
+        cc_words = cc_text.split()
+
+        from spec4.agentifier.agentifier import run as agentifier_run
+
+        with patch(
+            "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+            return_value=cc_revised,
+        ):
+            with patch("litellm.acompletion", new=_make_streaming_mock(cc_words)):
+                list(agentifier_run("add opentelemetry", session, _LLM_CONFIG))
+
+        streamed = sum(len(w) + 1 for w in cc_words)
+        assert session.published, "the cross-cutting drain published nothing"
+        assert max(session.published) >= streamed

@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections.abc import Generator
+import time
+from collections.abc import Generator, Iterable
 from pathlib import Path
 from typing import Any
 
@@ -392,6 +393,11 @@ def _reask_for_artifact(
 
     msgs.append({"role": "user", "content": correction})
     yield status_line
+    _set_status(
+        session,
+        f"Re-requesting {_AGENT_DELIVERABLE.get(agent_name, 'the artifact')} "
+        "from the model…",
+    )
     received = seed + len(status_line)
     if session is not None:
         session["_stream_received_chars"] = received
@@ -433,6 +439,20 @@ def _abandon_reask(
     else:
         msgs.append({"role": "assistant", "content": fallback})
     session["_display_override"] = fallback
+
+
+def _set_status(session: dict[str, Any] | None, text: str) -> None:
+    """Publish a one-line status message for the chat status line.
+
+    The line sits under the chat input and shows what the pipeline is doing
+    while the user waits; each call replaces the previous message. Written to
+    the live (agent-mutated) session dict — the same object the poll reads as
+    ``stream["session"]`` — which threads it into the store mid-stream and
+    clears it when the stream finalises. ``session=None`` is a no-op so
+    helpers that may run without a session can call unconditionally.
+    """
+    if session is not None:
+        session["_stream_status"] = text
 
 
 def _stream_suppressing_json(
@@ -548,6 +568,51 @@ def _stream_counting(
             session["_stream_received_chars"] = received
         yield chunk
     return received
+
+
+def _drain_stream(
+    chunks: Iterable[str],
+    session: dict[str, Any] | None = None,
+    seed: int = 0,
+    ttft_label: str | None = None,
+) -> tuple[str, int]:
+    """Silently drain a text-delta iterator, publishing the receipt counter.
+
+    For call sites whose streamed response is consumed internally and never
+    shown to the user (D-PH9): accumulates the deltas into a string while
+    publishing a cumulative character total to
+    ``session["_stream_received_chars"]``, the key the chat poll reads. A
+    climbing counter proves liveness; a frozen one is a diagnosable stall.
+    Seeds eagerly — before the first chunk — so a stale total from a previous
+    turn is overwritten the moment the drain opens. ``session=None`` drains
+    without publishing. Returns ``(accumulated_text, final_total)`` so a
+    caller with several drains in one turn can seed the next from the total.
+
+    ``ttft_label`` logs first-chunk latency for drains whose transport does
+    not go through ``llm.complete_stream`` (the ``acomplete(stream=True)``
+    sites); leave it None when complete_stream already logs the TTFT.
+    """
+    received = seed
+    if session is not None:
+        session["_stream_received_chars"] = received
+    parts: list[str] = []
+    start = time.monotonic()
+    first = True
+    for chunk in chunks:
+        if first and ttft_label is not None:
+            print(
+                f"[llm-ttft] {ttft_label}: first chunk after "
+                f"{time.monotonic() - start:.1f}s",
+                flush=True,
+            )
+        first = False
+        if not chunk:
+            continue
+        parts.append(chunk)
+        received += len(chunk)
+        if session is not None:
+            session["_stream_received_chars"] = received
+    return "".join(parts), received
 
 
 def _render_references(refs: list[dict[str, str]], lines: list[str]) -> None:

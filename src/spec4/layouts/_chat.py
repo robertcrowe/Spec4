@@ -631,5 +631,23 @@ def _chat_layout(session: dict[str, Any]) -> html.Div:
                     "width": "100%",
                 },
             ),
+            # One-line status under the input: what the pipeline is doing right
+            # now, published by agents via session["_stream_status"] and
+            # cleared when the stream finalises. Always mounted with a reserved
+            # line of height so the input row doesn't shift when the first
+            # message lands mid-turn; each new message replaces the previous.
+            dmc.Text(
+                session.get("_stream_status") or "",
+                id="chat-status-line",
+                c="dimmed",
+                size="xs",
+                mt="4px",
+                style={
+                    "minHeight": "1.4em",
+                    "whiteSpace": "nowrap",
+                    "overflow": "hidden",
+                    "textOverflow": "ellipsis",
+                },
+            ),
         ]
     )

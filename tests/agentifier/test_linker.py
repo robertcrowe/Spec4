@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import patch
 
 from spec4.agentifier.linker import (
     EdgeOverlay,
@@ -48,10 +49,9 @@ def _candidate(
     )
 
 
-def _make_mock_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.choices[0].message.content = content
-    return response
+def _make_mock_response(content: str) -> Any:
+    """Iterator of text deltas, the shape complete_stream yields."""
+    return iter([content])
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +240,7 @@ class TestLinkerAgentRun:
     def test_ok_path_returns_overlay(self) -> None:
         raw = json.dumps({"consumer": {"requires": ["producer"]}})
         with patch(
-            "spec4.agentifier.linker.complete",
+            "spec4.agentifier.linker.complete_stream",
             return_value=_make_mock_response(raw),
         ):
             out = asyncio.run(LinkerAgent().run(self._input()))
@@ -252,7 +252,7 @@ class TestLinkerAgentRun:
         good = json.dumps({"consumer": {"requires": ["producer"]}})
         responses = [_make_mock_response("garbage"), _make_mock_response(good)]
         with patch(
-            "spec4.agentifier.linker.complete",
+            "spec4.agentifier.linker.complete_stream",
             side_effect=responses,
         ) as mock_llm:
             out = asyncio.run(LinkerAgent().run(self._input()))
@@ -262,7 +262,7 @@ class TestLinkerAgentRun:
     def test_unreadable_after_reparse_gives_up(self) -> None:
         responses = [_make_mock_response("garbage"), _make_mock_response("still bad")]
         with patch(
-            "spec4.agentifier.linker.complete",
+            "spec4.agentifier.linker.complete_stream",
             side_effect=responses,
         ) as mock_llm:
             out = asyncio.run(LinkerAgent().run(self._input()))
@@ -273,7 +273,7 @@ class TestLinkerAgentRun:
     def test_empty_overlay_is_not_retried(self) -> None:
         # A readable-but-empty overlay is a legitimate flat result — one draw.
         with patch(
-            "spec4.agentifier.linker.complete",
+            "spec4.agentifier.linker.complete_stream",
             return_value=_make_mock_response("{}"),
         ) as mock_llm:
             out = asyncio.run(LinkerAgent().run(self._input()))
@@ -282,7 +282,7 @@ class TestLinkerAgentRun:
 
     def test_request_uses_linker_agent_name_and_system_prompt(self) -> None:
         with patch(
-            "spec4.agentifier.linker.complete",
+            "spec4.agentifier.linker.complete_stream",
             return_value=_make_mock_response("{}"),
         ) as mock_llm:
             asyncio.run(LinkerAgent().run(self._input()))

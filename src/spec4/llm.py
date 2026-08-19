@@ -16,9 +16,11 @@ provider and no Tavily-specific code was left in it.
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Generator
 from typing import Any
 
+import httpx
 import litellm
 from litellm.exceptions import BadRequestError as LiteLLMBadRequestError
 
@@ -30,16 +32,27 @@ from spec4.websearch import (
 )
 
 __all__ = [
+    "LLM_STREAM_TIMEOUT",
     "WEB_SEARCH_ADDENDUM",
     "WEB_SEARCH_TOOL",
     "SearchConfig",
     "acomplete",
     "build_system_prompt",
     "complete",
+    "complete_stream",
     "search",
     "stream_turn",
     "supports_response_format",
 ]
+
+# Inter-chunk stall bound for streamed one-shot calls. On a streaming response
+# the read timeout is applied between chunks (the clock resets on every chunk
+# received), so it bounds *silence*, not total generation time — a long but
+# healthy generation never trips it. The read bound is generous because the
+# longest legitimate gap is time-to-first-token, which is unmeasured across
+# the supported model range (floor: claude-haiku-4-5); tune it from the
+# [llm-ttft] log lines, not by guessing.
+LLM_STREAM_TIMEOUT = httpx.Timeout(connect=15.0, read=180.0, write=30.0, pool=15.0)
 
 
 def build_system_prompt(base: str, search_config: SearchConfig | str | None) -> str:
@@ -130,6 +143,47 @@ def complete(
         llm_config, messages, response_format=response_format, **extra_kwargs
     )
     return litellm.completion(**kwargs)
+
+
+def complete_stream(
+    *,
+    llm_config: dict[str, Any],
+    messages: list[dict[str, Any]],
+    agent_name: str | None = None,
+    response_format: dict[str, Any] | None = None,
+    timeout: httpx.Timeout | float = LLM_STREAM_TIMEOUT,
+    **extra_kwargs: Any,
+) -> Generator[str, None, None]:
+    """Streamed one-shot litellm.completion; yields text deltas.
+
+    The streamed sibling of ``complete`` for call sites whose response is
+    drained internally rather than displayed: same kwargs handling, plus
+    ``stream=True`` and an inter-chunk stall timeout (``LLM_STREAM_TIMEOUT``
+    unless overridden). Deliberately NOT ``stream_turn``: no tool-call loop,
+    no message mutation, no warning text injected into the stream. Errors —
+    including a tripped stall timeout mid-stream — propagate unchanged.
+    """
+    kwargs = _build_completion_kwargs(
+        llm_config,
+        messages,
+        response_format=response_format,
+        stream=True,
+        timeout=timeout,
+        **extra_kwargs,
+    )
+    start = time.monotonic()
+    first = True
+    for chunk in litellm.completion(**kwargs):
+        if first:
+            print(
+                f"[llm-ttft] {agent_name or '?'}: first chunk after "
+                f"{time.monotonic() - start:.1f}s",
+                flush=True,
+            )
+            first = False
+        delta = (chunk.choices[0].delta.content or "") if chunk.choices else ""
+        if delta:
+            yield delta
 
 
 async def acomplete(

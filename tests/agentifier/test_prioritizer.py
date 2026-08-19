@@ -12,7 +12,7 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from spec4.agentifier.prioritizer import (
     DEFAULT_PRIORITY,
@@ -49,10 +49,9 @@ def _feature(
     return f
 
 
-def _make_mock_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.choices[0].message.content = content
-    return response
+def _make_mock_response(content: str) -> Any:
+    """Iterator of text deltas, the shape complete_stream yields."""
+    return iter([content])
 
 
 def _priorities(features: list[dict[str, Any]]) -> dict[str, str]:
@@ -416,7 +415,7 @@ class TestPrioritizerAgentRun:
     def test_ok_path_returns_overlay(self) -> None:
         raw = json.dumps({"producer": "steel_thread", "consumer": "mvp"})
         with patch(
-            "spec4.agentifier.prioritizer.complete",
+            "spec4.agentifier.prioritizer.complete_stream",
             return_value=_make_mock_response(raw),
         ):
             out = asyncio.run(PrioritizerAgent().run(self._input()))
@@ -428,7 +427,7 @@ class TestPrioritizerAgentRun:
         good = json.dumps({"producer": "mvp"})
         responses = [_make_mock_response("garbage"), _make_mock_response(good)]
         with patch(
-            "spec4.agentifier.prioritizer.complete",
+            "spec4.agentifier.prioritizer.complete_stream",
             side_effect=responses,
         ) as mock_llm:
             out = asyncio.run(PrioritizerAgent().run(self._input()))
@@ -438,7 +437,7 @@ class TestPrioritizerAgentRun:
     def test_unreadable_after_reparse_gives_up(self) -> None:
         responses = [_make_mock_response("garbage"), _make_mock_response("still bad")]
         with patch(
-            "spec4.agentifier.prioritizer.complete",
+            "spec4.agentifier.prioritizer.complete_stream",
             side_effect=responses,
         ) as mock_llm:
             out = asyncio.run(PrioritizerAgent().run(self._input()))
@@ -447,7 +446,7 @@ class TestPrioritizerAgentRun:
 
     def test_empty_overlay_is_not_retried(self) -> None:
         with patch(
-            "spec4.agentifier.prioritizer.complete",
+            "spec4.agentifier.prioritizer.complete_stream",
             return_value=_make_mock_response("{}"),
         ) as mock_llm:
             out = asyncio.run(PrioritizerAgent().run(self._input()))
@@ -465,7 +464,7 @@ class TestPrioritizerAgentRun:
             carried_forward=[_feature("built")],
         )
         with patch(
-            "spec4.agentifier.prioritizer.complete",
+            "spec4.agentifier.prioritizer.complete_stream",
             return_value=_make_mock_response(json.dumps({"head": "mvp"})),
         ) as mock_llm:
             asyncio.run(PrioritizerAgent().run(pi))
@@ -838,7 +837,7 @@ class TestMvpMarking:
             mvp_vision_features=["fw"],
         )
         with patch(
-            "spec4.agentifier.prioritizer.complete",
+            "spec4.agentifier.prioritizer.complete_stream",
             return_value=_make_mock_response(json.dumps({"writeup": "mvp"})),
         ) as mock_llm:
             asyncio.run(PrioritizerAgent().run(pi))

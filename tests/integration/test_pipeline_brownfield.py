@@ -121,16 +121,13 @@ class TestScoutBrownfield:
 
         def _mock_completion(**kwargs: Any) -> Any:
             captured_systems.append(kwargs["messages"][0]["content"])
-            resp = MagicMock()
-            resp.choices = [MagicMock()]
-            resp.choices[0].message.content = _CANDIDATES_JSON
-            return resp
+            return iter([_CANDIDATES_JSON])
 
         from spec4.agentifier.scout import ScoutAgent
 
         scout = ScoutAgent()
         import asyncio
-        with patch("spec4.agentifier.scout.complete", side_effect=_mock_completion):
+        with patch("spec4.agentifier.scout.complete_stream", side_effect=_mock_completion):
             result = asyncio.run(scout.run(ScoutInput(
                 vision=_VISION,
                 llm_config=_LLM_CONFIG,
@@ -146,16 +143,13 @@ class TestScoutBrownfield:
 
         def _mock_completion(**kwargs: Any) -> Any:
             captured_systems.append(kwargs["messages"][0]["content"])
-            resp = MagicMock()
-            resp.choices = [MagicMock()]
-            resp.choices[0].message.content = _CANDIDATES_JSON
-            return resp
+            return iter([_CANDIDATES_JSON])
 
         from spec4.agentifier.scout import ScoutAgent
 
         scout = ScoutAgent()
         import asyncio
-        with patch("spec4.agentifier.scout.complete", side_effect=_mock_completion):
+        with patch("spec4.agentifier.scout.complete_stream", side_effect=_mock_completion):
             asyncio.run(scout.run(ScoutInput(vision=_VISION, llm_config=_LLM_CONFIG)))
 
         assert "Brownfield mode" not in captured_systems[0]
@@ -235,9 +229,7 @@ class TestTierAnalystBrownfield:
 
         def _mock_completion(**kwargs: Any) -> Any:
             captured_messages.append(kwargs["messages"])
-            resp = MagicMock()
-            resp.choices = [MagicMock()]
-            resp.choices[0].message.content = json.dumps({
+            return iter([json.dumps({
                 "recommended_tier": "rag",
                 "rationale": "Needs vector search given existing chromadb",
                 "risks_of_going_higher": [],
@@ -245,8 +237,7 @@ class TestTierAnalystBrownfield:
                 "borderline": False,
                 "borderline_seams": [],
                 "compared_to_next_tier_down": "embeddings would need manual retrieval",
-            })
-            return resp
+            })])
 
         tiers, _ = load_patterns()
         cand = Candidate(
@@ -257,7 +248,7 @@ class TestTierAnalystBrownfield:
         )
         import asyncio
         agent = TierAnalystAgent()
-        with patch("spec4.agentifier.tier_analyst.complete", side_effect=_mock_completion):
+        with patch("spec4.agentifier.tier_analyst.complete_stream", side_effect=_mock_completion):
             asyncio.run(agent.run(TierAnalystInput(
                 candidate=cand,
                 llm_config=_LLM_CONFIG,
@@ -277,9 +268,7 @@ class TestTierAnalystBrownfield:
 
         def _mock_completion(**kwargs: Any) -> Any:
             captured_messages.append(kwargs["messages"])
-            resp = MagicMock()
-            resp.choices = [MagicMock()]
-            resp.choices[0].message.content = json.dumps({
+            return iter([json.dumps({
                 "recommended_tier": "single_call",
                 "rationale": "Simple LLM call.",
                 "risks_of_going_higher": [],
@@ -287,8 +276,7 @@ class TestTierAnalystBrownfield:
                 "borderline": False,
                 "borderline_seams": [],
                 "compared_to_next_tier_down": "deterministic can't do NLU",
-            })
-            return resp
+            })])
 
         tiers, _ = load_patterns()
         cand = Candidate(
@@ -299,7 +287,7 @@ class TestTierAnalystBrownfield:
         )
         import asyncio
         agent = TierAnalystAgent()
-        with patch("spec4.agentifier.tier_analyst.complete", side_effect=_mock_completion):
+        with patch("spec4.agentifier.tier_analyst.complete_stream", side_effect=_mock_completion):
             asyncio.run(agent.run(TierAnalystInput(
                 candidate=cand,
                 llm_config=_LLM_CONFIG,

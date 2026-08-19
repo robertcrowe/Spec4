@@ -29,7 +29,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from spec4.llm import complete, supports_response_format
+from spec4.agents._utils import _drain_stream, _set_status
+from spec4.llm import complete_stream, supports_response_format
 
 _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
 
@@ -171,6 +172,7 @@ def _extract_graph(
     phases: list[dict[str, Any]],
     ai_features: dict[str, Any] | None,
     llm_config: dict[str, Any],
+    session: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     feature_text, _ = _feature_lines(ai_features)
     user_content = (
@@ -183,18 +185,24 @@ def _extract_graph(
         if supports_response_format(llm_config.get("model", ""))
         else None
     )
-    response = complete(
-        llm_config=llm_config,
-        messages=[
-            {"role": "system", "content": _EXTRACTOR_SYSTEM_PROMPT},
-            {"role": "user", "content": user_content},
-        ],
-        agent_name="phaser_seam",
-        response_format=response_format,
-        stream=False,
+    # Drained internally with a live receipt counter (D-PH9). This call always
+    # begins mid-turn — Phaser's own drains have already published this turn's
+    # total — so the seed continues from the session's current value (D-BS10).
+    _set_status(session, "Running the cross-phase seam check…")
+    raw, _ = _drain_stream(
+        complete_stream(
+            llm_config=llm_config,
+            messages=[
+                {"role": "system", "content": _EXTRACTOR_SYSTEM_PROMPT},
+                {"role": "user", "content": user_content},
+            ],
+            agent_name="phaser_seam",
+            response_format=response_format,
+        ),
+        session=session,
+        seed=(session or {}).get("_stream_received_chars") or 0,
     )
-    raw = (response.choices[0].message.content or "").strip()
-    return _parse_graph(raw)
+    return _parse_graph(raw.strip())
 
 
 def _check_table_provenance(graph: dict[str, Any]) -> list[SeamFinding]:
@@ -450,16 +458,19 @@ def run_seam_check(
     phases: list[dict[str, Any]],
     ai_features: dict[str, Any] | None,
     llm_config: dict[str, Any],
+    session: dict[str, Any] | None = None,
 ) -> str:
     """Extract → check → format. Returns advisory markdown, or "" for none.
 
     Never raises: any failure degrades to "" so the phases are never stranded.
+    ``session`` is threaded to the extraction drain for receipt-counter
+    publishing only (D-PH9); ``None`` drains silently.
     """
     try:
         if not phases:
             return ""
 
-        graph = _extract_graph(phases, ai_features, llm_config)
+        graph = _extract_graph(phases, ai_features, llm_config, session)
         if graph is None:
             if _DEV_MODE:
                 print(

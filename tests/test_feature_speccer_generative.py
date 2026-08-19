@@ -58,10 +58,11 @@ def _two_feature_vision() -> dict[str, Any]:
 
 
 def _complete_returning(payload: Any) -> Any:
-    resp = MagicMock()
     text = payload if isinstance(payload, str) else json.dumps(payload)
-    resp.choices[0].message.content = f"```json\n{text}\n```"
-    return patch("spec4.llm.complete", return_value=resp)
+    fenced = f"```json\n{text}\n```"
+    return patch(
+        "spec4.llm.complete_stream", side_effect=lambda **kw: iter([fenced])
+    )
 
 
 def _stream_chunk(content: str, finish_reason: str | None = None) -> MagicMock:
@@ -223,7 +224,7 @@ class TestFallback:
         assert fs["nfr_goals"] == []
 
     def test_call_raises_falls_back(self) -> None:
-        with patch("spec4.llm.complete", side_effect=RuntimeError("boom")):
+        with patch("spec4.llm.complete_stream", side_effect=RuntimeError("boom")):
             fs = feature_speccer.build_feature_specs(
                 _two_feature_vision(), {"model": "x"}
             )
@@ -239,6 +240,45 @@ class TestFallback:
     def test_no_llm_config_is_scaffold(self) -> None:
         fs = feature_speccer.build_feature_specs(_two_feature_vision())
         self._assert_is_scaffold(fs)
+
+
+# ---------------------------------------------------------------------------
+# Receipt counter (D-PH9 / D-BS8): the drain publishes liveness to session
+# ---------------------------------------------------------------------------
+
+
+class TestReceiptCounter:
+    def test_counter_climbs_and_seeds_from_pre_call_value(self) -> None:
+        """The generative drain continues the turn's published total (D-BS10)
+        rather than resetting to zero, and climbs with every chunk received."""
+        published: list[int] = []
+
+        class _Spy(dict):
+            def __setitem__(self, key: str, value: Any) -> None:
+                if key == "_stream_received_chars":
+                    published.append(value)
+                super().__setitem__(key, value)
+
+        session: dict[str, Any] = _Spy({"_stream_received_chars": 500})
+        chunks = ["```json\n", '{"features": [],', ' "nfr_goals": []}', "\n```"]
+        with patch(
+            "spec4.llm.complete_stream",
+            side_effect=lambda **kw: iter(chunks),
+        ):
+            feature_speccer.build_feature_specs(
+                _two_feature_vision(), {"model": "x"}, session
+            )
+        assert published[0] == 500
+        assert published == sorted(published)
+        assert published[-1] == 500 + sum(len(c) for c in chunks)
+
+    def test_no_session_still_generates(self) -> None:
+        payload = {"features": [], "nfr_goals": ["fast"]}
+        with _complete_returning(payload):
+            fs = feature_speccer.build_feature_specs(
+                _two_feature_vision(), {"model": "x"}
+            )
+        assert fs["nfr_goals"] == ["fast"]
 
 
 # ---------------------------------------------------------------------------

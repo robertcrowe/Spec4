@@ -22,7 +22,7 @@ import re
 from typing import Any
 
 from spec4 import llm
-from spec4.agents._utils import _extract_json_block, slug
+from spec4.agents._utils import _drain_stream, _extract_json_block, _set_status, slug
 
 FEATURE_SPECS_VERSION = 1
 
@@ -223,26 +223,34 @@ def _build_user_content(vision: dict[str, Any], scaffold: list[dict[str, Any]]) 
     return "\n".join(lines)
 
 
-def _response_text(response: Any) -> str:
-    try:
-        return response.choices[0].message.content or ""
-    except (AttributeError, IndexError, TypeError):
-        return ""
-
-
 def _generate(
-    vision: dict[str, Any], scaffold: list[dict[str, Any]], llm_config: dict[str, Any]
+    vision: dict[str, Any],
+    scaffold: list[dict[str, Any]],
+    llm_config: dict[str, Any],
+    session: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """One blocking generative call; returns the parsed JSON dict or None."""
-    response = llm.complete(
-        llm_config=llm_config,
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": _build_user_content(vision, scaffold)},
-        ],
-        agent_name="feature_speccer",
+    """One generative call, streamed and drained internally; returns the
+    parsed JSON dict or None. The drain publishes the receipt counter to
+    ``session`` (D-PH9) so the chat poll shows liveness during a call whose
+    output scales with feature count; ``session=None`` drains silently.
+    Seeds from the session's current total — this call always begins
+    mid-turn, after the finalize stream published this turn's count (D-BS10).
+    """
+    seed = (session or {}).get("_stream_received_chars") or 0
+    _set_status(session, "Drafting behavioral specs for your features…")
+    text, _ = _drain_stream(
+        llm.complete_stream(
+            llm_config=llm_config,
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user", "content": _build_user_content(vision, scaffold)},
+            ],
+            agent_name="feature_speccer",
+        ),
+        session=session,
+        seed=seed,
     )
-    return _extract_json_block(_response_text(response))
+    return _extract_json_block(text)
 
 
 # ---------------------------------------------------------------------------
@@ -445,16 +453,19 @@ def _reconcile_dependencies(features: list[dict[str, Any]]) -> list[dict[str, An
 
 
 def build_feature_specs(
-    vision: dict[str, Any], llm_config: dict[str, Any] | None = None
+    vision: dict[str, Any],
+    llm_config: dict[str, Any] | None = None,
+    session: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build ``feature_specs`` from a completed vision.
 
     Emits a deterministic scaffold for every ``key_features_mvp`` feature (keyed
     by id, in vision order) plus a project-level ``nfr_goals`` block. When
-    ``llm_config`` is supplied and there are features, one blocking generative
-    call enriches the scaffold; its output is normalised and its dependency graph
+    ``llm_config`` is supplied and there are features, one generative call
+    enriches the scaffold; its output is normalised and its dependency graph
     pruned to a DAG. Any failure falls back to the scaffold — vision completion
-    never breaks on this pass.
+    never breaks on this pass. ``session`` (D-BS8) is threaded to the drain
+    for receipt-counter publishing only; ``None`` preserves prior behavior.
     """
     scaffold = [_scaffold_feature(name, desc) for name, desc in _vision_features(vision)]
     result: dict[str, Any] = {
@@ -466,7 +477,7 @@ def build_feature_specs(
         return result
 
     try:
-        parsed = _generate(vision, scaffold, llm_config)
+        parsed = _generate(vision, scaffold, llm_config, session)
     except Exception:
         parsed = None
     if not isinstance(parsed, dict):

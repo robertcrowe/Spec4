@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,7 +21,7 @@ from spec4.agentifier.pattern_loader import (
 )
 from spec4.agentifier.scout import Candidate
 from spec4.agentifier.subagents import validate_dataclass_input
-from spec4.llm import complete
+from spec4.llm import complete_stream
 
 TIER_ANALYST_SYSTEM_PROMPT = """\
 You are the Tier Analyst for Agentifier. Your job is to recommend the CHEAPEST
@@ -181,6 +182,10 @@ class TierAnalystInput:
     tier_patterns: list[TierPattern] = field(default_factory=list)
     code_review: dict[str, Any] | None = field(default=None)
     mechanism_patterns: list[MechanismPattern] = field(default_factory=list)
+    # Receipt-counter hook (D-PH9): called with each streamed text delta as it
+    # arrives, so the orchestrator can publish liveness while the response is
+    # drained internally. ``None`` drains silently (the prior behavior).
+    on_chunk: Callable[[str], None] | None = field(default=None)
 
 
 @dataclass
@@ -346,16 +351,19 @@ class TierAnalystAgent:
         )
 
         llm_config = input.llm_config
-        response = complete(
+        buf: list[str] = []
+        for delta in complete_stream(
             llm_config=llm_config,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_content},
             ],
             agent_name="tier_analyst",
-            stream=False,
-        )
-        raw = (response.choices[0].message.content or "").strip()
+        ):
+            buf.append(delta)
+            if input.on_chunk is not None:
+                input.on_chunk(delta)
+        raw = "".join(buf).strip()
         data = _parse_output(raw, valid_names)
 
         # Normalise recommended_tier to a known value

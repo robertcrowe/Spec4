@@ -370,3 +370,64 @@ class TestDeclarationAlignmentTwoArraySchema:
             }
         ]
         assert _check_declaration_alignment(g, phases, self._AF) == []
+
+
+class TestExtractGraphTransport:
+    """Phase-6 conversion: _extract_graph drains complete_stream internally,
+    forwarding response_format and publishing the receipt counter (D-PH9)."""
+
+    _GRAPH_JSON = (
+        '{"phases": [{"phase_number": 1, "creates_tables": [],'
+        ' "reads_tables": [], "creates_endpoints": [],'
+        ' "consumes_endpoints": [], "covers_features": []}]}'
+    )
+
+    def test_forwards_response_format_and_parses_stream(self):
+        captured = {}
+
+        def _fake_stream(**kwargs):
+            captured.update(kwargs)
+            return iter([self._GRAPH_JSON])
+
+        with (
+            patch.object(_seam_check, "complete_stream", side_effect=_fake_stream),
+            patch.object(_seam_check, "supports_response_format", return_value=True),
+        ):
+            graph = _seam_check._extract_graph([_phase(1)], None, {"model": "x"})
+        assert graph is not None
+        assert captured["response_format"] == {"type": "json_object"}
+        assert captured["agent_name"] == "phaser_seam"
+
+    def test_response_format_none_when_unsupported(self):
+        captured = {}
+
+        def _fake_stream(**kwargs):
+            captured.update(kwargs)
+            return iter([self._GRAPH_JSON])
+
+        with (
+            patch.object(_seam_check, "complete_stream", side_effect=_fake_stream),
+            patch.object(_seam_check, "supports_response_format", return_value=False),
+        ):
+            _seam_check._extract_graph([_phase(1)], None, {"model": "x"})
+        assert captured["response_format"] is None
+
+    def test_counter_published_and_seeded_from_session_value(self):
+        session = {"_stream_received_chars": 700}
+        with (
+            patch.object(
+                _seam_check,
+                "complete_stream",
+                side_effect=lambda **kw: iter([self._GRAPH_JSON]),
+            ),
+            patch.object(_seam_check, "supports_response_format", return_value=False),
+        ):
+            _seam_check._extract_graph([_phase(1)], None, {"model": "x"}, session)
+        assert session["_stream_received_chars"] == 700 + len(self._GRAPH_JSON)
+
+    def test_raising_stream_degrades_to_no_advisory(self):
+        with patch.object(
+            _seam_check, "complete_stream", side_effect=TimeoutError("stall")
+        ):
+            out = run_seam_check([_phase(1)], None, {"model": "x"}, {})
+        assert out == ""
