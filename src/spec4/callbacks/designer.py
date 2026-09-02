@@ -10,7 +10,7 @@ from typing import Any
 
 from dash import ALL, Input, Output, State, callback, ctx, no_update
 
-from spec4 import project_manager, websearch
+from spec4 import llm, project_manager, websearch
 from spec4.agents._manifest import (
     enrich_manifest,
     extract_manifest,
@@ -348,6 +348,19 @@ def _start_gen(
                 f"__GENERATION_ERROR__: {type(exc).__name__}: {msg}"
             )
         finally:
+            # The mock draw never passes through the chat poll's persist
+            # funnel, so the generation thread flushes its own LLM usage.
+            # Same version resolution as the design dir above; a failure
+            # here only loses the usage record, never the mock.
+            if working_dir:
+                try:
+                    project_manager.save_usage(
+                        working_dir,
+                        llm.drain_usage_records(),
+                        project_manager.active_version(working_dir, session),
+                    )
+                except Exception as exc:
+                    logger.warning("Designer: could not save LLM usage: %s", exc)
             # Unconditional: `done` without final_html or an error sentinel is
             # the poll's cleanup signal. Setting it on an already-popped entry
             # (user clicked Start Over mid-generation) is harmless.

@@ -5,11 +5,17 @@ Handles working directory selection and .spec4 artifact storage.
 
 from __future__ import annotations
 
+import importlib.metadata
 import json
+import os
 import re
+import tempfile
+import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from spec4 import __version__
 from spec4.app_constants import PROJECT_MODES
 from spec4.design_manifest import (
     surface_detail_lines,
@@ -1067,6 +1073,245 @@ def load_prior_deployment_plan(working_dir: str | Path) -> str | None:
 SPEC4_README_ATTRIBUTION = "[Built with Spec4 AI](https://spec4.ai)"
 
 
+# ---------------------------------------------------------------------------
+# LLM usage log
+# ---------------------------------------------------------------------------
+
+USAGE_FILENAME = "usage.json"
+USAGE_SCHEMA_VERSION = "1"
+_USAGE_COST_SOURCE = (
+    "litellm response_cost (community cost map; may lag provider price sheets)"
+)
+
+# Sub-agents roll up into the planning agent whose turn runs them. Anything not
+# listed reports under its own name, so a new sub-agent is visible rather than
+# silently misattributed.
+_USAGE_ROLLUP_PARENT: dict[str, str] = {
+    "feature_speccer": "brainstormer",
+    "phaser_seam": "phaser",
+    "scout": "agentifier",
+    "tier_analyst": "agentifier",
+    "linker": "agentifier",
+    "composer": "agentifier",
+    "prioritizer": "agentifier",
+    "spec_drafter": "agentifier",
+    "cross_cutting_analyst": "agentifier",
+}
+
+_USAGE_LOCK = threading.Lock()
+
+
+def _usage_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return int(value)
+
+
+def _usage_float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def usage_rollup_name(agent: Any) -> str:
+    raw = agent if isinstance(agent, str) and agent else "unknown"
+    return _USAGE_ROLLUP_PARENT.get(raw, raw)
+
+
+def _usage_versions() -> tuple[str, str]:
+    """(spec4 version, litellm version) for the file header. Never raises."""
+    try:
+        litellm_version = importlib.metadata.version("litellm")
+    except importlib.metadata.PackageNotFoundError:
+        litellm_version = "unknown"
+    return __version__, litellm_version
+
+
+def summarize_usage(history: list[dict[str, Any]]) -> dict[str, Any]:
+    """Roll one agent's per-call ``history`` up into its summary block.
+
+    Derived, never accumulated: every write recomputes this from the full
+    history, so the summary cannot drift from the call records. Token and
+    cost sums cover only calls that reported them; ``cached_input_tokens``
+    and ``computed_cost_usd`` stay null when no call in the history had a
+    value, rather than reading as a confident zero. ``models`` lists each
+    distinct (model, provider) pair in first-seen order, which is how a
+    re-run on a different model within the round becomes visible.
+    """
+    rollup: dict[str, Any] = {
+        "calls": 0,
+        "calls_missing_usage": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "cached_input_tokens": None,
+        "computed_cost_usd": None,
+        "models": [],
+    }
+    for call in history:
+        rollup["calls"] += 1
+        if call.get("usage_missing"):
+            rollup["calls_missing_usage"] += 1
+        for src, dst in (
+            ("prompt_tokens", "input_tokens"),
+            ("completion_tokens", "output_tokens"),
+            ("total_tokens", "total_tokens"),
+        ):
+            value = _usage_int(call.get(src))
+            if value is not None:
+                rollup[dst] += value
+        cached = _usage_int(call.get("cached_tokens"))
+        if cached is None:
+            cached = _usage_int(call.get("cache_read_input_tokens"))
+        if cached is not None:
+            rollup["cached_input_tokens"] = (
+                rollup["cached_input_tokens"] or 0
+            ) + cached
+        cost = _usage_float(call.get("computed_cost_usd"))
+        if cost is not None:
+            rollup["computed_cost_usd"] = round(
+                (rollup["computed_cost_usd"] or 0.0) + cost, 8
+            )
+        pair = {"model": call.get("model"), "provider": call.get("provider")}
+        if pair not in rollup["models"]:
+            rollup["models"].append(pair)
+    return rollup
+
+
+def usage_totals(agents: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Round-wide totals across the per-agent summaries."""
+    totals: dict[str, Any] = {
+        "calls": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "cached_input_tokens": None,
+        "computed_cost_usd": None,
+    }
+    for entry in agents.values():
+        for key in ("calls", "input_tokens", "output_tokens", "total_tokens"):
+            totals[key] += _usage_int(entry.get(key)) or 0
+        cached = _usage_int(entry.get("cached_input_tokens"))
+        if cached is not None:
+            totals["cached_input_tokens"] = (
+                totals["cached_input_tokens"] or 0
+            ) + cached
+        cost = _usage_float(entry.get("computed_cost_usd"))
+        if cost is not None:
+            totals["computed_cost_usd"] = round(
+                (totals["computed_cost_usd"] or 0.0) + cost, 8
+            )
+    return totals
+
+
+def load_usage(working_dir: str | Path, version: int) -> dict[str, Any] | None:
+    """Read ``.spec4/v{version}/usage.json``; None when missing or unreadable."""
+    path = get_version_dir(working_dir, version) / USAGE_FILENAME
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` via a sibling temp file and ``os.replace``.
+
+    A crash or disk error mid-write leaves the previous file untouched; the
+    temp file is removed on failure.
+    """
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+
+def save_usage(
+    working_dir: str | Path,
+    records: list[dict[str, Any]],
+    version: int,
+    fast_forward: bool | None = None,
+) -> None:
+    """Append per-call usage records to the round's ``usage.json``.
+
+    Read-modify-write: the existing file (if any) is loaded, the new records
+    are appended to their agent's ``history``, and every agent summary plus
+    the round ``totals`` are recomputed from the full history. History is
+    never overwritten, so a developer who quits and re-enters with a
+    different provider keeps both runs side by side. The write is atomic.
+
+    ``fast_forward`` is what the writer knows about the turn being recorded:
+    ``True`` marks the round as having used Fast Forward (sticky), ``False``
+    records a known non-FF turn only while nothing else is known, and
+    ``None`` (a Designer draw, say) leaves the note as it was.
+
+    Not a pipeline artifact: this file is an output of every agent and an
+    input to none. It is declared in ``_NON_ARTIFACT_FILES`` and never
+    appears in ``_STALE_DEPENDENCIES`` or ``_PIPELINE_ARTIFACT_ORDER``, so
+    its mtime cannot make any agent read as Needs Update. Serialised under a
+    lock because the chat persist funnel and the Designer thread can both
+    flush.
+    """
+    if not records:
+        return
+    with _USAGE_LOCK:
+        version_dir = ensure_version_dir(working_dir, version)
+        now = datetime.now(timezone.utc).isoformat()
+        existing = load_usage(working_dir, version) or {}
+
+        agents_in = existing.get("agents")
+        agents: dict[str, dict[str, Any]] = {}
+        if isinstance(agents_in, dict):
+            for name, entry in agents_in.items():
+                history = entry.get("history") if isinstance(entry, dict) else None
+                agents[str(name)] = {
+                    "history": [h for h in (history or []) if isinstance(h, dict)]
+                }
+        for rec in records:
+            agents.setdefault(usage_rollup_name(rec.get("agent")), {"history": []})[
+                "history"
+            ].append(rec)
+        for name, entry in agents.items():
+            history = entry["history"]
+            agents[name] = {**summarize_usage(history), "history": history}
+
+        notes_in = existing.get("notes")
+        notes: dict[str, Any] = dict(notes_in) if isinstance(notes_in, dict) else {}
+        notes["tokens_are_ground_truth"] = True
+        notes["computed_cost_source"] = _USAGE_COST_SOURCE
+        if fast_forward is True:
+            notes["fast_forward"] = True
+        elif fast_forward is False and notes.get("fast_forward") is None:
+            notes["fast_forward"] = False
+        else:
+            notes.setdefault("fast_forward", None)
+
+        spec4_version, litellm_version = _usage_versions()
+        payload = {
+            "schema_version": USAGE_SCHEMA_VERSION,
+            "spec4_version": spec4_version,
+            "litellm_version": litellm_version,
+            "round": f"v{version}",
+            "created_at": existing.get("created_at") or now,
+            "updated_at": now,
+            "notes": notes,
+            "agents": agents,
+            "totals": usage_totals(agents),
+        }
+        _write_atomic(version_dir / USAGE_FILENAME, json.dumps(payload, indent=2))
+
+
 def _with_readme_attribution(markdown: str) -> str:
     """Return ``markdown`` ending with the Spec4 attribution line, exactly once.
 
@@ -1147,6 +1392,15 @@ def load_existing_readme(working_dir: str | Path) -> str | None:
 # Maps each agent to (output artifact rel path, [(input name, input rel path)…]).
 # Output and input paths are relative to .spec4/. A directory is treated as the
 # newest mtime among its files.
+# Files that live in ``.spec4/v{N}/`` but are NOT pipeline artifacts: written
+# by the pipeline for the developer's benefit, read by no agent, and therefore
+# never a dependency edge. The freshness graph below is declared by explicit
+# filename, so this set is the declared exclusion — a name in it must never be
+# added to ``_STALE_DEPENDENCIES`` or ``_PIPELINE_ARTIFACT_ORDER`` (a test
+# enforces that), and touching one of these files cannot flip any agent to
+# Needs Update.
+_NON_ARTIFACT_FILES: frozenset[str] = frozenset({USAGE_FILENAME})
+
 _STALE_DEPENDENCIES: dict[str, tuple[str, list[tuple[str, str]]]] = {
     "brainstormer": ("vision.json", [("code review", "code_review.json")]),
     "agentifier": (

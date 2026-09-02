@@ -151,6 +151,39 @@ def _token_count_text(session: dict[str, Any]) -> str:
     return f"Chars received: {_streamed_token_count(session)}"
 
 
+_NO_TOKEN_COUNT = "no token count"
+
+
+def _turn_token_text(session: dict[str, Any]) -> str:
+    """Token readout for the turn that just finished, or empty.
+
+    Fed by ``session["_turn_usage"]``, which the persist funnel writes from
+    the provider-reported usage of the finished turn's calls. Shows only once
+    the stream has completed and only for the agent that ran it; while a
+    turn streams there is nothing to show, because usage arrives with the
+    end of each call and nothing here is estimated from characters. A turn
+    whose calls all came back without usage shows a marker instead of a zero.
+    A turn where only some calls reported usage shows the counted part,
+    flagged as partial.
+    """
+    if session.get("_stream_id"):
+        return ""
+    usage = session.get("_turn_usage")
+    if not isinstance(usage, dict) or usage.get("agent") != session.get("active_agent"):
+        return ""
+    calls = int(usage.get("calls") or 0)
+    missing = int(usage.get("missing") or 0)
+    if calls == 0:
+        return ""
+    if missing >= calls:
+        return _NO_TOKEN_COUNT
+    text = (
+        f"{int(usage.get('input') or 0):,} in / "
+        f"{int(usage.get('output') or 0):,} out"
+    )
+    return f"{text} (partial)" if missing else text
+
+
 def _ff_controls(agent_label: str) -> list[Any]:
     """Fast Forward button, (i) icon, and info dialog for one agent.
 
@@ -398,6 +431,15 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
         None,
     )
     row.insert(len(row) if counter_at is None else counter_at + 1, elapsed)
+    # The finished turn's token readout sits right after the chars counter it
+    # describes. Rendered only when there is something to say (post-stream,
+    # usage captured or known-missing) so the live row is untouched.
+    turn_tokens = _turn_token_text(session)
+    if turn_tokens and counter_at is not None:
+        row.insert(
+            counter_at + 1,
+            dmc.Text(turn_tokens, id="chat-turn-tokens", c="dimmed", size="sm"),
+        )
     return html.Div(
         [
             dmc.Divider(mb="xs"),

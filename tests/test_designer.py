@@ -474,7 +474,7 @@ def _mock_designer_stream(text: str) -> Any:
     chunks = [_make_stream_chunk(c) for c in text]
     chunks.append(_make_stream_chunk("", finish_reason="stop"))
     return patch(
-        "spec4.agents.designer.litellm.completion",
+        "spec4.llm.litellm.completion",
         return_value=iter(chunks),
     )
 
@@ -581,7 +581,7 @@ class TestGenerateMockStreaming:
 
     def test_yields_error_on_exception(self) -> None:
         with patch(
-            "spec4.agents.designer.litellm.completion",
+            "spec4.llm.litellm.completion",
             side_effect=Exception("timeout"),
         ):
             chunks = list(
@@ -610,7 +610,7 @@ class TestGenerateMockStreaming:
             return iter([_make_stream_chunk("", finish_reason="stop")])
 
         with patch(
-            "spec4.agents.designer.litellm.completion", side_effect=fake_completion
+            "spec4.llm.litellm.completion", side_effect=fake_completion
         ):
             list(
                 generate_mock_streaming(

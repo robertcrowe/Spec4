@@ -152,6 +152,51 @@ Plans the path from working code to a running production deployment. Walks throu
 
 Each session auto-saves to `.spec4/` inside your project directory. On a future visit, select the same directory and previously completed artifacts will be loaded automatically.
 
+### Usage log (`usage.json`)
+
+**Location:** `.spec4/v{N}/usage.json`, one file per round.
+
+**Produced by:** the pipeline itself. Every LLM call Spec4 makes is recorded, and the file is rewritten after each agent turn and each Designer draw, not only at the end of a round, so a crashed or abandoned session still leaves a record.
+
+**Consumed by:** you. No agent reads it. It is not a pipeline artifact: it is excluded from the artifact dependency graph, so writing or editing it never marks an agent *Needs Update*.
+
+**Purpose:** per-agent token and cost accounting for a round, with the per-call history that the summaries are derived from.
+
+**Schema (`schema_version` 1):**
+
+| Field | Meaning |
+|---|---|
+| `spec4_version`, `litellm_version` | Versions that last wrote the file |
+| `round` | `v{N}` |
+| `created_at`, `updated_at` | UTC ISO 8601; `created_at` is preserved across writes |
+| `notes.tokens_are_ground_truth` | Always `true` (see below) |
+| `notes.computed_cost_source` | Where `computed_cost_usd` comes from |
+| `notes.fast_forward` | `true` once any Fast Forward turn was recorded in the round, `false` when only ordinary turns are known, `null` when nothing is known |
+| `agents.<name>` | One block per planning agent (`brainstormer`, `agentifier`, `designer`, `stack_advisor`, `phaser`, `deployer`, `code_scanner`). Sub-agents roll up into the agent whose turn runs them |
+| `agents.<name>.calls`, `input_tokens`, `output_tokens`, `total_tokens` | Call count and summed tokens over calls that reported usage |
+| `agents.<name>.calls_missing_usage` | Calls the provider returned no usage for; their tokens are not counted |
+| `agents.<name>.cached_input_tokens` | Summed cache-read tokens where the provider reported them, else `null` |
+| `agents.<name>.computed_cost_usd` | Summed LiteLLM cost estimate, `null` when no call could be priced |
+| `agents.<name>.models` | Distinct `{model, provider}` pairs used, in first-seen order |
+| `agents.<name>.history` | The per-call records: `timestamp`, `agent` (the sub-agent, if any), `model`, `provider` (as LiteLLM resolves it), `streamed`, `duration_s`, `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `computed_cost_usd`, `usage_missing`, `error` |
+| `totals` | The same sums across all agents |
+
+Every summary is recomputed from `history` on each write; nothing in the file is accumulated independently of the call records.
+
+**Two notes on the numbers:**
+
+- Token counts come from the providers' own responses, passed through LiteLLM. They are ground truth. When a provider returns no usage for a call, the call is still recorded with `null` token fields and `usage_missing: true`; nothing is estimated from text length.
+- `computed_cost_usd` comes from LiteLLM's community-maintained cost map, which can lag provider price sheets and has no entry for some models (Nebius models, for instance, are recorded with `null` cost). Treat it as advisory. When the dollar figure matters, recompute it from the token counts and the providers' current price sheets.
+
+The file survives quitting and re-entering, including with a different provider or model: a re-run appends to the agent's `history` and adds the new `{model, provider}` pair to `models`. It never overwrites earlier calls.
+
+To print a per-agent table for a round:
+
+```bash
+spec4-usage /path/to/project            # latest round
+spec4-usage /path/to/project --round 0  # a specific round
+```
+
 ---
 
 ## Project structure
@@ -166,6 +211,7 @@ src/spec4/
 ├── llm.py                  # LLM conversation turns + web search tool loop
 ├── websearch.py            # Web search providers (Tavily, Exa) — MCP async bridge
 ├── project_manager.py      # .spec4/ artifact persistence + phase-file assembly
+├── usage_report.py         # spec4-usage CLI: per-agent table from usage.json
 ├── feature_specs.py        # Shared spec renderer (Phaser context + phase files)
 ├── design_manifest.py      # Design-mock manifest joins for Phaser
 ├── stack_routing.py        # Deterministic stack→phase and NFR→phase joins

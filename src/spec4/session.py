@@ -4,9 +4,10 @@ import os
 from collections.abc import Generator
 from typing import Any
 
-from spec4 import project_manager
+from spec4 import llm, project_manager
 from spec4.agents import brainstormer, code_scanner, deployer, phaser, stack_advisor
 from spec4.app_constants import (
+    FF_PROMPT,
     STATE_AGENTIFIER_COMPLETE,
     STATE_DEPLOYER_COMPLETE,
     STATE_IN_PROGRESS,
@@ -401,6 +402,52 @@ def _run_agent_blocking(user_input: str | None, session: dict[str, Any]) -> str:
     return "".join(_get_agent_gen(user_input, session))
 
 
+def _turn_was_fast_forward(session: dict[str, Any]) -> bool:
+    """Whether the turn being persisted was started by the Fast Forward button.
+
+    Fast Forward has no session flag of its own: the button appends the
+    ``FF_PROMPT`` text as the user message and streams the reply. So the turn
+    is FF exactly when the most recent user message is that prompt.
+    """
+    messages = session.get("messages") or []
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            return bool(msg.get("content") == FF_PROMPT)
+    return False
+
+
+def _summarize_turn_usage(
+    agent: Any, records: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Token readout for one finished turn, from its per-call usage records.
+
+    ``{"agent", "input", "output", "calls", "missing"}`` for the chat row's
+    token element: summed provider-reported input/output tokens over the
+    turn's calls (a turn can make several — tool rounds, re-asks, sub-agents),
+    ``calls`` counting every call and ``missing`` those that returned no
+    usage. None when the turn made no call, so nothing stale is shown. Pure
+    and JSON-serialisable for the session store.
+    """
+    if not records:
+        return None
+    summary: dict[str, Any] = {
+        "agent": agent,
+        "input": 0,
+        "output": 0,
+        "calls": 0,
+        "missing": 0,
+    }
+    for rec in records:
+        summary["calls"] += 1
+        if rec.get("usage_missing"):
+            summary["missing"] += 1
+        for src, dst in (("prompt_tokens", "input"), ("completion_tokens", "output")):
+            value = rec.get(src)
+            if isinstance(value, int) and not isinstance(value, bool):
+                summary[dst] += value
+    return summary
+
+
 def _persist_artifacts(session: dict[str, Any]) -> None:
     working_dir = session.get("working_dir")
     if not working_dir:
@@ -416,6 +463,26 @@ def _persist_artifacts(session: dict[str, Any]) -> None:
         )
         session["phase_version"] = version
     version = session["phase_version"]
+    # LLM usage for the turn that just finished. Flushed here, after the pin,
+    # so the first turn of a new round lands under the new version. Isolated
+    # from the artifact saves below: a usage write failure must never cost a
+    # vision or stack save, and vice versa.
+    usage_records = llm.drain_usage_records()
+    try:
+        project_manager.save_usage(
+            working_dir,
+            usage_records,
+            version,
+            fast_forward=_turn_was_fast_forward(session),
+        )
+    except Exception as exc:
+        print(f"[usage] save failed ({type(exc).__name__}: {exc})", flush=True)
+    # The finished turn's token readout for the chat row (layouts._chat
+    # renders it next to the chars counter once the stream has completed).
+    # Replaced every turn, cleared when the turn made no call.
+    session["_turn_usage"] = _summarize_turn_usage(
+        session.get("active_agent"), usage_records
+    )
     if session.get("code_scanner_state") == STATE_REVIEW_COMPLETE and session.get(
         "code_review"
     ):

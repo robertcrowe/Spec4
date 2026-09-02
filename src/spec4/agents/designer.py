@@ -7,8 +7,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, TypedDict
 
-import litellm
-
+from spec4 import llm
 from spec4.agents._manifest import MANIFEST_END, MANIFEST_START
 from spec4.websearch import WEB_SEARCH_TOOL, search as web_search
 
@@ -572,7 +571,9 @@ def generate_mock_streaming(
             if tools:
                 kwargs["tools"] = tools
 
-            response = litellm.completion(**kwargs)
+            # Routed through spec4.llm so the mock draw is captured in the
+            # round's usage log alongside the chat agents' calls.
+            response = llm.stream_completion(agent_name="designer", **kwargs)
             logger.debug("Awaiting first output token")
 
             full_text = ""
