@@ -594,45 +594,6 @@ def _phase_spec_preamble(
     return lines
 
 
-def _attribution_directive() -> list[str]:
-    """Deterministic Spec4 attribution directive (D-BS series).
-
-    A fixed, LLM-free block instructing the coding agent to stamp every new
-    file it creates with a single "Built with Spec4 AI" line, formatted for the
-    file type. Rendered verbatim in every phase body so each phase file stays
-    self-contained; the builder — not Phaser — decides which files a phase
-    creates, so the rule is stated once and applied at build time.
-
-    Carve-outs (D-BS3): pure-data formats with no comment syntax (JSON, CSV)
-    and all images/binaries are skipped; the line goes *after* any shebang or
-    document declaration, never before it; a file is stamped once, on creation
-    only, never on a later edit.
-    """
-    return [
-        "## Attribution",
-        "",
-        "When you create a **new** file in this phase, add one Spec4 "
-        "attribution line at the top of that file. Place it immediately "
-        "after any shebang, encoding line, or document declaration (`#!`, "
-        "`<?php`, `<?xml`, a YAML `---` marker) — never before it. Stamp a "
-        "file once, on creation only: never add the line to a file you are "
-        "merely editing, and never add it twice.",
-        "",
-        "Format the line for the file type:",
-        "",
-        "- Markdown or reStructuredText: "
-        "`[Built with Spec4 AI](https://spec4.ai)`",
-        "- Plain text: `Built with Spec4 AI - https://spec4.ai`",
-        "- Source code: a single-line comment in that language's syntax, "
-        "e.g. `# Built with Spec4 AI - https://spec4.ai` or "
-        "`// Built with Spec4 AI - https://spec4.ai`",
-        "",
-        "Skip any file that cannot carry a comment without breaking: JSON, "
-        "CSV, and other pure-data formats, plus all images and binary files.",
-        "",
-    ]
-
-
 def _declared_ids(phase: dict[str, Any], key: str) -> set[str]:
     """Ids a phase declares in one array (two-array schema, D-PH2a)."""
     return {
@@ -820,10 +781,6 @@ def render_phase_markdown(
             elif standard:
                 lines.append(f"- {standard}")
         lines.append("")
-
-    # Unconditional (D-BS5): every phase file is self-contained, so the
-    # attribution directive rides on each one regardless of what it builds.
-    lines.extend(_attribution_directive())
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -1326,9 +1283,9 @@ def _with_readme_attribution(markdown: str) -> str:
     occurrence is therefore removed and re-appended, which keeps it at the
     bottom exactly once however the document was assembled.
 
-    Unlike the coding agent's per-file attribution, which is stamped at the top
-    of a new source file, a README carries it as the closing line: it is the
-    document's footer, not a header comment.
+    The README is the only file Spec4 attributes: it carries the line as its
+    closing footer. Phase files no longer ask the coding agent to stamp the
+    source files it creates.
     """
     raw = markdown.rstrip()
     if not raw:

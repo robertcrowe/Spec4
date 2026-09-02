@@ -937,38 +937,18 @@ class TestPhaseSpecPreamble:
         ).read_text(encoding="utf-8")
         assert "Answer questions from the corpus." in written
 
-    def test_attribution_directive_rides_on_every_phase(self) -> None:
-        text = self._render()
-        assert "## Attribution" in text
-        assert "[Built with Spec4 AI](https://spec4.ai)" in text
-        assert "Built with Spec4 AI - https://spec4.ai" in text
-
-    def test_attribution_is_unconditional_for_featureless_phases(self) -> None:
-        # D-BS5: a scaffolding phase with no AI features still creates files.
-        text = self._render(features=[])
-        assert "## Feature Specifications" not in text
-        assert "## Attribution" in text
-
-    def test_attribution_renders_without_a_context(self) -> None:
-        text = project_manager.render_phase_markdown(self._phase())
-        assert "## Attribution" in text
-
-    def test_attribution_appears_exactly_once(self) -> None:
-        # D-BS4: single occurrence per phase file.
-        text = self._render()
-        assert text.count("## Attribution") == 1
-
-    def test_attribution_states_its_carve_outs(self) -> None:
-        # D-BS3: comment-less data formats and position-sensitive first lines.
-        text = self._render()
-        assert "JSON" in text
-        assert "CSV" in text
-        assert "shebang" in text
-
-    def test_attribution_stays_out_of_frontmatter(self) -> None:
-        text = self._render()
-        head = text.split("---", 2)[1]
-        assert "## Attribution" not in head
+    def test_no_attribution_directive_in_phase_files(self) -> None:
+        # Phase files no longer ask the coding agent to stamp new files with a
+        # Spec4 attribution line. The README footer (Deployer) is separate and
+        # unaffected.
+        for text in (
+            self._render(),
+            self._render(features=[]),
+            project_manager.render_phase_markdown(self._phase()),
+        ):
+            assert "## Attribution" not in text
+            assert "Built with Spec4" not in text
+            assert "spec4.ai" not in text
 
 
 class TestRenderPhaseStackRoutingAndNfr:
