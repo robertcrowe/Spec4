@@ -1109,7 +1109,8 @@ def run(
 
     pre_len = len(messages)
     yield from llm.stream_turn(
-        system, messages, llm_config, search_cfg, agent_name="phaser"
+        system, messages, llm_config, search_cfg, agent_name="phaser",
+        session=session,
     )
 
     # Capture human-confirmed stack additions emitted anywhere this turn. The
@@ -1238,6 +1239,7 @@ def run(
             search_cfg,
             agent_name="phaser",
             response_format=response_format,
+            session=session,
         ):
             if _chunk:
                 _received += len(_chunk)

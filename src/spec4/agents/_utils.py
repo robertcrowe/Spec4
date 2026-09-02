@@ -459,6 +459,9 @@ def _stream_suppressing_json(
     chunks: Generator[str, None, None],
     session: dict[str, Any] | None = None,
     seed: int = 0,
+    *,
+    reply_status: str | None = None,
+    artifact_status: str | None = None,
 ) -> Generator[str, None, None]:
     """Yield chunks, suppressing the entire response if it starts with a fence.
 
@@ -484,6 +487,17 @@ def _stream_suppressing_json(
     the counter drop to zero the moment the stream opens. Seeding with that
     text's length keeps the count monotonic within a turn. Defaults to 0, which
     is the prior behaviour.
+
+    ``reply_status`` / ``artifact_status`` publish stage-accurate status-line
+    text the moment this wrapper can tell which kind of turn it is watching:
+    ``reply_status`` once visible text starts flushing, ``artifact_status``
+    once the reply is recognised as a suppressed artifact draw (the
+    multi-minute silent stretch that otherwise sits on the generic "…is
+    thinking" seed for its whole duration). Republished on later content
+    chunks if something else (e.g. ``stream_turn``'s web-search status) has
+    overwritten it in between — a search status stands only until the model
+    starts producing text again. Both default to None (no status writes),
+    which is the prior behaviour.
     """
     _FENCE = "```"
     buf = ""
@@ -517,6 +531,14 @@ def _stream_suppressing_json(
                     flushed = True
                     yield buf
                     buf = ""
+            if session is not None:
+                desired = (
+                    artifact_status
+                    if suppress
+                    else (reply_status if flushed else None)
+                )
+                if desired and session.get("_stream_status") != desired:
+                    session["_stream_status"] = desired
         if not suppress and not flushed and buf:
             yield buf
     except BaseException as exc:

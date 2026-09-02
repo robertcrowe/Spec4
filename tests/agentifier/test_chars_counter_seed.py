@@ -149,9 +149,9 @@ class TestBreadthTurnSeedsTheCounter:
         seen: list[int] = []
         real = agentifier._stream_suppressing_json
 
-        def spy(chunks: Any, sess: Any = None, seed: int = 0) -> Any:
+        def spy(chunks: Any, sess: Any = None, seed: int = 0, **kwargs: Any) -> Any:
             seen.append(seed)
-            return real(chunks, sess, seed)
+            return real(chunks, sess, seed, **kwargs)
 
         with patch.object(agentifier, "_stream_suppressing_json", spy):
             out = _run_breadth_turn(session)

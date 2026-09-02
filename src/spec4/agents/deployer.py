@@ -813,7 +813,8 @@ def run(
     # Publish a running total instead; `_received` seeds that second stream.
     _received = yield from _stream_counting(
         llm.stream_turn(
-            system, messages, llm_config, search_cfg, agent_name="deployer"
+            system, messages, llm_config, search_cfg, agent_name="deployer",
+            session=session,
         ),
         session,
     )
@@ -865,6 +866,7 @@ def run(
                         llm.stream_turn(
                             system, messages, llm_config, search_cfg,
                             agent_name="deployer",
+                            session=session,
                         ),
                         session,
                         seed=_received + len(_README_AUTHORING_NOTE),

@@ -773,9 +773,15 @@ def run(
     # multi-minute draw — the D-SC60 failure, which applies here identically.
     yield from _stream_suppressing_json(
         llm.stream_turn(
-            system, msgs, llm_config, search_cfg, agent_name="brainstormer"
+            system, msgs, llm_config, search_cfg,
+            agent_name="brainstormer",
+            session=session,
         ),
         session,
+        reply_status="Brainstormer is replying…",
+        artifact_status=(
+            "Drafting the vision statement — this can take a few minutes…"
+        ),
     )
 
     raw_reply = _last_assistant_text(msgs)

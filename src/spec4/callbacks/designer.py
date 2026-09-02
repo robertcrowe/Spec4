@@ -208,11 +208,21 @@ def _start_gen(
     capture_mode: bool = False,
     api_base: str | None = None,
     extra_kwargs: dict[str, Any] | None = None,
+    session: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
     """Launch generation in a background thread.
 
     Returns (updated_store, cleared_buffer, interval_disabled=False).
     """
+    # A new generation abandons any prior one still in flight or awaiting
+    # delivery: stop its stream and drop its buffer, or the entry (up to
+    # 512 kB of HTML) stays in _MOCK_BUFFERS for the life of the process.
+    old_gen_id = store.get("_gen_id")
+    if old_gen_id:
+        old_entry = _MOCK_BUFFERS.pop(old_gen_id, None)
+        if old_entry:
+            old_entry["stop"].set()
+
     gen_id = str(uuid.uuid4())
     stop_ev = threading.Event()
     buf_entry: dict[str, Any] = {
@@ -230,6 +240,27 @@ def _start_gen(
         "mock_html": store.get("mock_html", ""),
         "finalized": False,
     }
+
+    # Resolve the save dir here in the request thread, with the session so the
+    # pinned phase_version wins. The no-session fallback (latest on-disk
+    # version) can disagree with the pinned round, in which case the thread
+    # would save the mock where none of the readers — which all pass the
+    # session — ever look, silently breaking refresh/approve/retry. A failure
+    # resolving it only skips persistence — delivery must still happen.
+    design_dir_path: pathlib.Path | None = None
+    if working_dir:
+        try:
+            design_dir_path = (
+                project_manager.get_version_dir(
+                    working_dir,
+                    project_manager.active_version(working_dir, session),
+                )
+                / "design"
+            )
+        except Exception as exc:
+            logger.warning(
+                "Designer: could not resolve the design save dir: %s", exc
+            )
 
     def _run() -> None:
         try:
@@ -276,15 +307,8 @@ def _start_gen(
                             extracted[:_MAX_HTML_BYTES]
                             + "\n<!-- Designer: output truncated at 512 kB -->"
                         )
-                    if working_dir:
+                    if design_dir_path is not None:
                         try:
-                            design_dir_path = (
-                                project_manager.get_version_dir(
-                                    working_dir,
-                                    project_manager.active_version(working_dir),
-                                )
-                                / "design"
-                            )
                             save_ds: DesignerSession = {
                                 "step": 6,
                                 "preference_text": ds["preference_text"],
@@ -364,6 +388,17 @@ def render_designer_step(store: Any, buffer_data: Any, image_support: Any) -> An
     if not store:
         return no_update, no_update
     step: int = store.get("step", 2)
+    # Buffer ticks arrive 4×/sec during generation. Replacing the whole step
+    # subtree on each one forces dash-renderer to recompute its paths map while
+    # the poll's completion delivery is trying to apply — a dropped applyProps
+    # there strands the UI at step 5 permanently. Progress is painted
+    # clientside (see app.py); only a buffer *error* needs a re-render here.
+    triggered = getattr(ctx, "triggered", None) or []
+    buffer_only = bool(triggered) and all(
+        t.get("prop_id") == "mock-stream-buffer.data" for t in triggered
+    )
+    if buffer_only and not (step == 5 and (buffer_data or {}).get("error")):
+        return no_update, no_update
     content: Any
     if step == 1:
         content = _step1_content()
@@ -478,6 +513,7 @@ def on_designer_step2_choice(
         _planning_ctx(sess, wd),
         capture_mode=True, api_base=api_base,
         extra_kwargs=aws_kw or None,
+        session=sess,
     )
     return new_store, buf, disabled
 
@@ -614,6 +650,7 @@ def on_designer_generate_mock(
         updated, wd, model, api_key, search_cfg, support, planning_ctx,
         api_base=api_base,
         extra_kwargs=aws_kw or None,
+        session=sess,
     )
     return new_store, buf, disabled
 
@@ -659,6 +696,15 @@ def on_mock_stream_poll(n: Any, store: Any) -> Any:
        burn before the first response ever reached the browser, stranding
        the UI at step 5 with the interval off.  Don't reintroduce one; the
        only counter here is the ~2-minute runaway valve (_MAX_DELIVERY_TICKS).
+
+    3. **Clientside redundant delivery.**  The dropped completion was observed
+       to be one-sided: the buffer output of the very same response kept
+       applying (chars counter climbing) while the store output never landed.
+       Delivery ticks therefore also embed the step-6 payload in the buffer
+       under ``complete``, and a clientside callback in app.py copies it into
+       designer-session-store from the browser side.  That is not the banned
+       chained *server* callback from (1) — no extra round trip, no signal
+       store — and the ack loop below still confirms whichever route landed.
     """
     gen_id: str | None = (store or {}).get("_gen_id")
     if not gen_id or gen_id not in _MOCK_BUFFERS:
@@ -720,17 +766,26 @@ def on_mock_stream_poll(n: Any, store: Any) -> Any:
                 True,
             )
 
+        # Spread the acknowledged store so flags like _capture_mode,
+        # _is_revision, _stale_inputs and refine_text survive delivery (a
+        # from-scratch payload here regressed D-DM8: Retry after a capture
+        # draw lost the mode and regenerated greenfield). screenshots and
+        # refine_images stay empty — their base64 payload must never re-enter
+        # the store (see the note in _start_gen).
         new_store: Any = {
+            **s,
             "step": 6,
             "mock_html": final_html,
-            "_gen_id": gen_id,
-            "_has_existing_html": s.get("_has_existing_html", False),
-            "_has_existing_ui": s.get("_has_existing_ui", True),
-            "preference_text": s.get("preference_text", ""),
             "screenshots": [],
             "refine_images": [],
             "finalized": False,
         }
+        # Redundant delivery route: the buffer channel keeps applying in the
+        # browser even when the store output of this same response does not
+        # (observed: chars counter climbing while the UI stays at step 5).  A
+        # clientside callback in app.py copies `complete` into the store from
+        # the browser side, bypassing the flaky server-response store apply.
+        deliver_buf = {**final_buf, "complete": new_store}
 
         if _DEV_MODE:
             print(
@@ -738,7 +793,7 @@ def on_mock_stream_poll(n: Any, store: Any) -> Any:
                 f"gen_id={gen_id[:8]} mock_html_len={len(final_html)}",
                 flush=True,
             )
-        return final_buf, new_store, no_update
+        return deliver_buf, new_store, no_update
 
     # Generator finished without a recognised sentinel — stop event fired mid-stream.
     if buf_entry.get("done"):
@@ -975,6 +1030,7 @@ def on_designer_regenerate(
         existing_html=existing_html,
         api_base=api_base,
         extra_kwargs=aws_kw or None,
+        session=sess,
     )
     return new_store, buf, disabled
 
@@ -1041,6 +1097,7 @@ def on_designer_revise_stale(
     return _start_gen(
         regen_store, wd, model, api_key, search_cfg, support, planning_ctx,
         api_base=api_base, extra_kwargs=aws_kw or None,
+        session=sess,
     )
 
 
@@ -1086,5 +1143,6 @@ def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> A
         capture_mode=bool(store.get("_capture_mode")),
         api_base=api_base,
         extra_kwargs=aws_kw or None,
+        session=sess,
     )
     return new_store, buf, disabled

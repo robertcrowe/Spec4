@@ -1635,10 +1635,16 @@ def run(
 
     yield from _stream_suppressing_json(
         llm.stream_turn(
-            system, msgs, llm_config, search_cfg, agent_name="code_scanner"
+            system, msgs, llm_config, search_cfg,
+            agent_name="code_scanner",
+            session=session,
         ),
         session,
         seed=pre_stream_chars,
+        reply_status="CodeScanner is replying…",
+        artifact_status=(
+            "Drafting the code review — this can take a few minutes…"
+        ),
     )
 
     raw_reply = _last_assistant_text(msgs)

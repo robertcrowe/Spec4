@@ -1,4 +1,5 @@
 import threading
+import time
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -881,8 +882,11 @@ class TestCapturePassesPlanningContext:
 
 
 class _Ctx:
-    def __init__(self, triggered_id: str) -> None:
+    def __init__(
+        self, triggered_id: str, triggered: list[dict[str, Any]] | None = None
+    ) -> None:
         self.triggered_id = triggered_id
+        self.triggered = triggered or []
 
 
 def _dmod() -> Any:
@@ -1293,10 +1297,45 @@ class TestMockDeliveryAck:
         assert new_store["step"] == 6
         assert new_store["mock_html"] == self._HTML
         assert buf["progress"] == 100
+        # The identical payload also rides in the buffer, for the clientside
+        # redundant delivery route (see note 3 in on_mock_stream_poll).
+        assert buf["complete"] == new_store
         # Keep polling until the browser acknowledges; the buffer must
         # survive so a dropped response can be re-delivered.
         assert disabled is no_update
         assert self._GEN_ID in dmod._MOCK_BUFFERS
+
+    def test_delivery_preserves_prior_store_keys(self) -> None:
+        """The step-6 payload spreads the acknowledged store: a from-scratch
+        dict here dropped _capture_mode and regressed D-DM8 (Retry after a
+        capture draw regenerated greenfield)."""
+        dmod = self._buffer()
+        _, new_store, _ = dmod.on_mock_stream_poll(
+            1,
+            {
+                "step": 5,
+                "_gen_id": self._GEN_ID,
+                "_capture_mode": True,
+                "_is_revision": True,
+                "_stale_inputs": [],
+                "refine_text": "note",
+                "preference_text": "pref",
+                "_has_existing_html": True,
+                "screenshots": [{"data": "base64..."}],
+                "refine_images": [{"data": "base64..."}],
+            },
+        )
+        assert new_store["_capture_mode"] is True
+        assert new_store["_is_revision"] is True
+        assert new_store["_stale_inputs"] == []
+        assert new_store["refine_text"] == "note"
+        assert new_store["preference_text"] == "pref"
+        assert new_store["_has_existing_html"] is True
+        assert new_store["step"] == 6
+        assert new_store["finalized"] is False
+        # Image payloads must never re-enter the store (see _start_gen note).
+        assert new_store["screenshots"] == []
+        assert new_store["refine_images"] == []
 
     def test_redelivers_far_beyond_the_old_fixed_window(self) -> None:
         dmod = self._buffer()
@@ -1341,6 +1380,164 @@ class TestMockDeliveryAck:
         assert "Refresh the page" in buf["error"]
         assert disabled is True
         assert self._GEN_ID not in dmod._MOCK_BUFFERS
+
+
+# ---------------------------------------------------------------------------
+# render_designer_step — buffer ticks must not re-render the step subtree
+# ---------------------------------------------------------------------------
+
+
+class TestRenderGateSkipsBufferTicks:
+    """Plain buffer ticks (4x/sec during generation) must not replace the step
+    subtree — the constant children replacement churned dash-renderer's paths
+    map and could silently drop the completion delivery. Progress is painted
+    clientside; only store changes and buffer *errors* re-render here."""
+
+    def _render(
+        self,
+        monkeypatch: Any,
+        store: dict[str, Any],
+        buffer_data: dict[str, Any],
+        triggered: list[dict[str, Any]],
+    ) -> Any:
+        dmod = _dmod()
+        monkeypatch.setattr(dmod, "ctx", _Ctx("", triggered=triggered))
+        return dmod.render_designer_step(store, buffer_data, True)
+
+    def test_buffer_only_tick_at_step5_is_skipped(self, monkeypatch) -> None:
+        from dash import no_update
+
+        content, active = self._render(
+            monkeypatch,
+            {"step": 5},
+            {"tokens": 10, "progress": 1, "error": None},
+            [{"prop_id": "mock-stream-buffer.data"}],
+        )
+        assert content is no_update
+        assert active is no_update
+
+    def test_buffer_error_at_step5_renders_retry(self, monkeypatch) -> None:
+        content, _ = self._render(
+            monkeypatch,
+            {"step": 5},
+            {"tokens": 10, "progress": 1, "error": "boom"},
+            [{"prop_id": "mock-stream-buffer.data"}],
+        )
+        assert "btn-designer-retry" in str(content)
+
+    def test_store_trigger_renders_step6(self, monkeypatch) -> None:
+        from dash import no_update
+
+        content, active = self._render(
+            monkeypatch,
+            {"step": 6, "mock_html": "<html></html>", "finalized": False},
+            {"tokens": 0, "progress": 100, "error": None},
+            [{"prop_id": "designer-session-store.data"}],
+        )
+        assert content is not no_update
+        assert active == 5
+
+    def test_delivery_response_updating_both_props_renders(
+        self, monkeypatch
+    ) -> None:
+        from dash import no_update
+
+        content, _ = self._render(
+            monkeypatch,
+            {"step": 6, "mock_html": "<html></html>", "finalized": False},
+            {"tokens": 0, "progress": 100, "error": None},
+            [
+                {"prop_id": "mock-stream-buffer.data"},
+                {"prop_id": "designer-session-store.data"},
+            ],
+        )
+        assert content is not no_update
+
+    def test_initial_call_renders(self, monkeypatch) -> None:
+        from dash import no_update
+
+        content, _ = self._render(
+            monkeypatch,
+            {"step": 5},
+            {"tokens": 0, "progress": 0, "error": None},
+            [],
+        )
+        assert content is not no_update
+
+
+# ---------------------------------------------------------------------------
+# _start_gen — saves land in the session-pinned version dir; prior buffers
+# are cleaned up on regeneration
+# ---------------------------------------------------------------------------
+
+
+class TestGenerationSavesToPinnedVersion:
+    def test_saves_into_session_pinned_version_dir(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """The generation thread must save where the readers look: the
+        session-pinned version, not the latest on-disk one."""
+        from spec4 import project_manager
+
+        dmod = _dmod()
+        project_manager.get_version_dir(str(tmp_path), 1).mkdir(parents=True)
+        project_manager.get_version_dir(str(tmp_path), 2).mkdir(parents=True)
+        html = "<!DOCTYPE html><html><body>x</body></html>"
+        monkeypatch.setattr(
+            dmod,
+            "generate_mock_streaming",
+            lambda *a, **kw: iter([html + "__DONE__"]),
+        )
+        store, _, _ = dmod._start_gen(
+            {}, str(tmp_path), "m", "key", None, False,
+            session={"phase_version": 1},
+        )
+        gen_id = store["_gen_id"]
+        try:
+            entry = dmod._MOCK_BUFFERS[gen_id]
+            for _ in range(500):
+                if entry.get("done"):
+                    break
+                time.sleep(0.01)
+            assert entry.get("final_html") == html
+            v1_mock = (
+                project_manager.get_version_dir(str(tmp_path), 1)
+                / "design"
+                / "mock.html"
+            )
+            v2_design = (
+                project_manager.get_version_dir(str(tmp_path), 2) / "design"
+            )
+            assert v1_mock.exists()
+            assert not v2_design.exists()
+        finally:
+            dmod._MOCK_BUFFERS.pop(gen_id, None)
+
+
+class TestStartGenCleansUpPriorBuffer:
+    def test_prior_unacked_buffer_is_popped_and_stopped(
+        self, monkeypatch: Any
+    ) -> None:
+        dmod = _dmod()
+        stop_ev = threading.Event()
+        dmod._MOCK_BUFFERS["old-gen"] = {
+            "done": True,
+            "stop": stop_ev,
+            "text": "",
+        }
+        monkeypatch.setattr(
+            dmod, "generate_mock_streaming", lambda *a, **kw: iter(())
+        )
+        store, _, _ = dmod._start_gen(
+            {"_gen_id": "old-gen"}, None, "m", "key", None, False
+        )
+        gen_id = store["_gen_id"]
+        try:
+            assert "old-gen" not in dmod._MOCK_BUFFERS
+            assert stop_ev.is_set()
+            assert gen_id in dmod._MOCK_BUFFERS
+        finally:
+            dmod._MOCK_BUFFERS.pop(gen_id, None)
 
 
 # ---------------------------------------------------------------------------

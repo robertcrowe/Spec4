@@ -337,26 +337,51 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
     prevent_initial_call=True,
 )
 
+# Step-5 progress paint. render_designer_step deliberately ignores plain
+# buffer ticks (re-rendering the step subtree 4x/sec churned dash-renderer's
+# paths map and could silently drop the completion delivery), so the bar and
+# counter are poked into the DOM here instead.
 app.clientside_callback(  # type: ignore[no-untyped-call]
     """
-    (function() {
-        var _lastCount = 0;
-        return function(bufferData) {
-            if (!bufferData || !bufferData._debug_events) {
-                _lastCount = 0;
-                return window.dash_clientside.no_update;
-            }
-            var events = bufferData._debug_events;
-            for (var i = _lastCount; i < events.length; i++) {
-                console.log('[Designer]', events[i]);
-            }
-            _lastCount = events.length;
-            return window.dash_clientside.no_update;
-        };
-    })()
+    function(buf) {
+        var nu = window.dash_clientside.no_update;
+        if (!buf || typeof buf.tokens !== 'number') return nu;
+        var txt = document.getElementById('mock-token-count');
+        if (txt) txt.textContent = 'Chars received: ' + buf.tokens;
+        var bar = document.getElementById('mock-progress');
+        if (bar) {
+            var section = bar.querySelector('[class*="Progress-section"]')
+                || bar.firstElementChild;
+            if (section) section.style.width = (buf.progress || 0) + '%';
+        }
+        return nu;
+    }
     """,
     Output("_designer-fs-dummy", "children", allow_duplicate=True),
     Input("mock-stream-buffer", "data"),
+    prevent_initial_call=True,
+)
+
+# Redundant mock-completion delivery (see note 3 in on_mock_stream_poll).
+# The server response's designer-session-store output is occasionally never
+# applied by the browser while the buffer output of the same response keeps
+# landing, so delivery ticks embed the step-6 store under buf.complete and
+# this browser-side copy applies it. Guards: never fire once the user has
+# moved off step 5 (a stale tick must not bounce a Refine click back to the
+# preview), and never apply a payload from a superseded generation.
+app.clientside_callback(  # type: ignore[no-untyped-call]
+    """
+    function(buf, store) {
+        var nu = window.dash_clientside.no_update;
+        if (!buf || !buf.complete || !store) return nu;
+        if (store.step !== 5) return nu;
+        if (store._gen_id !== buf.complete._gen_id) return nu;
+        return buf.complete;
+    }
+    """,
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input("mock-stream-buffer", "data"),
+    State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
 

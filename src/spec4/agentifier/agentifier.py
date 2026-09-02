@@ -3130,10 +3130,16 @@ def _run_catalog_phase(
 
     yield from _stream_suppressing_json(
         llm.stream_turn(
-            system, msgs, llm_config, search_cfg, agent_name="agentifier"
+            system, msgs, llm_config, search_cfg,
+            agent_name="agentifier",
+            session=session,
         ),
         session,
         seed=pre_stream_chars,
+        reply_status="Agentifier is replying…",
+        artifact_status=(
+            "Drafting the AI feature catalog — this can take a few minutes…"
+        ),
     )
 
     raw_reply = _last_assistant_text(msgs)

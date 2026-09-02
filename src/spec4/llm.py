@@ -231,6 +231,7 @@ def stream_turn(
     search_config: SearchConfig | str | None,
     agent_name: str | None = None,
     response_format: dict[str, Any] | None = None,
+    session: dict[str, Any] | None = None,
 ) -> Generator[str, None, None]:
     """Stream one LLM conversation turn, handling tool calls transparently.
 
@@ -244,6 +245,14 @@ def stream_turn(
 
     `agent_name` identifies the calling agent; it is not forwarded to the
     provider. No temperature is sent — see the note near the top of the module.
+
+    `session`, when provided, receives status-line updates on
+    `session["_stream_status"]` around web-search round-trips ("Searching the
+    web: …", then "Reading search results…" while the follow-up request
+    prefills, then the caller's entry status back once content resumes). The
+    in-chat 🔍 marker alone is not enough: on a suppressed artifact turn the
+    marker is swallowed with everything else, leaving the status line as the
+    only sign of what the pipeline is doing.
 
     `response_format`, when provided, is forwarded to LiteLLM as-is — e.g.
     `{"type": "json_object"}` to force JSON-only output. When set, the
@@ -261,6 +270,14 @@ def stream_turn(
         if search_config and not suppress_tools_for_format
         else None
     )
+
+    # Snapshot the status at entry so it can be restored once the model
+    # resumes producing text after a search round. Callers streaming through
+    # _stream_suppressing_json get this for free (the wrapper republishes its
+    # turn-kind status on every content chunk), but bare callers (Phaser,
+    # Deployer) would otherwise show "Reading search results…" for the rest of
+    # the turn.
+    entry_status = session.get("_stream_status") if session is not None else None
 
     while True:
         llm_messages = [{"role": "system", "content": system_prompt}] + messages
@@ -313,6 +330,15 @@ def stream_turn(
             delta = choice.delta.content or ""
             if delta:
                 full_text += delta
+                if (
+                    session is not None
+                    and entry_status
+                    and session.get("_stream_status") == "Reading search results…"
+                ):
+                    # Content resumed after a search round: put the caller's
+                    # own status back. Guarded on the exact search text so a
+                    # status someone else set in between is never clobbered.
+                    session["_stream_status"] = entry_status
                 if not tool_call_started:
                     yield delta
 
@@ -354,6 +380,13 @@ def stream_turn(
                     except (json.JSONDecodeError, KeyError):
                         query = tc["arguments"]
                     yield f"\n\n*🔍 Searching: {query}*\n\n"
+                    # After the marker yield: the suppressing wrapper writes
+                    # its own status on receiving the marker chunk, and this
+                    # must land on top of that, not under it.
+                    if session is not None:
+                        session["_stream_status"] = (
+                            f"Searching the web: {query}…"
+                        )
                     if search_config is None:
                         raise RuntimeError(
                             "web_search tool called but search_config is None"
@@ -370,6 +403,11 @@ def stream_turn(
                             "content": result,
                         }
                     )
+            # The next completion's prefill can take a while; the search
+            # status would sit there stale. The streaming wrapper replaces
+            # this the moment content chunks resume.
+            if session is not None:
+                session["_stream_status"] = "Reading search results…"
             continue
 
         else:

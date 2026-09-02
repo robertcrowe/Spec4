@@ -1352,9 +1352,15 @@ def run(
 
     yield from _stream_suppressing_json(
         llm.stream_turn(
-            system, messages, llm_config, search_cfg, agent_name="stack_advisor"
+            system, messages, llm_config, search_cfg,
+            agent_name="stack_advisor",
+            session=session,
         ),
         session,
+        reply_status="StackAdvisor is replying…",
+        artifact_status=(
+            "Drafting the stack specification — this can take a few minutes…"
+        ),
     )
 
     raw_reply = _last_assistant_text(messages)
