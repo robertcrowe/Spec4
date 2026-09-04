@@ -63,6 +63,9 @@ def _text(component: Any) -> str:
 def _session(tmp_path: pathlib.Path, **overrides: Any) -> dict[str, Any]:
     session = _default_session()
     session.update({"working_dir": str(tmp_path), "phase": "agent_select"})
+    # The Designer wizard renders behind its model gate; these tests are about
+    # what the wizard does once that is answered.
+    session["agent_llm_asked"] = {"designer": True}
     session.update(overrides)
     return session
 

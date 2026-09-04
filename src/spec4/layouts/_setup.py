@@ -8,6 +8,89 @@ import dash_mantine_components as dmc
 from spec4 import providers, websearch
 from spec4.layouts._shared import _card, _error
 
+# Component ids for the two places the same fields are rendered: the setup
+# wizard (the default) and the per-agent gate (an override). Only one of the
+# two is ever on screen, so plain string ids are enough — the gate records
+# which agent it is for in the session draft, not in its ids.
+SETUP_IDS: dict[str, str] = {
+    "provider": "setup-provider",
+    "api_key": "setup-api-key",
+    "hint": "setup-api-key-hint",
+    "model": "setup-model",
+}
+GATE_IDS: dict[str, str] = {
+    "provider": "agent-llm-provider",
+    "api_key": "agent-llm-api-key",
+    "hint": "agent-llm-api-key-hint",
+    "model": "agent-llm-model",
+}
+
+
+def provider_key_hint(provider_label: str) -> Any:
+    """Credential-format guidance for the selected provider, or nothing.
+
+    Only Bedrock needs it: its single field encodes an API key or IAM
+    credentials *and* the region. Shared so the gate cannot drift into telling
+    a developer something different from the setup screen.
+    """
+    if providers.provider_key_for_label(provider_label or "") == "bedrock":
+        return dmc.Text(
+            "Bedrock API key: enter KEY:REGION (e.g. bdak_…:us-east-1). "
+            "IAM credentials: ACCESS_KEY_ID:SECRET_ACCESS_KEY:REGION[:SESSION_TOKEN]. "
+            "Leave blank to use ambient credentials "
+            "(env vars, ~/.aws/credentials, IAM role).",
+            size="xs",
+            c="dimmed",
+        )
+    return html.Div()
+
+
+def provider_key_fields(
+    ids: dict[str, str],
+    *,
+    provider_label: str,
+    api_key: str,
+    labels: list[str],
+) -> list[Any]:
+    """Provider select, credential field, and the hint slot the two feed.
+
+    The hint is a slot rather than rendered content because it updates as the
+    provider changes; each flow owns a small callback that fills it via
+    :func:`provider_key_hint`.
+    """
+    return [
+        dmc.Select(
+            id=ids["provider"],
+            label="Provider",
+            data=labels,
+            value=provider_label,
+            mb="md",
+        ),
+        dmc.PasswordInput(
+            id=ids["api_key"],
+            label="API Key",
+            value=api_key,
+            mb="xs",
+        ),
+        html.Div(
+            id=ids["hint"],
+            style={"marginBottom": "var(--mantine-spacing-md)"},
+        ),
+    ]
+
+
+def model_field(
+    ids: dict[str, str], *, available: list[str], value: str | None
+) -> Any:
+    """The model picker, populated from a successful model-list fetch."""
+    return dmc.Select(
+        id=ids["model"],
+        label="Model",
+        data=available,
+        value=value,
+        mb="md",
+    )
+
 
 def _setup_provider_layout(
     session: dict[str, Any],
@@ -23,9 +106,11 @@ def _setup_provider_layout(
     )
     return html.Div(
         [
-            dmc.Title("Connect to an LLM provider", order=3, mb="sm"),
+            dmc.Title("Connect to a default LLM provider", order=3, mb="sm"),
             dmc.Text(
                 "Spec4 works with a wide variety of LLM providers and models. "
+                "You can choose different providers and models for each agent, "
+                "but first we need a default. "
                 "Choose the one that works best for you.",
                 c="dimmed",
                 mb="sm",
@@ -37,26 +122,15 @@ def _setup_provider_layout(
                 mb="lg",
             ),
             _card(
-                dmc.Select(
-                    id="setup-provider",
-                    label="Provider",
-                    data=labels,
-                    value=default_label,
-                    mb="md",
-                ),
-                dmc.PasswordInput(
-                    id="setup-api-key",
-                    label="API Key",
-                    value=prefs.get("api_key") or "",
-                    mb="xs",
-                ),
-                html.Div(
-                    id="setup-api-key-hint",
-                    style={"marginBottom": "var(--mantine-spacing-md)"},
+                *provider_key_fields(
+                    SETUP_IDS,
+                    provider_label=default_label,
+                    api_key=prefs.get("api_key") or "",
+                    labels=labels,
                 ),
                 dmc.Checkbox(
                     id="setup-save-prefs",
-                    label="Remember provider and keys in this browser? (stored in localStorage only)",  # noqa: E501
+                    label="Remember provider and keys in this browser? One key per provider, stored in localStorage only.",  # noqa: E501
                     checked=bool(prefs.get("save_prefs")),
                     mb="md",
                 ),
@@ -100,9 +174,9 @@ def _setup_model_layout(
     provider_label = providers.PROVIDERS[session["provider"]]["label"]
     return html.Div(
         [
-            dmc.Title("Select a Model", order=3, mb="sm"),
+            dmc.Title("Select a Default Model", order=3, mb="sm"),
             dmc.Text(
-                "Now that you have a provider, please select one of the models that this provider provides. "  # noqa: E501
+                "Now that you have a default provider, please select one of the models that this provider provides. "  # noqa: E501
                 "Remember that different models have different capabilities and different costs.",  # noqa: E501
                 c="dimmed",
                 mb="lg",
@@ -121,13 +195,7 @@ def _setup_model_layout(
                 )
                 if session["provider"] == "gemini"
                 else html.Div(),
-                dmc.Select(
-                    id="setup-model",
-                    label="Model",
-                    data=available,
-                    value=default_model,
-                    mb="md",
-                ),
+                model_field(SETUP_IDS, available=available, value=default_model),
                 _error(setup_error) if setup_error else html.Div(),
                 dmc.Group(
                     [

@@ -912,12 +912,13 @@ def run(
     _wd = session.get("working_dir")
     target_version = session.get("phase_version")
     if target_version is None:
+        _brownfield = project_manager.session_is_brownfield(session)
         if _wd:
             target_version, _ = project_manager.resolve_phase_version(
-                _wd, bool(session.get("code_review"))
+                _wd, _brownfield
             )
         else:
-            target_version = 1 if session.get("code_review") else 0
+            target_version = 1 if _brownfield else 0
         session["phase_version"] = target_version
     is_greenfield = target_version == 0
 

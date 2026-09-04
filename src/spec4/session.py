@@ -4,7 +4,7 @@ import os
 from collections.abc import Generator
 from typing import Any
 
-from spec4 import llm, project_manager
+from spec4 import llm, llm_selection, project_manager
 from spec4.agents import brainstormer, code_scanner, deployer, phaser, stack_advisor
 from spec4.app_constants import (
     FF_PROMPT,
@@ -37,6 +37,36 @@ def _default_session() -> dict[str, Any]:
         "setup_error": None,
         "agent_select_error": None,
         "llm_config": None,
+        # Per-agent model overrides, keyed by the seven user-facing agent names
+        # only (app_constants.AGENT_KEYS). An agent with no entry runs on
+        # `llm_config` above, resolved fresh each turn by `llm_selection.resolve`,
+        # so it follows the default if the default later changes. Sub-agents
+        # never appear here: they inherit whatever their parent resolved.
+        "agent_llm": {},
+        # Agent -> True once the developer has answered "default or pick" for
+        # it. Separate from `agent_llm` because the two are cleared on
+        # different events: a new project re-asks while keeping the previous
+        # choice to offer back.
+        "agent_llm_asked": {},
+        # Connect failure text for the open per-agent gate. Transient like
+        # `setup_error` — never preserved, cleared when a gate opens.
+        "agent_llm_error": None,
+        # The override being assembled in an open gate: {"agent", "provider",
+        # "api_key", "available_models", "model"}. Singular because only one
+        # gate can be open at a time, which is also why the gate's components
+        # need no per-agent ids. Never committed — Continue turns it into an
+        # `agent_llm` entry and clears it — so a half-built draft can never be
+        # resolved into a call.
+        "agent_llm_draft": None,
+        # The Designer draw that failed, held across the page rebuild that
+        # opening the model picker causes. The wizard's own stores are
+        # memory-scoped and are re-created by that rebuild, so without this the
+        # error panel, the preference text and the screenshots are all gone by
+        # the time a model has been chosen. Consumed and cleared by
+        # `designer_layout`; transient like `agent_llm_error`, so it is not in
+        # `_PRESERVED_SETUP_KEYS` — it belongs to one draw, not to the
+        # connection.
+        "_designer_failed_draw": None,
         "messages": [],
         "active_agent": "brainstormer",
         "code_scanner_state": STATE_IN_PROGRESS,
@@ -108,6 +138,11 @@ _PRESERVED_SETUP_KEYS: tuple[str, ...] = (
     "model",
     "available_models",
     "llm_config",
+    # Per-agent overrides are connection config too: a developer who switches
+    # project keeps the models they chose. `agent_llm_asked` is deliberately
+    # absent, so the new project re-asks per agent — with the carried-forward
+    # override offered back as the primary answer.
+    "agent_llm",
     "search_provider",
     "search_api_key",
     # Pre-Exa sessions stored the search key here. Preserved so a session
@@ -327,9 +362,17 @@ _AGENT_STATUS_SEED: dict[str, str] = {
 def _get_agent_gen(
     user_input: str | None, session: dict[str, Any]
 ) -> Generator[str, None, None]:
-    """Return the generator for one agent turn without starting it."""
-    llm_config = session["llm_config"]
+    """Return the generator for one agent turn without starting it.
+
+    The single point where an agent's model is decided. ``llm_selection.resolve``
+    picks the agent's own override or the session default, and the result is
+    handed to ``run()`` — which threads it down to every sub-agent unchanged.
+    That is why a per-agent choice needs no sub-agent to know about it, and why
+    the Agentifier's Fast Forward sweeps can run N sub-agent calls back to back
+    without an interactive step landing inside one.
+    """
     active = session["active_agent"]
+    llm_config = llm_selection.resolve(session, active)
 
     # Seed the status line before the generator runs: every stream-starting
     # callback spreads this session into the store after calling here, so the
@@ -418,18 +461,22 @@ def _turn_was_fast_forward(session: dict[str, Any]) -> bool:
 
 def _summarize_turn_usage(
     agent: Any, records: list[dict[str, Any]]
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """Token readout for one finished turn, from its per-call usage records.
 
     ``{"agent", "input", "output", "calls", "missing"}`` for the chat row's
     token element: summed provider-reported input/output tokens over the
     turn's calls (a turn can make several — tool rounds, re-asks, sub-agents),
     ``calls`` counting every call and ``missing`` those that returned no
-    usage. None when the turn made no call, so nothing stale is shown. Pure
-    and JSON-serialisable for the session store.
+    usage. Pure and JSON-serialisable for the session store.
+
+    A turn with no records still returns a summary, with ``calls`` zero, rather
+    than None. Both clear the previous turn's numbers, but the zero summary
+    says so on screen instead of rendering nothing — and rendering nothing is
+    exactly what a broken capture path looks like, which is how a double-drain
+    regression once hid in plain sight. Absent ``_turn_usage`` (no turn has
+    finished yet) remains the only silent state.
     """
-    if not records:
-        return None
     summary: dict[str, Any] = {
         "agent": agent,
         "input": 0,
@@ -459,7 +506,7 @@ def _persist_artifacts(session: dict[str, Any]) -> None:
     # it to None (separate start-page flow), which re-resolves to max+1 here.
     if session.get("phase_version") is None:
         version, _ = project_manager.resolve_phase_version(
-            working_dir, bool(session.get("code_review"))
+            working_dir, project_manager.session_is_brownfield(session)
         )
         session["phase_version"] = version
     version = session["phase_version"]

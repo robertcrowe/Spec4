@@ -427,9 +427,9 @@ def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any,
     elif phase == "agent_select":
         content = _agent_select_layout(session)
     elif phase == "chat":
-        content = _chat_layout(session)
+        content = _chat_layout(session, prefs)
     elif phase == "designer":
-        content = designer_layout(session)
+        content = designer_layout(session, prefs)
     else:
         content = _landing_layout()
     return html.Div([content, _footer()]), (render_count or 0) + 1, new_session

@@ -167,11 +167,12 @@ class TestResolvePhaseVersion:
         if implemented:
             (vdir / "IMPLEMENTED").touch()
 
-    def test_no_dirs_no_code_review_is_greenfield_v0(self, tmp_path: Path) -> None:
+    def test_no_dirs_greenfield_is_v0(self, tmp_path: Path) -> None:
         assert project_manager.resolve_phase_version(tmp_path, False) == (0, True)
 
-    def test_no_dirs_with_code_review_is_brownfield_v1(self, tmp_path: Path) -> None:
-        # Imported existing codebase: no v0, brownfield starts at v1.
+    def test_no_dirs_brownfield_is_v1(self, tmp_path: Path) -> None:
+        # An imported existing codebase has no v0 of Spec4's making: v0 stands
+        # for the implementation that was already there, so Spec4 starts at v1.
         assert project_manager.resolve_phase_version(tmp_path, True) == (1, False)
 
     def test_unimplemented_v0_is_redefined(self, tmp_path: Path) -> None:
@@ -1183,3 +1184,78 @@ class TestPreambleTwoAltitudesAndSurfaces:
         text = self._preamble(self._phase())
         assert "introduced in this phase" in text
         assert "*Scope for this phase: API only*" in text
+
+
+class TestSessionIsBrownfield:
+    """Only the developer's answer decides brownfield — never on-disk artifacts.
+
+    Regression: `resolve_phase_version` used "a code review exists" as the
+    proxy, so running CodeScanner over a greenfield skeleton pushed the first
+    round into `v1`. Scanning a directory says nothing about whether the project
+    pre-existed Spec4, which is the very reason D-PM1 asks the question.
+    """
+
+    def test_existing_is_brownfield(self) -> None:
+        assert project_manager.session_is_brownfield({"project_mode": "existing"})
+
+    def test_new_is_greenfield(self) -> None:
+        assert not project_manager.session_is_brownfield({"project_mode": "new"})
+
+    def test_unanswered_is_greenfield(self) -> None:
+        assert not project_manager.session_is_brownfield({"project_mode": None})
+        assert not project_manager.session_is_brownfield({})
+        assert not project_manager.session_is_brownfield(None)
+
+    def test_a_code_review_does_not_make_it_brownfield(self) -> None:
+        session = {"project_mode": "new", "code_review": {"summary": "scanned"}}
+        assert not project_manager.session_is_brownfield(session)
+
+    def test_no_code_review_does_not_make_it_greenfield(self) -> None:
+        session = {"project_mode": "existing", "code_review": None}
+        assert project_manager.session_is_brownfield(session)
+
+
+class TestGreenfieldScanStaysAtV0:
+    """The reported bug, end to end through the persist funnel."""
+
+    def _scanned(self, tmp_path: Path, mode: str | None) -> dict[str, Any]:
+        from spec4.app_constants import STATE_REVIEW_COMPLETE
+        from spec4.session import _default_session, _persist_artifacts
+
+        session = {
+            **_default_session(),
+            "working_dir": str(tmp_path),
+            "active_agent": "code_scanner",
+            "project_mode": mode,
+            "code_scanner_state": STATE_REVIEW_COMPLETE,
+            "code_review": {"summary": "x"},
+        }
+        _persist_artifacts(session)
+        return session
+
+    def _version_dirs(self, tmp_path: Path) -> list[str]:
+        return sorted(
+            d.name
+            for d in (tmp_path / ".spec4").iterdir()
+            if d.is_dir() and d.name.startswith("v")
+        )
+
+    def test_greenfield_scan_writes_v0(self, tmp_path: Path) -> None:
+        session = self._scanned(tmp_path, "new")
+        assert session["phase_version"] == 0
+        assert self._version_dirs(tmp_path) == ["v0"]
+
+    def test_brownfield_scan_writes_v1(self, tmp_path: Path) -> None:
+        session = self._scanned(tmp_path, "existing")
+        assert session["phase_version"] == 1
+        assert self._version_dirs(tmp_path) == ["v1"]
+
+    def test_unanswered_scan_writes_v0(self, tmp_path: Path) -> None:
+        """An empty directory is never asked, and is greenfield by definition."""
+        session = self._scanned(tmp_path, None)
+        assert session["phase_version"] == 0
+        assert self._version_dirs(tmp_path) == ["v0"]
+
+    def test_the_code_review_lands_in_that_round(self, tmp_path: Path) -> None:
+        self._scanned(tmp_path, "new")
+        assert (tmp_path / ".spec4" / "v0" / "code_review.json").exists()

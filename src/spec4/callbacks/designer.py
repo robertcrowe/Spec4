@@ -10,7 +10,8 @@ from typing import Any
 
 from dash import ALL, Input, Output, State, callback, ctx, no_update
 
-from spec4 import llm, project_manager, websearch
+from spec4 import llm, llm_selection, project_manager, websearch
+from spec4.callbacks import _open_pick_fields
 from spec4.agents._manifest import (
     enrich_manifest,
     extract_manifest,
@@ -76,16 +77,30 @@ def _llm_params(
     str | None,
     dict[str, Any],
 ]:
-    """Extract LLM connection parameters from the main session dict."""
-    llm_config: dict[str, Any] = session.get("llm_config") or {}
+    """Extract LLM connection parameters from the main session dict.
+
+    Designer has no chat turn, so this is its equivalent of the resolution in
+    ``session._get_agent_gen``: the six generation callbacks all come through
+    here, and resolving once covers them all. The model is taken from the
+    resolved config rather than ``session["model"]`` — the latter names the
+    default, which is the wrong answer whenever Designer has an override.
+
+    Image support is likewise per-agent: a Designer pinned to a text-only model
+    must disable screenshot upload even though the default model is multimodal.
+    The store-wide flag is the fallback, and an unknown still means capable.
+    """
+    llm_config: dict[str, Any] = llm_selection.resolve(session, "designer") or {}
     api_base: str | None = llm_config.get("api_base")
     aws_kwargs = {k: v for k, v in llm_config.items() if k.startswith("aws_")}
+    support = llm_selection.capability(
+        session, "designer", "image_support", image_support
+    )
     return (
-        session.get("model") or "",
+        llm_config.get("model") or "",
         llm_config.get("api_key") or "",
         websearch.from_session(session),
         session.get("working_dir"),
-        bool(image_support) if image_support is not None else True,
+        bool(support) if support is not None else True,
         api_base,
         aws_kwargs,
     )
@@ -126,17 +141,25 @@ def _planning_ctx(
 
 
 def _extract_html(text: str) -> str | None:
-    """Extract an HTML document from model output, returning None if not found."""
-    match = re.search(
+    """Extract an HTML document from model output, returning None if not found.
+
+    The **last** complete document wins, not the first. Some models write a
+    draft, think better of it mid-response ("Wait — I need to redesign this")
+    and write a second one; taking the first would ship the draft the model
+    itself discarded. A model that emits one document is unaffected, and a
+    trailing fragment without a closing tag never matches, so a completed
+    earlier document still beats an abandoned later one.
+    """
+    matches = re.findall(
         r"(<!DOCTYPE html>.*?</html>|<html[\s>].*?</html>)",
         text,
         re.IGNORECASE | re.DOTALL,
     )
-    if match:
-        return match.group(1).strip()
-    code_match = re.search(r"```(?:html)?\s*(.*?)\s*```", text, re.DOTALL)
-    if code_match:
-        inner = code_match.group(1).strip()
+    if matches:
+        return matches[-1].strip()
+    code_matches = re.findall(r"```(?:html)?\s*(.*?)\s*```", text, re.DOTALL)
+    for inner in reversed(code_matches):
+        inner = inner.strip()
         if "<html" in inner.lower() or "<!doctype" in inner.lower():
             return inner
     return None
@@ -396,10 +419,22 @@ def _start_gen(
     Input("designer-session-store", "data"),
     Input("mock-stream-buffer", "data"),
     State("image-support-store", "data"),
+    State("session", "data"),
 )
-def render_designer_step(store: Any, buffer_data: Any, image_support: Any) -> Any:
+def render_designer_step(
+    store: Any, buffer_data: Any, image_support: Any, session: Any = None
+) -> Any:
     if not store:
         return no_update, no_update
+    # Screenshot upload is gated on image support, and that is a property of the
+    # model *Designer* runs on — not of the default. With a default that handles
+    # images and a Designer override that does not, the store-wide flag says yes
+    # and the wizard keeps offering an upload the model cannot use. The override
+    # is probed exactly like the default (`llm_selection.probe_capabilities`);
+    # this is the other half of that, reading the answer back.
+    image_support = llm_selection.capability(
+        session or {}, "designer", "image_support", image_support
+    )
     step: int = store.get("step", 2)
     # Buffer ticks arrive 4×/sec during generation. Replacing the whole step
     # subtree on each one forces dash-renderer to recompute its paths map while
@@ -426,7 +461,7 @@ def render_designer_step(store: Any, buffer_data: Any, image_support: Any) -> An
         support: bool | None = image_support
         content = _step4_content(store, support)
     elif step == 5:
-        content = _step5_content(buffer_data)
+        content = _step5_content(buffer_data, image_support)
     elif step == 6:
         content = _step6_content(store)
     elif step == 7:
@@ -461,6 +496,7 @@ def _skip_to_stack_advisor(session: Any) -> Any:
         "stack_advisor_messages": [],
         "messages": [],
         "_initial_turn_done": False,
+        "_designer_failed_draw": None,
     }, "/chat"
 
 
@@ -815,7 +851,12 @@ def on_mock_stream_poll(n: Any, store: Any) -> Any:
 
     tokens = len(accumulated)
     expected = buf_entry.get("expected_chars") or _DEFAULT_EXPECTED_CHARS
-    progress = min(100, tokens * 100 // expected)
+    # Capped at 99 while the stream is live: the estimate is made before a
+    # single character arrives, and a model that writes a draft and then a whole
+    # second document blows past it. A bar sitting at 100% while text is still
+    # arriving reads as a finished generation that failed to display — the one
+    # thing the developer must not be told wrongly. 100 means delivered.
+    progress = min(99, tokens * 100 // expected)
     return (
         {"tokens": tokens, "progress": progress, "error": None},
         no_update,
@@ -878,6 +919,7 @@ def on_designer_continue_stack(n: Any, session: Any) -> Any:
         "stack_advisor_messages": [],
         "messages": [],
         "_initial_turn_done": False,
+        "_designer_failed_draw": None,
     }, "/chat"
 
 
@@ -892,25 +934,49 @@ def on_designer_back(n: Any, session: Any) -> Any:
     """Return to the agents page, like the other agents' Back button."""
     if not n:
         return no_update, no_update
-    return {**(session or {}), "phase": "agent_select"}, "/agents"
+    return {
+        **(session or {}),
+        "phase": "agent_select",
+        "_designer_failed_draw": None,
+    }, "/agents"
 
 
 @callback(
     Output("designer-session-store", "data", allow_duplicate=True),
     Output("mock-stream-buffer", "data", allow_duplicate=True),
     Output("mock-stream-interval", "disabled", allow_duplicate=True),
+    Output("session", "data", allow_duplicate=True),
     Input("btn-designer-start-over", "n_clicks"),
     State("designer-session-store", "data"),
+    State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_start_over(n: Any, store: Any) -> Any:
+def on_designer_start_over(n: Any, store: Any, session: Any) -> Any:
+    """Discard the mock and start Designer again from its first question.
+
+    Which model to draw with *is* Designer's first question, so starting over
+    re-asks it — landing on the wizard intro with the previous choice silently
+    still in force is not starting over. The override itself is kept, so the
+    gate offers it back as "Keep …" alongside the default rather than making
+    the developer re-enter a key (see the gate's carried-forward shape).
+
+    Writing `session` re-renders the page and so re-creates the wizard's
+    stores. That is safe precisely here: the generation is already stopped and
+    its buffer dropped just above, so there is nothing in flight to orphan.
+    """
     if not n:
-        return no_update, no_update, no_update
+        return no_update, no_update, no_update, no_update
     gen_id: str | None = (store or {}).get("_gen_id")
     if gen_id:
         entry = _MOCK_BUFFERS.pop(gen_id, None)
         if entry:
             entry["stop"].set()
+    session = session or {}
+    asked = {
+        agent: answered
+        for agent, answered in (session.get("agent_llm_asked") or {}).items()
+        if agent != "designer"
+    }
     return (
         {
             **_default_designer_session(step=2),
@@ -918,6 +984,12 @@ def on_designer_start_over(n: Any, store: Any) -> Any:
         },
         {"text": "", "tokens": 0, "progress": 0, "error": None},
         True,
+        {
+            **session,
+            "agent_llm_asked": asked,
+            "agent_llm_draft": None,
+            "_designer_failed_draw": None,
+        },
     )
 
 
@@ -1115,18 +1187,52 @@ def on_designer_revise_stale(
 
 
 @callback(
-    Output("designer-session-store", "data", allow_duplicate=True),
-    Output("mock-stream-buffer", "data", allow_duplicate=True),
-    Output("mock-stream-interval", "disabled", allow_duplicate=True),
-    Input("btn-designer-retry", "n_clicks"),
+    Output("session", "data", allow_duplicate=True),
+    Input("btn-designer-retry-model", "n_clicks"),
     State("designer-session-store", "data"),
+    State("mock-stream-buffer", "data"),
     State("session", "data"),
-    State("image-support-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> Any:
+def on_designer_retry_model(
+    n: Any, store: Any, buffer_data: Any, session: Any
+) -> Any:
+    """Open the model picker from a failed draw, keeping the draw recoverable.
+
+    Opening the picker writes `session`, which rebuilds the page and re-creates
+    the wizard's memory stores; a failed draw has saved nothing to disk, so
+    without a snapshot the developer would come back to the wizard intro with
+    their preference text and screenshots gone. Everything `on_designer_retry`
+    needs to reproduce the draw goes into `_designer_failed_draw`, and
+    `designer_layout` rebuilds the error panel from it.
+
+    Like the chat button, this only opens the fields — Retry still runs the draw.
+    """
     if not n or not store:
-        return no_update, no_update, no_update
+        return no_update
+    session = session or {}
+    error = (buffer_data or {}).get("error")
+    if not error:
+        return no_update
+    snapshot = {
+        "error": error,
+        "preference_text": store.get("preference_text", ""),
+        "screenshots": store.get("screenshots", []),
+        "_capture_mode": bool(store.get("_capture_mode")),
+        "_has_existing_html": bool(store.get("_has_existing_html")),
+    }
+    return {
+        **_open_pick_fields(session, retry=True),
+        "_designer_failed_draw": snapshot,
+    }
+
+
+def _rerun_failed_draw(store: Any, session: Any, image_support: Any) -> Any:
+    """Reproduce the draw that failed. Returns the three store outputs plus session.
+
+    Shared by the Retry button and by the auto-retry that fires once a different
+    model has been chosen, so the two cannot reproduce the draw differently.
+    """
     sess = session or {}
     model, api_key, search_cfg, wd, support, api_base, aws_kw = _llm_params(
         sess, image_support
@@ -1158,4 +1264,64 @@ def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> A
         extra_kwargs=aws_kw or None,
         session=sess,
     )
-    return new_store, buf, disabled
+    # The snapshot existed only to carry this draw across the model picker's
+    # page rebuild. Drawing spends it; left behind, a later render would
+    # resurrect an error the developer has already acted on — and would re-arm
+    # the auto-retry interval, drawing again on every visit.
+    cleared = (
+        {**sess, "_designer_failed_draw": None}
+        if sess.get("_designer_failed_draw")
+        else no_update
+    )
+    return new_store, buf, disabled, cleared
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-stream-buffer", "data", allow_duplicate=True),
+    Output("mock-stream-interval", "disabled", allow_duplicate=True),
+    Output("session", "data", allow_duplicate=True),
+    Input("btn-designer-retry", "n_clicks"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    State("image-support-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> Any:
+    """Re-run the failed draw on the model it already has."""
+    if not n or not store:
+        return no_update, no_update, no_update, no_update
+    return _rerun_failed_draw(store, session, image_support)
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-stream-buffer", "data", allow_duplicate=True),
+    Output("mock-stream-interval", "disabled", allow_duplicate=True),
+    Output("session", "data", allow_duplicate=True),
+    Input("designer-autoretry-interval", "n_intervals"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    State("image-support-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_auto_retry(
+    n: Any, store: Any, session: Any, image_support: Any
+) -> Any:
+    """Draw again as soon as a different model has been chosen.
+
+    Choosing a model from a failed draw *is* the decision to re-run it, so no
+    second click is asked for. It cannot happen in `on_gate_continue` the way
+    the chat retry does: Designer's gate replaces its wizard, so the stores this
+    writes to are not mounted while the picker is open. `designer_layout` arms a
+    one-shot interval on the restored wizard instead — the same pattern the chat
+    page uses to fire an agent's opening turn.
+    """
+    if not n or not store:
+        return no_update, no_update, no_update, no_update
+    # `or {}` not a default: the key exists and holds None on a clean session,
+    # so a default would never be reached.
+    failed = (session or {}).get("_designer_failed_draw") or {}
+    if not failed.get("auto_retry"):
+        return no_update, no_update, no_update, no_update
+    return _rerun_failed_draw(store, session, image_support)

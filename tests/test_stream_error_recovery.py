@@ -77,6 +77,12 @@ def _session(**overrides: Any) -> dict[str, Any]:
     s["active_agent"] = "code_scanner"
     s["llm_config"] = {"model": "claude-opus-5", "api_key": "sk-test"}
     s.update(overrides)
+    # A turn only starts once the per-agent model gate has been answered.
+    # Applied after the overrides so it follows whichever agent is active.
+    s["agent_llm_asked"] = {
+        **(s.get("agent_llm_asked") or {}),
+        s["active_agent"]: True,
+    }
     return s
 
 
@@ -484,3 +490,173 @@ class TestCallbackWiring:
             "the Try Again button must be wired; an unwired id renders as a "
             "dead control, which is the failure mode this work removes"
         )
+
+
+class TestRetryWithADifferentModel:
+    """The second door out of a failed turn.
+
+    Try Again re-runs the same step on the same model — right for an overload,
+    useless for an unreachable provider or a rejected key. This button opens the
+    per-agent model picker instead; the retry itself stays a separate click, so
+    an expensive step is never re-spent by merely choosing a model.
+    """
+
+    def _failed(self, **overrides: Any) -> dict[str, Any]:
+        """A failed Phaser turn with the user message still above it.
+
+        `_failed_session` pins its own transcript; this one needs the preceding
+        user message so the retry has something to re-send.
+        """
+        return _session(
+            active_agent="phaser",
+            _stream_error=True,
+            _initial_turn_done=True,
+            messages=[
+                {"role": "user", "content": "plan it"},
+                {"role": "assistant", "content": "**Error:** unreachable"},
+            ],
+            **overrides,
+        )
+
+    def test_the_panel_offers_both_doors(self) -> None:
+        rendered = _ids(_retry_panel(self._failed()))
+        assert "btn-chat-retry" in rendered
+        assert "btn-chat-retry-model" in rendered
+
+    def test_neither_button_appears_mid_stream(self) -> None:
+        assert _retry_panel(self._failed(_stream_id="live")) is None
+
+    def test_the_copy_no_longer_promises_a_retry_will_work(self) -> None:
+        """A developer facing an unreachable provider must not be told twice
+        that the failure is "usually temporary"."""
+        rendered = str(_retry_panel(self._failed()))
+        assert "fail the same way every time" in rendered
+
+    def test_clicking_opens_the_picker_for_the_active_agent(self) -> None:
+        from spec4.callbacks import on_chat_retry_model
+
+        updated = on_chat_retry_model(1, self._failed())
+        assert updated["agent_llm_draft"]["agent"] == "phaser"
+
+    def test_clicking_writes_no_override_yet(self) -> None:
+        """Opening the picker must not commit anything on its own."""
+        from spec4.callbacks import on_chat_retry_model
+
+        assert on_chat_retry_model(1, self._failed())["agent_llm"] == {}
+
+    def test_refused_while_a_stream_is_in_flight(self) -> None:
+        from spec4.callbacks import on_chat_retry_model
+
+        assert on_chat_retry_model(1, self._failed(_stream_id="live")) is no_update
+
+    def test_noop_without_click(self) -> None:
+        from spec4.callbacks import on_chat_retry_model
+
+        assert on_chat_retry_model(None, self._failed()) is no_update
+
+    def _choose(
+        self, session: dict[str, Any], *, tool_support: bool | None = True
+    ) -> tuple[dict[str, Any], Any]:
+        """Walk a retry-originated picker to Continue."""
+        from spec4 import providers
+        from spec4.callbacks import (
+            on_chat_retry_model,
+            on_gate_connect,
+            on_gate_continue,
+        )
+
+        opened = on_chat_retry_model(1, session)
+        with patch.object(providers, "list_models", return_value=(["gpt-5"], "")):
+            opened, _ = on_gate_connect(1, "OpenAI", "sk-new", opened, {})
+        with patch(
+            "spec4.llm_selection.probe_image_support", return_value=True
+        ), patch(
+            "spec4.llm_selection.probe_tool_support", return_value=tool_support
+        ), patch(
+            "spec4.callbacks._get_agent_gen", return_value=iter(["x"])
+        ) as gen, patch(
+            "spec4.callbacks.streaming.start", return_value="sid"
+        ):
+            answered, poll = on_gate_continue(1, "gpt-5", opened)
+        return {"session": answered, "poll": poll, "gen": gen}, answered
+
+    def test_choosing_a_model_re_runs_the_step_at_once(self) -> None:
+        """The contract that replaced the two-step flow.
+
+        This assertion is the inverse of the one it grew out of: choosing a
+        model used to *leave the panel standing* for a second click, and now
+        closes it and starts the turn.
+        """
+        result, answered = self._choose(self._failed())
+        assert answered["_stream_id"] == "sid"
+        assert result["poll"] == -1
+        assert answered["_stream_error"] is None
+        assert _retry_panel(answered) is None
+
+    def test_the_re_run_re_sends_the_original_message(self) -> None:
+        result, _ = self._choose(self._failed())
+        assert result["gen"].call_args[0][0] == "plan it"
+
+    def test_the_re_run_uses_the_newly_chosen_model(self) -> None:
+        from spec4 import llm_selection
+
+        result, _ = self._choose(self._failed())
+        used = llm_selection.resolve(result["gen"].call_args[0][1], "phaser")
+        assert used["model"] == "gpt-5"
+
+    def test_the_failed_bubble_is_replaced(self) -> None:
+        _, answered = self._choose(self._failed())
+        assert answered["messages"][-1] == {"role": "assistant", "content": ""}
+        assert answered["messages"][0]["content"] == "plan it"
+
+    def test_a_tool_less_model_is_refused_and_nothing_runs(self) -> None:
+        """The one place a probe blocks — the call would be spent unasked."""
+        _, answered = self._choose(self._failed(), tool_support=False)
+        assert answered["agent_llm"] == {}
+        assert answered["agent_llm_draft"]["retry"] is True
+        assert answered.get("_stream_id") is None
+        assert "no tool support" in answered["agent_llm_error"]
+        assert "Try Again" in answered["agent_llm_error"]
+
+    def test_an_unknown_tool_probe_does_not_refuse(self) -> None:
+        """`None` is unknown, not a negative — the standing rule."""
+        _, answered = self._choose(self._failed(), tool_support=None)
+        assert answered["agent_llm"]["phaser"]["model"] == "gpt-5"
+        assert answered["_stream_id"] == "sid"
+
+    def test_a_pick_from_the_chip_neither_refuses_nor_runs(self) -> None:
+        """Only a retry-originated picker auto-runs or blocks."""
+        from spec4 import providers
+        from spec4.callbacks import on_gate_chip, on_gate_connect, on_gate_continue
+
+        opened = on_gate_chip(1, self._failed())
+        with patch.object(providers, "list_models", return_value=(["gpt-5"], "")):
+            opened, _ = on_gate_connect(1, "OpenAI", "sk-new", opened, {})
+        with patch(
+            "spec4.llm_selection.probe_image_support", return_value=True
+        ), patch("spec4.llm_selection.probe_tool_support", return_value=False):
+            answered, poll = on_gate_continue(1, "gpt-5", opened)
+        assert answered["agent_llm"]["phaser"]["model"] == "gpt-5"
+        assert answered.get("_stream_id") is None
+        assert poll is no_update
+        assert _retry_panel(answered) is not None
+
+    def test_the_retry_then_runs_on_the_new_model(self) -> None:
+        from spec4 import llm_selection
+        from spec4.callbacks import on_chat_retry
+
+        session = self._failed(
+            agent_llm={
+                "phaser": {
+                    "provider": "openai",
+                    "model": "gpt-5",
+                    "llm_config": {"model": "gpt-5", "api_key": "sk-new"},
+                }
+            }
+        )
+        with patch(
+            "spec4.callbacks._get_agent_gen", return_value=iter(["x"])
+        ) as gen, patch("spec4.callbacks.streaming.start", return_value="sid"):
+            on_chat_retry(1, session)
+        assert gen.call_args[0][0] == "plan it"
+        assert llm_selection.resolve(gen.call_args[0][1], "phaser")["model"] == "gpt-5"

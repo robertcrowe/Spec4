@@ -818,7 +818,7 @@ def run(
             # Revision round: deterministically fold this round's delta into the
             # accumulating revision_history. Code owns the version integers.
             version = project_manager.resolve_phase_version(
-                working_dir, bool(session.get("code_review"))
+                working_dir, project_manager.session_is_brownfield(session)
             )[0]
             based_on = project_manager.latest_implemented_version(working_dir)
             vision = _apply_revision_history(

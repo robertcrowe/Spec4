@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from spec4.app_constants import PROJECT_MODE_EXISTING
+
 from spec4 import __version__
 from spec4.app_constants import PROJECT_MODES
 from spec4.design_manifest import (
@@ -341,8 +343,24 @@ def active_version(
     return latest_phase_version(working_dir) or 0
 
 
+def session_is_brownfield(session: dict[str, Any] | None) -> bool:
+    """Whether this round modifies a codebase that already existed (D-PM1).
+
+    The developer's own answer, from the session, is the only thing that
+    establishes this. It is deliberately *not* inferred from a code review on
+    disk: running CodeScanner over a greenfield skeleton is a normal thing to
+    do and says nothing about whether the project pre-existed Spec4 — the same
+    reasoning ``needs_project_mode`` sets out. Treating a scan as proof of
+    brownfield is what used to push a greenfield project's first round into
+    ``v1``.
+
+    Unanswered (an empty directory never asks) reads as greenfield.
+    """
+    return bool(session) and session.get("project_mode") == PROJECT_MODE_EXISTING
+
+
 def resolve_phase_version(
-    working_dir: str | Path, has_code_review: bool
+    working_dir: str | Path, is_brownfield: bool
 ) -> tuple[int, bool]:
     """Resolve the active version for the current flow.
 
@@ -352,15 +370,18 @@ def resolve_phase_version(
     flow start (the first agent that persists an artifact) and pinned in the
     session; every artifact for the round is then written under that version.
 
-    - No version dirs: ``v0`` greenfield with no code review; ``v1`` brownfield
-      when an existing codebase has been scanned (the no-v0 case).
+    - No version dirs: ``v0`` greenfield; ``v1`` brownfield, where ``v0`` stands
+      for the implementation that existed before Spec4 saw the project, so the
+      first round Spec4 defines is the one after it. ``is_brownfield`` is the
+      developer's answer (:func:`session_is_brownfield`), never a guess from
+      what happens to be on disk.
     - Highest version dir lacks ``IMPLEMENTED``: the in-progress round — target
       it (it is being defined/overwritten). ``is_greenfield`` iff it is ``v0``.
     - Highest version dir is implemented: a new brownfield round — ``max + 1``.
     """
     dirs = _phase_version_dirs(working_dir)
     if not dirs:
-        return (1, False) if has_code_review else (0, True)
+        return (1, False) if is_brownfield else (0, True)
     highest = max(dirs)
     if (dirs[highest] / "IMPLEMENTED").exists():
         return highest + 1, False

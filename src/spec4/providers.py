@@ -188,8 +188,17 @@ def _fetch_models(provider_key: str, api_key: str) -> list[str]:
         ]
 
     if provider_key == "openrouter":
-        # The model list is public; the bearer token is sent when present so
-        # any account-scoped visibility still applies.
+        # The model list is public — it returns the full catalogue for a bogus
+        # bearer just as happily as for a real one. Every other provider's list
+        # call doubles as the credential check that gates the setup and
+        # per-agent flows, so on its own this one would let a wrong key through
+        # to the first real call, which fails as a bare 401 minutes later. Verify
+        # the key against an endpoint that actually requires it first.
+        if api_key:
+            _json_get(
+                "https://openrouter.ai/api/v1/key",
+                {"Authorization": f"Bearer {api_key}"},
+            )
         data = _json_get(
             "https://openrouter.ai/api/v1/models",
             {"Authorization": f"Bearer {api_key}"} if api_key else {},

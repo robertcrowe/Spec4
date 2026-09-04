@@ -98,6 +98,9 @@ class TestOnFastForward:
             "active_agent": "stack_advisor",
             "llm_config": {"model": "gpt-4o", "api_key": "sk-test"},
             "messages": [{"role": "assistant", "content": "Topic 1?"}],
+            # FF is a turn like any other: it only runs once the model gate for
+            # this agent has been answered.
+            "agent_llm_asked": {"stack_advisor": True},
             **extra,
         }
 

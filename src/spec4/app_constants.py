@@ -77,3 +77,20 @@ FF_PROMPT = (
     "set of recommendations, which I will review and potentially modify as a "
     "whole before finalizing."
 )
+
+
+# The seven user-facing agents, in pipeline order. This is the authority for
+# anything keyed by agent — the per-agent model overrides in `llm_selection`,
+# and the rows on /agents. It lives here rather than in `layouts` because
+# `session` and `llm_selection` need it and `layouts` imports `session`;
+# `_AGENT_ROWS` carries the display data for the same keys and is checked
+# against this tuple by the suite.
+AGENT_KEYS: tuple[str, ...] = (
+    "code_scanner",
+    "brainstormer",
+    "agentifier",
+    "designer",
+    "stack_advisor",
+    "phaser",
+    "deployer",
+)

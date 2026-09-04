@@ -1064,3 +1064,36 @@ class TestUnparseableCatalog:
         assert llm.call_count == 1, "a prose reply must not trigger a re-ask"
         assert "What tier" in output
         assert session.get("ai_catalog") is None
+
+
+class TestSeedMessageBrownfieldMode:
+    """The orchestrator's opening note follows the developer's answer.
+
+    Same regression as Scout's: `session.get("code_review") is not None` made
+    the orchestrator open a greenfield conversation with "This is a BROWNFIELD
+    project" and ask whether the developer was extending existing AI features.
+    """
+
+    def _seed(self, session: dict[str, Any]) -> str:
+        from spec4.agentifier.agentifier import _build_seed_message
+        from spec4 import project_manager
+
+        return _build_seed_message(
+            [],
+            [],
+            brownfield=project_manager.session_is_brownfield(session),
+        )
+
+    def test_greenfield_with_a_scan_says_nothing_about_brownfield(self) -> None:
+        seed = self._seed(
+            {"project_mode": "new", "code_review": {"summary": "scanned skeleton"}}
+        )
+        assert "BROWNFIELD" not in seed
+
+    def test_existing_project_is_announced_as_brownfield(self) -> None:
+        seed = self._seed({"project_mode": "existing", "code_review": {"summary": "x"}})
+        assert "BROWNFIELD" in seed
+
+    def test_brownfield_needs_no_scan_to_be_announced(self) -> None:
+        seed = self._seed({"project_mode": "existing", "code_review": None})
+        assert "BROWNFIELD" in seed

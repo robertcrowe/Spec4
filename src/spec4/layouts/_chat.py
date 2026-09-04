@@ -15,6 +15,7 @@ from spec4.app_constants import (
     STATE_VISION_COMPLETE,
 )
 from spec4.agentifier.panel_closure import close_selection, pool_from_dicts
+from spec4.layouts import _llm_gate
 from spec4.layouts._shared import _render_message
 from spec4.session import _validate_agent_preconditions
 
@@ -151,7 +152,14 @@ def _token_count_text(session: dict[str, Any]) -> str:
     return f"Chars received: {_streamed_token_count(session)}"
 
 
+# Two distinct silences, told apart on screen. "no token count" means calls
+# were made and the provider reported nothing for them; "no calls recorded"
+# means the turn ended without a single captured call — either a genuinely
+# call-free turn or a break in the capture path. Neither renders as blank
+# space: a missing element is indistinguishable from a bug, which is how a
+# double-drain of the usage sink once hid in plain sight.
 _NO_TOKEN_COUNT = "no token count"
+_NO_CALLS_RECORDED = "no calls recorded"
 
 
 def _turn_token_text(session: dict[str, Any]) -> str:
@@ -162,9 +170,9 @@ def _turn_token_text(session: dict[str, Any]) -> str:
     the stream has completed and only for the agent that ran it; while a
     turn streams there is nothing to show, because usage arrives with the
     end of each call and nothing here is estimated from characters. A turn
-    whose calls all came back without usage shows a marker instead of a zero.
-    A turn where only some calls reported usage shows the counted part,
-    flagged as partial.
+    whose calls all came back without usage shows a marker instead of a zero,
+    and so does a turn that recorded no calls at all. A turn where only some
+    calls reported usage shows the counted part, flagged as partial.
     """
     if session.get("_stream_id"):
         return ""
@@ -174,11 +182,11 @@ def _turn_token_text(session: dict[str, Any]) -> str:
     calls = int(usage.get("calls") or 0)
     missing = int(usage.get("missing") or 0)
     if calls == 0:
-        return ""
+        return _NO_CALLS_RECORDED
     if missing >= calls:
         return _NO_TOKEN_COUNT
     text = (
-        f"{int(usage.get('input') or 0):,} in / "
+        f"Tokens: {int(usage.get('input') or 0):,} in / "
         f"{int(usage.get('output') or 0):,} out"
     )
     return f"{text} (partial)" if missing else text
@@ -473,18 +481,34 @@ def _retry_panel(session: dict[str, Any]) -> Any | None:
     return dmc.Alert(
         [
             dmc.Text(
-                "That request didn't complete. Provider errors like "
-                "overload or rate limits are usually temporary — retrying "
-                "runs the same step again. Nothing already saved is lost.",
+                "That request didn't complete. Nothing already saved is lost. "
+                "An overload or rate limit is usually temporary, so running "
+                "the same step again often works — but a provider that is "
+                "unreachable, a key that was rejected, or a model that cannot "
+                "do this step will fail the same way every time. For those, "
+                "choose a different provider or model and the step re-runs "
+                "on it straight away.",
                 size="sm",
                 mb="sm",
             ),
-            dmc.Button(
-                "↺ Try Again",
-                id="btn-chat-retry",
-                variant="outline",
-                color="orange",
-                size="sm",
+            dmc.Group(
+                [
+                    dmc.Button(
+                        "↺ Try Again",
+                        id="btn-chat-retry",
+                        variant="outline",
+                        color="orange",
+                        size="sm",
+                    ),
+                    dmc.Button(
+                        "↺ Try a different provider/model",
+                        id="btn-chat-retry-model",
+                        variant="outline",
+                        color="orange",
+                        size="sm",
+                    ),
+                ],
+                gap="sm",
             ),
         ],
         title="The last step failed",
@@ -587,11 +611,31 @@ def _breadth_panel(session: dict[str, Any]) -> Any | None:
     )
 
 
-def _chat_layout(session: dict[str, Any]) -> html.Div:
+def _chat_layout(
+    session: dict[str, Any], prefs: dict[str, Any] | None = None
+) -> html.Div:
     messages = session.get("messages", [])
-    needs_init = not messages and not session.get("_initial_turn_done")
+    active = session.get("active_agent", "brainstormer")
+    # The model gate stands between entering an agent and its opening turn. The
+    # interval below stays mounted while it is open — `on_init_turn` takes it as
+    # an Input, so the component has to exist — but disabled, so the turn cannot
+    # start until the choice is made.
+    gate_open = _llm_gate.is_open(session, active)
+    needs_init = (
+        not messages and not session.get("_initial_turn_done") and not gate_open
+    )
     breadth_panel = _breadth_panel(session)
     retry_panel = _retry_panel(session)
+    # Mid-agent, the chip re-opens the same card. `agent_llm_draft` marks it
+    # open; a resting chip renders nothing extra.
+    chip_open = bool(
+        not gate_open and (session.get("agent_llm_draft") or {}).get("agent") == active
+    )
+    gate = (
+        _llm_gate.gate_card(session, prefs, active)
+        if gate_open or chip_open
+        else None
+    )
 
     return html.Div(
         [
@@ -611,6 +655,7 @@ def _chat_layout(session: dict[str, Any]) -> html.Div:
             dcc.Download(id="dl-deployment"),
             dcc.Download(id="dl-features"),
             _agent_status_bar(session),
+            *([gate] if gate is not None else []),
             html.Div(
                 html.Div(
                     [_render_message(m) for m in messages]
@@ -673,22 +718,48 @@ def _chat_layout(session: dict[str, Any]) -> html.Div:
                     "width": "100%",
                 },
             ),
-            # One-line status under the input: what the pipeline is doing right
-            # now, published by agents via session["_stream_status"] and
-            # cleared when the stream finalises. Always mounted with a reserved
+            # The footer row under the composer. The model chip is the standing
+            # answer to "what is this agent running on" and the only way to
+            # change it without re-entering the agent, so it sits where the
+            # developer is actually typing rather than up in the action row.
+            # To its right, the one-line status says what that model is doing
+            # right now, published by agents via session["_stream_status"] and
+            # cleared when the stream finalises. The status keeps its reserved
             # line of height so the input row doesn't shift when the first
             # message lands mid-turn; each new message replaces the previous.
-            dmc.Text(
-                session.get("_stream_status") or "",
-                id="chat-status-line",
-                c="dimmed",
-                size="xs",
-                mt="4px",
+            # The chip is suppressed while the gate is open, where the card is
+            # already asking the question.
+            html.Div(
+                [
+                    *(
+                        []
+                        if gate_open
+                        else [_llm_gate.model_chip(session, active)]
+                    ),
+                    dmc.Text(
+                        session.get("_stream_status") or "",
+                        id="chat-status-line",
+                        c="dimmed",
+                        size="xs",
+                        style={
+                            # Takes the rest of the row so a long status still
+                            # ellipsises instead of pushing the chip; minWidth
+                            # is what lets a flex child shrink below its
+                            # content width at all.
+                            "flex": "1",
+                            "minWidth": "0",
+                            "minHeight": "1.4em",
+                            "whiteSpace": "nowrap",
+                            "overflow": "hidden",
+                            "textOverflow": "ellipsis",
+                        },
+                    ),
+                ],
                 style={
-                    "minHeight": "1.4em",
-                    "whiteSpace": "nowrap",
-                    "overflow": "hidden",
-                    "textOverflow": "ellipsis",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "gap": "var(--mantine-spacing-sm)",
+                    "marginTop": "4px",
                 },
             ),
         ]

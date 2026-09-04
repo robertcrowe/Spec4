@@ -291,6 +291,15 @@ class ScoutInput:
     vision: dict[str, Any]
     llm_config: dict[str, Any]
     code_review: dict[str, Any] | None = field(default=None)
+    # Whether this round modifies a codebase that already existed — the
+    # developer's own answer (project_manager.session_is_brownfield), passed in
+    # explicitly. Deliberately NOT derived from ``code_review``: running
+    # CodeScanner over a greenfield skeleton is normal and produces a review
+    # that says nothing about whether the project pre-existed Spec4. Deriving it
+    # made Scout hunt for "existing workflows to replace" in a project that had
+    # none. The review still travels alongside as context, because a scan of a
+    # skeleton is useful either way.
+    brownfield: bool = field(default=False)
     # Revision mode: this round extends an already-implemented version. Carries
     # this round's vision delta (added/modified/removed feature names + goal) and
     # the AI features already built, so Scout scopes to the changed surface and
@@ -413,7 +422,7 @@ class ScoutAgent:
     async def run(self, input: ScoutInput) -> ScoutOutput:  # noqa: A002
         validate_dataclass_input(input, ScoutInput)
 
-        brownfield = input.code_review is not None
+        brownfield = input.brownfield
         revision = input.revision
         system_prompt = _build_scout_system_prompt(
             brownfield, revision is not None

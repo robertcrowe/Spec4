@@ -216,6 +216,9 @@ def start(gen: Generator[str, None, None], session: dict[str, Any]) -> str:
         "done": False,
         "session": session,
         "error": False,
+        # One-shot latch for the finalisation behind the done branch — see
+        # claim_finalise() below.
+        "finalised": False,
     }
     with _lock:
         # Evict finished streams here rather than in the poll's done branch.
@@ -268,6 +271,32 @@ def start(gen: Generator[str, None, None], session: dict[str, Any]) -> str:
 
     threading.Thread(target=_run, daemon=True).start()
     return stream_id
+
+
+def claim_finalise(stream_id: str) -> bool:
+    """Claim the once-per-turn finalisation of a finished stream.
+
+    True for the first caller, False for every one after it.
+
+    The poll's done branch is deliberately re-entrant: entries are evicted at
+    the next start() rather than popped, so two polls racing into it both read
+    the same session and return the same terminal store. That is safe only for
+    work that is idempotent, and the persist funnel is not — it drains the
+    process-global usage sink. A second run finds the sink empty, records no
+    tokens for the turn, and wipes the readout the first run just computed.
+    Everything else behind the branch (the artifact writes) is merely repeated
+    for nothing.
+
+    So the side effects are claimed once here, while the store each poll
+    returns stays byte-identical — which is what made the re-entrancy safe in
+    the first place.
+    """
+    with _lock:
+        entry = _STREAMS.get(stream_id)
+        if entry is None or entry.get("finalised"):
+            return False
+        entry["finalised"] = True
+        return True
 
 
 def get(stream_id: str) -> dict[str, Any] | None:

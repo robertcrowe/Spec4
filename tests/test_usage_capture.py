@@ -20,6 +20,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -30,6 +31,7 @@ import pytest
 from spec4 import llm, project_manager, usage_report
 from spec4.agents.designer import generate_mock_streaming
 from spec4.app_constants import FF_PROMPT, STATE_VISION_COMPLETE
+from spec4.layouts._chat import _turn_token_text
 from spec4.session import _default_session, _persist_artifacts
 
 _CFG = {"model": "gpt-4o-mini", "api_key": "sk-test"}
@@ -975,9 +977,17 @@ class TestTurnTokenReadout:
             "calls": 2,
             "missing": 0,
         }
-        # A turn that made no call clears it rather than leaving the old one.
+        # A turn that made no call clears the previous numbers, and says so
+        # rather than rendering nothing — a blank row reads as a broken counter.
         _persist_artifacts(session)
-        assert session["_turn_usage"] is None
+        assert session["_turn_usage"] == {
+            "agent": "brainstormer",
+            "input": 0,
+            "output": 0,
+            "calls": 0,
+            "missing": 0,
+        }
+        assert _turn_token_text(session) == "no calls recorded"
 
     def test_persist_counts_missing_usage(self, tmp_path: Path) -> None:
         from spec4.session import _summarize_turn_usage
@@ -1016,7 +1026,9 @@ class TestTurnTokenReadout:
 
         base = {**_default_session(), "active_agent": "phaser"}
         usage = _USAGE_PHASER
-        assert _turn_token_text({**base, "_turn_usage": usage}) == "4,180 in / 312 out"
+        assert _turn_token_text({**base, "_turn_usage": usage}) == (
+            "Tokens: 4,180 in / 312 out"
+        )
         # Nothing while the stream is live — never estimated from characters.
         assert _turn_token_text({**base, "_turn_usage": usage, "_stream_id": "x"}) == ""
         # Nothing before any turn has finished.
@@ -1031,7 +1043,7 @@ class TestTurnTokenReadout:
         # Some calls missing: the counted part, flagged.
         assert _turn_token_text(
             {**base, "_turn_usage": {**usage, "calls": 2, "missing": 1}}
-        ) == "4,180 in / 312 out (partial)"
+        ) == "Tokens: 4,180 in / 312 out (partial)"
 
     def test_row_places_readout_right_after_the_counter_once_done(self) -> None:
         session = {
@@ -1045,7 +1057,7 @@ class TestTurnTokenReadout:
         ids, texts = _row_ids_and_texts(session)
         assert ids.index("chat-turn-tokens") == ids.index("chat-token-count") + 1
         assert texts["chat-token-count"] == "Chars received: 8291"
-        assert texts["chat-turn-tokens"] == "4,180 in / 312 out"
+        assert texts["chat-turn-tokens"] == "Tokens: 4,180 in / 312 out"
 
     def test_row_has_no_readout_while_streaming(self) -> None:
         session = {
@@ -1071,3 +1083,190 @@ class TestTurnTokenReadout:
         }
         ids, texts = _row_ids_and_texts(session)
         assert texts["chat-turn-tokens"] == "no token count"
+
+
+class TestFinalisationRunsOnce:
+    """A second poll into the done branch must not wipe the turn's readout.
+
+    The done branch is re-entrant by design — entries are evicted at the next
+    ``start()`` rather than popped, so racing polls both reach it and were
+    assumed to return a byte-identical store. `_persist_artifacts` broke that
+    assumption: it drains the process-global usage sink, so the second run found
+    it empty, set `_turn_usage` to None, and the chat row lost its token numbers
+    while the chars counter beside them stayed. Observed on a finished
+    Brainstormer turn.
+    """
+
+    def _finished_stream(self, tmp_path: Any) -> tuple[dict[str, Any], str]:
+        from spec4 import streaming
+
+        session = {
+            **_default_session(),
+            "active_agent": "brainstormer",
+            "working_dir": str(tmp_path),
+            "llm_config": {"model": "gpt-4o-mini"},
+            "messages": [{"role": "assistant", "content": ""}],
+            "brainstormer_state": "vision_complete",
+            "vision_statement": {"app_name": "x"},
+        }
+        llm.drain_usage_records()
+
+        def gen() -> Any:
+            yield "hello"
+            llm._record_usage(
+                agent_name="brainstormer",
+                kwargs={"model": "gpt-4o-mini"},
+                response=None,
+                usage=_usage(4180, 312),
+                streamed=True,
+                started_at="2026-01-01T00:00:00+00:00",
+                start_mono=0.0,
+            )
+
+        stream_id = streaming.start(gen(), session)
+        for _ in range(200):
+            entry = streaming.get(stream_id)
+            if entry and entry["done"]:
+                break
+            time.sleep(0.01)
+        return {**session, "_stream_id": stream_id}, stream_id
+
+    def test_racing_polls_return_the_same_readout(self, tmp_path: Any) -> None:
+        from spec4.callbacks import on_stream_poll
+
+        live, _ = self._finished_stream(tmp_path)
+        stores = [on_stream_poll(n, live)[0] for n in (1, 2, 3)]
+        usages = [s["_turn_usage"] for s in stores]
+        assert usages[0] == {
+            "agent": "brainstormer",
+            "input": 4180,
+            "output": 312,
+            "calls": 1,
+            "missing": 0,
+        }
+        assert usages[0] == usages[1] == usages[2]
+        assert all(_turn_token_text(s) == "Tokens: 4,180 in / 312 out" for s in stores)
+
+    def test_the_claim_is_granted_exactly_once(self, tmp_path: Any) -> None:
+        from spec4 import streaming
+
+        _, stream_id = self._finished_stream(tmp_path)
+        assert streaming.claim_finalise(stream_id) is True
+        assert streaming.claim_finalise(stream_id) is False
+        assert streaming.claim_finalise(stream_id) is False
+
+    def test_an_unknown_stream_is_never_claimable(self) -> None:
+        from spec4 import streaming
+
+        assert streaming.claim_finalise("no-such-stream") is False
+
+    def test_artifacts_are_written_once_not_per_poll(self, tmp_path: Any) -> None:
+        from spec4.callbacks import on_stream_poll
+
+        live, _ = self._finished_stream(tmp_path)
+        with patch("spec4.callbacks._persist_artifacts") as persist:
+            for n in (1, 2, 3):
+                on_stream_poll(n, live)
+        assert persist.call_count == 1
+
+
+class TestNoCallsMarker:
+    """A finished turn always says something, never nothing.
+
+    Three silences used to look identical on screen — a turn that made no
+    calls, a turn whose capture path broke, and a turn that never ran. Only the
+    last one should render nothing, and it is the only one distinguishable
+    without a marker (no `_turn_usage` key at all).
+    """
+
+    def _row(self, session: dict[str, Any]) -> str:
+        return _turn_token_text(session)
+
+    def test_zero_calls_shows_the_marker(self) -> None:
+        session = {
+            **_default_session(),
+            "active_agent": "phaser",
+            "_turn_usage": {
+                "agent": "phaser",
+                "input": 0,
+                "output": 0,
+                "calls": 0,
+                "missing": 0,
+            },
+        }
+        assert self._row(session) == "no calls recorded"
+
+    def test_it_is_distinct_from_the_missing_usage_marker(self) -> None:
+        base = {**_default_session(), "active_agent": "phaser"}
+        no_calls = {
+            **base,
+            "_turn_usage": {
+                "agent": "phaser",
+                "input": 0,
+                "output": 0,
+                "calls": 0,
+                "missing": 0,
+            },
+        }
+        no_usage = {
+            **base,
+            "_turn_usage": {
+                "agent": "phaser",
+                "input": 0,
+                "output": 0,
+                "calls": 2,
+                "missing": 2,
+            },
+        }
+        assert self._row(no_calls) != self._row(no_usage)
+        assert self._row(no_usage) == "no token count"
+
+    def test_a_turn_that_never_ran_still_shows_nothing(self) -> None:
+        """The one legitimate silence: no turn has finished for this agent."""
+        session = {**_default_session(), "active_agent": "phaser"}
+        assert "_turn_usage" not in session
+        assert self._row(session) == ""
+
+    def test_another_agents_summary_still_shows_nothing(self) -> None:
+        session = {
+            **_default_session(),
+            "active_agent": "phaser",
+            "_turn_usage": {
+                "agent": "brainstormer",
+                "input": 0,
+                "output": 0,
+                "calls": 0,
+                "missing": 0,
+            },
+        }
+        assert self._row(session) == ""
+
+    def test_the_marker_reaches_the_chat_row(self) -> None:
+        session = {
+            **_default_session(),
+            "active_agent": "phaser",
+            "phaser_state": "in_progress",
+            "_stream_received_chars": 8291,
+            "messages": [{"role": "assistant", "content": "x" * 8291}],
+            "_turn_usage": {
+                "agent": "phaser",
+                "input": 0,
+                "output": 0,
+                "calls": 0,
+                "missing": 0,
+            },
+        }
+        ids, texts = _row_ids_and_texts(session)
+        assert texts["chat-turn-tokens"] == "no calls recorded"
+        assert ids.index("chat-turn-tokens") == ids.index("chat-token-count") + 1
+
+    def test_the_summariser_never_returns_none(self) -> None:
+        from spec4.session import _summarize_turn_usage
+
+        assert _summarize_turn_usage("phaser", []) == {
+            "agent": "phaser",
+            "input": 0,
+            "output": 0,
+            "calls": 0,
+            "missing": 0,
+        }

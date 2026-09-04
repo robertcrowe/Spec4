@@ -296,14 +296,20 @@ def _call_scout(
     llm_config: dict[str, Any],
     revision: dict[str, Any] | None = None,
     on_chunk: Callable[[str], None] | None = None,
+    brownfield: bool = False,
 ) -> ScoutOutput:
-    """Invoke Scout synchronously via the registry."""
+    """Invoke Scout synchronously via the registry.
+
+    ``brownfield`` is the developer's answer, not an inference from
+    ``code_review`` — see the note on :class:`ScoutInput`.
+    """
     scout_input = ScoutInput(
         vision=vision,
         code_review=code_review,
         llm_config=llm_config,
         revision=revision,
         on_chunk=on_chunk,
+        brownfield=brownfield,
     )
     return asyncio.run(_registry.run("scout", scout_input))
 
@@ -2638,7 +2644,7 @@ def _run_catalog_phase(
             if _delta and _prior_v is not None:
                 _carried = list((_prior_ai or {}).get("ai_features") or [])
                 _cur_v = project_manager.resolve_phase_version(
-                    working_dir, bool(code_review)
+                    working_dir, project_manager.session_is_brownfield(session)
                 )[0]
                 session["agentifier_revision"] = True
                 session["agentifier_carried_forward"] = _carried
@@ -2700,6 +2706,7 @@ def _run_catalog_phase(
                     llm_config,
                     revision=_scout_revision,
                     on_chunk=_on_chunk,
+                    brownfield=project_manager.session_is_brownfield(session),
                 )
             except Exception as exc:
                 yield f"\n\nScout failed to analyse the vision: {exc}. Please try again."
@@ -2962,7 +2969,10 @@ def _run_catalog_phase(
         else:
             candidates = _candidates_from_session(session)
             analyses = _analyses_from_session(session)
-        brownfield = session.get("code_review") is not None
+        # The developer's answer, never the presence of a scan: CodeScanner run
+        # over a greenfield skeleton must not make the orchestrator open with
+        # "this is a BROWNFIELD project".
+        brownfield = project_manager.session_is_brownfield(session)
         _rev_goal = (
             (session.get("agentifier_revision_delta") or {}).get("goal", "")
             if session.get("agentifier_revision")
@@ -3111,7 +3121,10 @@ def _run_catalog_phase(
         session["agentifier_candidates"] = _candidates_to_dicts(to_analyze)
         session["agentifier_analyses"] = _analyses_to_dicts(breadth_analyses, to_analyze)
 
-        brownfield = session.get("code_review") is not None
+        # The developer's answer, never the presence of a scan: CodeScanner run
+        # over a greenfield skeleton must not make the orchestrator open with
+        # "this is a BROWNFIELD project".
+        brownfield = project_manager.session_is_brownfield(session)
         _rev_goal = (
             (session.get("agentifier_revision_delta") or {}).get("goal", "")
             if session.get("agentifier_revision")

@@ -8,6 +8,7 @@ import dash_mantine_components as dmc
 
 from spec4 import project_manager
 from spec4.app_constants import PROJECT_MODE_NEW
+from spec4.layouts import _llm_gate
 from spec4.agents.designer import (
     detect_has_ui_source,
     detect_no_ui,
@@ -99,25 +100,42 @@ def _step2_content(has_existing_ui: bool = True, is_revision: bool = False) -> A
             style={"display": "none"} if not has_existing_ui else {},
         )
     create_kwargs: dict[str, Any] = {"variant": "outline"} if is_revision else {}
+    controls: list[Any] = [primary]
+    if is_revision:
+        # `on_designer_step2_choice` takes both this button and
+        # btn-designer-create-new as Inputs, and Dash refuses to dispatch a
+        # callback unless every Input is on screen. The revision branch shows
+        # carry-forward in this slot instead, so without a hidden stand-in here
+        # clicking "Create new design" on a revision round throws
+        # ("A nonexistent object was used in an Input") and does nothing. Same
+        # mounted-but-hidden trick the no-existing-UI case above uses.
+        controls.append(
+            dmc.Button(
+                "Modify existing look and feel",
+                id="btn-designer-modify-existing",
+                variant="outline",
+                style={"display": "none"},
+            )
+        )
+    controls.append(
+        dmc.Button(
+            "Create new design",
+            id="btn-designer-create-new",
+            **create_kwargs,
+        )
+    )
+    controls.append(
+        dmc.Button(
+            "Skip Designer",
+            id="btn-designer-skip-2",
+            variant="outline",
+            color="gray",
+        )
+    )
     return dmc.Stack(
         [
             dmc.Text(prompt, c="dimmed"),
-            dmc.Group(
-                [
-                    primary,
-                    dmc.Button(
-                        "Create new design",
-                        id="btn-designer-create-new",
-                        **create_kwargs,
-                    ),
-                    dmc.Button(
-                        "Skip Designer",
-                        id="btn-designer-skip-2",
-                        variant="outline",
-                        color="gray",
-                    ),
-                ]
-            ),
+            dmc.Group(controls),
         ],
         gap="sm",
     )
@@ -244,7 +262,10 @@ def _step4_content(
     return dmc.Stack(children, gap="sm")
 
 
-def _step5_content(buffer_data: dict[str, Any] | None = None) -> Any:
+def _step5_content(
+    buffer_data: dict[str, Any] | None = None,
+    image_support: bool | None = None,
+) -> Any:
     bd = buffer_data or {}
     error: str | None = bd.get("error")
     tokens: int = bd.get("tokens", 0)
@@ -273,9 +294,38 @@ def _step5_content(buffer_data: dict[str, Any] | None = None) -> Any:
             size="sm",
         ),
     ]
+    if image_support is False:
+        # Same notice step 4 gives, on the screen the developer is actually
+        # watching: a draw handed a different model mid-flight never passes
+        # back through step 4 to be told there.
+        children.insert(
+            0,
+            dmc.Alert(
+                "The selected model does not support image input — screenshot "
+                "examples are not being sent with this draw.",
+                color="orange",
+                variant="light",
+            ),
+        )
     if error:
+        # Retrying the same model is the right move for an overload and useless
+        # for an unreachable provider or a rejected key, so the failure offers
+        # both doors. Picking a model does not draw by itself — it comes back
+        # here, and Retry runs the same draw on the new model.
         children.append(
-            dmc.Button("↺ Retry", id="btn-designer-retry", variant="outline")
+            dmc.Group(
+                [
+                    dmc.Button(
+                        "↺ Retry", id="btn-designer-retry", variant="outline"
+                    ),
+                    dmc.Button(
+                        "↺ Try a different provider/model",
+                        id="btn-designer-retry-model",
+                        variant="outline",
+                    ),
+                ],
+                gap="sm",
+            )
         )
     return dmc.Stack(children, gap="sm")
 
@@ -520,8 +570,24 @@ def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> 
     return dmc.Stack(children, gap="sm")
 
 
-def designer_layout(session: dict[str, Any] | None = None) -> Any:
+def designer_layout(
+    session: dict[str, Any] | None = None, prefs: dict[str, Any] | None = None
+) -> Any:
     session = session or {}
+    # Designer has no chat turn, so its gate stands in front of the whole
+    # wizard rather than in front of an opening message. Rendering it instead
+    # of the wizard also keeps the wizard's stores from initialising against a
+    # model the developer has not chosen yet; answering re-renders the page,
+    # since `render_page` is driven by the session store.
+    if _llm_gate.is_open(session, "designer") or (
+        session.get("agent_llm_draft") or {}
+    ).get("agent") == "designer":
+        return html.Div(
+            [
+                dmc.Title("🎨 Designer", order=3, mb="md"),
+                _llm_gate.gate_card(session, prefs, "designer"),
+            ]
+        )
     working_dir: str | None = session.get("working_dir")
     vision: dict[str, Any] = session.get("vision_statement") or {}
     code_review: dict[str, Any] = session.get("code_review") or {}
@@ -587,6 +653,28 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
     initial_store["_has_existing_ui"] = has_existing_ui
     initial_store["_is_revision"] = is_revision
 
+    # A draw that failed and then sent the developer to the model picker: the
+    # picker writes `session`, which rebuilds this page and re-creates the two
+    # memory stores below from scratch, and a failed draw has saved nothing to
+    # disk to rebuild from. The snapshot `on_designer_retry_model` left behind
+    # is what brings the error panel — and the developer's own inputs — back.
+    # Only the fields the retry needs to reproduce the draw are carried.
+    failed = session.get("_designer_failed_draw") or {}
+    buffer_data: dict[str, Any] = {"tokens": 0, "progress": 0, "error": None}
+    if failed.get("error"):
+        initial_step = 5
+        initial_store = {
+            **initial_store,
+            "step": 5,
+            "preference_text": failed.get("preference_text", ""),
+            "screenshots": failed.get("screenshots", []),
+            "mock_html": "",
+            "finalized": False,
+            "_capture_mode": bool(failed.get("_capture_mode")),
+            "_has_existing_html": bool(failed.get("_has_existing_html")),
+        }
+        buffer_data = {"tokens": 0, "progress": 0, "error": failed["error"]}
+
     return html.Div(
         [
             dcc.Store(
@@ -597,7 +685,18 @@ def designer_layout(session: dict[str, Any] | None = None) -> Any:
             dcc.Store(
                 id="mock-stream-buffer",
                 storage_type="memory",
-                data={"tokens": 0, "progress": 0, "error": None},
+                data=buffer_data,
+            ),
+            # Fires once when a failed draw has just been given a different
+            # model, re-running it without asking for another click. Disabled
+            # otherwise. `on_gate_continue` cannot start the draw itself — the
+            # gate replaces this wizard, so these stores are not mounted while
+            # the picker is open — which is why the trigger lives here, the way
+            # `_chat_layout` fires an agent's opening turn.
+            dcc.Interval(
+                id="designer-autoretry-interval",
+                interval=300,
+                max_intervals=1 if failed.get("auto_retry") else 0,
             ),
             dcc.Interval(
                 id="mock-stream-interval",

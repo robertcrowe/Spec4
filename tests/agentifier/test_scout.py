@@ -440,3 +440,47 @@ class TestOnChunk:
         ):
             output = asyncio.run(ScoutAgent().run(inp))
         assert len(output.candidates) == 3
+
+
+class TestBrownfieldIsToldNotInferred:
+    """Scout's mode comes from the developer's answer, never from a scan.
+
+    Regression: `brownfield = input.code_review is not None` meant that running
+    CodeScanner over a greenfield skeleton put Scout into brownfield mode, where
+    it looks for existing workflows each candidate would replace — of which a
+    greenfield project has none. The review is still useful context; it just
+    does not decide the mode.
+    """
+
+    def _input(self, **kwargs: Any) -> ScoutInput:
+        return ScoutInput(vision=_SAMPLE_VISION, llm_config=_LLM_CONFIG, **kwargs)
+
+    def test_defaults_to_greenfield(self) -> None:
+        assert self._input().brownfield is False
+
+    def test_a_code_review_does_not_flip_the_mode(self) -> None:
+        assert self._input(code_review={"is_software_project": True}).brownfield is False
+
+    def _system_prompt(self, scout_input: ScoutInput) -> str:
+        import asyncio
+
+        captured: list[str] = []
+
+        def _completion(**kwargs: Any) -> Any:
+            captured.append(kwargs["messages"][0]["content"])
+            return _make_mock_response("[]")
+
+        with patch("spec4.agentifier.scout.complete_stream", side_effect=_completion):
+            asyncio.run(ScoutAgent().run(scout_input))
+        return captured[0]
+
+    def test_greenfield_scan_gets_the_base_prompt(self) -> None:
+        prompt = self._system_prompt(
+            self._input(code_review={"is_software_project": True}, brownfield=False)
+        )
+        assert prompt == _build_scout_system_prompt(False, False)
+
+    def test_brownfield_gets_the_addendum_even_without_a_review(self) -> None:
+        """The answer stands on its own — a scan is not a precondition."""
+        prompt = self._system_prompt(self._input(code_review=None, brownfield=True))
+        assert prompt == _build_scout_system_prompt(True, False)

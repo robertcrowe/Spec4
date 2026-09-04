@@ -55,6 +55,16 @@
   align-self: stretch;
 }
 
+/* Model chip in the footer row under the composer — light outline so it reads
+   as a control next to the dimmed status text, not as more dimmed text. */
+#btn-agent-llm-chip {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+#btn-agent-llm-chip:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
 /* Blueprint Grid Background */
 #blueprint-grid {
   position: fixed;

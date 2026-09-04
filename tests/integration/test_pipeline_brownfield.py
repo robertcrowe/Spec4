@@ -116,7 +116,7 @@ class TestScoutBrownfield:
         assert candidates[0].linked_existing_workflow == "keyword-based SQL LIKE search in views.py"
         assert candidates[1].linked_existing_workflow == ""
 
-    def test_scout_uses_brownfield_prompt_when_code_review_present(self) -> None:
+    def _scout_system_prompt(self, **input_kwargs: Any) -> str:
         captured_systems: list[str] = []
 
         def _mock_completion(**kwargs: Any) -> Any:
@@ -125,18 +125,58 @@ class TestScoutBrownfield:
 
         from spec4.agentifier.scout import ScoutAgent
 
-        scout = ScoutAgent()
         import asyncio
-        with patch("spec4.agentifier.scout.complete_stream", side_effect=_mock_completion):
-            result = asyncio.run(scout.run(ScoutInput(
+        with patch(
+            "spec4.agentifier.scout.complete_stream", side_effect=_mock_completion
+        ):
+            result = asyncio.run(ScoutAgent().run(ScoutInput(
+                vision=_VISION,
+                llm_config=_LLM_CONFIG,
+                **input_kwargs,
+            )))
+        assert result.candidates
+        assert captured_systems
+        return captured_systems[0]
+
+    def test_scout_uses_brownfield_prompt_when_told_it_is_brownfield(self) -> None:
+        prompt = self._scout_system_prompt(
+            code_review=_CODE_REVIEW_WITH_AI, brownfield=True
+        )
+        assert "Brownfield mode" in prompt
+
+    def test_a_code_review_alone_does_not_trigger_brownfield_mode(self) -> None:
+        """A greenfield skeleton can legitimately be scanned.
+
+        Scout used to read "a code review exists" as "this is an existing
+        codebase", which made it hunt for existing workflows to replace in a
+        project that had none. Only the developer's own answer decides.
+        """
+        prompt = self._scout_system_prompt(
+            code_review=_CODE_REVIEW_WITH_AI, brownfield=False
+        )
+        assert "Brownfield mode" not in prompt
+
+    def test_the_review_is_still_passed_as_context_when_greenfield(self) -> None:
+        """The scan stays useful even when it does not change the mode."""
+        captured: list[str] = []
+
+        def _mock_completion(**kwargs: Any) -> Any:
+            captured.append(kwargs["messages"][1]["content"])
+            return iter([_CANDIDATES_JSON])
+
+        from spec4.agentifier.scout import ScoutAgent
+
+        import asyncio
+        with patch(
+            "spec4.agentifier.scout.complete_stream", side_effect=_mock_completion
+        ):
+            asyncio.run(ScoutAgent().run(ScoutInput(
                 vision=_VISION,
                 llm_config=_LLM_CONFIG,
                 code_review=_CODE_REVIEW_WITH_AI,
+                brownfield=False,
             )))
-
-        assert result.candidates
-        assert captured_systems
-        assert "Brownfield mode" in captured_systems[0]
+        assert "code review" in captured[0].lower()
 
     def test_scout_uses_base_prompt_when_no_code_review(self) -> None:
         captured_systems: list[str] = []

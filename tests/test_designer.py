@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+from dash import no_update
+
 from spec4.agents.designer import (
     DesignerSession,
     build_mock_prompt,
@@ -1730,3 +1732,453 @@ class TestGenerationThreadResilience:
             assert new_store["mock_html"] == html
         finally:
             dmod._MOCK_BUFFERS.pop(gen_id, None)
+
+from spec4.callbacks.designer import _extract_html  # noqa: E402
+
+
+class TestExtractHtmlPrefersTheFinalDocument:
+    """A model that rewrites itself mid-response must not ship its draft.
+
+    Observed with openrouter/deepseek: the model produced a full document,
+    wrote "Wait — I need to redesign this more careful", and produced a second.
+    `re.search` returned the first, so a discarded draft would have been saved
+    as the mock. It only escaped notice because that particular draft lacked a
+    closing </html> and so matched nothing.
+    """
+
+    _DRAFT = "<!DOCTYPE html><html><body>DRAFT</body></html>"
+    _FINAL = "<!DOCTYPE html><html><body>FINAL</body></html>"
+
+    def test_the_last_complete_document_wins(self) -> None:
+        text = f"{self._DRAFT}\n\nWait — let me redo that.\n\n{self._FINAL}"
+        assert "FINAL" in (_extract_html(text) or "")
+        assert "DRAFT" not in (_extract_html(text) or "")
+
+    def test_a_single_document_is_unaffected(self) -> None:
+        assert "FINAL" in (_extract_html(self._FINAL) or "")
+
+    def test_an_unterminated_tail_does_not_beat_a_complete_document(self) -> None:
+        """A cut-off retry must not displace the document that did finish."""
+        text = f"{self._FINAL}\n\nActually...\n\n<!DOCTYPE html><html><body>trunc"
+        assert "FINAL" in (_extract_html(text) or "")
+
+    def test_the_fenced_fallback_also_takes_the_last(self) -> None:
+        text = (
+            "```html\n<html><body>DRAFT</body></html>\n```\n"
+            "no, again\n"
+            "```html\n<html><body>FINAL</body></html>\n```"
+        )
+        assert "FINAL" in (_extract_html(text) or "")
+
+    def test_a_fence_without_html_is_skipped(self) -> None:
+        text = (
+            "```html\n<html><body>FINAL</body></html>\n```\n"
+            "```\njust some notes\n```"
+        )
+        assert "FINAL" in (_extract_html(text) or "")
+
+    def test_no_document_still_returns_none(self) -> None:
+        assert _extract_html("I could not build that.") is None
+
+
+class TestProgressNeverClaimsCompleteMidStream:
+    def test_progress_is_capped_below_100_while_streaming(self) -> None:
+        from spec4.callbacks import designer as dz
+
+        gen_id = "cap-test"
+        dz._MOCK_BUFFERS[gen_id] = {
+            "done": False,
+            "stop": threading.Event(),
+            # Twice the estimate — a draft plus a second document.
+            "text": "x" * 140_000,
+            "expected_chars": 70_000,
+        }
+        try:
+            with patch("spec4.callbacks.designer.ctx"):
+                buf, _, _ = dz.on_mock_stream_poll(1, {"_gen_id": gen_id})
+        finally:
+            dz._MOCK_BUFFERS.pop(gen_id, None)
+        assert buf["tokens"] == 140_000
+        assert buf["progress"] == 99, "100% must mean delivered, not 'still going'"
+
+    def test_progress_is_linear_below_the_estimate(self) -> None:
+        from spec4.callbacks import designer as dz
+
+        gen_id = "linear-test"
+        dz._MOCK_BUFFERS[gen_id] = {
+            "done": False,
+            "stop": threading.Event(),
+            "text": "x" * 35_000,
+            "expected_chars": 70_000,
+        }
+        try:
+            with patch("spec4.callbacks.designer.ctx"):
+                buf, _, _ = dz.on_mock_stream_poll(1, {"_gen_id": gen_id})
+        finally:
+            dz._MOCK_BUFFERS.pop(gen_id, None)
+        assert buf["progress"] == 50
+
+
+def _component(node: Any, comp_id: str) -> Any:
+    """Depth-first search for a dash component by id."""
+    if getattr(node, "id", None) == comp_id:
+        return node
+    children = getattr(node, "children", None)
+    if children is None:
+        return None
+    if not isinstance(children, (list, tuple)):
+        children = [children]
+    for child in children:
+        found = _component(child, comp_id)
+        if found is not None:
+            return found
+    return None
+
+
+class TestDesignerRetryWithADifferentModel:
+    """A failed draw offers the model picker, and survives the trip.
+
+    Opening the picker writes `session`, which rebuilds the page and re-creates
+    the wizard's memory-scoped stores. A failed draw has saved nothing to disk,
+    so without the snapshot the developer would come back to the wizard intro
+    with their preference text and screenshots gone — and no Retry to click.
+    """
+
+    _STORE = {
+        "step": 5,
+        "preference_text": "warm palette, big hero",
+        "screenshots": [],
+        "mock_html": "",
+        "finalized": False,
+        "_capture_mode": True,
+        "_has_existing_html": True,
+        "_has_existing_ui": True,
+        "_is_revision": False,
+    }
+    _ERROR = "AnthropicException - Network is unreachable"
+
+    def _session(self, **extra: Any) -> dict[str, Any]:
+        from spec4.session import _default_session
+
+        session = {
+            **_default_session(),
+            "working_dir": "/tmp",
+            "phase": "designer",
+            "project_mode": "new",
+            "provider": "anthropic",
+            "api_key": "k",
+            "llm_config": {"model": "claude-sonnet-4-6", "api_key": "k"},
+            "agent_llm_asked": {"designer": True},
+        }
+        session.update(extra)
+        return session
+
+    def _buffer(self, error: str | None) -> dict[str, Any]:
+        return {"tokens": 120, "progress": 99, "error": error}
+
+    def _step(self, store: dict[str, Any], buf: dict[str, Any], session: Any) -> Any:
+        dmod = _dmod()
+        with patch.object(dmod, "ctx") as fake_ctx:
+            fake_ctx.triggered = [{"prop_id": "designer-session-store.data"}]
+            content, _ = dmod.render_designer_step(store, buf, True, session)
+        return content
+
+    def test_a_failed_draw_offers_both_doors(self) -> None:
+        rendered = str(self._step(self._STORE, self._buffer(self._ERROR), {}))
+        assert "btn-designer-retry" in rendered
+        assert "btn-designer-retry-model" in rendered
+
+    def test_a_healthy_draw_offers_neither(self) -> None:
+        rendered = str(self._step(self._STORE, self._buffer(None), {}))
+        assert "btn-designer-retry-model" not in rendered
+
+    def test_the_snapshot_carries_the_draw(self) -> None:
+        dmod = _dmod()
+        updated = dmod.on_designer_retry_model(
+            1, self._STORE, self._buffer(self._ERROR), self._session()
+        )
+        snap = updated["_designer_failed_draw"]
+        assert snap["error"] == self._ERROR
+        assert snap["preference_text"] == "warm palette, big hero"
+        assert snap["_capture_mode"] is True
+        assert snap["_has_existing_html"] is True
+        assert updated["agent_llm_draft"]["agent"] == "designer"
+
+    def test_no_snapshot_without_an_error(self) -> None:
+        dmod = _dmod()
+        assert (
+            dmod.on_designer_retry_model(
+                1, self._STORE, self._buffer(None), self._session()
+            )
+            is no_update
+        )
+
+    def _round_trip(self) -> tuple[dict[str, Any], Any]:
+        """Fail → open the picker → choose a model → re-render the page."""
+        from spec4 import providers
+        from spec4.callbacks import on_gate_connect, on_gate_continue
+        from spec4.layouts.designer import designer_layout
+
+        dmod = _dmod()
+        opened = dmod.on_designer_retry_model(
+            1, self._STORE, self._buffer(self._ERROR), self._session()
+        )
+        with patch.object(providers, "list_models", return_value=(["gpt-5"], "")):
+            opened, _ = on_gate_connect(1, "OpenAI", "sk-new", opened, {})
+        with patch(
+            "spec4.llm_selection.probe_image_support", return_value=True
+        ), patch("spec4.llm_selection.probe_tool_support", return_value=True):
+            answered, _ = on_gate_continue(1, "gpt-5", opened)
+        return answered, designer_layout(answered, {})
+
+    def test_the_wizard_waits_behind_the_picker_during_selection(self) -> None:
+        from spec4.layouts.designer import designer_layout
+
+        dmod = _dmod()
+        opened = dmod.on_designer_retry_model(
+            1, self._STORE, self._buffer(self._ERROR), self._session()
+        )
+        rendered = str(designer_layout(opened, {}))
+        assert "agent-llm-provider" in rendered
+        assert "designer-session-store" not in rendered
+
+    def test_the_failed_draw_comes_back_after_choosing(self) -> None:
+        _, layout = self._round_trip()
+        store = _component(layout, "designer-session-store").data
+        buf = _component(layout, "mock-stream-buffer").data
+        assert store["step"] == 5
+        assert store["preference_text"] == "warm palette, big hero"
+        assert store["_capture_mode"] is True
+        assert store["_has_existing_html"] is True
+        assert buf["error"] == self._ERROR
+
+    def test_retry_is_clickable_again_after_choosing(self) -> None:
+        answered, layout = self._round_trip()
+        store = _component(layout, "designer-session-store").data
+        buf = _component(layout, "mock-stream-buffer").data
+        assert "btn-designer-retry" in str(self._step(store, buf, answered))
+
+    def test_the_draw_would_now_use_the_new_model(self) -> None:
+        from spec4 import llm_selection
+
+        answered, _ = self._round_trip()
+        assert llm_selection.resolve(answered, "designer")["model"] == "gpt-5"
+
+    def test_retrying_spends_the_snapshot(self) -> None:
+        """Left behind, a later render would resurrect a handled error."""
+        dmod = _dmod()
+        answered, _ = self._round_trip()
+        with patch.object(dmod, "_start_gen", return_value=({}, {}, False)):
+            *_, cleared = dmod.on_designer_retry(1, self._STORE, answered, True)
+        assert cleared["_designer_failed_draw"] is None
+
+    def test_leaving_designer_discards_the_snapshot(self) -> None:
+        dmod = _dmod()
+        answered, _ = self._round_trip()
+        left, _ = dmod.on_designer_back(1, answered)
+        assert left["_designer_failed_draw"] is None
+
+    def test_a_clean_wizard_is_unaffected(self) -> None:
+        from spec4.layouts.designer import designer_layout
+
+        layout = designer_layout(self._session(), {})
+        assert _component(layout, "mock-stream-buffer").data["error"] is None
+
+
+class TestDesignerAutoRetry:
+    """Choosing a model from a failed draw re-runs it without a second click.
+
+    It cannot happen where the chat one does. Designer's gate replaces its
+    wizard, so `designer-session-store` and friends are unmounted while the
+    picker is open and `on_gate_continue` has nowhere to write a draw. The
+    restored wizard arms a one-shot interval instead.
+    """
+
+    _STORE = {
+        "step": 5,
+        "preference_text": "warm palette",
+        "screenshots": [],
+        "mock_html": "",
+        "finalized": False,
+        "_capture_mode": True,
+        "_has_existing_html": True,
+        "_has_existing_ui": True,
+        "_is_revision": False,
+    }
+
+    def _session(self, **extra: Any) -> dict[str, Any]:
+        from spec4.session import _default_session
+
+        session = {
+            **_default_session(),
+            "working_dir": "/tmp",
+            "phase": "designer",
+            "project_mode": "new",
+            "provider": "anthropic",
+            "api_key": "k",
+            "llm_config": {"model": "claude-sonnet-4-6", "api_key": "k"},
+            "agent_llm_asked": {"designer": True},
+        }
+        session.update(extra)
+        return session
+
+    def _choose(self, *, tool_support: bool | None = True) -> dict[str, Any]:
+        from spec4 import providers
+        from spec4.callbacks import on_gate_connect, on_gate_continue
+
+        dmod = _dmod()
+        opened = dmod.on_designer_retry_model(
+            1,
+            self._STORE,
+            {"tokens": 9, "progress": 99, "error": "unreachable"},
+            self._session(),
+        )
+        with patch.object(providers, "list_models", return_value=(["gpt-5"], "")):
+            opened, _ = on_gate_connect(1, "OpenAI", "sk-new", opened, {})
+        with patch(
+            "spec4.llm_selection.probe_image_support", return_value=True
+        ), patch(
+            "spec4.llm_selection.probe_tool_support", return_value=tool_support
+        ):
+            answered, _ = on_gate_continue(1, "gpt-5", opened)
+        return answered
+
+    def test_choosing_arms_the_one_shot_trigger(self) -> None:
+        from spec4.layouts.designer import designer_layout
+
+        layout = designer_layout(self._choose(), {})
+        interval = _component(layout, "designer-autoretry-interval")
+        assert interval.max_intervals == 1
+
+    def test_a_failed_draw_not_sent_to_the_picker_does_not_self_fire(self) -> None:
+        from spec4.layouts.designer import designer_layout
+
+        session = self._session(
+            _designer_failed_draw={
+                "error": "boom",
+                "preference_text": "",
+                "screenshots": [],
+                "_capture_mode": False,
+                "_has_existing_html": False,
+            }
+        )
+        interval = _component(
+            designer_layout(session, {}), "designer-autoretry-interval"
+        )
+        assert interval.max_intervals == 0
+
+    def test_a_clean_wizard_leaves_it_disabled(self) -> None:
+        from spec4.layouts.designer import designer_layout
+
+        interval = _component(
+            designer_layout(self._session(), {}), "designer-autoretry-interval"
+        )
+        assert interval.max_intervals == 0
+
+    def test_the_trigger_reproduces_the_original_draw(self) -> None:
+        from spec4.layouts.designer import designer_layout
+
+        dmod = _dmod()
+        answered = self._choose()
+        store = _component(
+            designer_layout(answered, {}), "designer-session-store"
+        ).data
+        with patch.object(
+            dmod, "_start_gen", return_value=({"step": 5}, {"tokens": 0}, False)
+        ) as start:
+            dmod.on_designer_auto_retry(1, store, answered, True)
+        assert start.called
+        assert start.call_args[1]["capture_mode"] is True
+
+    def test_the_trigger_spends_the_snapshot(self) -> None:
+        """Left armed, every later visit to Designer would draw again."""
+        from spec4.layouts.designer import designer_layout
+
+        dmod = _dmod()
+        answered = self._choose()
+        store = _component(
+            designer_layout(answered, {}), "designer-session-store"
+        ).data
+        with patch.object(
+            dmod, "_start_gen", return_value=({"step": 5}, {"tokens": 0}, False)
+        ):
+            *_, cleared = dmod.on_designer_auto_retry(1, store, answered, True)
+        assert cleared["_designer_failed_draw"] is None
+        interval = _component(
+            designer_layout(cleared, {}), "designer-autoretry-interval"
+        )
+        assert interval.max_intervals == 0
+
+    def test_the_trigger_survives_a_clean_session(self) -> None:
+        """`_designer_failed_draw` is present-and-None on a clean session, so a
+        `.get(key, {})` default would never be reached. Found by dispatching the
+        interval against a running server."""
+        dmod = _dmod()
+        with patch.object(dmod, "_start_gen") as start:
+            result = dmod.on_designer_auto_retry(
+                1, self._STORE, self._session(), True
+            )
+        start.assert_not_called()
+        assert all(r is no_update for r in result)
+
+    def test_the_trigger_refuses_without_the_marker(self) -> None:
+        dmod = _dmod()
+        session = self._session(
+            _designer_failed_draw={"error": "boom", "preference_text": ""}
+        )
+        with patch.object(dmod, "_start_gen") as start:
+            result = dmod.on_designer_auto_retry(1, self._STORE, session, True)
+        start.assert_not_called()
+        assert all(r is no_update for r in result)
+
+    def test_a_tool_less_model_keeps_the_picker_open(self) -> None:
+        from spec4.layouts.designer import designer_layout
+
+        answered = self._choose(tool_support=False)
+        assert answered["agent_llm"] == {}
+        rendered = str(designer_layout(answered, {}))
+        assert "agent-llm-model" in rendered
+        assert "no tool support" in rendered
+        assert "designer-session-store" not in rendered
+
+
+class TestStepFiveImageNotice:
+    """A draw handed an image-less model says so where it is being watched.
+
+    Step 4 already carries this notice, but a draw given a different model
+    mid-flight never passes back through step 4 to be told there.
+    """
+
+    _BUF = {"tokens": 5, "progress": 3, "error": None}
+    _STORE = {"step": 5, "screenshots": [], "refine_images": [], "mock_html": ""}
+
+    def _render(self, session: dict[str, Any]) -> str:
+        dmod = _dmod()
+        with patch.object(dmod, "ctx") as fake_ctx:
+            fake_ctx.triggered = [{"prop_id": "designer-session-store.data"}]
+            content, _ = dmod.render_designer_step(
+                self._STORE, self._BUF, True, session
+            )
+        return str(content)
+
+    def _override(self, image_support: bool | None) -> dict[str, Any]:
+        return {
+            "agent_llm": {
+                "designer": {
+                    "provider": "openrouter",
+                    "model": "m",
+                    "llm_config": {"model": "m"},
+                    "image_support": image_support,
+                    "tool_support": True,
+                }
+            }
+        }
+
+    def test_shown_for_an_image_less_model(self) -> None:
+        assert "does not support image input" in self._render(self._override(False))
+
+    def test_silent_for_a_capable_model(self) -> None:
+        assert "does not support image input" not in self._render(self._override(True))
+
+    def test_silent_with_no_override(self) -> None:
+        assert "does not support image input" not in self._render({})
