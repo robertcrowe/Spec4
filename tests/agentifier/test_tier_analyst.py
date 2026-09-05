@@ -76,6 +76,42 @@ def _make_tier_input(
 
 
 # ---------------------------------------------------------------------------
+# Guided redraw (D-TA7) — the developer's notes reach the tier review
+# ---------------------------------------------------------------------------
+
+
+class TestGuidance:
+    def _user_content(self, guidance: list[str] | None) -> str:
+        import asyncio
+
+        kwargs: dict[str, Any] = {}
+        if guidance is not None:
+            kwargs["guidance"] = guidance
+        inp = TierAnalystInput(
+            candidate=_CANDIDATE, llm_config=_LLM_CONFIG, **kwargs
+        )
+        with patch(
+            "spec4.agentifier.tier_analyst.complete_stream",
+            return_value=_make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT)),
+        ) as mock_llm:
+            asyncio.run(TierAnalystAgent().run(inp))
+        return mock_llm.call_args[1]["messages"][1]["content"]
+
+    def test_defaults_to_empty(self) -> None:
+        assert _make_tier_input().guidance == []
+
+    def test_notes_are_listed(self) -> None:
+        content = self._user_content(["Keep it simple.", "No agents."])
+        assert "Developer guidance" in content
+        assert "- Keep it simple." in content
+        assert "- No agents." in content
+
+    def test_no_guidance_leaves_the_prompt_byte_identical(self) -> None:
+        assert self._user_content(None) == self._user_content([])
+        assert "Developer guidance" not in self._user_content([" "])
+
+
+# ---------------------------------------------------------------------------
 # TIER_ANALYST_SYSTEM_PROMPT content guards
 # ---------------------------------------------------------------------------
 

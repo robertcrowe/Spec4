@@ -317,6 +317,161 @@ class TestCallback:
 
 
 # ---------------------------------------------------------------------------
+# D-TA7 — guided redraw: the note survives the reset and reaches Scout
+# ---------------------------------------------------------------------------
+
+_OLD_POOL = [
+    {"name": "support_chatbot", "rough_description": "Answers tickets."},
+    {"name": "smart_search", "rough_description": "Semantic search."},
+]
+
+
+class TestGuidedRedraw:
+    def _run(self, session: dict[str, Any], note: Any) -> dict[str, Any]:
+        with _mocked_draw():
+            store, _ = on_breadth_try_again(1, session, note)
+        return store
+
+    def test_note_survives_the_reset_with_the_rejected_set(self) -> None:
+        session = _session(agentifier_scout_pool=list(_OLD_POOL))
+        store = self._run(session, "  Far fewer — only what the MVP needs.  ")
+        guidance = store["agentifier_retry_guidance"]
+        assert guidance["notes"] == ["Far fewer — only what the MVP needs."]
+        assert [c["name"] for c in guidance["previous_candidates"]] == [
+            "support_chatbot",
+            "smart_search",
+        ]
+        assert guidance["previous_candidates"][0]["rough_description"] == (
+            "Answers tickets."
+        )
+
+    def test_user_bubble_quotes_the_note(self) -> None:
+        store = self._run(_session(), "Drop the chatbot.\nKeep search.")
+        content = store["messages"][-2]["content"]
+        assert content.startswith("Try Again — draw a new set of candidates.")
+        assert "> Drop the chatbot." in content
+        assert "> Keep search." in content
+
+    def test_blank_note_is_the_plain_redraw(self) -> None:
+        for blank in (None, "", "   "):
+            store = self._run(_session(agentifier_scout_pool=list(_OLD_POOL)), blank)
+            assert store["agentifier_retry_guidance"] is None
+            assert (
+                store["messages"][-2]["content"]
+                == "Try Again — draw a new set of candidates."
+            )
+
+    def test_notes_accumulate_across_retries(self) -> None:
+        session = _session(agentifier_scout_pool=list(_OLD_POOL))
+        first = self._run(session, "Fewer, simpler.")
+        # The redraw produced a new pool the developer is now rejecting too.
+        first["agentifier_scout_pool"] = [{"name": "second_draw", "rough_description": ""}]
+        first["_stream_id"] = None
+        second = self._run(first, "Even fewer — max 3.")
+        guidance = second["agentifier_retry_guidance"]
+        assert guidance["notes"] == ["Fewer, simpler.", "Even fewer — max 3."]
+        assert [c["name"] for c in guidance["previous_candidates"]] == ["second_draw"]
+
+    def test_blank_note_keeps_prior_notes_and_refreshes_the_set(self) -> None:
+        session = _session(agentifier_scout_pool=list(_OLD_POOL))
+        first = self._run(session, "Fewer, simpler.")
+        first["agentifier_scout_pool"] = [{"name": "second_draw", "rough_description": ""}]
+        first["_stream_id"] = None
+        second = self._run(first, "")
+        guidance = second["agentifier_retry_guidance"]
+        assert guidance["notes"] == ["Fewer, simpler."]
+        assert [c["name"] for c in guidance["previous_candidates"]] == ["second_draw"]
+
+    def test_guidance_reaches_scout(self) -> None:
+        session = _session(agentifier_scout_pool=list(_OLD_POOL))
+        with (
+            patch(
+                "spec4.agentifier.agentifier._call_scout",
+                return_value=ScoutOutput(candidates=[_CANDIDATE]),
+            ) as scout,
+            patch(
+                "spec4.agentifier.agentifier._call_tier_analyst",
+                return_value=_ANALYSIS,
+            ),
+            mock_litellm_stream("Hello!"),
+            patch("spec4.callbacks.streaming.start", return_value="stream-1"),
+        ):
+            store, _ = on_breadth_try_again(1, session, "Fewer, simpler.")
+            collect(agentifier.run(None, store, _LLM_CONFIG))
+
+        guidance = scout.call_args.kwargs["guidance"]
+        assert guidance["notes"] == ["Fewer, simpler."]
+        assert [c["name"] for c in guidance["previous_candidates"]] == [
+            "support_chatbot",
+            "smart_search",
+        ]
+
+    def test_plain_redraw_passes_no_guidance(self) -> None:
+        session = _session(agentifier_scout_pool=list(_OLD_POOL))
+        with (
+            patch(
+                "spec4.agentifier.agentifier._call_scout",
+                return_value=ScoutOutput(candidates=[_CANDIDATE]),
+            ) as scout,
+            patch(
+                "spec4.agentifier.agentifier._call_tier_analyst",
+                return_value=_ANALYSIS,
+            ),
+            mock_litellm_stream("Hello!"),
+            patch("spec4.callbacks.streaming.start", return_value="stream-1"),
+        ):
+            store, _ = on_breadth_try_again(1, session, "")
+            collect(agentifier.run(None, store, _LLM_CONFIG))
+        assert scout.call_args.kwargs["guidance"] is None
+
+    def test_scout_banner_names_the_latest_note(self) -> None:
+        session = _session(agentifier_scout_pool=list(_OLD_POOL))
+        with (
+            patch(
+                "spec4.agentifier.agentifier._call_scout",
+                return_value=ScoutOutput(candidates=[_CANDIDATE]),
+            ),
+            patch(
+                "spec4.agentifier.agentifier._call_tier_analyst",
+                return_value=_ANALYSIS,
+            ),
+            mock_litellm_stream("Hello!"),
+            patch("spec4.callbacks.streaming.start", return_value="stream-1"),
+        ):
+            store, _ = on_breadth_try_again(1, session, "Fewer, simpler.")
+            out = collect(agentifier.run(None, store, _LLM_CONFIG))
+        assert "Applying your guidance: _Fewer, simpler._" in out
+
+    def test_guidance_reaches_the_tier_analyst_after_continue(self) -> None:
+        session = _session(agentifier_scout_pool=list(_OLD_POOL))
+        with (
+            patch(
+                "spec4.agentifier.agentifier._call_scout",
+                return_value=ScoutOutput(candidates=[_CANDIDATE]),
+            ),
+            patch(
+                "spec4.agentifier.agentifier._call_tier_analyst",
+                return_value=_ANALYSIS,
+            ) as tier,
+            mock_litellm_stream("Hello!"),
+            patch("spec4.callbacks.streaming.start", return_value="stream-1"),
+        ):
+            store, _ = on_breadth_try_again(1, session, "Keep it simple.")
+            collect(agentifier.run(None, store, _LLM_CONFIG))
+            store["agentifier_breadth_selection"] = [_CANDIDATE.name]
+            collect(agentifier.run("select", store, _LLM_CONFIG))
+        assert tier.call_args.kwargs["guidance"] == ["Keep it simple."]
+
+    def test_a_stale_input_rediscovery_starts_clean(self) -> None:
+        """The notes referred to a draw that no longer exists."""
+        session: dict[str, Any] = {
+            "agentifier_retry_guidance": {"notes": ["x"], "previous_candidates": []}
+        }
+        reset_agentifier_flow(session)
+        assert session["agentifier_retry_guidance"] is None
+
+
+# ---------------------------------------------------------------------------
 # The redraw takes the fresh-start route
 # ---------------------------------------------------------------------------
 
@@ -499,6 +654,63 @@ class TestPanelButton:
         ids = _ids(_breadth_panel(self._panel_session()))
         assert "btn-breadth-try-again" in ids
         assert "btn-breadth-submit" in ids
+
+    def test_panel_offers_the_guidance_box(self) -> None:
+        """D-TA7: the note box sits with Try Again, on the panel only."""
+        from spec4.layouts._chat import _breadth_panel
+
+        panel = _breadth_panel(self._panel_session())
+        ids = _ids(panel)
+        assert "breadth-retry-input" in ids
+        assert ids.index("btn-breadth-submit") < ids.index("breadth-retry-input")
+        assert ids.index("breadth-retry-input") < ids.index("btn-breadth-try-again")
+
+    def test_try_again_stretches_to_the_field_height(self) -> None:
+        """Like Send next to chat-input: the button and the textarea share a
+        flex row that stretches its items, so the button spans the field's
+        full height (the stretch rule itself lives in v3.css)."""
+        from dash import html
+
+        from spec4.layouts._chat import _breadth_panel
+
+        panel = _breadth_panel(self._panel_session())
+
+        def find_parent(node: Any) -> Any:
+            children = getattr(node, "children", None)
+            if isinstance(children, list | tuple):
+                for child in children:
+                    if getattr(child, "id", None) == "btn-breadth-try-again":
+                        return node
+                    found = find_parent(child)
+                    if found is not None:
+                        return found
+            return None
+
+        row = find_parent(panel)
+        assert isinstance(row, html.Div)
+        assert row.style["display"] == "flex"
+        assert row.style["alignItems"] == "stretch"
+        field = row.children[0]
+        assert field.id == "breadth-retry-input"
+        assert field.style["flex"] == "1"
+
+    def test_submit_button_reads_next_step(self) -> None:
+        from spec4.layouts._chat import _breadth_panel
+
+        panel = _breadth_panel(self._panel_session())
+
+        def find(node: Any) -> Any:
+            if getattr(node, "id", None) == "btn-breadth-submit":
+                return node
+            children = getattr(node, "children", None)
+            if isinstance(children, list | tuple):
+                for child in children:
+                    found = find(child)
+                    if found is not None:
+                        return found
+            return None
+
+        assert find(panel).children == "Next Step"
 
     def test_hidden_once_the_panel_is_submitted(self) -> None:
         """D-TA6: the button lives on the panel, so it goes when the panel does

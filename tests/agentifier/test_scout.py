@@ -14,6 +14,7 @@ from spec4.agentifier.scout import (
     ScoutOutcome,
     ScoutOutput,
     _build_scout_system_prompt,
+    _format_scout_guidance_block,
     _format_scout_revision_block,
     _parse_candidates,
 )
@@ -404,6 +405,82 @@ class TestScoutAgentRevisionWiring:
         messages = mock_llm.call_args[1]["messages"]
         assert "Revision mode" not in messages[0]["content"]
         assert "REVISION MODE" not in messages[1]["content"]
+
+# ---------------------------------------------------------------------------
+# Guided redraw (D-TA7)
+# ---------------------------------------------------------------------------
+
+_SAMPLE_GUIDANCE: dict[str, Any] = {
+    "notes": ["Far fewer — only what the MVP needs.", "Drop the chatbot."],
+    "previous_candidates": [
+        {"name": "support_chatbot", "rough_description": "Answers tickets."},
+        {"name": "smart_search", "rough_description": "Semantic search."},
+    ],
+}
+
+
+class TestFormatScoutGuidanceBlock:
+    def test_lists_notes_in_order_and_the_rejected_set(self) -> None:
+        block = _format_scout_guidance_block(_SAMPLE_GUIDANCE)
+        assert "DEVELOPER GUIDANCE FOR THIS REDRAW" in block
+        first = block.index("1. Far fewer")
+        second = block.index("2. Drop the chatbot.")
+        assert first < second
+        assert "REJECTED" in block
+        assert "- support_chatbot — Answers tickets." in block
+        assert "- smart_search — Semantic search." in block
+
+    def test_blank_notes_are_skipped(self) -> None:
+        block = _format_scout_guidance_block(
+            {"notes": ["  ", "Simpler."], "previous_candidates": []}
+        )
+        assert "1. Simpler." in block
+        assert "2." not in block
+        assert "(not recorded)" in block
+
+    def test_no_notes_still_says_the_set_was_rejected(self) -> None:
+        block = _format_scout_guidance_block({"notes": [], "previous_candidates": []})
+        assert "rejected the previous candidate set" in block
+
+
+class TestScoutAgentGuidanceWiring:
+    def _input(self, guidance: Any) -> ScoutInput:
+        return ScoutInput(
+            vision=_SAMPLE_VISION, llm_config=_LLM_CONFIG, guidance=guidance
+        )
+
+    def _messages(self, guidance: Any) -> list[dict[str, str]]:
+        import asyncio
+
+        with patch(
+            "spec4.agentifier.scout.complete_stream",
+            return_value=_make_mock_response("[]"),
+        ) as mock_llm:
+            asyncio.run(ScoutAgent().run(self._input(guidance)))
+        return mock_llm.call_args[1]["messages"]
+
+    def test_guidance_injects_addendum_and_block(self) -> None:
+        system, user = self._messages(_SAMPLE_GUIDANCE)
+        assert "Redraw mode" in system["content"]
+        assert "DEVELOPER GUIDANCE FOR THIS REDRAW" in user["content"]
+        assert "Drop the chatbot." in user["content"]
+        assert "support_chatbot" in user["content"]
+
+    def test_no_guidance_leaves_the_prompt_alone(self) -> None:
+        system, user = self._messages(None)
+        assert "Redraw mode" not in system["content"]
+        assert "DEVELOPER GUIDANCE" not in user["content"]
+
+    def test_guidance_composes_with_revision_and_brownfield(self) -> None:
+        prompt = _build_scout_system_prompt(True, revision=True, guidance=True)
+        assert "Brownfield mode" in prompt
+        assert "Revision mode" in prompt
+        assert "Redraw mode" in prompt
+        assert prompt.index("Revision mode") < prompt.index("Redraw mode")
+
+    def test_defaults_to_none(self) -> None:
+        assert ScoutInput(vision=_SAMPLE_VISION, llm_config=_LLM_CONFIG).guidance is None
+
 
 # ---------------------------------------------------------------------------
 # on_chunk receipt hook (D-PH9)

@@ -55,6 +55,12 @@
   align-self: stretch;
 }
 
+/* Breadth panel's Try Again matches its textarea height, like Send */
+#btn-breadth-try-again {
+  height: auto !important;
+  align-self: stretch;
+}
+
 /* Model chip in the footer row under the composer — light outline so it reads
    as a control next to the dimmed status text, not as more dimmed text. */
 #btn-agent-llm-chip {

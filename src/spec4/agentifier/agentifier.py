@@ -297,11 +297,14 @@ def _call_scout(
     revision: dict[str, Any] | None = None,
     on_chunk: Callable[[str], None] | None = None,
     brownfield: bool = False,
+    guidance: dict[str, Any] | None = None,
 ) -> ScoutOutput:
     """Invoke Scout synchronously via the registry.
 
     ``brownfield`` is the developer's answer, not an inference from
-    ``code_review`` — see the note on :class:`ScoutInput`.
+    ``code_review`` — see the note on :class:`ScoutInput`. ``guidance`` is the
+    developer's redraw guidance from the breadth panel's Try Again (D-TA7),
+    ``None`` for a first draw or an un-guided redraw.
     """
     scout_input = ScoutInput(
         vision=vision,
@@ -310,6 +313,7 @@ def _call_scout(
         revision=revision,
         on_chunk=on_chunk,
         brownfield=brownfield,
+        guidance=guidance,
     )
     return asyncio.run(_registry.run("scout", scout_input))
 
@@ -481,8 +485,13 @@ def _call_tier_analyst(
     llm_config: dict[str, Any],
     code_review: dict[str, Any] | None = None,
     on_chunk: Callable[[str], None] | None = None,
+    guidance: list[str] | None = None,
 ) -> TierAnalystOutput:
-    """Invoke TierAnalyst synchronously via the registry."""
+    """Invoke TierAnalyst synchronously via the registry.
+
+    ``guidance`` is the developer's redraw notes (D-TA7), when the panel that
+    produced this candidate was reached through a guided Try Again.
+    """
     tiers, mechanisms = load_patterns()
     ta_input = TierAnalystInput(
         candidate=candidate,
@@ -490,6 +499,7 @@ def _call_tier_analyst(
         tier_patterns=tiers,
         code_review=code_review,
         mechanism_patterns=mechanisms,
+        guidance=list(guidance or []),
         on_chunk=on_chunk,
     )
     return asyncio.run(_registry.run("tier_analyst", ta_input))
@@ -2673,9 +2683,26 @@ def _run_catalog_phase(
             _project_name = (_vs.get("name", "") if isinstance(_vs, dict) else "") or ""
             _project_note = f" for **{_project_name}**" if _project_name else ""
 
+            # D-TA7: a guided redraw carries the developer's notes (and the
+            # set they rejected) into Scout. Written by on_breadth_try_again
+            # after the reset; None for a first draw or a plain Try Again.
+            _guidance = session.get("agentifier_retry_guidance") or None
+            _guidance_notes = [
+                str(n).strip()
+                for n in ((_guidance or {}).get("notes") or [])
+                if str(n).strip()
+            ]
+            if _guidance is not None and not _guidance_notes:
+                _guidance = None
+            _guidance_line = (
+                f"Applying your guidance: _{_guidance_notes[-1]}_\n\n"
+                if _guidance_notes
+                else ""
+            )
             _scout_banner = (
                 f"### 🔍 Scout\n\n"
                 f"Scanning your vision{_project_note} for AI/LLM integration opportunities…\n\n"
+                f"{_guidance_line}"
                 f"Scout reads your vision statement and identifies every place where an LLM, "
                 f"embedding model, or AI agent could add meaningful value. "
                 f"It maps each candidate back to the vision features that motivated it, "
@@ -2707,6 +2734,7 @@ def _run_catalog_phase(
                     revision=_scout_revision,
                     on_chunk=_on_chunk,
                     brownfield=project_manager.session_is_brownfield(session),
+                    guidance=_guidance,
                 )
             except Exception as exc:
                 yield f"\n\nScout failed to analyse the vision: {exc}. Please try again."
@@ -3082,6 +3110,12 @@ def _run_catalog_phase(
             )
 
         code_review = session.get("code_review")
+        # D-TA7: the redraw notes reach the Tier Analyst too, so "keep it
+        # simple" weighs on the tier of every survivor, not just on which
+        # candidates Scout surfaced.
+        _ta_guidance = list(
+            (session.get("agentifier_retry_guidance") or {}).get("notes") or []
+        )
         breadth_analyses: list[TierAnalystOutput] = []
         try:
             for _i, _cand in enumerate(to_analyze, 1):
@@ -3105,7 +3139,11 @@ def _run_catalog_phase(
                 )
                 breadth_analyses.append(
                     _call_tier_analyst(
-                        _cand, llm_config, code_review, on_chunk=_on_chunk
+                        _cand,
+                        llm_config,
+                        code_review,
+                        on_chunk=_on_chunk,
+                        guidance=_ta_guidance,
                     )
                 )
                 pre_stream_chars = _drained_total()
@@ -3227,6 +3265,10 @@ _RESTART_DEFAULTS: dict[str, Any] = {
     "agentifier_breadth_intro": None,
     "agentifier_breadth_selection": None,
     "agentifier_explicitly_rejected": None,
+    # D-TA7: cleared by every full restart. The guided Try Again re-writes it
+    # *after* calling reset_agentifier_flow, so its notes survive that one
+    # reset and no other — a stale-input rediscovery starts clean.
+    "agentifier_retry_guidance": None,
     "agentifier_candidates": None,
     "agentifier_analyses": None,
     "ai_catalog": None,

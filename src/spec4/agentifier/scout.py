@@ -248,12 +248,38 @@ Return only candidates that belong to this revision's new/changed surface.
 """
 
 
-def _build_scout_system_prompt(brownfield: bool, revision: bool = False) -> str:
+_SCOUT_GUIDANCE_ADDENDUM = """\
+
+**Redraw mode — the developer rejected the previous candidate set**
+
+This is a REDRAW. The developer saw a previous set of candidates (listed under
+"Previous candidate set" below), rejected it, and wrote guidance on what to
+change. That guidance is a binding constraint on this draw, not a suggestion.
+
+- Treat every guidance note as a hard requirement on the count, complexity, and
+  scope of what you return. If the developer asks for fewer candidates, return
+  fewer. If they ask for simpler approaches, prefer candidates a lower tier can
+  serve and drop the ambitious ones. If they name a candidate to drop, drop it
+  and anything that only existed to serve it.
+- Do NOT reproduce the rejected set. Keep a previous candidate only when it
+  plainly satisfies the guidance; otherwise replace it or leave it out.
+- A short list — even a very short one — is the right answer when the guidance
+  and the vision call for it. Do not pad the set back up to its previous size.
+- Everything else about the task is unchanged: candidates still ground in the
+  vision, still use the same fields, still return only the JSON array.
+"""
+
+
+def _build_scout_system_prompt(
+    brownfield: bool, revision: bool = False, guidance: bool = False
+) -> str:
     prompt = _SCOUT_SYSTEM_PROMPT_BASE
     if brownfield:
         prompt += _SCOUT_BROWNFIELD_ADDENDUM
     if revision:
         prompt += _SCOUT_REVISION_ADDENDUM
+    if guidance:
+        prompt += _SCOUT_GUIDANCE_ADDENDUM
     return prompt
 
 
@@ -305,6 +331,13 @@ class ScoutInput:
     # the AI features already built, so Scout scopes to the changed surface and
     # does not re-surface existing AI features. ``None`` for a greenfield run.
     revision: dict[str, Any] | None = field(default=None)
+    # Redraw guidance: the developer rejected a previous candidate set from the
+    # breadth panel's "Try Again" and said what to change. Carries ``notes``
+    # (the developer's free-text notes, oldest first — they accumulate across
+    # successive redraws of the same panel) and ``previous_candidates`` (name +
+    # rough_description of the set just rejected, so "too many" and "drop X"
+    # have a referent). ``None`` for a first draw or a plain, un-guided redraw.
+    guidance: dict[str, Any] | None = field(default=None)
     # Receipt-counter hook (D-PH9): called with each streamed text delta as it
     # arrives, so the orchestrator can publish liveness while the response is
     # drained internally. ``None`` drains silently (the prior behavior).
@@ -414,6 +447,47 @@ def _format_scout_revision_block(revision: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _format_scout_guidance_block(guidance: dict[str, Any]) -> str:
+    """Render the developer's redraw guidance + the rejected set for Scout's prompt.
+
+    ``guidance`` carries ``notes`` (free text, oldest first) and
+    ``previous_candidates`` (name + rough_description of the set the developer
+    just rejected). The notes are the developer's own words and are quoted as
+    given; the previous set is listed so the notes have something to refer to.
+    """
+    notes = [str(n).strip() for n in (guidance.get("notes") or []) if str(n).strip()]
+    previous = guidance.get("previous_candidates") or []
+
+    lines = ["\n\n--- DEVELOPER GUIDANCE FOR THIS REDRAW ---"]
+    if notes:
+        lines.append(
+            "The developer rejected the previous candidate set and asked for "
+            "these changes (oldest first; all of them apply):"
+        )
+        for i, note in enumerate(notes, 1):
+            lines.append(f"{i}. {note}")
+    else:
+        lines.append(
+            "The developer rejected the previous candidate set and asked for a "
+            "different one."
+        )
+
+    if previous:
+        lines.append("\nPrevious candidate set (REJECTED — do not reproduce it):")
+        for c in previous:
+            name = str(c.get("name", "")).strip()
+            desc = str(c.get("rough_description", "")).strip()
+            lines.append(f"- {name} — {desc}" if desc else f"- {name}")
+    else:
+        lines.append("\nPrevious candidate set: (not recorded)")
+
+    lines.append(
+        "\nApply the guidance above to this draw. Where it asks for fewer or "
+        "simpler candidates, return fewer or simpler candidates."
+    )
+    return "\n".join(lines)
+
+
 class ScoutAgent:
     """Request/response sub-agent that identifies AI opportunity candidates."""
 
@@ -424,8 +498,9 @@ class ScoutAgent:
 
         brownfield = input.brownfield
         revision = input.revision
+        guidance = input.guidance
         system_prompt = _build_scout_system_prompt(
-            brownfield, revision is not None
+            brownfield, revision is not None, guidance is not None
         )
 
         vision_text = json.dumps(input.vision, indent=2)
@@ -438,11 +513,15 @@ class ScoutAgent:
         revision_block = (
             _format_scout_revision_block(revision) if revision else ""
         )
+        guidance_block = (
+            _format_scout_guidance_block(guidance) if guidance else ""
+        )
 
         user_content = (
             f"Here is the project vision statement:\n\n```json\n{vision_text}\n```"
             f"{code_review_block}"
             f"{revision_block}"
+            f"{guidance_block}"
             "\n\nIdentify all AI opportunity candidates."
         )
 

@@ -84,6 +84,7 @@ def _default_session() -> dict[str, Any]:
         "agentifier_breadth_intro": None,
         "agentifier_breadth_selection": None,
         "agentifier_explicitly_rejected": None,
+        "agentifier_retry_guidance": None,
         "agentifier_candidates": None,
         "agentifier_analyses": None,
         "ai_catalog": None,

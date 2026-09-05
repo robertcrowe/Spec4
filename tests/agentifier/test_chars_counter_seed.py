@@ -183,7 +183,9 @@ class TestTierAnalystDrainContinuity:
             ' "compared_to_next_tier_down": "c"}'
         )
 
-        def _fake_tier(_cand: Any, _cfg: Any, _review: Any, on_chunk: Any = None):
+        def _fake_tier(
+            _cand: Any, _cfg: Any, _review: Any, on_chunk: Any = None, **_kw: Any
+        ):
             if on_chunk is not None:
                 for piece in (tier_json[:40], tier_json[40:]):
                     on_chunk(piece)

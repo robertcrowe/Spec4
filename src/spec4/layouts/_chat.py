@@ -325,16 +325,17 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
             # itself is a hard UI stop. catalog_done covers resumed sessions
             # that load past the panel without replaying it.
             buttons = [token_counter, *_ff_controls("Agentifier")]
-        elif session.get("agentifier_breadth_groups") and session.get("_stream_id"):
-            # D-AT2: the panel has just been submitted and the post-panel turn
-            # is streaming. agentifier_breadth_chosen is set by the generator,
-            # but mid-stream the poll merges only messages and the char total,
-            # so that flag does not reach the layout until the turn ends —
-            # leaving tier analysis and the briefing draw with no counter.
-            # breadth_groups is populated only when the panel is presented, so
-            # groups plus a live stream identifies a post-panel turn: the
-            # pre-panel build has a stream but no groups, and stays bare
-            # (D-AT5). Counter only — the Fast Forward gate above is unchanged.
+        elif session.get("_stream_id"):
+            # Any live Agentifier stream gets the counter. Two cases land here:
+            # the first post-panel turn (D-AT2 — agentifier_breadth_chosen is
+            # set by the generator, but mid-stream the poll merges only
+            # messages and the char total, so the flag does not reach the
+            # layout until the turn ends), and the pre-panel build or Try
+            # Again redraw (D-AT5, revised — the Scout banner points the
+            # developer at "the character counter below", and Scout, Linker
+            # and Composer all publish live totals through _session_counter,
+            # so the gate that kept this bare was the only missing piece).
+            # Counter only — the Fast Forward gate above is unchanged.
             buttons = [token_counter]
         else:
             buttons = []
@@ -592,8 +593,43 @@ def _breadth_panel(session: dict[str, Any]) -> Any | None:
                 mb="md",
             ),
             dmc.Group(
+                [dmc.Button("Next Step", id="btn-breadth-submit")],
+                justify="center",
+                mb="md",
+            ),
+            # Guided redraw (D-TA7). The note is optional: a blank box with Try
+            # Again is the plain redraw it always was. Text typed here reaches
+            # Scout (and, after Continue, the Tier Analyst) via
+            # session["agentifier_retry_guidance"]; see on_breadth_try_again.
+            # The main chat-input row is hidden while this panel is up, so this
+            # is the only text box on screen. Typed text survives checkbox
+            # toggles because on_breadth_change never re-renders the layout.
+            # The label lives outside the Textarea (rather than its `label`
+            # prop) so the row below can stretch Try Again to the field's
+            # height alone, exactly as the Send button matches chat-input —
+            # same flex row, same stretch rule in v3.css.
+            html.Label(
+                "Tell me what to change (optional)",
+                htmlFor="breadth-retry-input",
+                style={
+                    "display": "block",
+                    "fontSize": "var(--mantine-font-size-sm)",
+                    "fontWeight": 500,
+                    "marginBottom": "calc(var(--mantine-spacing-xs) / 2)",
+                },
+            ),
+            html.Div(
                 [
-                    dmc.Button("Continue →", id="btn-breadth-submit"),
+                    dmc.Textarea(
+                        id="breadth-retry-input",
+                        placeholder=(
+                            "e.g. Too many — keep only the 3 that matter most "
+                            "for the MVP, and prefer simpler approaches."
+                        ),
+                        autosize=True,
+                        minRows=2,
+                        style={"flex": "1"},
+                    ),
                     dmc.Button(
                         "↺ Try Again",
                         id="btn-breadth-try-again",
@@ -601,7 +637,12 @@ def _breadth_panel(session: dict[str, Any]) -> Any | None:
                         color="gray",
                     ),
                 ],
-                gap="sm",
+                style={
+                    "display": "flex",
+                    "alignItems": "stretch",
+                    "gap": "var(--mantine-spacing-sm)",
+                    "width": "100%",
+                },
             ),
         ],
         p="md",

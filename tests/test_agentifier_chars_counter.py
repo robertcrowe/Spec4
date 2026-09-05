@@ -1,4 +1,4 @@
-"""D-AT1/D-AT2/D-AT3/D-AT4: the Agentifier chars counter.
+"""D-AT1/D-AT2/D-AT3/D-AT4/D-AT5: the Agentifier chars counter.
 
 Most of Agentifier's post-panel time yields visible text, so the counter's
 displayed-character fallback already serves it. The gap is the suppressed
@@ -7,6 +7,11 @@ the visible message never grows — the same D-SC60 case already fixed for
 StackAdvisor. Two wrinkles come with closing it: the layout renders no button
 bar during the first post-panel turn, and seeding the published total at zero
 would make the counter drop mid-turn.
+
+D-AT5 (revised): the pre-panel build and the Try Again redraw show the counter
+too. The Scout banner tells the developer "the character counter below shows
+live progress", and Scout, Linker and Composer publish live totals for it, so
+the gate that kept that stretch bare contradicted the banner.
 """
 
 from __future__ import annotations
@@ -126,10 +131,26 @@ class TestSeed:
 
 
 class TestLayoutGate:
-    def test_pre_panel_build_stays_bare(self) -> None:
-        """D-AT5: no counter before the panel. The pre-panel build has a live
-        stream but has not yet populated breadth_groups."""
-        session = _agentifier_session(_stream_id="abc")
+    def test_pre_panel_build_shows_the_counter(self) -> None:
+        """D-AT5 (revised): the pre-panel build has a live stream and no
+        breadth_groups yet — and a Scout banner pointing at this counter."""
+        session = _agentifier_session(_stream_id="abc", _stream_received_chars=310)
+        assert _counter_texts(_chat_action_buttons(session)) == ["Chars received: 310"]
+
+    def test_try_again_redraw_shows_the_counter(self) -> None:
+        """The redraw's reset clears breadth_groups; the stream alone is the
+        signal, so the counter must not depend on the groups."""
+        session = _agentifier_session(
+            _stream_id="abc",
+            agentifier_breadth_groups=None,
+            agentifier_scout_pool=None,
+            _stream_received_chars=42,
+        )
+        assert _counter_texts(_chat_action_buttons(session)) == ["Chars received: 42"]
+
+    def test_idle_pre_panel_state_stays_bare(self) -> None:
+        """No stream and no panel: nothing to count, nothing to show."""
+        session = _agentifier_session()
         assert _counter_texts(_chat_action_buttons(session)) == []
 
     def test_first_post_panel_turn_shows_the_counter(self) -> None:
@@ -172,6 +193,7 @@ class TestLayoutGate:
     def test_exactly_one_counter_per_bar(self) -> None:
         """Duplicate ids in one layout are a Dash error, not a cosmetic issue."""
         for overrides in (
+            {"_stream_id": "abc"},
             {"_stream_id": "abc", "agentifier_breadth_groups": [{"name": "a"}]},
             {"agentifier_breadth_chosen": True},
             {"agentifier_state": STATE_AGENTIFIER_COMPLETE},

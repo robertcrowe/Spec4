@@ -182,6 +182,12 @@ class TierAnalystInput:
     tier_patterns: list[TierPattern] = field(default_factory=list)
     code_review: dict[str, Any] | None = field(default=None)
     mechanism_patterns: list[MechanismPattern] = field(default_factory=list)
+    # Developer guidance from a guided redraw of the breadth panel (the notes
+    # typed into "Tell me what to change" before Try Again). Scout is the
+    # primary consumer; it reaches here so "keep it simple" also weighs on the
+    # tier recommendation for the survivors. Empty for an un-guided run, in
+    # which case the prompt is byte-identical to before.
+    guidance: list[str] = field(default_factory=list)
     # Receipt-counter hook (D-PH9): called with each streamed text delta as it
     # arrives, so the orchestrator can publish liveness while the response is
     # drained internally. ``None`` drains silently (the prior behavior).
@@ -344,9 +350,17 @@ class TierAnalystAgent:
             f"\n\n**Existing AI infrastructure (bias toward reuse):**\n{ai_hint}"
             if ai_hint else ""
         )
+        notes = [str(n).strip() for n in (input.guidance or []) if str(n).strip()]
+        guidance_note = (
+            "\n\n**Developer guidance (from the redraw request — weigh toward "
+            "simpler tiers where it applies):**\n"
+            + "\n".join(f"- {n}" for n in notes)
+            if notes
+            else ""
+        )
         user_content = (
             f"Candidate:\n```json\n{candidate_text}\n```"
-            f"{brownfield_note}\n\n"
+            f"{brownfield_note}{guidance_note}\n\n"
             "Recommend the cheapest appropriate tier from the ladder above."
         )
 

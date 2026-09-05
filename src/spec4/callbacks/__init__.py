@@ -1117,9 +1117,10 @@ def on_breadth_submit(n_clicks: Any, selected: Any, session: Any) -> Any:
     Output("stream-poll-interval", "max_intervals", allow_duplicate=True),
     Input("btn-breadth-try-again", "n_clicks"),
     State("session", "data"),
+    State("breadth-retry-input", "value"),
     prevent_initial_call=True,
 )
-def on_breadth_try_again(n_clicks: Any, session: Any) -> Any:
+def on_breadth_try_again(n_clicks: Any, session: Any, note: Any = None) -> Any:
     """Discard the current candidate set and run Scout again (D-TA2).
 
     Session-only. Nothing on disk is touched: the reset demotes
@@ -1134,6 +1135,15 @@ def on_breadth_try_again(n_clicks: Any, session: Any) -> Any:
     the revision block from disk. That is what makes Try Again inside a revision
     round produce a genuinely new candidate set rather than re-opening the
     reselection panel over the old one.
+
+    Guided redraw (D-TA7): ``note`` is the panel's "Tell me what to change"
+    text. Notes accumulate across successive Try Agains on the same panel — a
+    second note is added to the first, not substituted, so an earlier "fewer,
+    simpler" is not silently lost — and the set being rejected travels with
+    them so "too many" and "drop X" have a referent. The block is written
+    *after* the reset (which clears it, like every other agentifier key), so
+    it survives exactly this restart. A blank note with no prior notes leaves
+    the key ``None``: that is the plain redraw this button always was.
     """
     from spec4.agentifier.agentifier import reset_agentifier_flow
 
@@ -1142,11 +1152,38 @@ def on_breadth_try_again(n_clicks: Any, session: Any) -> Any:
     if session.get("_stream_id"):
         return no_update, no_update
     session = dict(session or {})
+    note = (note or "").strip() if isinstance(note, str) else ""
+    prior_notes = [
+        str(n).strip()
+        for n in ((session.get("agentifier_retry_guidance") or {}).get("notes") or [])
+        if str(n).strip()
+    ]
+    prior_pool = [
+        c for c in (session.get("agentifier_scout_pool") or []) if isinstance(c, dict)
+    ]
     reset_agentifier_flow(session)
-    messages = list(session.get("messages", []))
-    messages.append(
-        {"role": "user", "content": "Try Again — draw a new set of candidates."}
+    notes = prior_notes + ([note] if note else [])
+    session["agentifier_retry_guidance"] = (
+        {
+            "notes": notes,
+            "previous_candidates": [
+                {
+                    "name": str(c.get("name", "")),
+                    "rough_description": str(c.get("rough_description", "")),
+                }
+                for c in prior_pool
+                if c.get("name")
+            ],
+        }
+        if notes
+        else None
     )
+    messages = list(session.get("messages", []))
+    user_text = "Try Again — draw a new set of candidates."
+    if note:
+        quoted = "\n".join(f"> {line}" for line in note.splitlines())
+        user_text = f"{user_text}\n\n{quoted}"
+    messages.append({"role": "user", "content": user_text})
     messages.append({"role": "assistant", "content": ""})
     gen = _get_agent_gen(None, session)
     stream_id = streaming.start(gen, session)

@@ -440,15 +440,29 @@ class TestLayout:
         assert elapsed.children == ""
 
     def test_elapsed_renders_even_when_the_agent_has_no_buttons(self) -> None:
-        """Pre-panel Agentifier contributes nothing to the row (D-AT5), but a
-        live stream still needs somewhere to show its elapsed time."""
+        """A live stream still needs somewhere to show its elapsed time even
+        when the agent contributes nothing to the row. No chat agent is
+        buttonless mid-stream any more (pre-panel Agentifier gained its counter
+        under the revised D-AT5), so the guarantee is exercised with an agent
+        the bar has no branch for."""
+        session = {
+            "active_agent": "designer",
+            "_stream_id": "abc",
+            "messages": [{"role": "assistant", "content": ""}],
+        }
+        ids = [getattr(c, "id", "") for c in _bar_children(session)]
+        assert ids == ["chat-elapsed"]
+
+    def test_pre_panel_agentifier_pairs_counter_with_elapsed(self) -> None:
+        """D-AT5 (revised): the pre-panel build shows the chars counter the
+        Scout banner points at, with elapsed right after it."""
         session = {
             "active_agent": "agentifier",
             "_stream_id": "abc",
             "messages": [{"role": "assistant", "content": ""}],
         }
         ids = [getattr(c, "id", "") for c in _bar_children(session)]
-        assert ids == ["chat-elapsed"]
+        assert ids == ["chat-token-count", "chat-elapsed"]
 
     def test_no_row_when_idle_and_buttonless(self) -> None:
         session = {"active_agent": "agentifier", "messages": []}
