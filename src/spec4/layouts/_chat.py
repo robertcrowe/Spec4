@@ -16,7 +16,7 @@ from spec4.app_constants import (
 )
 from spec4.agentifier.panel_closure import close_selection, pool_from_dicts
 from spec4.layouts import _llm_gate
-from spec4.layouts._shared import _render_message
+from spec4.layouts._shared import _render_message, cost_summary_card
 from spec4.session import _validate_agent_preconditions
 
 # Reset native html.Button styling so the wrapper looks like the bare badge.
@@ -109,6 +109,56 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
             ),
             dmc.Divider(mb="md"),
         ]
+    )
+
+
+# When a chat agent's run is complete: the same predicates the action row and
+# the status bar use, so the cost card appears exactly when the Download /
+# Continue buttons do. Designer is not here — it has no chat turn; its card
+# renders on the mock preview step (layouts.designer).
+_RUN_COMPLETE: dict[str, tuple[str, str]] = {
+    "code_scanner": ("code_scanner_state", STATE_REVIEW_COMPLETE),
+    "brainstormer": ("brainstormer_state", STATE_VISION_COMPLETE),
+    "agentifier": ("agentifier_state", STATE_AGENTIFIER_COMPLETE),
+    "stack_advisor": ("stack_advisor_state", STATE_STACK_COMPLETE),
+    "phaser": ("phaser_state", STATE_PHASES_COMPLETE),
+    "deployer": ("deployer_state", STATE_DEPLOYER_COMPLETE),
+}
+
+_AGENT_LABELS: dict[str, str] = {
+    "code_scanner": "CodeScanner",
+    "brainstormer": "Brainstormer",
+    "agentifier": "Agentifier",
+    "stack_advisor": "StackAdvisor",
+    "phaser": "Phaser",
+    "deployer": "Deployer",
+}
+
+
+def _cost_summary(session: dict[str, Any]) -> Any | None:
+    """The estimated-cost card for the active agent, on the turn that ended its run.
+
+    Two gates, both needed. The completion state says the agent has produced
+    its artifact at some point; on a Modify run of a completed agent that
+    state stays set through every conversational turn, so on its own it put
+    the card after each step. The artifact stamp (``<agent>_artifact_msg_count``,
+    written by every agent at the moment it emits its artifact — the same
+    signal the resume helper reads) says the artifact is the *last* message:
+    chatting past it grows the history and the card leaves; re-emitting it
+    stamps the new length and the card returns. Never mid-stream.
+    """
+    if session.get("_stream_id"):
+        return None
+    active = session.get("active_agent")
+    gate = _RUN_COMPLETE.get(active or "")
+    if gate is None or session.get(gate[0]) != gate[1]:
+        return None
+    history = session.get(f"{active}_messages") or []
+    stamp = session.get(f"{active}_artifact_msg_count")
+    if isinstance(stamp, bool) or not isinstance(stamp, int) or stamp != len(history):
+        return None
+    return cost_summary_card(
+        session.get("working_dir"), session, active, _AGENT_LABELS[active]
     )
 
 
@@ -667,6 +717,7 @@ def _chat_layout(
     )
     breadth_panel = _breadth_panel(session)
     retry_panel = _retry_panel(session)
+    cost_card = _cost_summary(session)
     # Mid-agent, the chip re-opens the same card. `agent_llm_draft` marks it
     # open; a resting chip renders nothing extra.
     chip_open = bool(
@@ -717,6 +768,9 @@ def _chat_layout(
                     "marginBottom": "var(--mantine-spacing-xs)",
                 },
             ),
+            # The run's cost, under its last message and above the row that
+            # moves on from it. Renders only once the run is complete.
+            *([cost_card] if cost_card is not None else []),
             _chat_action_buttons(session),
             *([retry_panel] if retry_panel is not None else []),
             *([breadth_panel] if breadth_panel is not None else []),

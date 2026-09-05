@@ -454,8 +454,11 @@ class TestSaveUsageSchema:
         assert agent["computed_cost_usd"] == 0.001
         assert agent["models"] == [{"model": "gpt-4o-mini", "provider": "openai"}]
         assert agent["history"][0]["agent"] == "brainstormer"
+        assert agent["calls_missing_cost"] == 0
         assert data["totals"] == {
             "calls": 1,
+            "calls_missing_usage": 0,
+            "calls_missing_cost": 0,
             "input_tokens": 100,
             "output_tokens": 20,
             "total_tokens": 120,

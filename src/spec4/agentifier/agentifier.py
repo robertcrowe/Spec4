@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import logging
 import os
 import pathlib
@@ -1404,6 +1405,47 @@ def _finalize_specs(
     yield display
 
 
+def _discovery_guidance(session: dict[str, Any]) -> list[dict[str, Any]]:
+    """The round's redraw log for ``ai_features.json`` (D-TA7).
+
+    One entry per Try Again the developer clicked this round — the note they
+    typed (None for a blank redraw), the candidate set they were rejecting,
+    and when — in order. A round often carries several: each is kept as its
+    own event rather than folded into one, so the record shows what was asked
+    at each step.
+
+    Merged with what the round's file already holds, keyed on the event
+    timestamp, so a re-completion (a reselection after a reload, a stale-input
+    rediscovery) neither drops earlier events nor duplicates them. Read from
+    the active round's file directly — ``load_ai_features`` reads the latest
+    round, which is not this one at the start of a new revision.
+    """
+    events: list[dict[str, Any]] = []
+    working_dir = session.get("working_dir")
+    if working_dir:
+        path = (
+            project_manager.get_version_dir(
+                working_dir, project_manager.active_version(working_dir, session)
+            )
+            / "ai_features.json"
+        )
+        try:
+            prior = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            prior = None
+        if isinstance(prior, dict):
+            events.extend(
+                e for e in (prior.get("discovery_guidance") or []) if isinstance(e, dict)
+            )
+    seen = {e.get("requested_at") for e in events}
+    guidance = session.get("agentifier_retry_guidance") or {}
+    for event in guidance.get("history") or []:
+        if isinstance(event, dict) and event.get("requested_at") not in seen:
+            events.append(event)
+            seen.add(event.get("requested_at"))
+    return events
+
+
 def _complete_agentifier(
     session: dict[str, Any],
     display: str | None = None,
@@ -1423,6 +1465,9 @@ def _complete_agentifier(
     ai_features["nfr_goals"] = list(
         _feature_specs_for_session(session).get("nfr_goals") or []
     )
+    # The developer's redraw requests (D-TA7), stamped here for the same
+    # reason as nfr_goals: every completion path passes through this locus.
+    ai_features["discovery_guidance"] = _discovery_guidance(session)
     decisions = session.get("agentifier_cross_cutting_decisions") or {}
     # Captured before the revision branch pops the version key: drives the
     # ``introduced_in_version`` stamp on newly injected infrastructure (S6).

@@ -1119,6 +1119,10 @@ def summarize_usage(history: list[dict[str, Any]]) -> dict[str, Any]:
     rollup: dict[str, Any] = {
         "calls": 0,
         "calls_missing_usage": 0,
+        # Calls the provider reported usage for but LiteLLM could not price
+        # (no cost-map entry). Their tokens are counted; their cost is not,
+        # so a cost figure shown next to this count is a known undercount.
+        "calls_missing_cost": 0,
         "input_tokens": 0,
         "output_tokens": 0,
         "total_tokens": 0,
@@ -1130,6 +1134,8 @@ def summarize_usage(history: list[dict[str, Any]]) -> dict[str, Any]:
         rollup["calls"] += 1
         if call.get("usage_missing"):
             rollup["calls_missing_usage"] += 1
+        elif _usage_float(call.get("computed_cost_usd")) is None:
+            rollup["calls_missing_cost"] += 1
         for src, dst in (
             ("prompt_tokens", "input_tokens"),
             ("completion_tokens", "output_tokens"),
@@ -1160,6 +1166,8 @@ def usage_totals(agents: dict[str, dict[str, Any]]) -> dict[str, Any]:
     """Round-wide totals across the per-agent summaries."""
     totals: dict[str, Any] = {
         "calls": 0,
+        "calls_missing_usage": 0,
+        "calls_missing_cost": 0,
         "input_tokens": 0,
         "output_tokens": 0,
         "total_tokens": 0,
@@ -1167,7 +1175,14 @@ def usage_totals(agents: dict[str, dict[str, Any]]) -> dict[str, Any]:
         "computed_cost_usd": None,
     }
     for entry in agents.values():
-        for key in ("calls", "input_tokens", "output_tokens", "total_tokens"):
+        for key in (
+            "calls",
+            "calls_missing_usage",
+            "calls_missing_cost",
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+        ):
             totals[key] += _usage_int(entry.get(key)) or 0
         cached = _usage_int(entry.get("cached_input_tokens"))
         if cached is not None:
@@ -1190,6 +1205,66 @@ def load_usage(working_dir: str | Path, version: int) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return data if isinstance(data, dict) else None
+
+
+_COST_SUMMARY_EMPTY: dict[str, Any] = {
+    "cost_usd": None,
+    "calls": 0,
+    "calls_missing_cost": 0,
+    "calls_missing_usage": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cached_input_tokens": None,
+}
+
+
+def _cost_block(entry: Any) -> dict[str, Any]:
+    """One agent's (or the totals') cost and token figures, shape-guarded.
+
+    Tokens are the provider-reported sums over calls that returned usage;
+    ``cached_input_tokens`` stays None when no call reported a cache read.
+    """
+    if not isinstance(entry, dict):
+        return dict(_COST_SUMMARY_EMPTY)
+    return {
+        "cost_usd": _usage_float(entry.get("computed_cost_usd")),
+        "calls": _usage_int(entry.get("calls")) or 0,
+        "calls_missing_cost": _usage_int(entry.get("calls_missing_cost")) or 0,
+        "calls_missing_usage": _usage_int(entry.get("calls_missing_usage")) or 0,
+        "input_tokens": _usage_int(entry.get("input_tokens")) or 0,
+        "output_tokens": _usage_int(entry.get("output_tokens")) or 0,
+        "cached_input_tokens": _usage_int(entry.get("cached_input_tokens")),
+    }
+
+
+def cost_summary(
+    working_dir: str | Path, version: int, agent: str
+) -> dict[str, Any] | None:
+    """The in-app cost card's numbers for one agent in one round.
+
+    A read-time view over ``usage.json``: ``agent`` is that planning agent's
+    rollup (sub-agents already folded in by :func:`save_usage`) and ``total``
+    is the round's. ``None`` when the round has no usage file yet. An agent
+    with no block yet reads as zero calls and no cost. The cost figures are
+    LiteLLM's estimate and carry the same caveats as the file: a call that
+    could not be priced is counted in ``calls_missing_cost`` and excluded
+    from ``cost_usd``, so the caller can say so rather than show a confident
+    undercount.
+    """
+    data = load_usage(working_dir, version)
+    if data is None:
+        return None
+    agents = data.get("agents")
+    entry = agents.get(agent) if isinstance(agents, dict) else None
+    notes = data.get("notes")
+    return {
+        "round": str(data.get("round") or f"v{version}"),
+        "agent": _cost_block(entry),
+        "total": _cost_block(data.get("totals")),
+        "cost_source": (
+            notes.get("computed_cost_source") if isinstance(notes, dict) else None
+        ),
+    }
 
 
 def _write_atomic(path: Path, text: str) -> None:

@@ -1348,6 +1348,10 @@ def run(
         session["phases"] = phases
         session["phase_version"] = target_version
         session["phaser_stale_acknowledged"] = {}
+        # The artifact stamp every agent writes on its completing turn: "the
+        # last message is the artifact". The cost card keys off it so a Modify
+        # run shows the card once, at the end, not after every step.
+        session["phaser_artifact_msg_count"] = len(messages)
         # Deferred features are legitimate (v2/future) but worth naming, so the
         # developer sees what the plan does not build. Never blocks.
         if coverage_advisories:

@@ -5,6 +5,7 @@ import json
 import os
 import pathlib
 import zipfile
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -1142,8 +1143,14 @@ def on_breadth_try_again(n_clicks: Any, session: Any, note: Any = None) -> Any:
     simpler" is not silently lost — and the set being rejected travels with
     them so "too many" and "drop X" have a referent. The block is written
     *after* the reset (which clears it, like every other agentifier key), so
-    it survives exactly this restart. A blank note with no prior notes leaves
-    the key ``None``: that is the plain redraw this button always was.
+    it survives exactly this restart. With no notes at all the prompts are
+    untouched (the orchestrator passes Scout ``None`` for empty notes): that
+    is the plain redraw this button always was.
+
+    Every click is also logged as one ``history`` event — the note (None for
+    a blank redraw), the set rejected, and when — which ``_complete_agentifier``
+    writes to ``ai_features.json`` as ``discovery_guidance``, so the round's
+    record shows each redraw the developer asked for, in order.
     """
     from spec4.agentifier.agentifier import reset_agentifier_flow
 
@@ -1153,31 +1160,32 @@ def on_breadth_try_again(n_clicks: Any, session: Any, note: Any = None) -> Any:
         return no_update, no_update
     session = dict(session or {})
     note = (note or "").strip() if isinstance(note, str) else ""
+    prior = session.get("agentifier_retry_guidance") or {}
     prior_notes = [
-        str(n).strip()
-        for n in ((session.get("agentifier_retry_guidance") or {}).get("notes") or [])
-        if str(n).strip()
+        str(n).strip() for n in (prior.get("notes") or []) if str(n).strip()
     ]
-    prior_pool = [
-        c for c in (session.get("agentifier_scout_pool") or []) if isinstance(c, dict)
+    prior_history = [e for e in (prior.get("history") or []) if isinstance(e, dict)]
+    rejected = [
+        {
+            "name": str(c.get("name", "")),
+            "rough_description": str(c.get("rough_description", "")),
+        }
+        for c in (session.get("agentifier_scout_pool") or [])
+        if isinstance(c, dict) and c.get("name")
     ]
     reset_agentifier_flow(session)
-    notes = prior_notes + ([note] if note else [])
-    session["agentifier_retry_guidance"] = (
-        {
-            "notes": notes,
-            "previous_candidates": [
-                {
-                    "name": str(c.get("name", "")),
-                    "rough_description": str(c.get("rough_description", "")),
-                }
-                for c in prior_pool
-                if c.get("name")
-            ],
-        }
-        if notes
-        else None
-    )
+    session["agentifier_retry_guidance"] = {
+        "notes": prior_notes + ([note] if note else []),
+        "previous_candidates": rejected,
+        "history": prior_history
+        + [
+            {
+                "requested_at": datetime.now(timezone.utc).isoformat(),
+                "note": note or None,
+                "rejected_candidates": rejected,
+            }
+        ],
+    }
     messages = list(session.get("messages", []))
     user_text = "Try Again — draw a new set of candidates."
     if note:

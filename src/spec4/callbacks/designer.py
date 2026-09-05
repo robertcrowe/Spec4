@@ -463,7 +463,7 @@ def render_designer_step(
     elif step == 5:
         content = _step5_content(buffer_data, image_support)
     elif step == 6:
-        content = _step6_content(store)
+        content = _step6_content(store, session)
     elif step == 7:
         content = _step7_content(store, image_support)
     else:

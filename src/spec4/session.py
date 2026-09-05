@@ -217,6 +217,7 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
             "code_scanner_artifact_msg_count": None,
             "brainstormer_artifact_msg_count": None,
             "stack_advisor_artifact_msg_count": None,
+            "phaser_artifact_msg_count": None,
             "deployer_artifact_msg_count": None,
             "agentifier_scout_pool": None,
             "agentifier_breadth_chosen": False,

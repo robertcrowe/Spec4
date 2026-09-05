@@ -6,6 +6,8 @@ from typing import Any
 from dash import dcc, html
 import dash_mantine_components as dmc
 
+from spec4 import project_manager
+
 
 # ---------------------------------------------------------------------------
 # Primitive UI helpers
@@ -29,6 +31,116 @@ def _feature_card(*children: Any, **kwargs: Any) -> Any:
 
 def _error(msg: str) -> Any:
     return dmc.Alert(msg, color="red", variant="light", mt="sm")
+
+
+# ---------------------------------------------------------------------------
+# Cost summary card — shown at the end of every user-visible agent run
+# ---------------------------------------------------------------------------
+
+COST_DISCLAIMER = (
+    "Estimates only. Costs are derived from provider-reported token counts and "
+    "LiteLLM's community-maintained price map, which can lag provider price "
+    "sheets and has no entry for some models. Your provider's billing is the "
+    "authoritative figure."
+)
+
+_COST_NOT_AVAILABLE = "not available"
+
+
+def _fmt_usd(value: Any) -> str:
+    """``$0.0123`` — four decimals, thousands separated; a marker for None.
+
+    Four decimals because a single agent turn on a small model is fractions
+    of a cent, and rounding it to ``$0.00`` would read as free.
+    """
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return f"${value:,.4f}"
+    return _COST_NOT_AVAILABLE
+
+
+def _token_part(block: dict[str, Any]) -> str:
+    """``Tokens: 5,080 in / 352 out`` — the provider-reported counts.
+
+    Same shape as the per-turn readout in the action row. Cache reads are
+    named when any call reported them. Flagged partial when some calls
+    returned no usage, since those tokens are simply not in the sum.
+    """
+    text = (
+        f"Tokens: {int(block.get('input_tokens') or 0):,} in / "
+        f"{int(block.get('output_tokens') or 0):,} out"
+    )
+    cached = block.get("cached_input_tokens")
+    if isinstance(cached, int) and not isinstance(cached, bool):
+        text += f" ({cached:,} cached)"
+    if int(block.get("calls_missing_usage") or 0):
+        text += " (partial)"
+    return text
+
+
+def _cost_line(label: str, block: dict[str, Any]) -> str:
+    """``<label>: <cost> · Tokens: …`` with the pricing gaps spelled out.
+
+    A call the provider reported usage for but LiteLLM could not price is
+    excluded from the figure, so the figure is an undercount by exactly the
+    calls named here. When nothing could be priced there is no figure at all,
+    and the line says so instead of showing ``$0.0000``. The token counts
+    follow either way — they are ground truth and do not depend on pricing.
+    """
+    cost = block.get("cost_usd")
+    calls = int(block.get("calls") or 0)
+    unpriced = int(block.get("calls_missing_cost") or 0)
+    no_usage = int(block.get("calls_missing_usage") or 0)
+    text = f"{label}: {_fmt_usd(cost)}"
+    excluded = unpriced + no_usage
+    if cost is None and calls:
+        text = f"{text} (none of the {calls} calls could be priced)"
+    elif excluded:
+        noun = "call" if calls == 1 else "calls"
+        verb = "is" if excluded == 1 else "are"
+        text = (
+            f"{text} ({excluded} of {calls} {noun} could not be priced and {verb} "
+            "excluded)"
+        )
+    return f"{text} · {_token_part(block)}"
+
+
+def cost_summary_card(
+    working_dir: Any, session: dict[str, Any] | None, agent_key: str, agent_label: str
+) -> Any | None:
+    """The estimated-cost card for a finished agent run, or None.
+
+    Reads the round's ``usage.json`` at render time — the persist funnel (chat
+    turns) and the Designer generation thread (mock draws) have both flushed
+    their usage by the time a run is complete, and reading the file means a
+    resumed session shows the same numbers. None when there is no project
+    directory or no usage file yet, so the caller simply omits the card.
+
+    Two figures: the agent's summed cost in this round (sub-agents rolled in,
+    re-runs included — the same block ``spec4-usage`` prints) and the round's
+    running total. Both are LiteLLM estimates; the disclaimer is part of the
+    card, not optional.
+    """
+    if not working_dir:
+        return None
+    version = project_manager.active_version(working_dir, session)
+    summary = project_manager.cost_summary(working_dir, version, agent_key)
+    if summary is None:
+        return None
+    return dmc.Paper(
+        [
+            dmc.Text("💵 Estimated cost", fw=600, mb="xs"),
+            dmc.Text(_cost_line(f"{agent_label} run", summary["agent"])),
+            dmc.Text(
+                _cost_line(f"Running total for {summary['round']}", summary["total"])
+            ),
+            dmc.Text(COST_DISCLAIMER, size="sm", c="dimmed", mt="xs"),
+        ],
+        id="cost-summary-card",
+        withBorder=True,
+        p="md",
+        radius="md",
+        mb="md",
+    )
 
 
 # ---------------------------------------------------------------------------

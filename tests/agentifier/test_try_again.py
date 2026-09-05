@@ -353,13 +353,36 @@ class TestGuidedRedraw:
         assert "> Keep search." in content
 
     def test_blank_note_is_the_plain_redraw(self) -> None:
+        """No notes → Scout's prompt is untouched (see
+        test_plain_redraw_passes_no_guidance), but the redraw is still logged."""
         for blank in (None, "", "   "):
             store = self._run(_session(agentifier_scout_pool=list(_OLD_POOL)), blank)
-            assert store["agentifier_retry_guidance"] is None
+            guidance = store["agentifier_retry_guidance"]
+            assert guidance["notes"] == []
+            assert [e["note"] for e in guidance["history"]] == [None]
             assert (
                 store["messages"][-2]["content"]
                 == "Try Again — draw a new set of candidates."
             )
+
+    def test_every_click_is_one_history_event(self) -> None:
+        session = _session(agentifier_scout_pool=list(_OLD_POOL))
+        first = self._run(session, "Fewer, simpler.")
+        first["agentifier_scout_pool"] = [{"name": "second_draw", "rough_description": ""}]
+        first["_stream_id"] = None
+        second = self._run(first, "")
+        second["agentifier_scout_pool"] = [{"name": "third_draw", "rough_description": ""}]
+        second["_stream_id"] = None
+        third = self._run(second, "Drop third_draw.")
+        history = third["agentifier_retry_guidance"]["history"]
+        assert [e["note"] for e in history] == ["Fewer, simpler.", None, "Drop third_draw."]
+        assert [[c["name"] for c in e["rejected_candidates"]] for e in history] == [
+            ["support_chatbot", "smart_search"],
+            ["second_draw"],
+            ["third_draw"],
+        ]
+        assert all(e["requested_at"].endswith("+00:00") for e in history)
+        assert len({e["requested_at"] for e in history}) == 3
 
     def test_notes_accumulate_across_retries(self) -> None:
         session = _session(agentifier_scout_pool=list(_OLD_POOL))
@@ -469,6 +492,110 @@ class TestGuidedRedraw:
         }
         reset_agentifier_flow(session)
         assert session["agentifier_retry_guidance"] is None
+
+
+# ---------------------------------------------------------------------------
+# D-TA7 — the redraw log lands in ai_features.json as discovery_guidance
+# ---------------------------------------------------------------------------
+
+
+def _event(note: str | None, stamp: str, *names: str) -> dict[str, Any]:
+    return {
+        "requested_at": stamp,
+        "note": note,
+        "rejected_candidates": [{"name": n, "rough_description": ""} for n in names],
+    }
+
+
+class TestDiscoveryGuidanceArtifact:
+    def _complete(self, session: dict[str, Any]) -> dict[str, Any]:
+        session.setdefault("agentifier_messages", [])
+        session["ai_features"] = {
+            "ai_features": [],
+            "cross_cutting": {},
+            "explicitly_rejected": [],
+            "references": [],
+            "consolidation": [],
+            "reconciliation": [],
+        }
+        with mock_litellm_stream("done"):
+            collect(agentifier._complete_agentifier(session))
+        return session["ai_features"]
+
+    def test_history_is_written_in_order(self, tmp_path: Any) -> None:
+        session = _session(working_dir=str(tmp_path))
+        session["agentifier_retry_guidance"] = {
+            "notes": ["Fewer.", "Drop b."],
+            "previous_candidates": [],
+            "history": [_event("Fewer.", "t1", "a", "b"), _event(None, "t2", "b"), _event("Drop b.", "t3", "b")],
+        }
+        out = self._complete(session)
+        assert [e["note"] for e in out["discovery_guidance"]] == ["Fewer.", None, "Drop b."]
+        assert out["discovery_guidance"][0]["rejected_candidates"][1]["name"] == "b"
+
+    def test_no_redraw_writes_an_empty_list(self, tmp_path: Any) -> None:
+        session = _session(working_dir=str(tmp_path))
+        assert self._complete(session)["discovery_guidance"] == []
+
+    def test_merges_with_the_round_on_disk_without_duplicates(
+        self, tmp_path: Any
+    ) -> None:
+        """A re-completion (reselection after a reload, stale rediscovery)
+        keeps the earlier events and adds only the new ones."""
+        v0 = tmp_path / ".spec4" / "v0"
+        v0.mkdir(parents=True)
+        (v0 / "ai_features.json").write_text(
+            json.dumps({"ai_features": [], "discovery_guidance": [_event("Old.", "t0", "x")]})
+        )
+        session = _session(working_dir=str(tmp_path), phase_version=0)
+        session["agentifier_retry_guidance"] = {
+            "notes": ["New."],
+            "previous_candidates": [],
+            "history": [_event("Old.", "t0", "x"), _event("New.", "t1", "y")],
+        }
+        out = self._complete(session)
+        assert [(e["requested_at"], e["note"]) for e in out["discovery_guidance"]] == [
+            ("t0", "Old."),
+            ("t1", "New."),
+        ]
+
+    def test_reload_without_a_redraw_keeps_the_disk_log(self, tmp_path: Any) -> None:
+        v0 = tmp_path / ".spec4" / "v0"
+        v0.mkdir(parents=True)
+        (v0 / "ai_features.json").write_text(
+            json.dumps({"ai_features": [], "discovery_guidance": [_event("Old.", "t0", "x")]})
+        )
+        session = _session(working_dir=str(tmp_path), phase_version=0)
+        session["agentifier_retry_guidance"] = None
+        out = self._complete(session)
+        assert [e["note"] for e in out["discovery_guidance"]] == ["Old."]
+
+    def test_end_to_end_try_again_lands_in_the_artifact(self, tmp_path: Any) -> None:
+        session = _session(working_dir=str(tmp_path), phase_version=0)
+        session["agentifier_scout_pool"] = list(_OLD_POOL)
+        with (
+            patch(
+                "spec4.agentifier.agentifier._call_scout",
+                return_value=ScoutOutput(candidates=[_CANDIDATE]),
+            ),
+            patch(
+                "spec4.agentifier.agentifier._call_tier_analyst",
+                return_value=_ANALYSIS,
+            ),
+            mock_litellm_stream("Hello!"),
+            patch("spec4.callbacks.streaming.start", return_value="stream-1"),
+        ):
+            store, _ = on_breadth_try_again(1, session, "Far fewer.")
+            collect(agentifier.run(None, store, _LLM_CONFIG))
+            # Zero selection completes the flow immediately.
+            store["agentifier_breadth_selection"] = []
+            collect(agentifier.run("select", store, _LLM_CONFIG))
+        log = store["ai_features"]["discovery_guidance"]
+        assert [e["note"] for e in log] == ["Far fewer."]
+        assert [c["name"] for c in log[0]["rejected_candidates"]] == [
+            "support_chatbot",
+            "smart_search",
+        ]
 
 
 # ---------------------------------------------------------------------------

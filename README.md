@@ -175,11 +175,12 @@ Each session auto-saves to `.spec4/` inside your project directory. On a future 
 | `agents.<name>` | One block per planning agent (`brainstormer`, `agentifier`, `designer`, `stack_advisor`, `phaser`, `deployer`, `code_scanner`). Sub-agents roll up into the agent whose turn runs them |
 | `agents.<name>.calls`, `input_tokens`, `output_tokens`, `total_tokens` | Call count and summed tokens over calls that reported usage |
 | `agents.<name>.calls_missing_usage` | Calls the provider returned no usage for; their tokens are not counted |
+| `agents.<name>.calls_missing_cost` | Calls that reported usage but LiteLLM could not price; their tokens are counted, their cost is not |
 | `agents.<name>.cached_input_tokens` | Summed cache-read tokens where the provider reported them, else `null` |
 | `agents.<name>.computed_cost_usd` | Summed LiteLLM cost estimate, `null` when no call could be priced |
 | `agents.<name>.models` | Distinct `{model, provider}` pairs used, in first-seen order |
 | `agents.<name>.history` | The per-call records: `timestamp`, `agent` (the sub-agent, if any), `model`, `provider` (as LiteLLM resolves it), `streamed`, `duration_s`, `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `computed_cost_usd`, `usage_missing`, `error` |
-| `totals` | The same sums across all agents |
+| `totals` | The same sums across all agents (including both `calls_missing_*` counts) |
 
 Every summary is recomputed from `history` on each write; nothing in the file is accumulated independently of the call records.
 
@@ -189,6 +190,8 @@ Every summary is recomputed from `history` on each write; nothing in the file is
 - `computed_cost_usd` comes from LiteLLM's community-maintained cost map, which can lag provider price sheets and has no entry for some models (Nebius models, for instance, are recorded with `null` cost). Treat it as advisory. When the dollar figure matters, recompute it from the token counts and the providers' current price sheets.
 
 The file survives quitting and re-entering, including with a different provider or model: a re-run appends to the agent's `history` and adds the new `{model, provider}` pair to `models`. It never overwrites earlier calls.
+
+**In-app cost card.** When an agent's run completes (CodeScanner, Brainstormer, Agentifier, StackAdvisor, Phaser, Deployer under the run's last message; Designer on the mock preview), Spec4 shows an *Estimated cost* card read from this file: the agent's summed cost for the round and the round's running total, each with a note when calls could not be priced, and a disclaimer that the figures are LiteLLM estimates rather than provider billing.
 
 To print a per-agent table for a round:
 

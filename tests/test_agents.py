@@ -2181,6 +2181,9 @@ class TestPhaser:
             collect(phaser.run("Approve", session, session["llm_config"]))
         assert session["phaser_state"] == STATE_PHASES_COMPLETE
         assert len(session["phases"]) == 1
+        # The artifact stamp the other agents write on their completing turn,
+        # read by the cost card: the phases are the last message.
+        assert session["phaser_artifact_msg_count"] == len(session["phaser_messages"])
 
     def test_non_phase_response_stays_incomplete(self) -> None:
         session = make_session(

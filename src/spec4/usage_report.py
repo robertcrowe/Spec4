@@ -100,6 +100,7 @@ def render_usage_table(data: dict[str, Any]) -> str:
     ]
     lines.extend(_line(row) for row in rows)
     missing = 0
+    unpriced = 0
     agents = data.get("agents")
     if isinstance(agents, dict):
         for entry in agents.values():
@@ -107,9 +108,16 @@ def render_usage_table(data: dict[str, Any]) -> str:
                 value = entry.get("calls_missing_usage")
                 if isinstance(value, int) and not isinstance(value, bool):
                     missing += value
+                value = entry.get("calls_missing_cost")
+                if isinstance(value, int) and not isinstance(value, bool):
+                    unpriced += value
     if missing:
         lines.append(
             f"note: {missing} call(s) returned no usage; their tokens are not counted."
+        )
+    if unpriced:
+        lines.append(
+            f"note: {unpriced} call(s) could not be priced; their cost is not counted."
         )
     notes = data.get("notes")
     if isinstance(notes, dict) and notes.get("computed_cost_source"):
