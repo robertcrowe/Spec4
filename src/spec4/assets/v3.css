@@ -1,45 +1,5 @@
 /* v3 Design System */
 
-/* Nav Drawer */
-.nav-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  z-index: 999;
-  background: rgba(0, 0, 0, 0.5);
-  cursor: pointer;
-}
-.nav-overlay--open { display: block; }
-
-.nav-drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: 260px;
-  height: 100vh;
-  z-index: 1000;
-  padding: 1.25rem 1.5rem;
-  background: #12121c;
-  border-left: 1px solid #2a2a3a;
-  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.5);
-  overflow-y: auto;
-  transform: translateX(100%);
-  transition: transform 200ms ease;
-}
-.nav-drawer--open { transform: translateX(0); }
-
-.nav-close-btn {
-  background: none;
-  border: none;
-  color: #a0a0b0;
-  font-size: 1.1rem;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-  float: right;
-}
-.nav-close-btn:hover { color: #f5f5f7; }
-
 /* Chat scroll area — vertically resizable by the user */
 #chat-scroll-area {
   resize: vertical;
@@ -71,20 +31,6 @@
   border-color: rgba(255, 255, 255, 0.6);
 }
 
-/* Blueprint Grid Background */
-#blueprint-grid {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  pointer-events: none;
-  z-index: 0;
-  background-image:
-    linear-gradient(rgba(30, 136, 229, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(30, 136, 229, 0.07) 1px, transparent 1px),
-    linear-gradient(rgba(30, 136, 229, 0.13) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(30, 136, 229, 0.13) 1px, transparent 1px);
-  background-size: 20px 20px, 20px 20px, 100px 100px, 100px 100px;
-}
-
 /* Body / Root */
 body {
   background-color: #0a0a0f !important;
@@ -92,130 +38,125 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* AppShell header — frosted glass */
+/* ===== Status bar =====
+   The app's whole header: a flat 40px status line on the panel surface, no
+   blur and no shadow. Its accent comes from `--mantine-primary-color-filled`
+   rather than a literal, so it follows the theme primary set in
+   app_constants (D-LR2) and cannot drift from the rest of the app. */
 header[class*="AppShell-header"] {
-  background: rgba(10, 10, 15, 0.85) !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
+  background: #12121c !important;
   border-bottom: 1px solid #2a2a3a !important;
 }
 
-/* AppShell body/main — sit above blueprint grid */
-[class*="AppShell-root"],
-[class*="AppShell-main"] {
-  position: relative;
-  z-index: 1;
+#status-bar {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 16px;
+  font-size: 13px;
+  line-height: 20px;
 }
 
-/* ===== Logo ===== */
-.logo-text {
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1;
+#status-bar a:focus-visible {
+  outline: 1px solid var(--mantine-primary-color-filled);
+  outline-offset: 1px;
+}
+
+.sb-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.mono {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 12.5px;
+  font-variant-ligatures: none;
+}
+
+/* The context line ellipsises rather than pushing the nav off screen — a deep
+   working directory is the normal case, not the exception. */
+.sb-ctx {
+  color: #f5f5f7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sb-sep {
+  color: #5a5a6a;
+  padding: 0 6px;
+}
+
+.sb-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+}
+
+.sb-nav-link {
+  color: #a0a0b0;
+  text-decoration: none;
+  line-height: 38px;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+  padding: 0 2px;
+}
+
+.sb-nav-link:hover { color: #f5f5f7; }
+
+.sb-nav-link--active {
+  color: var(--mantine-primary-color-filled);
+  border-bottom-color: var(--mantine-primary-color-filled);
+}
+
+.sb-version {
+  color: #a0a0b0;
+  margin-left: 8px;
+  padding-left: 16px;
+  border-left: 1px solid #2a2a3a;
+  line-height: 20px;
+}
+
+/* ===== Wordmark =====
+   The one place a second colour appears in the whole app. The blue is the
+   literal, because this rule *is* the exception the design allows; the `4` is
+   the accent and so reaches it the way everything else does, through the theme
+   primary set in app_constants (D-LR2). The accent is therefore written down
+   in exactly one place in the whole app, and none of them is a stylesheet. */
+.wordmark {
+  flex: none;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 20px;
+  text-decoration: none;
 }
 
 .logo-spec { color: #1E88E5; }
-.logo-4    { color: #39FF14; }
-
-/* ===== Gradient Text ===== */
-.text-gradient {
-  background: linear-gradient(135deg, #1E88E5 0%, #39FF14 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* ===== Hero Badge ===== */
-.hero-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  background: rgba(57, 255, 20, 0.12);
-  border: 1px solid rgba(57, 255, 20, 0.3);
-  border-radius: 100px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #39FF14;
-  margin-bottom: 24px;
-}
-
-.badge-dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  background: #39FF14;
-  border-radius: 50%;
-  animation: badge-pulse 2s infinite;
-  flex-shrink: 0;
-}
-
-@keyframes badge-pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
-}
-
-/* ===== Section Label ===== */
-.section-label {
-  display: inline-block;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: #1E88E5;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin-bottom: 16px;
-}
-
-/* ===== Feature / Agent Cards ===== */
-.feature-card {
-  transition: border-color 200ms ease, transform 200ms ease, box-shadow 200ms ease;
-}
-
-.feature-card:hover {
-  border-color: #1E88E5 !important;
-  transform: translateY(-4px);
-  box-shadow: 0 12px 32px rgba(30, 136, 229, 0.18);
-}
-
-/* ===== Output Badge (mono green) ===== */
-.output-badge {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 0.75rem;
-  color: #39FF14;
-  background: rgba(57, 255, 20, 0.1);
-  border: 1px solid rgba(57, 255, 20, 0.2);
-  padding: 2px 8px;
-  border-radius: 4px;
-  display: inline-block;
-}
+.logo-4    { color: var(--mantine-primary-color-filled); }
 
 /* ===== Chat Bubbles ===== */
 .chat-bubble-user {
-  background: #1e88e5 !important;
-  color: #ffffff !important;
+  background: #12121c !important;
+  color: #f5f5f7 !important;
+  border: 1px solid #3a3a4a;
 }
 
 .chat-bubble-user p,
 .chat-bubble-user li,
 .chat-bubble-user code {
-  color: #ffffff !important;
+  color: #f5f5f7 !important;
 }
 
 .chat-bubble-assistant {
   background: #1a1a24 !important;
   color: #f5f5f7 !important;
   border: 1px solid #2a2a3a;
-}
-
-/* ===== Primary Button Glow ===== */
-button[class*="Button-root"][data-variant="filled"] {
-  transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
-}
-
-button[class*="Button-root"][data-variant="filled"]:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(30, 136, 229, 0.35);
 }
 
 /* ===== Monospace ===== */
@@ -226,7 +167,7 @@ code, pre, kbd {
 /* ===== Markdown in chat ===== */
 .chat-bubble-user .react-markdown p,
 .chat-bubble-user .react-markdown li {
-  color: #ffffff;
+  color: #f5f5f7;
 }
 
 /* Wrap long lines in code/JSON blocks so the chat doesn't scroll horizontally */
@@ -235,58 +176,6 @@ code, pre, kbd {
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: break-word;
-}
-
-/* ===== Footer ===== */
-.footer {
-  border-top: 1px solid #2a2a3a;
-  padding: 3rem 0 1.5rem;
-  margin-top: 3rem;
-}
-
-.footer-brand-logo {
-  font-size: 1.25rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  margin-bottom: 0.75rem;
-}
-
-.footer-brand-tagline {
-  color: #a0a0b0;
-  font-size: 0.9375rem;
-  line-height: 1.6;
-  max-width: 260px;
-}
-
-.footer-col-heading {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: #f5f5f7;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 0.75rem;
-}
-
-.footer-link {
-  display: block;
-  font-size: 0.9375rem;
-  color: #a0a0b0;
-  margin-bottom: 0.5rem;
-  text-decoration: none;
-  transition: color 150ms ease;
-}
-
-.footer-link:hover {
-  color: #f5f5f7;
-}
-
-.footer-bottom {
-  border-top: 1px solid #2a2a3a;
-  margin-top: 2rem;
-  padding-top: 1.25rem;
-  text-align: center;
-  font-size: 0.875rem;
-  color: #6a6a7a;
 }
 
 /* ScrollArea track */
@@ -307,4 +196,228 @@ code, pre, kbd {
   border: 2px dashed var(--mantine-color-dark-4);
   border-radius: 8px;
   cursor: pointer;
+}
+
+/* ===== Round tree =====
+   The current round's folder, one line per artifact. Lane colour is the only
+   colour on a line: it says who the file is *for*, which is the one thing the
+   filename cannot say. The two lane hues are declared once here and used by
+   both the lines and the legend swatches, so the legend cannot drift from what
+   it explains. The reference lane is deliberately uncoloured — it is the
+   common case, and colouring it would leave nothing for the eye to catch. */
+:root {
+  --lane-prompt: #e8925a;
+  --lane-record: #b39ddb;
+}
+
+.round-tree {
+  margin-bottom: 16px;
+}
+
+.round-tree .section-head {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 24px;
+  color: #f5f5f7;
+  margin-bottom: 4px;
+}
+
+.tree-list {
+  list-style: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid #2a2a3a;
+}
+
+.tree-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 24px;
+  padding: 0 8px;
+  border-bottom: 1px solid #2a2a3a;
+  gap: 16px;
+}
+
+.tree-list li:nth-child(even) { background: #12121c; }
+
+.tree-list .name { white-space: nowrap; }
+.tree-list .lane-prompt { color: var(--lane-prompt); }
+.tree-list .lane-ref { color: #f5f5f7; }
+.tree-list .lane-record { color: var(--lane-record); }
+
+.tree-list .status {
+  color: #a0a0b0;
+  white-space: nowrap;
+}
+
+/* A missing artifact recedes: the line stays so the developer can see what is
+   supposed to be there, but it does not compete with the files that exist. */
+.tree-list li.is-missing .name { opacity: 0.55; }
+.tree-list li.is-missing .status { color: #5a5a6a; }
+
+.legend {
+  list-style: none;
+  display: flex;
+  gap: 24px;
+  margin: 8px 0 0;
+  padding: 0;
+  color: #a0a0b0;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: none;
+}
+
+.swatch.lane-prompt { background: var(--lane-prompt); }
+.swatch.lane-ref { background: #f5f5f7; }
+.swatch.lane-record { background: var(--lane-record); }
+
+/* ===== Agent rows =====
+   The seven pipeline agents as one dense table, directly beneath the tree.
+   32px rows against the tree's 24px lines: the rows carry a control, so they
+   need the height, and the difference is what separates the two blocks
+   without a rule between them. Every column is fixed-width and nowrap so the
+   action buttons line up down the right edge and a long model name cannot
+   ripple the table. */
+.agent-rows {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.agents-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 1px solid #2a2a3a;
+  /* The mock's body type. Set on the table rather than inherited, because
+     Mantine's 16px body would otherwise make the one non-monospace column
+     (the agent's name) a size larger than everything beside it. */
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.agents-table th,
+.agents-table td {
+  height: 32px;
+  padding: 0 8px;
+  border-bottom: 1px solid #2a2a3a;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.agents-table th {
+  font-size: 12px;
+  font-weight: 500;
+  color: #a0a0b0;
+  background: #12121c;
+}
+
+.agents-table td.agent { font-weight: 500; width: 140px; }
+.agents-table td.produces { width: 220px; }
+.agents-table td.model { width: 220px; }
+.agents-table td.tokens { width: 220px; }
+
+.agents-table th.action,
+.agents-table td.action { text-align: right; width: 140px; }
+
+/* A Not Ready row is still a row — the developer needs to see the stage and
+   what it will produce — but it recedes behind the ones that can be acted on. */
+.agents-table tr.is-disabled td.agent,
+.agents-table tr.is-disabled td.produces { color: #a0a0b0; }
+
+.agent-row-action {
+  height: 24px;
+  min-width: 96px;
+}
+
+/* Mantine draws a disabled button as a filled grey chip with no border. The
+   manifest asks for a *disabled outline* — the row's shape should not change
+   as an agent becomes reachable — so the mock's disabled rule is restated
+   here. It is the only styling `disabled` needs; the state still carries no
+   colour prop. */
+.agent-row-action:disabled,
+.agent-row-action:disabled:hover {
+  background: transparent;
+  border-color: #2a2a3a;
+  color: #5a5a6a;
+}
+
+/* D-AR1: Modify is the one action Mantine's variant cannot draw on its own.
+   `variant="outline"` takes the theme primary for both text and border, and
+   at the shade it picks for a dark scheme the accent washes out to nearly
+   white — the manifest wants the accent itself, on the text only. Both halves
+   are corrected here rather than by handing the button a local colour value,
+   which D-LR2 forbids: the green is the theme's own primary variable, so a
+   re-themed accent still lands on this button. */
+.agent-row-action--modify {
+  color: var(--mantine-primary-color-filled);
+  border-color: #3a3a4a;
+}
+
+.agent-row-action--modify:hover {
+  color: var(--mantine-primary-color-filled);
+  border-color: #4a4a5a;
+}
+
+/* Warn, at the weight the mock draws it. Mantine's outline shade for yellow
+   is pale enough to read as the same near-white as the neutral buttons, which
+   is the one thing this state must not do. */
+.agent-row-action--needs-update {
+  color: var(--mantine-color-yellow-5);
+  /* The mock's border is its own text colour at 45%, not a darker step down
+     the palette — a darker yellow reads as orange next to the accent. */
+  border-color: color-mix(in srgb, var(--mantine-color-yellow-5) 45%, transparent);
+}
+
+.agent-row-action--needs-update:hover {
+  color: var(--mantine-color-yellow-5);
+  border-color: var(--mantine-color-yellow-5);
+}
+
+/* ===== Round cost =====
+   The round's spend, closing the project view. A panel rather than more bare
+   rows: the tree and the table are lists of things, and this is one figure
+   about all of them, so it needs an edge to read as a summary and not as a
+   fourth kind of row. 24px lines match the tree's, which is what keeps the
+   three blocks reading as one column. */
+.round-cost {
+  display: block;
+  background: #12121c;
+  border: 1px solid #2a2a3a;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+}
+
+/* Figures never wrap. A narrow window ellipsises the tail of the unpriced
+   list — the count and the first names are the part that has to survive —
+   rather than reflowing the cost onto a second line. */
+.round-cost .cost-line {
+  line-height: 24px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #f5f5f7;
+}
+
+/* The disclaimer is the one line here that is prose, so it is the one line
+   that is not monospace and not full contrast: it is a standing caveat, not a
+   number to read off. */
+.round-cost .cost-note {
+  color: #a0a0b0;
+  font-size: 12px;
+  line-height: 16px;
+  margin-top: 4px;
 }

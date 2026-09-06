@@ -507,7 +507,7 @@ class TestConversation:
             collect(agentifier.run("yes", session, _LLM_CONFIG))
         display = session["_display_override"]
         assert "rag" in display
-        assert "⚠️" in display  # mismatch marker
+        assert "(mismatch)" in display  # the marker, now a word (phase 7)
 
     def test_catalog_done_sets_spec_index_to_zero(self) -> None:
         # Phase 4: after catalog extraction, spec_index is reset to 0 so the

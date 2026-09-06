@@ -1267,6 +1267,83 @@ def cost_summary(
     }
 
 
+def _call_is_unpriced(call: dict[str, Any]) -> bool:
+    """Whether one history record contributes no cost to the round's total.
+
+    The same test :func:`summarize_usage` applies when it counts
+    ``calls_missing_usage`` and ``calls_missing_cost``, written once and read
+    from both places: a record that reported no usage at all, or one that
+    reported usage LiteLLM had no price for. If these two ever disagreed, the
+    named list below and the count beside it would describe different calls.
+    """
+    if call.get("usage_missing"):
+        return True
+    return _usage_float(call.get("computed_cost_usd")) is None
+
+
+def unpriced_calls(agents: Any) -> list[dict[str, Any]]:
+    """The round's unpriced calls, grouped by the agent and model that made
+    them, in the order ``usage.json`` recorded them.
+
+    Grouped rather than listed one by one because a re-run that failed to
+    price is the *same* gap five times over, and a reader wants the model to
+    go look up, not five identical rows. The agent is the rollup key the file
+    is organised by (sub-agents already folded into their parent by
+    :func:`save_usage`), so a name here is a name the agent table also shows.
+    """
+    groups: dict[tuple[str, str], dict[str, Any]] = {}
+    if not isinstance(agents, dict):
+        return []
+    for name, entry in agents.items():
+        history = entry.get("history") if isinstance(entry, dict) else None
+        for call in history or []:
+            if not isinstance(call, dict) or not _call_is_unpriced(call):
+                continue
+            model = call.get("model")
+            model = str(model) if isinstance(model, str) and model else ""
+            key = (str(name), model)
+            group = groups.setdefault(
+                key, {"agent": str(name), "model": model, "calls": 0}
+            )
+            group["calls"] += 1
+    return list(groups.values())
+
+
+def round_cost(
+    working_dir: str | Path | None, version: int | None
+) -> dict[str, Any]:
+    """The round's cost figures for the project view.
+
+    A read-time view over ``usage.json``, like :func:`cost_summary` beside it,
+    and it aggregates nothing of its own: ``total`` is the file's own
+    ``totals`` block, which :func:`save_usage` recomputes from the full
+    history on every write. The only thing read out of the histories here is
+    *which* calls could not be priced, which the summaries count but do not
+    name.
+
+    Never None. No project directory, no round, no usage file, and a usage
+    file recording nothing are the same answer to the only question this
+    surface asks — nothing has been spent yet — and returning a record for all
+    four spares the caller three more empty states to render.
+    """
+    data = (
+        load_usage(working_dir, version)
+        if working_dir is not None and version is not None
+        else None
+    )
+    if not isinstance(data, dict):
+        data = {}
+    notes = data.get("notes")
+    return {
+        "round": str(data.get("round") or f"v{version if version is not None else 0}"),
+        "total": _cost_block(data.get("totals")),
+        "unpriced": unpriced_calls(data.get("agents")),
+        "cost_source": (
+            notes.get("computed_cost_source") if isinstance(notes, dict) else None
+        ),
+    }
+
+
 def _write_atomic(path: Path, text: str) -> None:
     """Write ``text`` to ``path`` via a sibling temp file and ``os.replace``.
 
@@ -1613,6 +1690,25 @@ def directory_has_content(working_dir: str | Path | None) -> bool:
         return any(
             not item.name.startswith(".") for item in Path(working_dir).iterdir()
         )
+    except OSError:
+        return False
+
+
+def directory_opens(working_dir: str | Path | None) -> bool:
+    """True when ``working_dir`` is a directory this process can still list.
+
+    Every filesystem failure is one answer — "not openable" — because every
+    caller has the same single fallback for all of them. A revoked permission,
+    a detached network mount and a deleted folder are indistinguishable to the
+    developer looking at a directory picker, and letting an ``OSError`` escape
+    would turn the ordinary case of a moved project into a crash on the root
+    path. The sibling of `directory_has_content`, and unreadable reads the
+    same way there.
+    """
+    if not working_dir or not isinstance(working_dir, (str, Path)):
+        return False
+    try:
+        return Path(working_dir).is_dir() and os.access(working_dir, os.R_OK)
     except OSError:
         return False
 

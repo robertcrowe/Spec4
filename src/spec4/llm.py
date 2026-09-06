@@ -646,7 +646,7 @@ def stream_turn(
     `session["_stream_status"]` around web-search round-trips ("Searching the
     web: …", then "Reading search results…" while the follow-up request
     prefills, then the caller's entry status back once content resumes). The
-    in-chat 🔍 marker alone is not enough: on a suppressed artifact turn the
+    in-chat search marker alone is not enough: on a suppressed artifact turn the
     marker is swallowed with everything else, leaving the status line as the
     only sign of what the pipeline is doing.
 
@@ -693,7 +693,7 @@ def stream_turn(
                 tools = None
                 kwargs.pop("tools", None)
                 yield (
-                    "\n\n> ⚠️ Web search disabled: this model does not "
+                    "\n\n> Web search disabled: this model does not "
                     "support tool calling.\n\n"
                 )
                 response = _open_stream(kwargs, agent_name)
@@ -775,7 +775,7 @@ def stream_turn(
                         query = json.loads(tc["arguments"]).get("query", "")
                     except (json.JSONDecodeError, KeyError):
                         query = tc["arguments"]
-                    yield f"\n\n*🔍 Searching: {query}*\n\n"
+                    yield f"\n\n*Searching: {query}*\n\n"
                     # After the marker yield: the suppressing wrapper writes
                     # its own status on receiving the marker chunk, and this
                     # must land on top of that, not under it.
@@ -791,7 +791,7 @@ def stream_turn(
                     if result.startswith("Search failed:") or result.startswith(
                         "No search tool"
                     ):
-                        yield f"\n\n> ⚠️ {result}\n\n"
+                        yield f"\n\n> {result}\n\n"
                     messages.append(
                         {
                             "role": "tool",

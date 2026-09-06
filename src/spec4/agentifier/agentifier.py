@@ -246,7 +246,7 @@ web_search to find the canonical documentation URL and present your findings.
 # to recite the ladder accurately.  This copy says "approaches" (not "tiers");
 # the internal tier_* schema keys are unchanged and downstream consumers still
 # read them by name.
-_APPROACHES_OVERVIEW = """### 🧭 How I'll size each feature
+_APPROACHES_OVERVIEW = """### How I'll size each feature
 
 I'm **Agentifier**. For each AI opportunity Scout surfaced, I recommend the *simplest approach that meets the actual need* — simpler approaches cost less and have less to go wrong; more complex ones add capability but also more to build, test, and operate.
 
@@ -417,7 +417,7 @@ def _format_composition_summary(compositions: list[Composition]) -> str:
     n_groups = len(compositions)
     n_members = sum(len(c.members) for c in compositions)
     header = (
-        f"### 🧬 Composer — {n_members} sub-feature"
+        f"### Composer — {n_members} sub-feature"
         f"{'' if n_members == 1 else 's'} grouped under {n_groups} "
         f"coordinator{'' if n_groups == 1 else 's'}\n"
     )
@@ -731,7 +731,7 @@ def _format_catalog_as_text(catalog: dict[str, Any]) -> str:
         dec = entry.get("tier_decision", "")
         rationale = entry.get("tier_decision_rationale", "") or ""
         note = rationale[:60] + "…" if len(rationale) > 60 else rationale
-        match_marker = "" if dec == rec else " ⚠️"
+        match_marker = "" if dec == rec else " (mismatch)"
         lines.append(f"| {i} | {name} | {rec} | {dec}{match_marker} | {note} |")
     lines.append("")
     lines.append(_CATALOG_SPEC_PROMPT)
@@ -1078,7 +1078,7 @@ def _removed_feature_heads_up(
     if not hits:
         return ""
     return (
-        "\n\n> ℹ️ **Heads-up:** these already-built AI features are linked to "
+        "\n\n> **Heads-up:** these already-built AI features are linked to "
         "product features you removed this revision. They are carried forward "
         "unchanged — removing the underlying code is a separate, manual step:\n"
         + "\n".join(hits)
@@ -1089,7 +1089,7 @@ def _removed_feature_heads_up(
 _FEATURES_COMPLETE_TRANSITION = (
     "---\n\n"
     "Your AI feature catalog is complete. "
-    "Click **💾 Download ai_features.json** below, "
+    "Click **Download ai_features.json** below, "
     "or use the pipeline pills to continue."
 )
 
@@ -2091,7 +2091,7 @@ def _ff_sweep_specs(
             session["agentifier_spec_ff_review"] = True
             note = (
                 f"\n\n**Sweep paused:** the spec for `{failed_name}` could not "
-                "be drafted. Press ⏩ **Fast Forward** to resume drafting the "
+                "be drafted. Press **Fast Forward** to resume drafting the "
                 "remaining specs, or revise with `feature_name: instruction`."
             )
             yield from _present_spec_ff_review(session, failure_note=note)
@@ -2363,7 +2363,7 @@ def _begin_priority_phase(
     carried_names = frozenset(f.get("name", "") for f in carried if f.get("name"))
 
     yield (
-        "### 🎚️ Prioritizer\n\n"
+        "### Prioritizer\n\n"
         "Working out what belongs in the steel thread, and what can wait…\n\n"
         "_This usually takes a few seconds._\n\n"
     )
@@ -2406,7 +2406,7 @@ def _begin_priority_phase(
             len(features),
         )
         prelude = (
-            "### ⚠️ Priority analysis unavailable\n\n"
+            "### Priority analysis unavailable\n\n"
             "I couldn't read the priority analysis this time, so every feature "
             "starts at **mvp**. Adjust anything that belongs in the steel thread "
             "or can wait.\n\n"
@@ -2524,7 +2524,7 @@ def _run_priority_phase(
 
     parts: list[str] = []
     if problems:
-        parts.append("⚠️ " + " · ".join(problems) + "\n")
+        parts.append("Problems: " + " · ".join(problems) + "\n")
     repairs = _format_priority_repairs(before, after, edits.assignments)
     if repairs:
         parts.append("**Adjusted:**\n" + "\n".join(repairs) + "\n")
@@ -2745,7 +2745,7 @@ def _run_catalog_phase(
                 else ""
             )
             _scout_banner = (
-                f"### 🔍 Scout\n\n"
+                f"### Scout\n\n"
                 f"Scanning your vision{_project_note} for AI/LLM integration opportunities…\n\n"
                 f"{_guidance_line}"
                 f"Scout reads your vision statement and identifies every place where an LLM, "
@@ -2879,7 +2879,7 @@ def _run_catalog_phase(
             # below two candidates — no edge is possible, so no draw.
             if len(candidates) >= 2:
                 _linker_banner = (
-                    "### 🔗 Linker\n\n"
+                    "### Linker\n\n"
                     "Mapping how these features depend on each other…\n\n"
                     "_This usually takes a few seconds._\n\n"
                 )
@@ -2922,7 +2922,7 @@ def _run_catalog_phase(
                         len(candidates),
                     )
                     yield (
-                        "### ⚠️ Dependency analysis unavailable\n\n"
+                        "### Dependency analysis unavailable\n\n"
                         "I couldn't read the dependency analysis this time, so the "
                         "panel below won't auto-include related features. Select "
                         "interdependent features together, or re-run to try again."
@@ -2947,7 +2947,7 @@ def _run_catalog_phase(
             # coordinators (synthesizing a head only when Scout emitted none) —
             # runs ONCE before breadth selection and before any Tier Analyst call.
             _composer_banner = (
-                "### 🧬 Composer\n\n"
+                "### Composer\n\n"
                 "Grouping coordinated candidates under their coordinators…\n\n"
                 "_This usually takes a few seconds._\n\n"
             )
@@ -3023,7 +3023,7 @@ def _run_catalog_phase(
 
             _project_note_b = f" for **{_project_name}**" if _project_name else ""
             intro = (
-                f"✅ Scout surfaced **{n_cands} AI "
+                f"Scout surfaced **{n_cands} AI "
                 f"opportunit{'y' if n_cands == 1 else 'ies'}{_project_note_b}**."
                 f" Select which features to include below — choose any, all, or none."
                 f" Nothing is pre-selected."
@@ -3196,7 +3196,7 @@ def _run_catalog_phase(
             yield f"\nTier Analyst failed: {exc}. Please try again."
             return
 
-        _done_line = "\n✅ Tier analysis complete.\n\n---\n\n_Preparing your briefing…_\n\n"
+        _done_line = "\nTier analysis complete.\n\n---\n\n_Preparing your briefing…_\n\n"
         pre_stream_chars += len(_done_line)
         yield _done_line
         _set_status(session, "Preparing your feature briefing…")

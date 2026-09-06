@@ -181,7 +181,7 @@ def _pick_card(
     value = current if current in available else available[0]
     return _card(
         dmc.Text(f"Pick a model for {label}", size="lg", fw=600, mb="md"),
-        dmc.Alert(f"Connected to {provider_label}", color="green", mb="md"),
+        dmc.Alert(f"Connected to {provider_label}", mb="md"),
         model_field(GATE_IDS, available=available, value=value),
         _error(error) if error else html.Div(),
         dmc.Group(

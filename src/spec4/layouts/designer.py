@@ -25,7 +25,7 @@ _PLACEHOLDER_HTML = (
     "align-items:center;justify-content:center;height:100vh}"
     ".card{background:#2a2a3a;border-radius:12px;"
     "padding:2rem;text-align:center}"
-    "h1{color:#42a5f5;margin-bottom:.5rem}</style></head>"
+    "h1{color:#f5f5f7;margin-bottom:.5rem}</style></head>"
     "<body><div class='card'><h1>Mock Preview</h1>"
     "<p>Your mock will appear here after generation.</p>"
     "</div></body></html>"
@@ -52,7 +52,6 @@ def _step1_content() -> Any:
             dmc.Alert(
                 "This project does not appear to have a graphical user interface "
                 "(CLI / terminal / headless). Would you like to add a GUI?",
-                color="blue",
                 variant="light",
                 title="No UI Detected",
             ),
@@ -174,12 +173,12 @@ def _screenshot_card(idx: int, shot: dict[str, str]) -> Any:
                             "borderRadius": "4px",
                         },
                     ),
-                    dmc.ActionIcon(
-                        "✕",
+                    dmc.Button(
+                        "Remove",
                         id={"type": "designer-screenshot-delete", "index": idx},
                         color="red",
                         variant="subtle",
-                        size="sm",
+                        size="compact-sm",
                     ),
                 ],
                 justify="space-between",
@@ -278,7 +277,6 @@ def _step5_content(
             "Generating your mock — this may take several minutes. "
             "If you think it may have finished but did not display "
             "your mock, try refreshing the page.",
-            color="blue",
             variant="light",
         ),
         dmc.Progress(
@@ -286,7 +284,7 @@ def _step5_content(
             id="mock-progress",
             animated=not error,
             striped=True,
-            color="red" if error else "blue",
+            **({"color": "red"} if error else {}),
         ),
         dmc.Text(
             f"Chars received: {tokens}",
@@ -355,7 +353,7 @@ def _fullscreen_row() -> Any:
     return dmc.Group(
         [
             dmc.Button(
-                "⛶ Full Screen",
+                "Full Screen",
                 id="mock-fullscreen-btn",
                 variant="outline",
                 size="sm",
@@ -383,7 +381,6 @@ def _stale_banner(stale: list[str]) -> Any:
             dmc.Button(
                 "Regenerate mock",
                 id="btn-designer-revise-stale",
-                color="blue",
                 size="sm",
             ),
         ],
@@ -430,7 +427,6 @@ def _step6_content(
         children.append(
             dmc.Alert(
                 "Mock approved and saved. You can now continue to Stack Advisor.",
-                color="green",
                 variant="light",
             )
         )
@@ -440,12 +436,10 @@ def _step6_content(
                     dmc.Button(
                         "Continue to Stack Advisor →",
                         id="btn-designer-continue-stack",
-                        color="green",
                     ),
                     dmc.Button(
-                        "✏ Refine",
+                        "Refine",
                         id="btn-designer-refine",
-                        color="blue",
                         variant="outline",
                     ),
                     dmc.Button(
@@ -463,14 +457,12 @@ def _step6_content(
             dmc.Group(
                 [
                     dmc.Button(
-                        "✓ Approve",
+                        "Approve",
                         id="btn-designer-approve",
-                        color="green",
                     ),
                     dmc.Button(
-                        "✏ Refine",
+                        "Refine",
                         id="btn-designer-refine",
-                        color="blue",
                     ),
                     dmc.Button(
                         "↺ Start Over",
@@ -490,12 +482,12 @@ def _refine_image_row(idx: int, filename: str) -> Any:
         dmc.Group(
             [
                 dmc.Text(filename, size="sm", style={"flex": 1}, truncate="end"),
-                dmc.ActionIcon(
-                    "✕",
+                dmc.Button(
+                    "Remove",
                     id={"type": "designer-refine-image-delete", "index": idx},
                     color="red",
                     variant="subtle",
-                    size="sm",
+                    size="compact-sm",
                 ),
             ],
             justify="space-between",
@@ -596,7 +588,7 @@ def designer_layout(
     ).get("agent") == "designer":
         return html.Div(
             [
-                dmc.Title("🎨 Designer", order=3, mb="md"),
+                dmc.Title("Designer", order=3, mb="md"),
                 _llm_gate.gate_card(session, prefs, "designer"),
             ]
         )
@@ -723,7 +715,6 @@ def designer_layout(
                         id="btn-designer-back",
                         variant="filled",
                         size="xs",
-                        color="blue",
                     ),
                 ],
                 justify="space-between",
@@ -746,9 +737,8 @@ def designer_layout(
                     [
                         dmc.AccordionControl(
                             dmc.Text(
-                                "ℹ️ How to use Designer",
+                                "How to use Designer",
                                 fw=600,
-                                c="blue.4",
                             )
                         ),
                         dmc.AccordionPanel(
@@ -792,11 +782,17 @@ def designer_layout(
                 ),
                 variant="contained",
                 radius="md",
+                # D-LR2: this accordion drew its edge in Mantine's blue — the
+                # one per-view accent left in the app. It takes the theme
+                # primary like every other accented surface, so a re-themed
+                # accent lands here too.
                 styles={
-                    "item": {"border": "1px solid var(--mantine-color-blue-4)"},
+                    "item": {
+                        "border": "1px solid var(--mantine-primary-color-filled)"
+                    },
                     "control": {
                         "borderRadius": "var(--mantine-radius-md)",
-                        "borderLeft": "3px solid var(--mantine-color-blue-4)",
+                        "borderLeft": "3px solid var(--mantine-primary-color-filled)",
                     },
                 },
                 mb="lg",

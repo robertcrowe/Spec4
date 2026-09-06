@@ -4,6 +4,10 @@ import logging
 import os
 from typing import Any
 
+# D-LR1: this import ordering is load-bearing and the look rework must not
+# reorder it — the env var and `suppress_debug_info` have to be set before
+# litellm is first imported, and the `spec4.callbacks` imports must stay after
+# `app` exists, which is why the E402 suppressions below are deliberate.
 # Suppress litellm's startup warnings about optional AWS dependencies
 # (botocore/Bedrock/SageMaker) that are not used by Spec4.  Must be set
 # before litellm is first imported by any downstream module.
@@ -16,13 +20,12 @@ import dash
 from dash import Input, Output, State, callback, dcc, html, no_update
 import dash_mantine_components as dmc
 
-from spec4 import __version__, version_check
-from spec4.app_constants import DARK_THEME, GOOGLE_FONTS
-from spec4.session import _default_session, _load_working_dir
+from spec4 import __version__, project_manager, version_check
+from spec4.app_constants import DARK_THEME, GOOGLE_FONTS, PHASE_ROOT
+from spec4.session import _default_session
 from spec4.layouts import (
-    _footer,
-    _nav_drawer,
-    _landing_layout,
+    STATUS_BAR_HEIGHT,
+    _status_bar,
     _working_dir_layout,
     _setup_layout,
     _agent_select_layout,
@@ -79,9 +82,6 @@ app.layout = dmc.MantineProvider(
     children=[
         dmc.NotificationContainer(),
         html.Div(id="notifications-container", style={"display": "none"}),
-        # Blueprint grid background (sits behind everything)
-        html.Div(id="blueprint-grid"),
-        _nav_drawer(),
         dcc.Location(id="url", refresh=False),
         html.Div(id="_scroll-dummy", style={"display": "none"}),
         html.Div(id="_progress-dummy", style={"display": "none"}),
@@ -122,66 +122,19 @@ app.layout = dmc.MantineProvider(
         ),
         dmc.AppShell(
             children=[
-                dmc.AppShellHeader(
-                    dmc.Group(
-                        [
-                            dmc.Group(
-                                [
-                                    html.A(
-                                        [
-                                            html.Span("Spec", className="logo-spec"),
-                                            html.Span("4", className="logo-4"),
-                                            html.Span(" AI", className="logo-spec"),
-                                        ],
-                                        href="/",
-                                        className="logo-text",
-                                        style={"textDecoration": "none"},
-                                    ),
-                                    dmc.Text(
-                                        "AI Project Planning for Developers",
-                                        size="sm",
-                                        c="dimmed",
-                                        visibleFrom="sm",
-                                    ),
-                                    dmc.Text(
-                                        __version__,
-                                        size="sm",
-                                        c="dimmed",
-                                        visibleFrom="sm",
-                                        style={"opacity": 0.5},
-                                    ),
-                                ],
-                                gap="md",
-                            ),
-                            html.Button(
-                                "☰",
-                                id="nav-burger",
-                                n_clicks=0,
-                                style={
-                                    "background": "none",
-                                    "border": "none",
-                                    "color": "var(--mantine-color-text)",
-                                    "cursor": "pointer",
-                                    "fontSize": "1.25rem",
-                                    "lineHeight": 1,
-                                    "padding": "4px 8px",
-                                },
-                            ),
-                        ],
-                        justify="space-between",
-                        h="100%",
-                        px="md",
-                    ),
-                ),
+                dmc.AppShellHeader(_status_bar()),
                 dmc.AppShellMain(
                     dmc.Container(
                         html.Div(id="page-content"),
                         size="xl",
-                        py="lg",
+                        # Half the previous vertical padding (was "lg"): the
+                        # shell frames a dense development tool now, not a
+                        # marketing page.
+                        py="xs",
                     )
                 ),
             ],
-            header={"height": 56},
+            header={"height": STATUS_BAR_HEIGHT},
         ),
     ],
 )
@@ -211,31 +164,6 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
     """,
     Output("_scroll-dummy", "children"),
     Input("_last_render", "data"),
-)
-
-app.clientside_callback(  # type: ignore[no-untyped-call]
-    """
-    function(burger_clicks, close_clicks, overlay_clicks, current_class) {
-        var ctx = dash_clientside.callback_context;
-        if (!ctx.triggered || !ctx.triggered.length) return [window.dash_clientside.no_update, window.dash_clientside.no_update, window.dash_clientside.no_update];
-        var prop = ctx.triggered[0].prop_id;
-        var is_open = current_class && current_class.includes("--open");
-        var new_open = (prop === 'nav-burger.n_clicks') ? !is_open : false;
-        return [
-            new_open ? "✕" : "☰",
-            new_open ? "nav-drawer nav-drawer--open" : "nav-drawer",
-            new_open ? "nav-overlay nav-overlay--open" : "nav-overlay"
-        ];
-    }
-    """,
-    Output("nav-burger", "children"),
-    Output("nav-drawer", "className"),
-    Output("nav-overlay", "className"),
-    Input("nav-burger", "n_clicks"),
-    Input("nav-close-btn", "n_clicks"),
-    Input("nav-overlay", "n_clicks"),
-    State("nav-drawer", "className"),
-    prevent_initial_call=True,
 )
 
 app.clientside_callback(  # type: ignore[no-untyped-call]
@@ -403,22 +331,34 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
     prevent_initial_call="initial_duplicate",
 )
 def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any, tool_support: Any) -> Any:
+    """Draw the screen the session's phase names.
+
+    Restoring a remembered working directory is not done here — the router
+    (`on_browser_navigate`) owns it, so exactly one callback writes the session
+    on page load and the two cannot race each other into a half-restored store.
+
+    The final branch is empty on purpose. Until the router has resolved the
+    root, the session sits in ``PHASE_ROOT`` and this returns no children at
+    all: an empty container, not a placeholder, a spinner or a partial layout.
+    That emptiness is the whole mechanism behind "no intermediate screen" — a
+    screen that does not exist cannot flash — so nothing may be drawn for an
+    unresolved phase.
+    """
     session = session or _default_session()
     prefs = prefs or {}
 
-    # Restore working_dir from localStorage when starting a fresh browser session.
-    # Returns a new session so the restored state is also persisted in sessionStorage.
-    # Keep phase as "landing" so the home page still shows on restart.
     new_session = no_update
-    if not session.get("working_dir") and prefs.get("working_dir"):
-        session = _load_working_dir(prefs["working_dir"], session)
-        session = {**session, "phase": "landing"}
-        new_session = session
-
-    phase = session.get("phase", "landing")
+    content: Any
+    phase = session.get("phase", PHASE_ROOT)
     if phase == "working_dir":
-        # If a directory was previously saved, start the browser there.
-        if prefs.get("working_dir") and not session.get("browser_path"):
+        # If a directory was previously saved, start the browser there — but
+        # only if it is still there. Seeding the browser at a path that cannot
+        # be opened is how the picker ends up showing home while "Select This
+        # Directory" points somewhere else.
+        if (
+            not session.get("browser_path")
+            and project_manager.directory_opens(prefs.get("working_dir"))
+        ):
             session = {**session, "browser_path": prefs["working_dir"]}
             new_session = session
         content = _working_dir_layout(session)
@@ -431,8 +371,8 @@ def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any,
     elif phase == "designer":
         content = designer_layout(session, prefs)
     else:
-        content = _landing_layout()
-    return html.Div([content, _footer()]), (render_count or 0) + 1, new_session
+        content = []
+    return content, (render_count or 0) + 1, new_session
 
 
 @callback(

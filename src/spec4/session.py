@@ -8,6 +8,7 @@ from spec4 import llm, llm_selection, project_manager
 from spec4.agents import brainstormer, code_scanner, deployer, phaser, stack_advisor
 from spec4.app_constants import (
     FF_PROMPT,
+    PHASE_ROOT,
     STATE_AGENTIFIER_COMPLETE,
     STATE_DEPLOYER_COMPLETE,
     STATE_IN_PROGRESS,
@@ -27,7 +28,10 @@ def _default_session() -> dict[str, Any]:
     return {
         "working_dir": None,
         "browser_path": None,
-        "phase": "landing",
+        # Unresolved until the router decides where the root goes. Nothing is
+        # drawn for this phase, so a session that has never navigated shows an
+        # empty container rather than a screen of its own.
+        "phase": PHASE_ROOT,
         "provider": None,
         "model": None,
         "api_key": None,
@@ -36,6 +40,12 @@ def _default_session() -> dict[str, Any]:
         "search_api_key": None,
         "setup_error": None,
         "agent_select_error": None,
+        # Why the directory picker is on screen when the root was asked for a
+        # remembered project: the plain-text message naming the directory that
+        # could not be opened. Transient like `setup_error` — set by
+        # `on_browser_navigate`, cleared the moment a directory is selected
+        # (`_load_working_dir` resets to these defaults).
+        "dir_error": None,
         "llm_config": None,
         # Per-agent model overrides, keyed by the seven user-facing agent names
         # only (app_constants.AGENT_KEYS). An agent with no entry runs on

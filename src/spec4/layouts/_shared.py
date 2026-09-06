@@ -15,17 +15,11 @@ from spec4 import project_manager
 
 
 def _card(*children: Any, **kwargs: Any) -> Any:
-    return dmc.Paper(list(children), p="md", radius="md", withBorder=True, **kwargs)
-
-
-def _feature_card(*children: Any, **kwargs: Any) -> Any:
+    """A bordered panel. ``p`` is overridable so the denser project-view frame
+    can halve its padding without moving the setup wizard or the gate card."""
+    padding = kwargs.pop("p", "md")
     return dmc.Paper(
-        list(children),
-        p="lg",
-        radius="lg",
-        withBorder=True,
-        className="feature-card",
-        **kwargs,
+        list(children), p=padding, radius="md", withBorder=True, **kwargs
     )
 
 
@@ -43,6 +37,33 @@ COST_DISCLAIMER = (
     "sheets and has no entry for some models. Your provider's billing is the "
     "authoritative figure."
 )
+
+# The same caveat at the density the project view's one-line strip can carry.
+# It names the price source the round's ``usage.json`` recorded, so a file
+# written by an older Spec4 against a different map still describes itself
+# rather than whatever this build happens to use.
+PRICE_SOURCE_FALLBACK = "LiteLLM's price map"
+
+
+def price_source_note(source: Any) -> str:
+    """``Estimates from <source>. Your provider's billing is authoritative.``
+
+    The short form of :data:`COST_DISCLAIMER`, for a surface that has one line
+    rather than a paragraph. Both say the same two things — these figures are
+    estimates, and the provider's bill is the real number — and both live here
+    so a reworded caveat cannot land on only one of them.
+
+    Two sentences rather than the mock's one clause, because the source the
+    file records carries its own parenthetical and a semicolon after it left
+    three levels of punctuation in one breath.
+    """
+    name = (
+        source
+        if isinstance(source, str) and source.strip()
+        else PRICE_SOURCE_FALLBACK
+    )
+    return f"Estimates from {name}. Your provider's billing is authoritative."
+
 
 _COST_NOT_AVAILABLE = "not available"
 
@@ -77,30 +98,63 @@ def _token_part(block: dict[str, Any]) -> str:
     return text
 
 
+def _excluded_calls(block: dict[str, Any]) -> int:
+    """How many of the block's calls carry no price.
+
+    Two ways a call ends up here and they are the same fact to a reader: the
+    provider reported usage LiteLLM had no price map entry for, or it reported
+    no usage at all. Either way its cost is not in the figure.
+    """
+    return int(block.get("calls_missing_cost") or 0) + int(
+        block.get("calls_missing_usage") or 0
+    )
+
+
+def _cost_figure(block: dict[str, Any]) -> str:
+    """The money, or the reason there isn't any: never a confident ``$0.0000``.
+
+    A block whose calls could none of them be priced has an *unknown* cost,
+    not a zero one, and says so. This is the one rule every cost surface in
+    the app shares, which is why it lives here rather than at each call site.
+    """
+    cost = block.get("cost_usd")
+    calls = int(block.get("calls") or 0)
+    if cost is None and calls:
+        return f"{_COST_NOT_AVAILABLE} (none of the {calls} calls could be priced)"
+    return _fmt_usd(cost)
+
+
+def _excluded_note(block: dict[str, Any]) -> str:
+    """``2 of 19 calls could not be priced and are excluded``, or ``""``.
+
+    The sentence, without a frame around it: the chat card parenthesises it
+    onto its cost line and the project view's round cost gives it a line of
+    its own with the calls named, but neither writes the wording twice.
+    """
+    excluded = _excluded_calls(block)
+    if not excluded:
+        return ""
+    calls = int(block.get("calls") or 0)
+    noun = "call" if calls == 1 else "calls"
+    verb = "is" if excluded == 1 else "are"
+    return f"{excluded} of {calls} {noun} could not be priced and {verb} excluded"
+
+
 def _cost_line(label: str, block: dict[str, Any]) -> str:
     """``<label>: <cost> · Tokens: …`` with the pricing gaps spelled out.
 
     A call the provider reported usage for but LiteLLM could not price is
     excluded from the figure, so the figure is an undercount by exactly the
-    calls named here. When nothing could be priced there is no figure at all,
-    and the line says so instead of showing ``$0.0000``. The token counts
-    follow either way — they are ground truth and do not depend on pricing.
+    calls counted in the note. When nothing could be priced there is no figure
+    at all, and the line says so instead of showing ``$0.0000`` — and then the
+    note is redundant, because the figure has already accounted for every
+    call. The token counts follow either way: they are ground truth and do not
+    depend on pricing.
     """
-    cost = block.get("cost_usd")
-    calls = int(block.get("calls") or 0)
-    unpriced = int(block.get("calls_missing_cost") or 0)
-    no_usage = int(block.get("calls_missing_usage") or 0)
-    text = f"{label}: {_fmt_usd(cost)}"
-    excluded = unpriced + no_usage
-    if cost is None and calls:
-        text = f"{text} (none of the {calls} calls could be priced)"
-    elif excluded:
-        noun = "call" if calls == 1 else "calls"
-        verb = "is" if excluded == 1 else "are"
-        text = (
-            f"{text} ({excluded} of {calls} {noun} could not be priced and {verb} "
-            "excluded)"
-        )
+    text = f"{label}: {_cost_figure(block)}"
+    note = "" if block.get("cost_usd") is None else _excluded_note(block)
+    if note:
+        text = f"{text} ({note})"
     return f"{text} · {_token_part(block)}"
 
 
@@ -128,7 +182,7 @@ def cost_summary_card(
         return None
     return dmc.Paper(
         [
-            dmc.Text("💵 Estimated cost", fw=600, mb="xs"),
+            dmc.Text("Estimated cost", fw=600, mb="xs"),
             dmc.Text(_cost_line(f"{agent_label} run", summary["agent"])),
             dmc.Text(
                 _cost_line(f"Running total for {summary['round']}", summary["total"])
@@ -140,137 +194,6 @@ def cost_summary_card(
         p="md",
         radius="md",
         mb="md",
-    )
-
-
-# ---------------------------------------------------------------------------
-# Navigation / footer
-# ---------------------------------------------------------------------------
-
-# Navigation links shared between the footer and nav drawer.
-_NAV_LINKS: list[tuple[str, list[tuple[str, str]]]] = [
-    (
-        "Spec4",
-        [
-            ("How It Works", "https://spec4.ai/how-it-works/"),
-            ("About", "https://spec4.ai/about/"),
-            ("Get Started", "https://github.com/robertcrowe/Spec4"),
-        ],
-    ),
-    (
-        "Agents",
-        [
-            ("CodeScanner", "https://spec4.ai/agents/reviewer/"),
-            ("Brainstormer", "https://spec4.ai/agents/brainstormer/"),
-            ("Agentifier", "https://spec4.ai/agents/agentifier/"),
-            ("Designer", "https://spec4.ai/agents/designer/"),
-            ("StackAdvisor", "https://spec4.ai/agents/stackadvisor/"),
-            ("Phaser", "https://spec4.ai/agents/phaser/"),
-            ("Deployer", "https://spec4.ai/agents/deployer/"),
-        ],
-    ),
-    (
-        "Resources",
-        [
-            ("Community", "https://github.com/robertcrowe/Spec4/discussions"),
-            ("GitHub", "https://github.com/robertcrowe/Spec4"),
-            (
-                "Contributing",
-                "https://github.com/robertcrowe/Spec4/blob/main/CONTRIBUTING.md",
-            ),
-        ],
-    ),
-]
-
-
-def _nav_drawer() -> html.Div:
-    def _link(text: str, href: str) -> Any:
-        return html.A(
-            text, href=href, target="_blank", rel="noopener", className="footer-link"
-        )
-
-    sections = [
-        html.Div(
-            [html.Div(heading, className="footer-col-heading")]
-            + [_link(label, url) for label, url in links],
-            style={"marginBottom": "1.5rem"},
-        )
-        for heading, links in _NAV_LINKS
-    ]
-    # Remove marginBottom from the last section
-    sections[-1] = html.Div(
-        [html.Div(_NAV_LINKS[-1][0], className="footer-col-heading")]
-        + [_link(label, url) for label, url in _NAV_LINKS[-1][1]],
-    )
-
-    return html.Div(
-        [
-            html.Div(id="nav-overlay", className="nav-overlay"),
-            html.Div(
-                id="nav-drawer",
-                className="nav-drawer",
-                children=[
-                    html.Button("✕", id="nav-close-btn", className="nav-close-btn"),
-                    html.Div(style={"clear": "both", "marginBottom": "1.5rem"}),
-                    *sections,
-                ],
-            ),
-        ]
-    )
-
-
-def _footer() -> html.Footer:
-    return html.Footer(
-        [
-            dmc.SimpleGrid(
-                cols={"base": 1, "sm": 2},
-                spacing="xl",
-                mb="lg",
-                children=[
-                    html.Div(
-                        [
-                            html.Div(
-                                [
-                                    html.Span("Spec", className="logo-spec"),
-                                    html.Span("4", className="logo-4"),
-                                    html.Span(" AI", className="logo-spec"),
-                                ],
-                                className="footer-brand-logo",
-                            ),
-                            html.P(
-                                "Spec-driven development, from idea to implementation plan.",  # noqa: E501
-                                className="footer-brand-tagline",
-                            ),
-                        ]
-                    ),
-                    dmc.SimpleGrid(
-                        cols=3,
-                        spacing="md",
-                        children=[
-                            html.Div(
-                                [html.Div(heading, className="footer-col-heading")]
-                                + [
-                                    html.A(
-                                        label,
-                                        href=url,
-                                        target="_blank",
-                                        rel="noopener",
-                                        className="footer-link",
-                                    )
-                                    for label, url in links
-                                ],
-                            )
-                            for heading, links in _NAV_LINKS
-                        ],
-                    ),
-                ],
-            ),
-            html.Div(
-                "© 2026 Robert Crowe. Open source under Apache 2.0 License.",
-                className="footer-bottom",
-            ),
-        ],
-        className="footer",
     )
 
 

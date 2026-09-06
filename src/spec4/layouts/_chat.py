@@ -43,29 +43,29 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
     )
     designer_done = bool(_mock and _mock.exists())
     agents = [
-        ("code_scanner", "🔍 CodeScanner", session.get("code_review") is not None),
+        ("code_scanner", "CodeScanner", session.get("code_review") is not None),
         (
             "brainstormer",
-            "🧠 Brainstormer",
+            "Brainstormer",
             session.get("vision_statement") is not None,
         ),
         (
             "agentifier",
-            "🤖 Agentifier",
+            "Agentifier",
             session.get("agentifier_state") == STATE_AGENTIFIER_COMPLETE,
         ),
-        ("designer", "🎨 Designer", designer_done),
-        ("stack_advisor", "⚙️ StackAdvisor", session.get("stack_statement") is not None),
-        ("phaser", "📋 Phaser", session.get("phaser_state") == STATE_PHASES_COMPLETE),
-        ("deployer", "🚀 Deployer", session.get("deployer_state") == STATE_DEPLOYER_COMPLETE),  # noqa: E501
+        ("designer", "Designer", designer_done),
+        ("stack_advisor", "StackAdvisor", session.get("stack_statement") is not None),
+        ("phaser", "Phaser", session.get("phaser_state") == STATE_PHASES_COMPLETE),
+        ("deployer", "Deployer", session.get("deployer_state") == STATE_DEPLOYER_COMPLETE),  # noqa: E501
     ]
     items = []
     for i, (key, label, done) in enumerate(agents):
         is_active = key == active
         if is_active:
-            badge: Any = dmc.Badge(label, color="green", variant="filled", size="xs")
+            badge: Any = dmc.Badge(label, variant="filled", size="xs")
         elif done:
-            badge = dmc.Badge(f"✓ {label}", color="gray", variant="light", size="xs")
+            badge = dmc.Badge(f"{label} done", color="gray", variant="light", size="xs")
         else:
             badge = dmc.Badge(label, color="gray", variant="outline", size="xs")
         # Active pill is rendered as a plain badge — clicking it would just
@@ -101,7 +101,6 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
                         id="btn-chat-back",
                         variant="filled",
                         size="xs",
-                        color="blue",
                     ),
                 ],
                 justify="space-between",
@@ -251,12 +250,12 @@ def _ff_controls(agent_label: str) -> list[Any]:
     """
     return [
         dmc.Button(
-            "⏩ Fast Forward",
+            "Fast Forward",
             id="btn-chat-fast-forward",
             variant="outline",
         ),
-        dmc.ActionIcon(
-            "ⓘ",
+        dmc.Button(
+            "About Fast Forward",
             id="btn-ff-info",
             variant="subtle",
             size="sm",
@@ -295,12 +294,12 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
             buttons = [
                 token_counter,
                 dmc.Button(
-                    "💾 Download code_review.json",
+                    "Download code_review.json",
                     id="btn-dl-review",
                     variant="outline",
                 ),
                 dmc.Button(
-                    "🔄 Re-scan Project",
+                    "Re-scan Project",
                     id="btn-rescan-project",
                     variant="outline",
                     color="orange",
@@ -327,7 +326,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
             buttons = [
                 token_counter,
                 dmc.Button(
-                    "💾 Download vision.json", id="btn-dl-vision", variant="outline"
+                    "Download vision.json", id="btn-dl-vision", variant="outline"
                 ),
                 dmc.Button(
                     "Continue to Designer →",
@@ -358,7 +357,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
             buttons = [
                 token_counter,
                 dmc.Button(
-                    "💾 Download ai_features.json",
+                    "Download ai_features.json",
                     id="btn-dl-features",
                     variant="outline",
                 ),
@@ -407,7 +406,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
                 back,
                 token_counter,
                 dmc.Button(
-                    "💾 Download stack.json", id="btn-dl-stack", variant="outline"
+                    "Download stack.json", id="btn-dl-stack", variant="outline"
                 ),
                 dmc.Button("Send to Phaser →", id="btn-stack-to-phaser"),
             ]
@@ -431,7 +430,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
                 back,
                 token_counter,
                 dmc.Button(
-                    "💾 Download phases.zip", id="btn-dl-phases", variant="outline"
+                    "Download phases.zip", id="btn-dl-phases", variant="outline"
                 ),
                 dmc.Button("Continue to Deployer →", id="btn-phaser-to-deployer"),
             ]
@@ -455,7 +454,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
                 back,
                 token_counter,
                 dmc.Button(
-                    "💾 Download deployment plan (Markdown)",
+                    "Download deployment plan (Markdown)",
                     id="btn-dl-deployment",
                     variant="outline",
                 ),
@@ -777,7 +776,7 @@ def _chat_layout(
             html.Div(
                 [
                     dmc.Progress(
-                        value=100, animated=True, striped=True, color="blue", size="sm"
+                        value=100, animated=True, striped=True, size="sm"
                     ),
                     # The elapsed readout that used to sit here now rides in the
                     # action row, next to the chars counter — see

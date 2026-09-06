@@ -1,3 +1,26 @@
+"""Every screen the app draws.
+
+D-LR7 — the standing review gate for anything added here.
+
+The look rework removed a fixed list of marketing-era elements: the
+external-link drawer, the footer, the in-app landing page, the grid
+background, kicker labels, gradient text, hero spacing, card hover effects,
+button glows, and every emoji in the app. That list is not history; it is the
+checklist a new component is reviewed against before it ships.
+
+The rule the list is shorthand for: **if an element on screen is not a fact, a
+command, an artifact, or a control, it does not ship.** A pictograph beside a
+word is none of the four — the word already said it. A glow, a gradient or a
+lift on hover is none of the four either; it decorates a control that was
+already legible.
+
+Three of these are enforced by `tests/test_visual_register.py` rather than by
+review alone — no emoji anywhere under `src/spec4/`, no marketing-era
+declaration in `v3.css`, and no accent colour named by a layout module. The
+rest are the reviewer's job, because a checklist a machine can run is the part
+that stops rotting and the part that stops being read.
+"""
+
 from __future__ import annotations
 
 import pathlib
@@ -8,270 +31,67 @@ import dash_mantine_components as dmc
 
 from spec4 import project_manager
 from spec4.app_constants import PROJECT_MODE_EXISTING, PROJECT_MODE_NEW
+from spec4.layouts._agent_rows import (
+    _AGENT_ROWS,
+    _agent_action_button,
+    _agent_rows,
+    agent_row_id,
+    agent_rows,
+)
 from spec4.layouts._chat import _agent_status_bar, _chat_action_buttons, _chat_layout
 from spec4.layouts._setup import _setup_layout
 from spec4.layouts._shared import (
     _card,
     _error,
-    _feature_card,
-    _footer,
-    _nav_drawer,
     _render_message,
     _reformat_inline_lists,
+)
+from spec4.layouts._round_cost import (
+    _round_cost,
+    round_cost_lines,
+)
+from spec4.layouts._round_tree import (
+    _round_tree,
+    _round_tree_head,
+    _round_tree_lines_children,
+    round_tree_lines,
+)
+from spec4.layouts._status_bar import (
+    STATUS_BAR_HEIGHT,
+    STATUS_EMPTY,
+    _status_bar,
+    _status_context,
+    _status_nav_class,
 )
 
 __all__ = [
     "_card",
     "_error",
-    "_feature_card",
-    "_footer",
-    "_nav_drawer",
     "_render_message",
     "_reformat_inline_lists",
+    "STATUS_BAR_HEIGHT",
+    "STATUS_EMPTY",
+    "_AGENT_ROWS",
+    "_agent_action_button",
+    "_agent_rows",
+    "agent_row_id",
+    "agent_rows",
+    "_round_cost",
+    "round_cost_lines",
+    "_round_tree",
+    "_round_tree_head",
+    "_round_tree_lines_children",
+    "round_tree_lines",
+    "_status_bar",
+    "_status_context",
+    "_status_nav_class",
     "_agent_status_bar",
     "_chat_action_buttons",
     "_chat_layout",
     "_setup_layout",
-    "_landing_layout",
     "_working_dir_layout",
     "_agent_select_layout",
 ]
-
-
-# ---------------------------------------------------------------------------
-# Landing
-# ---------------------------------------------------------------------------
-
-
-def _landing_layout() -> html.Div:
-    return html.Div(
-        [
-            # Hero section
-            html.Div(
-                [
-                    # Badge
-                    html.Div(
-                        [
-                            html.Span(className="badge-dot"),
-                            html.Span("Spec-Driven AI Development for Developers"),
-                        ],
-                        className="hero-badge",
-                    ),
-                    # Title
-                    html.H1(
-                        [
-                            "Design and deploy ",
-                            html.Span("agentic applications", className="text-gradient"),  # noqa: E501
-                        ],
-                        style={
-                            "fontSize": "clamp(2.25rem, 5vw, 3.5rem)",
-                            "fontWeight": 700,
-                            "lineHeight": 1.1,
-                            "letterSpacing": "-0.03em",
-                            "marginBottom": "1.25rem",
-                            "color": "var(--mantine-color-dark-0)",
-                        },
-                    ),
-                    # Subtitle
-                    dmc.Text(
-                        "A pipeline of specialised LLM agents takes you from a rough idea to "  # noqa: E501
-                        "full specification — including the AI features your app needs, "  # noqa: E501
-                        "the agents and tools behind them, and how they fit together — then "  # noqa: E501
-                        "through structured development phases and a production-level deployment plan ready "  # noqa: E501
-                        "for Claude Code, Hermes, Kiro, Antigravity, or any AI coding agent. ",  # noqa: E501
-                        size="lg",
-                        c="dimmed",
-                        # No maxWidth: the intro shares the hero container's
-                        # content box with the H1 above it, so both wrap at the
-                        # same left and right margins. A narrower cap here left
-                        # the paragraph visibly inset from the heading.
-                        style={
-                            "lineHeight": 1.7,
-                            "margin": "0 auto 0.5rem",
-                        },
-                    ),
-                    dmc.Text(
-                        [
-                            "Not just vibe coding, but production-level "
-                            "development.  It's way more powerful than ",
-                            html.Code("/plan"),
-                            ".",
-                        ],
-                        size="lg",
-                        c="blue.5",
-                        style={"margin": "0 auto 1.5rem"},
-                    ),
-                    # CTA
-                    dmc.Button(
-                        "Get Started →",
-                        id="btn-landing-start",
-                        size="lg",
-                        mb="md",
-                        style={"fontWeight": 600},
-                    ),
-                ],
-                style={
-                    "textAlign": "center",
-                    "paddingTop": "2rem",
-                    "paddingBottom": "1rem",
-                },
-            ),
-            # Divider with section label
-            dmc.Divider(mb="md"),
-            html.Div(
-                "The Pipeline",
-                className="section-label",
-                style={"display": "block", "textAlign": "center"},
-            ),
-            # Agent feature cards
-            dmc.SimpleGrid(
-                cols={"base": 1, "sm": 2, "lg": 3},
-                spacing="md",
-                mb="xl",
-                children=[
-                    html.A(
-                        _feature_card(
-                            dmc.Group(
-                                [
-                                    dmc.Title("🔍 CodeScanner", order=4),
-                                    dmc.Text("(optional)", size="xs", c="dimmed"),
-                                ],
-                                gap="xs",
-                                align="center",
-                                mb="xs",
-                            ),
-                            dmc.Text(
-                                "Analyzes an existing project directory to understand its architecture, "  # noqa: E501
-                                "technology stack, and coding style.",
-                                size="sm",
-                                mb="md",
-                                c="dimmed",
-                            ),
-                            html.Span("code_review.json", className="output-badge"),
-                        ),
-                        href="https://spec4.ai/agents/reviewer/",
-                        target="_blank",
-                        style={"textDecoration": "none", "color": "inherit"},
-                    ),
-                    html.A(
-                        _feature_card(
-                            dmc.Title("🧠 Brainstormer", order=4, mb="sm"),
-                            dmc.Text(
-                                "Develops a clear project vision through focused questions. "  # noqa: E501
-                                "Identifies technical standards via web search.",
-                                size="sm",
-                                mb="md",
-                                c="dimmed",
-                            ),
-                            html.Span("vision.json", className="output-badge"),
-                        ),
-                        href="https://spec4.ai/agents/brainstormer/",
-                        target="_blank",
-                        style={"textDecoration": "none", "color": "inherit"},
-                    ),
-                    html.A(
-                        _feature_card(
-                            dmc.Title("🤖 Agentifier", order=4, mb="sm"),
-                            dmc.Text(
-                                "Identifies every AI/LLM integration opportunity in your vision, "  # noqa: E501
-                                "recommends a complexity tier for each, and drafts a full "  # noqa: E501
-                                "implementation spec per feature.",
-                                size="sm",
-                                mb="md",
-                                c="dimmed",
-                            ),
-                            html.Span("ai_features.json", className="output-badge"),
-                        ),
-                        href="https://spec4.ai/agents/agentifier/",
-                        target="_blank",
-                        style={"textDecoration": "none", "color": "inherit"},
-                    ),
-                    html.A(
-                        _feature_card(
-                            dmc.Group(
-                                [
-                                    dmc.Title("🎨 Designer", order=4),
-                                    dmc.Text("(optional)", size="xs", c="dimmed"),
-                                ],
-                                gap="xs",
-                                align="center",
-                                mb="xs",
-                            ),
-                            dmc.Text(
-                                "Generates a self-contained HTML mock-up of your starting screen "  # noqa: E501
-                                "from a style description and optional reference screenshots.",  # noqa: E501
-                                size="sm",
-                                mb="md",
-                                c="dimmed",
-                            ),
-                            html.Span("mock.html", className="output-badge"),
-                        ),
-                        href="https://spec4.ai/agents/designer/",
-                        target="_blank",
-                        style={"textDecoration": "none", "color": "inherit"},
-                    ),
-                    html.A(
-                        _feature_card(
-                            dmc.Title("⚙️ StackAdvisor", order=4, mb="sm"),
-                            dmc.Text(
-                                "Recommends languages, frameworks, hosting, and infrastructure. "  # noqa: E501
-                                "Compares options and explains trade-offs.",
-                                size="sm",
-                                mb="md",
-                                c="dimmed",
-                            ),
-                            html.Span("stack.json", className="output-badge"),
-                        ),
-                        href="https://spec4.ai/agents/stackadvisor/",
-                        target="_blank",
-                        style={"textDecoration": "none", "color": "inherit"},
-                    ),
-                    html.A(
-                        _feature_card(
-                            dmc.Title("📋 Phaser", order=4, mb="sm"),
-                            dmc.Text(
-                                "Decomposes your vision and stack into ordered, executable development phases. "  # noqa: E501
-                                "Phase 1 is always a steel thread.",
-                                size="sm",
-                                mb="md",
-                                c="dimmed",
-                            ),
-                            html.Span("phases.zip", className="output-badge"),
-                        ),
-                        href="https://spec4.ai/agents/phaser/",
-                        target="_blank",
-                        style={"textDecoration": "none", "color": "inherit"},
-                    ),
-                    html.A(
-                        _feature_card(
-                            dmc.Title("🚀 Deployer", order=4, mb="sm"),
-                            dmc.Text(
-                                "Guides you through coding-agent workflow and designs a deployment "  # noqa: E501
-                                "plan tailored to your stack — cloud, PaaS, containers, CI/CD.",  # noqa: E501
-                                size="sm",
-                                mb="md",
-                                c="dimmed",
-                            ),
-                            html.Span("deployment.json", className="output-badge"),
-                        ),
-                        href="https://spec4.ai/agents/deployer/",
-                        target="_blank",
-                        style={"textDecoration": "none", "color": "inherit"},
-                    ),
-                ],
-            ),
-            dmc.Divider(mb="md"),
-            dmc.Text(
-                "You can start at any stage. Agentifier requires a saved vision; "
-                "StackAdvisor requires a vision; "
-                "Phaser requires both a vision and a stack; Deployer requires phases.",
-                size="lg",
-                mb="lg",
-                ta="center",
-                style={"color": "var(--mantine-color-dark-0)", "fontWeight": 400},
-            ),
-        ]
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -280,10 +100,19 @@ def _landing_layout() -> html.Div:
 
 
 def _working_dir_layout(session: dict[str, Any]) -> html.Div:
+    """The directory picker, and one of the two destinations the root resolves to.
+
+    ``dir_error`` is why it is on screen rather than the project view: the root
+    was asked for a remembered directory that could not be opened, and the
+    message names it. It sits above the browser, before the developer starts
+    clicking, because it is the answer to "why am I not looking at my project".
+    """
     browser_path = session.get("browser_path") or str(pathlib.Path.home())
+    # One predicate for what is shown and what `on_dir_select` opens, so the
+    # two can never name different directories.
+    if not project_manager.directory_opens(browser_path):
+        browser_path = str(pathlib.Path.home())
     current = pathlib.Path(browser_path)
-    if not current.exists():
-        current = pathlib.Path.home()
 
     try:
         subdirs = sorted(
@@ -294,7 +123,7 @@ def _working_dir_layout(session: dict[str, Any]) -> html.Div:
 
     subdir_buttons = [
         dmc.Button(
-            f"📁 {d.name}",
+            f"{d.name}",
             id={"type": "subdir-btn", "path": str(d)},
             variant="subtle",
             size="xs",
@@ -303,9 +132,12 @@ def _working_dir_layout(session: dict[str, Any]) -> html.Div:
         for d in subdirs[:30]
     ]
 
+    dir_error = session.get("dir_error")
+
     return html.Div(
         [
             dmc.Title("Select Project Directory", order=3, mb="sm"),
+            _error(dir_error) if dir_error else None,
             dmc.Text(
                 "Where do you want to work? Spec4 needs a project directory. "
                 "If you're starting a new project, the project directory will probably start out empty. "  # noqa: E501
@@ -331,7 +163,7 @@ def _working_dir_layout(session: dict[str, Any]) -> html.Div:
                             disabled=(current == current.parent),
                         ),
                         dmc.Button(
-                            "✓ Select This Directory",
+                            "Select This Directory",
                             id="btn-dir-select",
                             size="sm",
                         ),
@@ -347,7 +179,7 @@ def _working_dir_layout(session: dict[str, Any]) -> html.Div:
                 dmc.Accordion(
                     dmc.AccordionItem(
                         [
-                            dmc.AccordionControl("📁 Create a new subdirectory here"),
+                            dmc.AccordionControl("Create a new subdirectory here"),
                             dmc.AccordionPanel(
                                 dmc.Stack(
                                     [
@@ -387,55 +219,6 @@ def _working_dir_layout(session: dict[str, Any]) -> html.Div:
 # Agent select
 # ---------------------------------------------------------------------------
 
-# (key, step, emoji, name, description) in pipeline order.
-_AGENT_ROWS: list[tuple[str, int, str, str, str]] = [
-    ("code_scanner", 0, "🔍", "CodeScanner",
-     "analyze the existing project directory"),
-    ("brainstormer", 1, "🧠", "Brainstormer",
-     "develop or refine a project vision"),
-    ("agentifier", 2, "🤖", "Agentifier",
-     "identify AI opportunities and choose tiers"),
-    ("designer", 3, "🎨", "Designer",
-     "create a visual mock-up for your application's starting screen"),
-    ("stack_advisor", 4, "⚙️", "StackAdvisor",
-     "select or refine a technology stack"),
-    ("phaser", 5, "📋", "Phaser",
-     "break your project into executable coding phases"),
-    ("deployer", 6, "🚀", "Deployer",
-     "plan coding-agent workflow and deployment strategy"),
-]
-
-_AGENT_BTN_LABELS = {
-    project_manager.AGENT_BTN_START: "Start",
-    project_manager.AGENT_BTN_MODIFY: "Modify",
-    project_manager.AGENT_BTN_NEEDS_UPDATE: "Needs Update",
-    project_manager.AGENT_BTN_NOT_READY: "Not Ready",
-    project_manager.AGENT_BTN_REQUIRED: "Required",
-}
-
-# Start keeps the current primary (blue) button; Modify green; Needs Update and
-# Required red; Not Ready is a disabled grey button.
-_AGENT_BTN_COLORS = {
-    project_manager.AGENT_BTN_START: "blue",
-    project_manager.AGENT_BTN_MODIFY: "green",
-    project_manager.AGENT_BTN_NEEDS_UPDATE: "red",
-    project_manager.AGENT_BTN_REQUIRED: "red",
-}
-
-
-def _agent_action_button(agent_key: str, state: str) -> Any:
-    """Render one agent's action button. Enabled states route via the shared
-    ``agent-pill`` click callback; ``not_ready`` is a disabled grey button."""
-    disabled = state == project_manager.AGENT_BTN_NOT_READY
-    return dmc.Button(
-        _AGENT_BTN_LABELS[state],
-        id={"type": "agent-pill", "agent": agent_key},
-        n_clicks=0,
-        color=_AGENT_BTN_COLORS.get(state, "gray"),
-        disabled=disabled,
-        w=140,
-    )
-
 
 def _project_mode_layout(session: dict[str, Any]) -> html.Div:
     """Ask whether the working directory holds a project we are modifying.
@@ -451,7 +234,7 @@ def _project_mode_layout(session: dict[str, Any]) -> html.Div:
     """
     return html.Div(
         _card(
-            dmc.Title("Is There an Existing Project Here?", order=3, mb="sm"),
+            dmc.Title("Is There an Existing Project Here?", order=3, mb="xs"),
             dcc.Markdown(
                 "This directory already contains files, but that alone doesn't "
                 "tell us much — it could be a project you're modifying, or just "
@@ -463,7 +246,7 @@ def _project_mode_layout(session: dict[str, Any]) -> html.Div:
                 "building something new. Spec4 will start with Brainstormer.",
                 style={
                     "color": "var(--mantine-color-dark-1)",
-                    "marginBottom": "1.5rem",
+                    "marginBottom": "0.75rem",
                 },
             ),
             dmc.Group(
@@ -472,7 +255,6 @@ def _project_mode_layout(session: dict[str, Any]) -> html.Div:
                         "Existing project",
                         id="btn-project-mode-existing",
                         n_clicks=0,
-                        color="blue",
                     ),
                     dmc.Button(
                         "New project",
@@ -489,8 +271,9 @@ def _project_mode_layout(session: dict[str, Any]) -> html.Div:
                 "here is permanent.",
                 size="xs",
                 c="dimmed",
-                mt="md",
+                mt="xs",
             ),
+            p="xs",
         )
     )
 
@@ -529,18 +312,33 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
     if mock_loaded:
         loaded_items.append("design/mock.html")
 
+    round_number = (
+        project_manager.active_version(working_dir, session) if working_dir else None
+    )
+
+    # The round tree comes first, directly under the status bar: what this
+    # round has produced, before anything about what to run next. Its lines are
+    # computed here for the first paint and recomputed from disk by
+    # `on_round_tree` on every render after that (D-LR4).
+    #
+    # The agent table sits directly beneath it, and it is the whole of the
+    # "what next" guidance now — the seven rows say what each agent produces
+    # and what to do with it, so the prose that used to introduce them (and the
+    # step numbers and one-line descriptions on the old cards) is gone rather
+    # than restated above a table that already says it.
+    # The round tree comes first, the agent table beneath it, and the round's
+    # cost closes the block — produced, then to do, then spent, which is the
+    # mock's order and the order the three questions actually occur in. The
+    # strip's lines are recomputed from `usage.json` by `on_round_cost` on
+    # every render, like the tree's (D-LR4).
     children = [
-        dmc.Title("Where Should We Begin?", order=3, mb="sm"),
-        dcc.Markdown(
-            "If you're just starting to work on your plan you should probably begin with either "  # noqa: E501
-            "CodeScanner or Brainstormer.\n\n"
-            "* Start with **CodeScanner** if you're modifying an existing project, so that Spec4 can "  # noqa: E501
-            "understand the current state of your code.\n"
-            "* Start with **Brainstormer** if you're starting an entirely new project, and Spec4 "  # noqa: E501
-            "will help you refine and complete your vision.",
-            style={"color": "var(--mantine-color-dark-1)", "marginBottom": "1.5rem"},
-        ),
+        _round_tree(working_dir, round_number),
+        _agent_rows(working_dir, round_number, session),
+        _round_cost(working_dir, round_number),
     ]
+
+    if error:
+        children.append(_error(error))
 
     if new_round:
         app_name = session.get("_prior_app_name")
@@ -554,8 +352,7 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
                 f"{prior} has been implemented, and you may also have made "
                 "additional changes yourself. You are now starting a new version, "
                 "so you must begin by scanning your existing code with CodeScanner.",
-                color="blue",
-                mb="md",
+                mb="xs",
             )
         )
     elif session.get("project_mode") == PROJECT_MODE_NEW:
@@ -566,8 +363,7 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
                 "You told us this is a new project, so Spec4 will treat anything "
                 "already in the directory as scaffolding. CodeScanner is "
                 "optional — feel free to skip ahead to Brainstormer.",
-                color="blue",
-                mb="md",
+                mb="xs",
             )
         )
     elif session.get("project_mode") == PROJECT_MODE_EXISTING:
@@ -576,7 +372,7 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
                 "You told us there's an existing project here. "
                 "Consider running CodeScanner first to help Spec4 understand the current state of your project.",  # noqa: E501
                 color="yellow",
-                mb="md",
+                mb="xs",
             )
         )
     elif working_dir and not project_manager.directory_has_content(working_dir):
@@ -584,8 +380,7 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
             dmc.Alert(
                 "Your project directory is empty. You can still run CodeScanner if you'd like, "  # noqa: E501
                 "but it's optional — feel free to skip ahead to Brainstormer.",
-                color="blue",
-                mb="md",
+                mb="xs",
             )
         )
     elif review_in_spec4:
@@ -596,7 +391,7 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
                 "CodeScanner again just to make sure that Spec4 understands the current state of your "  # noqa: E501
                 "project. Purely optional.",
                 color="yellow",
-                mb="md",
+                mb="xs",
             )
         )
 
@@ -604,44 +399,22 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
         children.append(
             dmc.Alert(
                 f"Loaded from .spec4/: {', '.join(loaded_items)}",
-                color="green",
-                mb="md",
-            )
-        )
-
-    rows = []
-    for key, step, emoji, name, desc in _AGENT_ROWS:
-        state = project_manager.agent_button_state(working_dir, key, session)
-        rows.append(
-            dmc.Group(
-                [
-                    html.Span(
-                        f"Step {step}: {emoji} {name} — {desc}",
-                        style={"flex": 1},
-                    ),
-                    _agent_action_button(key, state),
-                ],
-                justify="space-between",
-                wrap="nowrap",
-                gap="md",
+                mb="xs",
             )
         )
 
     children.append(
-        _card(
-            dmc.Text("Choose an agent:", size="lg", fw=600, mb="md"),
-            _error(error) if error else html.Div(),
-            dmc.Stack(rows, gap="sm", mb="md"),
-            dmc.Group(
-                [
-                    dmc.Button(
-                        "Change model / provider",
-                        id="btn-agent-change-provider",
-                        variant="outline",
-                    ),
-                ],
-                mt="md",
-            ),
+        dmc.Group(
+            [
+                dmc.Button(
+                    "Change model / provider",
+                    id="btn-agent-change-provider",
+                    variant="outline",
+                    color="gray",
+                    size="compact-sm",
+                ),
+            ],
+            mt="xs",
         )
     )
 

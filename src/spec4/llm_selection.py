@@ -36,6 +36,7 @@ __all__ = [
     "AGENT_KEYS",
     "build_llm_config",
     "capability",
+    "default_provider_model",
     "entry",
     "key_for_provider",
     "probe_capabilities",
@@ -133,6 +134,39 @@ def resolve(session: dict[str, Any], agent: str) -> dict[str, Any] | None:
             return config
     default: dict[str, Any] | None = (session or {}).get("llm_config")
     return default
+
+
+# An agent key no override can ever be filed under: `AGENT_KEYS` holds seven
+# non-empty names, so `entry()` always misses on this one and `resolve()` falls
+# straight through to the session default. It exists so asking for the default
+# goes through the same function every agent turn goes through.
+_NO_AGENT = ""
+
+
+def default_provider_model(
+    session: dict[str, Any] | None, prefs: dict[str, Any] | None
+) -> tuple[str | None, str | None]:
+    """``(provider, model)`` for the session default — what the status bar shows.
+
+    The model comes back through :func:`resolve`, called with an agent key no
+    override can use, so the default is read by the *same* path an agent turn
+    reads it by and the app keeps exactly one model-resolution route. The
+    provider has no home in an ``llm_config`` (it is folded into the model
+    string and the credential kwargs), so it is read from the session and then
+    from the remembered prefs.
+
+    Either half is ``None`` before /setup has run, or after a "Clear saved
+    settings"; the caller renders its own empty state rather than a blank.
+    """
+    session = session or {}
+    prefs = prefs or {}
+    config = resolve(session, _NO_AGENT) or {}
+    model = config.get("model") or session.get("model") or prefs.get("model")
+    provider = session.get("provider") or prefs.get("provider")
+    return (
+        str(provider) if provider else None,
+        str(model) if model else None,
+    )
 
 
 def capability(

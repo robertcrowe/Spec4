@@ -1584,7 +1584,7 @@ def run(
                 yield (
                     "I'm the **CodeScanner**. I analyze your project directory to "
                     "understand the existing codebase.\n\n"
-                    "⚠️ No project directory has been selected. Please go back and "
+                    "No project directory has been selected. Please go back and "
                     "select a working directory first."
                 )
                 return
@@ -1597,7 +1597,7 @@ def run(
             # the visible message wholesale, and the message history records
             # only what `stream_turn` appends.
             mode = "Re-scanning" if existing_review is not None else "Scanning"
-            intro_line = f"🔍 **{mode}** `{working_dir}`…\n\n"
+            intro_line = f"**{mode}** `{working_dir}`…\n\n"
             pre_stream_chars += len(intro_line)
             yield intro_line
 
@@ -1623,7 +1623,7 @@ def run(
             approx = _approx_tokens(system) + _approx_tokens(seed)
             model = llm_config.get("model") or "the configured model"
             done_line = (
-                f"\n✅ Scan complete — sent ~{approx:,} tokens to "
+                f"\nScan complete — sent ~{approx:,} tokens to "
                 f"`{model}`.\n\n"
                 "_Waiting for the first response. Large projects can take a "
                 "couple of minutes before text starts appearing._\n\n---\n\n"

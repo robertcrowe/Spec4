@@ -444,7 +444,7 @@ def _format_advisory(findings: list[SeamFinding]) -> str:
     surfaced.sort(key=lambda f: rank.get(f.severity, 9))
 
     lines = [
-        "⚠️ **Possible data-flow seams to review** — advisory only; "
+        "**Possible data-flow seams to review** — advisory only; "
         "these did **not** block your phases and may include false positives.",
         "",
     ]

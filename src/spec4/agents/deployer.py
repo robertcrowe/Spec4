@@ -463,7 +463,7 @@ _README_OFFER = (
 )
 
 _README_OPTIN_QUESTION = (
-    "👋 I'm **Deployer**, the final stage. I'll help you set up your AI coding "
+    "I'm **Deployer**, the final stage. I'll help you set up your AI coding "
     "agent and produce a deployment plan for this project.\n\n"
     "One question before we begin: once your deployment plan is ready, would you "
     "like me to also author a comprehensive **README.md** for your project root "
@@ -481,7 +481,7 @@ _README_OPTIN_REASK = (
 
 _README_AUTHORING_NOTE = (
     "\n\n---\n\n"
-    "✓ Your deployment plan is ready and saved. As you requested, I'll now "
+    "Your deployment plan is ready and saved. As you requested, I'll now "
     "author your **README.md** using the finished plan…\n\n"
 )
 
@@ -742,7 +742,7 @@ def run(
             )
             if affirmative and not negative:
                 confirm_msg = (
-                    "✓ Your new deployment plan has been saved. "
+                    "Your new deployment plan has been saved. "
                     "You can download it using the button below."
                     + _README_OFFER
                 )
@@ -831,7 +831,7 @@ def run(
         if session.get("_deployer_plan_existed"):
             confirm_q = (
                 "\n\n---\n\n"
-                "⚠️ **Heads up:** You already have a `deployment-plan.md` from a previous "
+                "**Heads up:** You already have a `deployment-plan.md` from a previous "
                 "session. **Would you like to replace it with this new plan?** "
                 "(yes/no — you're also welcome to ask questions or request changes)"
             )

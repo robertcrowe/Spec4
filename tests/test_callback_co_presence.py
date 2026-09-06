@@ -29,9 +29,9 @@ from dash._callback import GLOBAL_CALLBACK_MAP
 
 import spec4.app as app_module
 from spec4 import providers
-from spec4.app_constants import STATE_VISION_COMPLETE
+from spec4.app_constants import AGENT_KEYS, STATE_VISION_COMPLETE
 from spec4.callbacks import on_gate_chip, on_gate_connect, on_gate_pick
-from spec4.layouts import _agent_select_layout
+from spec4.layouts import _AGENT_ROWS, _agent_select_layout
 from spec4.layouts.designer import (
     _step1_content,
     _step2_content,
@@ -42,6 +42,52 @@ from spec4.layouts.designer import (
     _step7_content,
 )
 from spec4.session import _default_session, _reset_for_new_project
+
+# The round tree's ids, added to the project view this round. Listed rather
+# than derived so that renaming one of them has to be a deliberate edit here.
+_ROUND_TREE_IDS = {"round-tree", "round-tree-head", "round-tree-list"}
+
+# The agent table's ids, which replaced the agent cards on the project view.
+# Listed for the same reason as the tree's, and one per pipeline key so a row
+# that stops rendering is a failure here rather than a quietly shorter table.
+_AGENT_ROW_IDS = {
+    "agent-rows",
+    "agent-rows-body",
+    "agent-row-code_scanner",
+    "agent-row-brainstormer",
+    "agent-row-agentifier",
+    "agent-row-designer",
+    "agent-row-stack_advisor",
+    "agent-row-phaser",
+    "agent-row-deployer",
+}
+
+# The round-cost strip's ids. Listed, like the tree's and the rows', so that
+# renaming one has to be a deliberate edit here — `on_round_cost` writes into
+# the three line ids and would silently stop filling a renamed one.
+_ROUND_COST_IDS = {
+    "round-cost",
+    "round-cost-line",
+    "round-cost-unpriced",
+    "round-cost-note",
+}
+
+# The only plain id the retired agent cards carried. The cards themselves, the
+# per-agent rows inside them and their action buttons had no string ids — the
+# buttons used, and still use, the `agent-pill` pattern id — so this is the
+# whole of what had to survive the swap, and `_PROJECT_VIEW_IDS` below pins the
+# rest of the view to what replaced them.
+_AGENT_CARD_SURVIVING_IDS = {"btn-agent-change-provider"}
+
+# Everything the project view mounts, exactly. An id retired with the cards
+# that came back, or a new one added without a decision, fails here.
+_PROJECT_VIEW_IDS = (
+    _ROUND_TREE_IDS
+    | {"round-tree-legend"}
+    | _AGENT_ROW_IDS
+    | _ROUND_COST_IDS
+    | _AGENT_CARD_SURVIVING_IDS
+)
 
 # ---------------------------------------------------------------------------
 # Rendering helpers
@@ -135,10 +181,23 @@ def _phase_screens(tmp_path: pathlib.Path) -> list[tuple[str, set[str]]]:
     base = _session(working_dir=wd)
     screens: list[tuple[str, set[str]]] = []
 
-    # Landing and the directory browser.
-    screens.append(("landing", _page_ids(_render(_session(phase="landing")))))
+    # The directory browser. There is no landing screen to walk: the root
+    # resolves to this or to the project view, and nothing else renders.
     screens.append(
         ("working_dir", _page_ids(_render(_session(phase="working_dir"))))
+    )
+    screens.append(
+        (
+            "working_dir: unopenable remembered directory",
+            _page_ids(
+                _render(
+                    _session(
+                        phase="working_dir",
+                        dir_error="Could not open /gone. Select a project directory.",
+                    )
+                )
+            ),
+        )
     )
 
     # The setup wizard's three screens, keyed the way `_setup_layout` branches.
@@ -439,18 +498,209 @@ class TestCallbackInputsAreCoPresent:
         assert caught, "the guard would not have caught the paired-callback bug"
 
 
+class TestProjectViewIds:
+    """The round tree's ids belong to the project view, not the shell.
+
+    That distinction is what makes `on_round_tree` safe: it writes into
+    `round-tree-head` and `round-tree-list`, which exist only while the project
+    view is on screen, so its Input is the tree's own container rather than the
+    session store. A session Input would ask Dash to fill those two while the
+    developer is in chat, and the co-presence guard above is what would catch
+    it — but only if the ids are page ids, which is asserted here.
+    """
+
+    def test_the_tree_is_page_content_not_shell(self) -> None:
+        assert not _ROUND_TREE_IDS & _shell_ids()
+
+    def test_the_project_view_renders_every_tree_id(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        session = _session(working_dir=str(tmp_path), phase="agent_select")
+        assert _ROUND_TREE_IDS <= _page_ids(_render(session))
+
+    def test_the_project_view_keeps_its_existing_ids(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The tree was added to the view; nothing was displaced by it."""
+        session = _session(working_dir=str(tmp_path), phase="agent_select")
+        assert _AGENT_CARD_SURVIVING_IDS <= _page_ids(_render(session))
+
+
+class TestAgentRowIds:
+    """The agent table's ids belong to the project view, like the tree's.
+
+    The rows carry no callback of their own — the action buttons keep the
+    `agent-pill` pattern id, so routing is `on_agent_pill_click` unchanged —
+    but the ids are asserted here anyway, at the same altitude as the tree's,
+    because a row that quietly stops rendering takes a pipeline stage off the
+    screen with it.
+    """
+
+    def test_the_rows_are_page_content_not_shell(self) -> None:
+        assert not _AGENT_ROW_IDS & _shell_ids()
+
+    def test_the_project_view_renders_every_row_id(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        session = _session(working_dir=str(tmp_path), phase="agent_select")
+        assert _AGENT_ROW_IDS <= _page_ids(_render(session))
+
+    def test_there_is_one_row_id_per_pipeline_agent(self) -> None:
+        assert {f"agent-row-{key}" for key in AGENT_KEYS} < _AGENT_ROW_IDS
+
+    def test_every_action_button_carries_the_routing_id(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The retired cards' buttons and the rows' are the same components.
+
+        `on_agent_pill_click` takes this pattern id as its Input, so a row
+        whose button had been given a new id would render fine and do nothing
+        when clicked — which is exactly the failure this file exists for.
+        """
+        session = _session(working_dir=str(tmp_path), phase="agent_select")
+        found: set[str] = set()
+        stack = [_render(session)]
+        while stack:
+            node = stack.pop()
+            node_id = getattr(node, "id", None)
+            if isinstance(node_id, dict) and node_id.get("type") == "agent-pill":
+                found.add(node_id["agent"])
+            children = getattr(node, "children", None)
+            if children is None:
+                continue
+            if not isinstance(children, (list, tuple)):
+                children = [children]
+            stack.extend(children)
+        assert found == set(AGENT_KEYS)
+
+    def test_the_project_view_mounts_exactly_these_ids(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The retired agent-card ids are gone and nothing new crept in."""
+        session = _session(working_dir=str(tmp_path), phase="agent_select")
+        assert _page_ids(_render(session)) == _PROJECT_VIEW_IDS
+
+    def test_the_tree_callback_is_reached_by_the_screen_list(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """`_phase_screens` must actually put the tree on screen.
+
+        The guard above skips a callback whose page Inputs are all absent, so
+        a screen list that never renders the project view would let a
+        half-rendered tree callback through unnoticed.
+        """
+        reached = any(
+            "round-tree" in present for _, present in _phase_screens(tmp_path)
+        )
+        assert reached
+
+
+class TestRoundCostIds:
+    """The round-cost strip's ids belong to the project view, like the tree's.
+
+    `on_round_cost` writes into three line ids that exist only while the
+    project view is on screen, so — exactly as for the tree — its Input is the
+    strip's own container rather than the session store. A session Input would
+    ask Dash to fill those three while the developer is in chat, and the
+    co-presence guard above catches that only if these are page ids, which is
+    what is asserted here.
+    """
+
+    def test_the_strip_is_page_content_not_shell(self) -> None:
+        assert not _ROUND_COST_IDS & _shell_ids()
+
+    def test_the_project_view_renders_every_cost_id(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        session = _session(working_dir=str(tmp_path), phase="agent_select")
+        assert _ROUND_COST_IDS <= _page_ids(_render(session))
+
+    def test_the_strip_does_not_reuse_the_chat_cards_id(self) -> None:
+        """The chat frame's cost card keeps `cost-summary-card` to itself.
+
+        `tests/test_cost_summary.py` asserts that card's position between the
+        transcript and the token count, and a second component answering to
+        the same id would make that assertion ambiguous the first time a
+        screen rendered both.
+        """
+        assert "cost-summary-card" not in _ROUND_COST_IDS
+        assert "cost-summary-card" not in _PROJECT_VIEW_IDS
+
+    def test_the_cost_callback_is_reached_by_the_screen_list(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        reached = any(
+            "round-cost" in present for _, present in _phase_screens(tmp_path)
+        )
+        assert reached
+
+
 class TestShellIds:
     def test_the_shell_is_not_empty(self) -> None:
         assert {"session", "prefs", "url", "page-content"} <= _shell_ids()
 
+    def test_the_status_bar_is_part_of_the_shell(self) -> None:
+        """The bar is mounted once in ``app.layout``, not per screen.
+
+        That is what makes its callback exempt from the co-presence guard
+        above: shell ids are present on every screen, so a callback whose
+        Inputs and Outputs all live here can never be half-rendered.
+        """
+        assert {
+            "status-bar",
+            "status-bar-context",
+            "status-bar-version",
+            "status-bar-nav-project",
+            "status-bar-nav-settings",
+            "status-bar-nav-docs",
+        } <= _shell_ids()
+
+    def test_the_removed_shell_ids_are_gone(self) -> None:
+        """The external-link drawer and the grid background left the shell.
+
+        Their ids are listed here rather than merely deleted, because a
+        callback still holding one as an Input fails at fire time, not import
+        time — a broken screen instead of an error. The contract says they are
+        absent, so a component quietly reintroducing one fails here first.
+        """
+        removed = {
+            "nav-drawer",
+            "nav-overlay",
+            "nav-burger",
+            "nav-close-btn",
+            "blueprint-grid",
+        }
+        assert not removed & _shell_ids()
+
+    def test_no_callback_still_references_a_removed_id(self) -> None:
+        """The drawer's callback had to go in the same commit as the drawer."""
+        removed = {"nav-drawer", "nav-overlay", "nav-burger", "nav-close-btn"}
+        offenders = [
+            name for name, _, every in _callback_refs() if every & removed
+        ]
+        assert not offenders
+
     def test_page_ids_exclude_the_shell(self) -> None:
-        session = _session(phase="landing")
+        session = _session(phase="working_dir")
         assert "session" not in _page_ids(_render(session))
 
 
-@pytest.mark.parametrize("phase", ["landing", "working_dir", "setup", "agent_select"])
+@pytest.mark.parametrize("phase", ["working_dir", "setup", "agent_select"])
 def test_every_phase_renders(phase: str) -> None:
     assert _render(_session(phase=phase)) is not None
+
+
+def test_agent_keys_is_single_pipeline_order() -> None:
+    """``AGENT_KEYS`` is the one definition of the seven-agent pipeline order.
+
+    The screens walked above are built from the agent tables, so a second list
+    that drifts out of order would render a page this guard still passes. The
+    order is asserted here, at the same altitude as the id contract, so the
+    shell rework has to keep deriving every agent table from ``AGENT_KEYS``
+    rather than restating it.
+    """
+    assert len(AGENT_KEYS) == 7
+    assert tuple(key for key, *_ in _AGENT_ROWS) == AGENT_KEYS
 
 
 class TestStep2RevisionRegression:

@@ -117,7 +117,6 @@ def _setup_provider_layout(
             ),
             dmc.Alert(
                 "Note: Your API key is never stored outside of your system.",
-                color="blue",
                 variant="light",
                 mb="lg",
             ),
@@ -182,7 +181,7 @@ def _setup_model_layout(
                 mb="lg",
             ),
             _card(
-                dmc.Alert(f"Connected to {provider_label}", color="green", mb="md"),
+                dmc.Alert(f"Connected to {provider_label}", mb="md"),
                 dmc.Alert(
                     "Please be aware that the Google free tier has recently "
                     "excluded the Pro models. "
@@ -222,7 +221,6 @@ def _setup_model_layout(
                             value=100,
                             animated=True,
                             striped=True,
-                            color="blue",
                             size="sm",
                         ),
                     ],
@@ -246,7 +244,6 @@ def _setup_search_layout(
             "This model supports image input — screenshot examples are available "
             "in the Designer step.",
             title="Image Support",
-            color="green",
             variant="light",
             mb="md",
         )
@@ -256,7 +253,6 @@ def _setup_search_layout(
             "disabled in the Designer step. Go back to choose a different model if "
             "you need image support.",
             title="No Image Support",
-            icon="⚠️",
             color="yellow",
             variant="filled",
             styles={"title": {"color": "#212121"}, "message": {"color": "#212121"}},
@@ -271,7 +267,6 @@ def _setup_search_layout(
             "unavailable even if you enter a key. Go back to choose a "
             "different model if you need web search.",
             title="No Tool Support",
-            icon="⚠️",
             color="yellow",
             variant="filled",
             styles={"title": {"color": "#212121"}, "message": {"color": "#212121"}},
@@ -298,7 +293,7 @@ def _setup_search_layout(
                 mb="lg",
             ),
             _card(
-                dmc.Alert(f"LLM: {session['model']}", color="green", mb="md"),
+                dmc.Alert(f"LLM: {session['model']}", mb="md"),
                 image_alert,
                 tool_alert,
                 dmc.Text(

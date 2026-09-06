@@ -16,8 +16,18 @@ from spec4 import llm_selection, project_manager, providers, streaming, websearc
 from spec4.agentifier.panel_closure import close_selection, pool_from_dicts
 from spec4.layouts._llm_gate import is_open as _gate_is_open
 from spec4.layouts._setup import GATE_IDS, provider_key_hint
+from spec4.layouts._round_cost import round_cost_lines
+from spec4.layouts._round_tree import (
+    _round_tree_head,
+    _round_tree_lines_children,
+    round_tree_lines,
+)
+from spec4.layouts._status_bar import _status_context, _status_nav_class
 from spec4.app_constants import (
     PATH_TO_PHASE,
+    PHASE_DIRECTORY_PICKER,
+    PHASE_PROJECT_VIEW,
+    PHASE_ROOT,
     PROJECT_MODE_EXISTING,
     PROJECT_MODE_NEW,
     STATE_IN_PROGRESS,
@@ -43,23 +53,240 @@ def _prefs_keep_working_dir(prefs: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Status bar
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("status-bar-context", "children"),
+    Output("status-bar-nav-project", "className"),
+    Output("status-bar-nav-settings", "className"),
+    Input("session", "data"),
+    Input("prefs", "data"),
+)
+def on_status_bar(session: Any, prefs: Any) -> Any:
+    """Recompute the status line from the two browser stores.
+
+    Both stores are **Inputs**, not State. That is the whole mitigation for the
+    stale-working-directory failure mode: opening a different project rewrites
+    the session store, starting a new round rewrites it again, and changing the
+    default model rewrites prefs — each of those has to redraw the bar, and a
+    State would only be read when something else happened to fire.
+
+    Nothing is read from a module global and nothing touches the network: the
+    directory and round come from the session, the provider and model from
+    ``llm_selection`` (the app's one model-resolution path), and the round
+    number from ``project_manager.active_version``, which is a disk read of the
+    already-open project.
+    """
+    session = session or {}
+    prefs = prefs or {}
+
+    working_dir = session.get("working_dir") or prefs.get("working_dir") or None
+    # A remembered path is not a working directory until disk agrees. The pref
+    # outlives the project it names — a deleted or unmounted folder would
+    # otherwise sit on the bar looking current, which is the stale-directory
+    # failure this bar exists to prevent.
+    if not project_manager.directory_opens(working_dir):
+        working_dir = None
+    round_number = (
+        project_manager.active_version(working_dir, session) if working_dir else None
+    )
+    provider, model = llm_selection.default_provider_model(session, prefs)
+
+    # The current item is marked from the phase rather than the URL: Settings
+    # is the setup wizard, and every other phase is somewhere inside Project.
+    on_settings = session.get("phase") == "setup"
+    return (
+        _status_context(working_dir, round_number, provider, model),
+        _status_nav_class(not on_settings),
+        _status_nav_class(on_settings),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Round tree
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("round-tree-head", "children"),
+    Output("round-tree-list", "children"),
+    Input("round-tree", "id"),
+    State("session", "data"),
+)
+def on_round_tree(_id: Any, session: Any) -> Any:
+    """Recompute the round tree from disk, from scratch, on every render.
+
+    D-LR4: there is no cache here and no ``dcc.Store`` behind it. The whole
+    line list is rebuilt by stating the round's files each time this runs, so
+    an agent that finished a minute ago is reflected the moment the view is
+    drawn again. Caching the list — the obvious optimisation on a page that
+    redraws often — is precisely the bug: the tree's only job is to be true
+    right now.
+
+    The Input is the tree's own container rather than the session store. That
+    is not a way of firing less often: ``render_page`` rebuilds the whole page
+    on every session and prefs change, so a new round or a switched working
+    directory mounts a fresh ``round-tree`` and this runs again with the new
+    session. Taking the session as an *Input* instead would ask Dash to write
+    into ``round-tree-list`` on screens where the tree is not mounted at all —
+    chat, the designer, the setup wizard — which is the half-rendered callback
+    the co-presence suite exists to catch.
+    """
+    session = session or {}
+    working_dir = session.get("working_dir")
+    round_number = (
+        project_manager.active_version(working_dir, session) if working_dir else None
+    )
+    lines = round_tree_lines(working_dir, round_number)
+    return (
+        _round_tree_head(round_number),
+        _round_tree_lines_children(lines),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Round cost
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output("round-cost-line", "children"),
+    Output("round-cost-unpriced", "children"),
+    Output("round-cost-note", "children"),
+    Input("round-cost", "id"),
+    State("session", "data"),
+)
+def on_round_cost(_id: Any, session: Any) -> Any:
+    """Recompute the round's cost from ``usage.json``, from scratch, every time.
+
+    The same shape as ``on_round_tree`` above and for the same reason: no
+    cache, no ``dcc.Store``, and the strip's own container as the Input rather
+    than the session store. ``render_page`` rebuilds the page on every session
+    change, so a new round or a switched working directory mounts a fresh
+    ``round-cost`` and this runs again with the new session; taking the
+    session as an Input instead would ask Dash to write into these three lines
+    on screens that do not mount them.
+
+    Caching the total is the obvious optimisation and is precisely the bug:
+    the agent that finished thirty seconds ago is the whole reason a developer
+    looks at this line, and a memoised figure would still be showing the
+    round's cost before that run.
+    """
+    session = session or {}
+    working_dir = session.get("working_dir")
+    round_number = (
+        project_manager.active_version(working_dir, session) if working_dir else None
+    )
+    return tuple(round_cost_lines(working_dir, round_number))
+
+
+# ---------------------------------------------------------------------------
 # URL / browser history
 # ---------------------------------------------------------------------------
+
+
+def _cannot_open(path: str) -> str:
+    """The picker's message when the remembered directory is gone."""
+    return f"Could not open {path}. Select a project directory."
+
+
+def _resolve_root(session: dict[str, Any], prefs: dict[str, Any]) -> dict[str, Any]:
+    """The root path's destination: the project view, or the directory picker.
+
+    Two outcomes, never a third. The remembered directory is whatever the
+    browser still holds — the session's open project first, then the
+    localStorage pref that survives a restart — and it is re-checked against
+    disk on every root visit rather than trusted, so a project that was
+    deleted, unmounted or renamed since the last visit sends the developer to
+    the picker with the path named instead of onto a project view describing a
+    directory that is not there.
+    """
+    remembered = session.get("working_dir") or prefs.get("working_dir")
+    if not remembered:
+        return {**session, "phase": PHASE_DIRECTORY_PICKER, "dir_error": None}
+    if not project_manager.directory_opens(remembered):
+        return {
+            **session,
+            "phase": PHASE_DIRECTORY_PICKER,
+            # The status bar reads the working directory from here, so a
+            # directory that cannot be opened must not stay in the session:
+            # leaving it would put a path on the bar that resolves to nothing.
+            "working_dir": None,
+            "browser_path": None,
+            "dir_error": _cannot_open(remembered),
+        }
+    if not session.get("working_dir"):
+        # Remembered across a browser restart: the pref outlived the session
+        # store, so the project's artifacts are loaded here before the view
+        # that reports them is asked to draw.
+        session = _load_working_dir(remembered, session)
+    return {**session, "phase": PHASE_PROJECT_VIEW, "dir_error": None}
 
 
 @callback(
     Output("session", "data", allow_duplicate=True),
     Input("url", "pathname"),
     State("session", "data"),
-    prevent_initial_call=True,
+    State("prefs", "data"),
+    prevent_initial_call="initial_duplicate",
 )
-def on_browser_navigate(pathname: Any, session: Any) -> Any:
-    """Handle browser back/forward: sync URL → session phase."""
-    new_phase = PATH_TO_PHASE.get(pathname, "landing")
+def on_browser_navigate(pathname: Any, session: Any, prefs: Any) -> Any:
+    """URL → session phase, on first mount and on every back/forward after it.
+
+    This is the app's one router. It runs on the initial call as well as on
+    navigation (``initial_duplicate``) because the root path has no phase to
+    fall back on: the session starts in ``PHASE_ROOT``, which draws an empty
+    container, and this callback is what turns that into one of the two real
+    destinations. Anything unrecognised is treated as the root rather than
+    guessed at, so no URL can strand the app on a blank page.
+    """
     session = session or _default_session()
-    if session.get("phase") == new_phase:
-        return no_update
-    return {**session, "phase": new_phase}
+    prefs = prefs or {}
+    if pathname not in PATH_TO_PHASE:
+        return _no_change(session, _resolve_root(session, prefs))
+
+    phase = PATH_TO_PHASE[pathname]
+    new_session = {**session, "phase": phase}
+    if _needs_restoring(session, prefs, phase):
+        # A deep URL opened in a fresh browser session — a bookmark, a new tab.
+        # The phase still comes from the path, but the project it describes
+        # outlived the session store and has to be re-loaded from the pref.
+        new_session = {
+            **_load_working_dir(prefs["working_dir"], session),
+            "phase": phase,
+        }
+    return _no_change(session, new_session)
+
+
+def _no_change(session: dict[str, Any], new_session: dict[str, Any]) -> Any:
+    """``no_update`` when routing changed nothing, so no needless re-render."""
+    return no_update if new_session == session else new_session
+
+
+def _needs_restoring(
+    session: dict[str, Any], prefs: dict[str, Any], phase: str
+) -> bool:
+    """Whether this navigation should re-open the remembered directory.
+
+    The gate is the *unresolved* phase, not the missing working directory, and
+    the difference matters: "Start New Project" hands over a session that has
+    deliberately dropped its working directory while the pref still names the
+    project just finished. Keying off the missing directory would restore it
+    and land the developer back where they started; keying off ``PHASE_ROOT``
+    restores only a session store that has never routed at all — which is to
+    say a genuinely new browser session.
+
+    The picker is excluded because it is where a directory gets chosen; it is
+    the one screen that never needs one restored behind it.
+    """
+    return (
+        session.get("phase") == PHASE_ROOT
+        and phase != PHASE_DIRECTORY_PICKER
+        and not session.get("working_dir")
+        and project_manager.directory_opens(prefs.get("working_dir"))
+    )
 
 
 @callback(
@@ -81,24 +308,6 @@ def on_setup_back_to_dir(n: Any, session: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Landing
-# ---------------------------------------------------------------------------
-
-
-@callback(
-    Output("session", "data", allow_duplicate=True),
-    Output("url", "pathname", allow_duplicate=True),
-    Input("btn-landing-start", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def on_landing_start(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update, no_update
-    return {**session, "phase": "working_dir"}, "/dir"
-
-
-# ---------------------------------------------------------------------------
 # Working directory
 # ---------------------------------------------------------------------------
 
@@ -115,7 +324,12 @@ def on_landing_start(n: Any, session: Any) -> Any:
 def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
     if not n:
         return no_update, no_update, no_update
-    path = session.get("browser_path") or _HOME
+    # `_working_dir_layout` shows home when the browsed path cannot be opened,
+    # so selecting anything else here would open a directory the developer was
+    # never looking at — a remembered-but-gone path, most of all.
+    path = session.get("browser_path")
+    if not project_manager.directory_opens(path):
+        path = _HOME
     new_prefs = {**(prefs or {}), "working_dir": path}
     new_session = _load_working_dir(path, session)
     # If the developer already has a working LLM connection from a previous

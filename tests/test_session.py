@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from spec4.app_constants import (
+    PHASE_ROOT,
     STATE_DEPLOYER_COMPLETE,
     STATE_IN_PROGRESS,
     STATE_PHASES_COMPLETE,
@@ -58,8 +59,18 @@ class TestDefaultSession:
         for key in required:
             assert key in session, f"Missing key: {key}"
 
-    def test_phase_is_landing(self) -> None:
-        assert _default_session()["phase"] == "landing"
+    def test_phase_is_the_unresolved_root(self) -> None:
+        """A session that has never navigated names no screen.
+
+        The router turns this into the project view or the directory picker;
+        until it does, `render_page` draws an empty container, which is what
+        keeps an intermediate screen off the page.
+        """
+        assert _default_session()["phase"] == PHASE_ROOT
+        assert PHASE_ROOT != "landing"
+
+    def test_no_directory_error_is_carried(self) -> None:
+        assert _default_session()["dir_error"] is None
 
     def test_active_agent_is_brainstormer(self) -> None:
         assert _default_session()["active_agent"] == "brainstormer"
