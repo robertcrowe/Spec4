@@ -16,7 +16,11 @@ from spec4.app_constants import (
 )
 from spec4.agentifier.panel_closure import close_selection, pool_from_dicts
 from spec4.layouts import _llm_gate
-from spec4.layouts._shared import _render_message, cost_summary_card
+from spec4.layouts._shared import (
+    PROGRESS_CLASS_NAMES,
+    _render_message,
+    cost_summary_card,
+)
 from spec4.session import _validate_agent_preconditions
 
 # Reset native html.Button styling so the wrapper looks like the bare badge.
@@ -776,7 +780,11 @@ def _chat_layout(
             html.Div(
                 [
                     dmc.Progress(
-                        value=100, animated=True, striped=True, size="sm"
+                        value=100,
+                        animated=True,
+                        striped=True,
+                        size="sm",
+                        classNames=PROGRESS_CLASS_NAMES,
                     ),
                     # The elapsed readout that used to sit here now rides in the
                     # action row, next to the chars counter — see

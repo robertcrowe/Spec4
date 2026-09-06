@@ -297,6 +297,19 @@ def _progress_display(session: dict[str, Any]) -> str:
     return str(container.style["display"])
 
 
+def _progress_bar(session: dict[str, Any]) -> Any:
+    """The `dmc.Progress` inside the progress container."""
+    layout = _chat_layout(session)
+    container = next(
+        c
+        for c in layout.children
+        if getattr(c, "id", None) == "chat-progress-container"
+    )
+    return next(
+        c for c in container.children if type(c).__name__ == "Progress"
+    )
+
+
 def _bar_children(session: dict[str, Any]) -> list[Any]:
     bar = _chat_action_buttons(session)
     children = getattr(bar, "children", None) or []
@@ -326,6 +339,27 @@ class TestLayout:
             "messages": [{"role": "assistant", "content": ""}],
         }
         assert _progress_display(session) == "block"
+
+    def test_progress_bar_moves_while_the_stream_runs(self) -> None:
+        """The bar's motion is the live-activity signal, not decoration.
+
+        The bar is pinned at 100% — there is no completion fraction to report
+        for a stream of unknown length — so the stripes travelling across it
+        are the whole of what distinguishes "still working" from "hung". A
+        static full bar reads as finished, which is the one thing it must never
+        say mid-turn.
+        """
+        session = {
+            "active_agent": "code_scanner",
+            "code_scanner_state": STATE_IN_PROGRESS,
+            "_stream_id": "abc",
+            "messages": [{"role": "assistant", "content": ""}],
+        }
+        assert _progress_display(session) == "block"
+        bar = _progress_bar(session)
+        assert bar.animated is True
+        assert bar.striped is True
+        assert bar.value == 100
 
     def test_progress_bar_hidden_when_idle(self) -> None:
         session = {

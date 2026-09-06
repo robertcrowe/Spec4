@@ -59,7 +59,8 @@ header[class*="AppShell-header"] {
   line-height: 20px;
 }
 
-#status-bar a:focus-visible {
+#status-bar a:focus-visible,
+#status-bar .sb-dir:focus-visible {
   outline: 1px solid var(--mantine-primary-color-filled);
   outline-offset: 1px;
 }
@@ -90,6 +91,24 @@ header[class*="AppShell-header"] {
   color: #5a5a6a;
   padding: 0 6px;
 }
+
+/* The working directory is the control that reopens the picker, so it is a
+   real button — but it must read as the same fact it was before, not as an
+   action bolted onto the bar. It therefore inherits every text property from
+   `.sb-ctx.mono` (a button inherits none of them by default) and drops the
+   whole of a button's chrome: no border, no background, no padding, no
+   accent. The pointer, the hover underline and the focus ring above are the
+   entire affordance. */
+.sb-dir {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.sb-dir:hover { text-decoration: underline; }
 
 .sb-nav {
   display: flex;
@@ -420,4 +439,26 @@ code, pre, kbd {
   font-size: 12px;
   line-height: 16px;
   margin-top: 4px;
+}
+
+/* ===== Progress stripes =====
+   Mantine draws a striped bar with white at 15% over the filled section. On
+   the accent that veil is invisible: the accent green already has its green
+   channel at 255, so a lightening blend can only move red and blue, and the
+   stripe lands a contrast ratio of 1.02 from the bar it is meant to divide.
+   The bar animated, and read as a solid block.
+
+   Darkening instead of lightening fixes it, because the room is all below:
+   black at 35% gives #25a60d, a ratio of 2.37, and the stripes read at a
+   glance. The stripe is neutral black rather than a darker green, so it is not
+   a second colour and a re-themed accent still stripes correctly (D-LR2) —
+   and the bar itself is still the theme primary, untouched.
+
+   This is the app's one gradient, and it is deliberate: a stripe pattern is a
+   gradient, there is no other way to draw one, and this one is the
+   live-activity signal rather than decoration. `test_visual_register.py` bans
+   gradients everywhere else and exempts exactly this line, by the marker it
+   carries. Motion is allowed here for the same reason. */
+.progress-stripe[data-striped] {
+  background-image: linear-gradient(45deg, rgba(0, 0, 0, 0.35) 25%, transparent 25%, transparent 50%, rgba(0, 0, 0, 0.35) 50%, rgba(0, 0, 0, 0.35) 75%, transparent 75%, transparent); /* register-exception: the stripe is the live-activity signal, not chrome */
 }

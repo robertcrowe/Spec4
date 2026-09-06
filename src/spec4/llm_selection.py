@@ -36,8 +36,10 @@ __all__ = [
     "AGENT_KEYS",
     "build_llm_config",
     "capability",
+    "default_is_connected",
     "default_provider_model",
     "entry",
+    "is_connected",
     "key_for_provider",
     "probe_capabilities",
     "resolve",
@@ -136,11 +138,49 @@ def resolve(session: dict[str, Any], agent: str) -> dict[str, Any] | None:
     return default
 
 
+def is_connected(session: dict[str, Any], agent: str) -> bool:
+    """Whether ``agent`` has a model it can actually send a request with.
+
+    The question every turn implicitly asks, made explicit and asked *before*
+    the request rather than by subscripting the result. It goes through
+    :func:`resolve`, so it answers about the same config the turn will use: an
+    agent with a working per-agent override is connected even when the session
+    default is empty, and one riding the default is connected only when the
+    default is real.
+
+    ``model`` is the field checked because it is the field the request cannot
+    be built without (``llm._build_completion_kwargs`` reads it first, and
+    every credential beside it is optional — a Bedrock config carries
+    ``aws_*`` and no ``api_key``, a local model may carry neither).
+
+    Note what this deliberately does not consult: the saved prefs. A remembered
+    provider and model are what the setup wizard *prefills from*, not evidence
+    that a connection was ever made in this session, and treating them as such
+    is what let an unconfigured session reach an agent turn and die inside
+    LiteLLM.
+    """
+    return bool((resolve(session, agent) or {}).get("model"))
+
+
 # An agent key no override can ever be filed under: `AGENT_KEYS` holds seven
 # non-empty names, so `entry()` always misses on this one and `resolve()` falls
 # straight through to the session default. It exists so asking for the default
 # goes through the same function every agent turn goes through.
 _NO_AGENT = ""
+
+
+def default_is_connected(session: dict[str, Any] | None) -> bool:
+    """Whether the *session default* is a real connection — what the bar says.
+
+    Asked through :func:`is_connected` with the same no-op agent key
+    :func:`default_provider_model` uses, so the status bar's "am I connected"
+    and its "which model" come from one resolution path and cannot disagree.
+
+    Scoped to the default deliberately: the bar has only ever described the
+    default, so an agent running on a per-agent override does not make this
+    true. That agent's own gate names its model.
+    """
+    return is_connected(session or {}, _NO_AGENT)
 
 
 def default_provider_model(

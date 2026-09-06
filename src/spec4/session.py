@@ -324,6 +324,15 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+class NoModelConnectedError(RuntimeError):
+    """Raised when a turn starts with no resolvable model.
+
+    Its own type so the transcript names the actual problem: the stream layer
+    renders `**Error: {type}**`, and "NoModelConnectedError" is a sentence the
+    developer can act on where "TypeError" was a puzzle.
+    """
+
+
 def _validate_agent_preconditions(agent: str, session: dict[str, Any]) -> str | None:
     """Return an error message if agent prerequisites are missing, else None."""
     has_vision = session.get("vision_statement") is not None
@@ -385,6 +394,28 @@ def _get_agent_gen(
     """
     active = session["active_agent"]
     llm_config = llm_selection.resolve(session, active)
+    # `llm_selection.is_connected` inlined rather than called, so the check
+    # also *narrows* `llm_config` from `dict | None` to `dict` for the six
+    # `run()` calls below. Those six were the only thing standing between this
+    # bug and a type error at author time — mypy had been reporting them as
+    # `dict[str, Any] | None` vs `dict[str, Any]` the whole time. The predicate
+    # is the same two terms, and `test_it_agrees_with_what_the_turn_resolves`
+    # holds the two together.
+    if not llm_config or not llm_config.get("model"):
+        # The backstop behind the entry check in `on_agent_pill_click`. That
+        # one covers entering an agent; this covers every other way a turn can
+        # start — chat submit, Fast Forward, a retry, the breadth panel — after
+        # "Clear saved credentials" has emptied the config mid-session.
+        #
+        # Raised rather than yielded so the streaming layer formats it into the
+        # transcript the way it formats a provider error, and raised at all
+        # rather than left to `_build_completion_kwargs` because subscripting
+        # `None` produced "'NoneType' object is not subscriptable" — an
+        # accurate message about the wrong thing.
+        raise NoModelConnectedError(
+            "No model is connected in this session. Open Settings to choose a "
+            "provider and model, then start the agent again."
+        )
 
     # Seed the status line before the generator runs: every stream-starting
     # callback spreads this session into the store after calling here, so the

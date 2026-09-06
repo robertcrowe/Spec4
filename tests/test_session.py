@@ -5,7 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
+from spec4 import llm_selection
+from spec4.agents import brainstormer
 from spec4.app_constants import (
+    AGENT_KEYS,
     PHASE_ROOT,
     STATE_DEPLOYER_COMPLETE,
     STATE_IN_PROGRESS,
@@ -15,7 +18,9 @@ from spec4.app_constants import (
     STATE_VISION_COMPLETE,
 )
 from spec4.session import (
+    NoModelConnectedError,
     _default_session,
+    _get_agent_gen,
     _load_working_dir,
     _persist_artifacts,
     _reset_for_new_project,
@@ -655,3 +660,116 @@ class TestResetForNewProject:
         assert fresh["api_key"] is None
         assert fresh["llm_config"] is None
         assert fresh["working_dir"] is None
+
+
+# ---------------------------------------------------------------------------
+# A turn refuses to start without a model
+# ---------------------------------------------------------------------------
+
+
+class TestNoModelConnected:
+    """The backstop behind the entry check in `on_agent_pill_click`.
+
+    That check covers *entering* an agent. This covers every other way a turn
+    can start — chat submit, Fast Forward, a retry, the breadth panel — which
+    matters after "Clear saved credentials", the one action that empties the
+    config while the developer is already inside an agent.
+
+    Raised, not yielded: the streaming layer formats an exception into the
+    transcript the same way it formats a provider error, so the developer reads
+    a sentence instead of watching the turn end silently.
+    """
+
+    def _session(self, **extra: Any) -> dict[str, Any]:
+        session = _default_session()
+        session.update({"active_agent": "brainstormer", "working_dir": None})
+        session.update(extra)
+        return session
+
+    def test_a_turn_with_no_config_raises_a_named_error(self) -> None:
+        with pytest.raises(NoModelConnectedError):
+            _get_agent_gen(None, self._session())
+
+    def test_the_message_says_what_to_do(self) -> None:
+        """It reaches the transcript verbatim, so it has to be actionable."""
+        with pytest.raises(NoModelConnectedError) as caught:
+            _get_agent_gen(None, self._session())
+        message = str(caught.value)
+        assert "No model is connected" in message
+        assert "Settings" in message
+
+    def test_it_is_not_a_typeerror(self) -> None:
+        """The regression: subscripting `None` inside LiteLLM.
+
+        `TypeError: 'NoneType' object is not subscriptable` was an accurate
+        message about entirely the wrong thing, and it reached the developer as
+        the whole explanation.
+        """
+        with pytest.raises(NoModelConnectedError) as caught:
+            _get_agent_gen(None, self._session())
+        assert not isinstance(caught.value, TypeError)
+
+    def test_it_raises_before_the_generator_is_built(self) -> None:
+        """Not a generator that raises on first `next` — the call itself fails.
+
+        The stream-starting callbacks spread the session into the store after
+        calling here, so a turn that is going to fail must fail before any of
+        that bookkeeping runs.
+        """
+        with pytest.raises(NoModelConnectedError):
+            _get_agent_gen("hello", self._session())
+
+    @pytest.mark.parametrize("agent", list(AGENT_KEYS))
+    def test_every_agent_is_covered(self, agent: str) -> None:
+        if agent == "designer":
+            pytest.skip("Designer has no chat turn; it draws from its wizard")
+        with pytest.raises(NoModelConnectedError):
+            _get_agent_gen(None, self._session(active_agent=agent))
+
+    def test_a_connected_session_is_not_refused(self) -> None:
+        """The guard must not stand in front of a working turn."""
+        session = self._session(
+            llm_config={"model": "claude-sonnet-4-6", "api_key": "k"}
+        )
+        with patch.object(brainstormer, "run", return_value=iter(["hi"])):
+            assert list(_get_agent_gen(None, session)) == ["hi"]
+
+    def test_a_per_agent_override_is_enough(self) -> None:
+        """No session default, but this agent has its own model."""
+        session = self._session(
+            agent_llm={
+                "brainstormer": {
+                    "model": "gpt-5-mini",
+                    "llm_config": {"model": "gpt-5-mini", "api_key": "sk"},
+                }
+            }
+        )
+        with patch.object(brainstormer, "run", return_value=iter(["hi"])):
+            assert list(_get_agent_gen(None, session)) == ["hi"]
+
+    def test_a_config_without_a_model_is_not_connected(self) -> None:
+        """`model` is the field the request cannot be built without."""
+        with pytest.raises(NoModelConnectedError):
+            _get_agent_gen(None, self._session(llm_config={"api_key": "k"}))
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {},
+            {"llm_config": None},
+            {"llm_config": {"api_key": "k"}},
+            {"llm_config": {"model": "m"}},
+            {"agent_llm": {"brainstormer": {"llm_config": {"model": "m"}}}},
+        ],
+    )
+    def test_dispatch_and_the_predicate_agree(self, extra: dict) -> None:
+        """The guard is `is_connected` inlined, for type narrowing; it must not
+        drift from it. Whatever the predicate says, dispatch does."""
+        session = self._session(**extra)
+        connected = llm_selection.is_connected(session, "brainstormer")
+        with patch.object(brainstormer, "run", return_value=iter(["hi"])):
+            if connected:
+                assert list(_get_agent_gen(None, session)) == ["hi"]
+            else:
+                with pytest.raises(NoModelConnectedError):
+                    _get_agent_gen(None, session)

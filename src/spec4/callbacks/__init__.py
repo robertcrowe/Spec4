@@ -92,16 +92,52 @@ def on_status_bar(session: Any, prefs: Any) -> Any:
     round_number = (
         project_manager.active_version(working_dir, session) if working_dir else None
     )
+    # Asked before the provider and model are read, because it decides whether
+    # they mean anything. `default_provider_model` falls back to the remembered
+    # prefs, which is right once a connection exists (an `llm_config` carries no
+    # provider *name*) and a lie before one does — that fallback is what printed
+    # the previous session's model onto a bar whose session could not run a turn.
+    connected = llm_selection.default_is_connected(session)
     provider, model = llm_selection.default_provider_model(session, prefs)
 
     # The current item is marked from the phase rather than the URL: Settings
     # is the setup wizard, and every other phase is somewhere inside Project.
     on_settings = session.get("phase") == "setup"
     return (
-        _status_context(working_dir, round_number, provider, model),
+        _status_context(working_dir, round_number, provider, model, connected),
         _status_nav_class(not on_settings),
         _status_nav_class(on_settings),
     )
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("btn-status-bar-dir", "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_status_bar_dir(n: Any, session: Any) -> Any:
+    """Reopen the directory picker from the bar's working-directory field.
+
+    The same move as ``on_setup_back_to_dir``, from the one place the developer
+    is already looking at the directory. It only *opens* the picker: the
+    working directory and the prefs are untouched here, so backing out of the
+    picker leaves the project exactly as it was, and a new directory is
+    committed by ``on_dir_select`` and nowhere else.
+
+    ``browser_path`` is seeded from the open project so the picker opens where
+    the developer already is rather than at home — changing project almost
+    always means moving to a sibling of the current one.
+    """
+    if not n:
+        return no_update, no_update
+    session = session or {}
+    return {
+        **session,
+        "phase": "working_dir",
+        "browser_path": session.get("working_dir") or session.get("browser_path"),
+    }, "/dir"
 
 
 # ---------------------------------------------------------------------------
@@ -1680,6 +1716,15 @@ def on_agent_pill_click(n_clicks_list: Any, session: Any) -> Any:
     error = _validate_agent_preconditions(target, session)
     if error is not None:
         return {**session, "agent_select_error": error}, no_update
+    # No connection, no turn. Entering an agent is what leads to a provider
+    # request, so the check belongs here rather than at the point the request
+    # is built, where nothing can be done about it but raise. The remembered
+    # prefs are not consulted (see `llm_selection.is_connected`): a restored
+    # session that has never connected reaches this with a status bar happily
+    # naming the previous session's model, and sending it into chat produced a
+    # `TypeError` from inside LiteLLM instead of the setup screen it needed.
+    if not llm_selection.is_connected(session, target):
+        return {**session, "phase": "setup", "agent_select_error": None}, "/setup"
     if target == "designer":
         return {
             **session,

@@ -13,6 +13,16 @@ from spec4 import project_manager
 # Primitive UI helpers
 # ---------------------------------------------------------------------------
 
+# The class the stripe rule in `v3.css` hangs on, attached to a `dmc.Progress`
+# through Mantine's Styles API rather than to its root — the stripes live on
+# the filled *section*, and the root is the unfilled track behind it.
+#
+# It is one constant because all three of the app's progress bars have the same
+# problem and must have the same fix: Mantine stripes with white at 15%, which
+# is invisible on the accent (see the rule in `v3.css` for the numbers). A
+# per-call-site class would let one bar keep the unreadable default.
+PROGRESS_CLASS_NAMES: dict[str, str] = {"section": "progress-stripe"}
+
 
 def _card(*children: Any, **kwargs: Any) -> Any:
     """A bordered panel. ``p`` is overridable so the denser project-view frame

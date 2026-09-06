@@ -9,7 +9,7 @@ import dash_mantine_components as dmc
 from spec4 import project_manager
 from spec4.app_constants import PROJECT_MODE_NEW
 from spec4.layouts import _llm_gate
-from spec4.layouts._shared import cost_summary_card
+from spec4.layouts._shared import PROGRESS_CLASS_NAMES, cost_summary_card
 from spec4.agents.designer import (
     detect_has_ui_source,
     detect_no_ui,
@@ -284,6 +284,7 @@ def _step5_content(
             id="mock-progress",
             animated=not error,
             striped=True,
+            classNames=PROGRESS_CLASS_NAMES,
             **({"color": "red"} if error else {}),
         ),
         dmc.Text(

@@ -14,6 +14,7 @@ hard-coded accent fails the suite on the commit that adds it.
 
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 
@@ -124,6 +125,39 @@ _BANNED_CSS = (
 )
 
 
+# The one way past the sweep: a declaration that carries this marker, on its
+# own line, saying why it is there. It exists because one rule in the app
+# genuinely needs a banned property — a striped progress bar *is* a stripe
+# pattern, a stripe pattern is a gradient, and there is no other way to draw
+# one in CSS. That bar is the live-activity signal during a stream, not
+# chrome, which is the distinction the ban is actually about.
+#
+# The marker is per line rather than per file or per rule, so the exemption is
+# exactly as wide as the declaration it sits on, and it is legible at the point
+# of use rather than in a list over here. `test_the_exception_is_one_line`
+# below pins that there is only one of them and what it is for; an unmarked
+# gradient anywhere in the stylesheet still fails.
+_EXCEPTION_MARKER = "/* register-exception:"
+
+
+def _swept_css() -> str:
+    """The stylesheet as the sweep sees it: every line without an exception."""
+    return "\n".join(
+        line
+        for line in STYLESHEET.read_text(encoding="utf-8").splitlines()
+        if _EXCEPTION_MARKER not in line
+    )
+
+
+def _exception_lines() -> list[str]:
+    """The stylesheet lines claiming an exception."""
+    return [
+        line.strip()
+        for line in STYLESHEET.read_text(encoding="utf-8").splitlines()
+        if _EXCEPTION_MARKER in line
+    ]
+
+
 class TestNoMarketingChrome:
     def test_the_stylesheet_is_where_we_think_it_is(self) -> None:
         assert STYLESHEET.is_file()
@@ -133,17 +167,53 @@ class TestNoMarketingChrome:
 
         An override only reaches the components that receive it, which is the
         exact failure mode this guards: a style bleeding back in through a
-        component nobody reviewed. There is no allow-list here, so a rule that
-        genuinely needs a shadow has to argue for itself in review rather than
-        slip in behind an existing one.
+        component nobody reviewed. A rule that genuinely needs a banned
+        property has to argue for itself on the line it occupies — see
+        ``_EXCEPTION_MARKER`` — rather than slip in behind an existing one.
         """
-        css = STYLESHEET.read_text(encoding="utf-8")
         offenders = []
         for what, pattern in _BANNED_CSS:
-            found = pattern.search(css)
+            found = pattern.search(_swept_css())
             if found:
                 offenders.append(f"{what}: {found.group()!r}")
         assert not offenders, "marketing-era CSS in v3.css:\n" + "\n".join(offenders)
+
+    def test_the_exception_is_one_line(self) -> None:
+        """Exactly one declaration is exempt, and it is the progress stripe.
+
+        A marker that spread would quietly reopen the ban, so the count is the
+        assertion. The stripe is dark rather than a second colour, which is
+        what keeps it inside D-LR2: it darkens whatever the theme primary is
+        instead of naming a green of its own.
+        """
+        lines = _exception_lines()
+        assert len(lines) == 1, lines
+        only = lines[0]
+        assert "linear-gradient(" in only
+        assert "rgba(0, 0, 0" in only
+        assert not _SPEC4_GREEN.search(only)
+
+    def test_the_exemption_is_per_line_not_per_file(self) -> None:
+        """The guard's own regression test: the marker must not go global.
+
+        A marker anywhere in the file exempting the whole file would make this
+        suite pass while every banned rule came back.
+        """
+        css = STYLESHEET.read_text(encoding="utf-8")
+        assert _EXCEPTION_MARKER in css
+        smuggled = css + "\n.hero h1 { -webkit-text-fill-color: transparent; }\n"
+        lines = [
+            line for line in smuggled.splitlines()
+            if _EXCEPTION_MARKER not in line
+        ]
+        assert any(
+            pattern.search("\n".join(lines)) for _, pattern in _BANNED_CSS
+        )
+
+    def test_the_marked_rule_still_fails_without_its_marker(self) -> None:
+        """The stripe is exempt because of the marker, not because of its shape."""
+        unmarked = _exception_lines()[0].split(_EXCEPTION_MARKER)[0]
+        assert any(pattern.search(unmarked) for _, pattern in _BANNED_CSS)
 
     def test_the_patterns_would_catch_them(self) -> None:
         """One sample per checklist item, so no pattern can go inert."""
@@ -161,7 +231,96 @@ class TestNoMarketingChrome:
         assert caught(".btn{box-shadow: 0 0 12px #39FF14}")
         assert caught(".logo{text-shadow: 0 0 8px #39FF14}")
         # …and the register that replaced them is not itself flagged.
-        assert not caught(STYLESHEET.read_text(encoding="utf-8"))
+        assert not caught(_swept_css())
+
+
+# ---------------------------------------------------------------------------
+# Progress stripes
+# ---------------------------------------------------------------------------
+
+
+def _progress_calls() -> list[tuple[str, int, ast.Call]]:
+    """Every ``dmc.Progress(...)`` call in the layouts, as (file, line, node).
+
+    Found by parsing rather than by grepping for the three known call sites: a
+    fourth bar added later has to opt into the readable stripe too, and a list
+    maintained by hand would not notice it.
+    """
+    found: list[tuple[str, int, ast.Call]] = []
+    for path in sorted(LAYOUTS.rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "Progress"
+            ):
+                found.append(
+                    (str(path.relative_to(SRC.parent.parent)), node.lineno, node)
+                )
+    return found
+
+
+class TestProgressStripesAreReadable:
+    """Mantine's default stripe is invisible on the accent, so nothing uses it.
+
+    A striped bar is drawn with white at 15% over the fill. The accent's green
+    channel is already at 255, so lightening moves only red and blue and the
+    stripe lands at a contrast ratio of 1.02 — the bar animates and still reads
+    as a solid block, which is the one thing it must not say while a stream is
+    running. `.progress-stripe` in `v3.css` darkens instead, and every bar in
+    the app opts into it through the same constant.
+    """
+
+    def test_the_walk_finds_the_bars(self) -> None:
+        """A parse that silently matched nothing would pass forever."""
+        assert len(_progress_calls()) >= 3
+
+    def test_every_progress_bar_opts_into_the_readable_stripe(self) -> None:
+        offenders = []
+        for where, line, node in _progress_calls():
+            names = {
+                kw.arg: kw.value
+                for kw in node.keywords
+                if kw.arg is not None
+            }
+            value = names.get("classNames")
+            if not (isinstance(value, ast.Name) and value.id == "PROGRESS_CLASS_NAMES"):
+                offenders.append(f"{where}:{line}")
+        assert not offenders, (
+            "these progress bars keep Mantine's unreadable stripe — pass "
+            f"classNames=PROGRESS_CLASS_NAMES: {offenders}"
+        )
+
+    def test_the_constant_names_the_section_not_the_root(self) -> None:
+        """The stripes live on the filled section; the root is the track."""
+        from spec4.layouts._shared import PROGRESS_CLASS_NAMES
+
+        assert PROGRESS_CLASS_NAMES == {"section": "progress-stripe"}
+
+    def test_the_stylesheet_actually_draws_that_class(self) -> None:
+        """The class the layouts attach and the class the CSS styles are one."""
+        css = STYLESHEET.read_text(encoding="utf-8")
+        assert re.search(r"\.progress-stripe\[data-striped\]\s*\{", css)
+
+    def test_the_stripe_darkens_rather_than_lightens(self) -> None:
+        """The whole point: white on the accent is what was invisible.
+
+        Asserted as "no white stripe" rather than as an exact rgba, so the
+        alpha can be tuned in review without editing this test — but a revert
+        to a lightening blend fails it.
+        """
+        rule = re.search(
+            r"\.progress-stripe\[data-striped\]\s*\{(.*?)\}", 
+            STYLESHEET.read_text(encoding="utf-8"),
+            re.S,
+        )
+        assert rule is not None
+        body = rule.group(1)
+        assert "rgba(0, 0, 0" in body
+        assert "255, 255, 255" not in body
 
 
 # ---------------------------------------------------------------------------

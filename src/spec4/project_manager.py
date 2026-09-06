@@ -1653,6 +1653,7 @@ _REQUIRED_INPUTS: dict[str, list[str]] = {
 
 # Button states for the /agents page.
 AGENT_BTN_START = "start"
+AGENT_BTN_CONTINUE = "continue"
 AGENT_BTN_MODIFY = "modify"
 AGENT_BTN_NEEDS_UPDATE = "needs_update"
 AGENT_BTN_NOT_READY = "not_ready"
@@ -1731,6 +1732,19 @@ def needs_project_mode(
     return (session or {}).get("project_mode") not in PROJECT_MODES
 
 
+def _has_transcript(agent: str, session: dict[str, Any] | None) -> bool:
+    """True when ``agent`` has an unfinished conversation in this session.
+
+    ``{agent}_messages`` is the agent's own LLM transcript, distinct from the
+    ``messages`` the chat frame renders. It is seeded empty for every agent in
+    ``_default_session``, so "non-empty list" is the honest test for "this
+    agent has been talked to" — anything else (absent, ``None``, a value of the
+    wrong shape) is a session that has not run it.
+    """
+    messages = (session or {}).get(f"{agent}_messages")
+    return isinstance(messages, list) and bool(messages)
+
+
 def agent_button_state(
     working_dir: str | Path | None,
     agent: str,
@@ -1753,7 +1767,28 @@ def agent_button_state(
     active version, ``modify`` once one exists. During a pending brownfield
     round it is ``required`` while every other agent is ``not_ready``. With no
     working directory yet, artifacts are treated as absent (empty project).
+
+    One state is read from the session rather than from disk. ``start`` means
+    "nothing on disk yet", which is also true of an agent the developer is
+    halfway through talking to — the artifact only lands when the conversation
+    finishes. When that agent has a transcript in this session the button says
+    ``continue`` instead, so re-entering a half-finished agent no longer reads
+    as starting it over. It is a relabelling of ``start`` and nothing more:
+    ``required``, ``modify``, ``needs_update`` and ``not_ready`` are decided by
+    the artifacts alone and are untouched by it.
     """
+    state = _artifact_button_state(working_dir, agent, session)
+    if state == AGENT_BTN_START and _has_transcript(agent, session):
+        return AGENT_BTN_CONTINUE
+    return state
+
+
+def _artifact_button_state(
+    working_dir: str | Path | None,
+    agent: str,
+    session: dict[str, Any] | None = None,
+) -> str:
+    """The state machine above, decided from the artifacts alone."""
     if brownfield_new_round_pending(working_dir):
         return AGENT_BTN_REQUIRED if agent == "code_scanner" else AGENT_BTN_NOT_READY
 

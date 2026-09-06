@@ -16,7 +16,9 @@ from typing import Any
 import spec4.app as app_module
 from spec4 import __version__
 from spec4.callbacks import on_status_bar
+from spec4 import llm_selection
 from spec4.layouts import STATUS_EMPTY, _status_bar
+from spec4.layouts._status_bar import NOT_CONNECTED
 from spec4.session import _default_session
 
 # The marketing-era shell, gone in this round. `nav-*` are the external-link
@@ -237,9 +239,17 @@ class TestStatusBarCallback:
         assert "claude-sonnet-4-6" in text
 
     def test_every_field_has_an_explicit_empty_state(self) -> None:
-        """A missing value renders a placeholder, never a blank gap."""
+        """A missing value renders a placeholder, never a blank gap.
+
+        Two placeholders, not four: the directory and the round each have their
+        own em dash, while the provider and model collapse into the single
+        ``Not connected`` that replaces them. Two dashes there would say "we do
+        not know which model", when what is true is "there is no connection".
+        """
         context, _, _ = on_status_bar({}, {})
-        assert _text(context).count(STATUS_EMPTY) == 4
+        text = _text(context)
+        assert text.count(STATUS_EMPTY) == 2
+        assert NOT_CONNECTED in text
 
     def test_it_recomputes_after_switching_projects(
         self, tmp_path: pathlib.Path
@@ -267,20 +277,107 @@ class TestStatusBarCallback:
         context, _, _ = on_status_bar(session, {})
         assert "round v3" in _text(context)
 
-    def test_it_falls_back_to_the_remembered_prefs(
+    def test_the_directory_falls_back_to_the_remembered_prefs(
         self, tmp_path: pathlib.Path
     ) -> None:
-        """A fresh browser session has prefs but not yet a loaded session."""
+        """A fresh browser session has prefs but not yet a loaded session.
+
+        The directory legitimately comes from the pref: it is re-checked
+        against disk right here, so a path that survives is a real one. The
+        provider and model have no equivalent check — see the test below.
+        """
         prefs = {
             "working_dir": str(tmp_path),
             "provider": "openai",
             "model": "gpt-5-mini",
         }
         context, _, _ = on_status_bar({}, prefs)
+        assert str(tmp_path) in _text(context)
+
+    def test_a_remembered_model_is_not_reported_as_a_connection(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The bug this bar existed to prevent, in its second form.
+
+        Restart Spec4 with a project and credentials remembered in
+        localStorage: the root router opens the project without passing
+        /setup, so the session has no ``llm_config`` — and the bar used to
+        print the previous session's provider and model anyway, because
+        ``default_provider_model`` falls back to the prefs. The app looked
+        ready; the first agent click died inside LiteLLM.
+
+        Saved prefs are what /setup prefills from. They are not a connection.
+        """
+        prefs = {
+            "working_dir": str(tmp_path),
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "api_key": "sk-ant-xxx",
+        }
+        context, _, _ = on_status_bar({}, prefs)
         text = _text(context)
+        assert NOT_CONNECTED in text
+        assert "anthropic" not in text
+        assert "claude-sonnet-4-6" not in text
+        # The directory is still reported: it was re-checked against disk.
         assert str(tmp_path) in text
-        assert "openai" in text
-        assert "gpt-5-mini" in text
+
+    def test_a_session_level_model_is_not_a_connection_either(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """Mid-wizard state: a model chosen, the connection not yet built.
+
+        ``model`` and ``provider`` are fields /setup fills in as it walks; the
+        ``llm_config`` is what a turn needs, and it is written last.
+        """
+        session = {
+            "working_dir": str(tmp_path),
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "llm_config": None,
+        }
+        text = _text(on_status_bar(session, {})[0])
+        assert NOT_CONNECTED in text
+        assert "claude-sonnet-4-6" not in text
+
+    def test_a_real_connection_is_reported_normally(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The guard must not swallow the fields it is guarding."""
+        context, _, _ = on_status_bar(_session(working_dir=str(tmp_path)), {})
+        text = _text(context)
+        assert NOT_CONNECTED not in text
+        assert "anthropic" in text
+        assert "claude-sonnet-4-6" in text
+
+    def test_it_agrees_with_what_a_turn_would_do(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The bar and the dispatch answer one question, through one route.
+
+        A bar saying "connected" while `_get_agent_gen` refuses to start is
+        the whole failure this closes, so the two are pinned together rather
+        than asserted separately.
+        """
+        cases = [
+            {},
+            {"llm_config": None},
+            {"provider": "anthropic", "model": "m", "llm_config": None},
+            {"llm_config": {"api_key": "k"}},
+            {"llm_config": {"model": "m", "api_key": "k"}},
+        ]
+        for extra in cases:
+            session = {"working_dir": str(tmp_path), **extra}
+            says_connected = NOT_CONNECTED not in _text(on_status_bar(session, {})[0])
+            assert says_connected == llm_selection.default_is_connected(session), extra
+
+    def test_the_unfilled_bar_does_not_imply_a_connection(self) -> None:
+        """`app.layout` draws the bar before any callback has run.
+
+        It has been told nothing, so the one thing it must not do is suggest a
+        working model.
+        """
+        assert NOT_CONNECTED in _text(_status_bar())
 
     def test_a_per_agent_override_does_not_replace_the_default(
         self, tmp_path: pathlib.Path

@@ -1006,3 +1006,83 @@ class TestDesignerStartOverReopensTheGate:
 
         result = on_designer_start_over(None, {"step": 6}, _session())
         assert all(r is no_update for r in result)
+
+
+# ---------------------------------------------------------------------------
+# is_connected
+# ---------------------------------------------------------------------------
+
+
+class TestIsConnected:
+    """"Can this agent send a request?", asked before the request.
+
+    It goes through `resolve`, so it answers about the same config the turn
+    will use — which is the whole point. A predicate that read
+    `session["llm_config"]` directly would send a developer with a working
+    per-agent override back to /setup to fix nothing.
+    """
+
+    def test_a_default_config_is_a_connection(self) -> None:
+        session = {"llm_config": {"model": "m", "api_key": "k"}}
+        assert llm_selection.is_connected(session, "brainstormer")
+
+    def test_no_config_is_not(self) -> None:
+        assert not llm_selection.is_connected({"llm_config": None}, "brainstormer")
+
+    def test_an_empty_session_is_not(self) -> None:
+        assert not llm_selection.is_connected({}, "brainstormer")
+
+    def test_a_config_without_a_model_is_not(self) -> None:
+        """`model` is what `_build_completion_kwargs` reads first."""
+        assert not llm_selection.is_connected(
+            {"llm_config": {"api_key": "k"}}, "brainstormer"
+        )
+
+    def test_credentials_beside_the_model_are_not_required(self) -> None:
+        """A Bedrock config carries `aws_*` and no `api_key`; it is connected."""
+        session = {
+            "llm_config": {
+                "model": "bedrock/anthropic.claude-v2",
+                "aws_region_name": "us-east-1",
+            }
+        }
+        assert llm_selection.is_connected(session, "brainstormer")
+
+    def test_an_override_connects_its_own_agent(self) -> None:
+        session = {
+            "llm_config": None,
+            "agent_llm": {
+                "phaser": {"llm_config": {"model": "gpt-5", "api_key": "sk"}}
+            },
+        }
+        assert llm_selection.is_connected(session, "phaser")
+        assert not llm_selection.is_connected(session, "brainstormer")
+
+    def test_the_remembered_prefs_are_not_consulted(self) -> None:
+        """The bug: a saved provider/model made the app look connected.
+
+        `is_connected` takes no prefs argument at all, which is the structural
+        version of this assertion — these session-level echoes of the same
+        values must not stand in for a config either.
+        """
+        session = {
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-6",
+            "api_key": "sk-ant-xxx",
+            "llm_config": None,
+        }
+        assert not llm_selection.is_connected(session, "brainstormer")
+
+    def test_it_agrees_with_what_the_turn_resolves(self) -> None:
+        """The contract: connected iff `resolve` yields something usable."""
+        for session in (
+            {},
+            {"llm_config": None},
+            {"llm_config": {"api_key": "k"}},
+            {"llm_config": {"model": "m"}},
+            {"agent_llm": {"phaser": {"llm_config": {"model": "m"}}}},
+        ):
+            resolved = llm_selection.resolve(session, "phaser") or {}
+            assert llm_selection.is_connected(session, "phaser") == bool(
+                resolved.get("model")
+            )

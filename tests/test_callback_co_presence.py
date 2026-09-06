@@ -25,6 +25,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from dash import html
 from dash._callback import GLOBAL_CALLBACK_MAP
 
 import spec4.app as app_module
@@ -32,6 +33,7 @@ from spec4 import providers
 from spec4.app_constants import AGENT_KEYS, STATE_VISION_COMPLETE
 from spec4.callbacks import on_gate_chip, on_gate_connect, on_gate_pick
 from spec4.layouts import _AGENT_ROWS, _agent_select_layout
+from spec4.layouts._status_bar import _status_context
 from spec4.layouts.designer import (
     _step1_content,
     _step2_content,
@@ -117,8 +119,19 @@ def _shell_ids() -> set[str]:
 
     Derived from ``app.layout`` rather than hand-listed, so a new store added to
     the shell does not quietly become a false positive here.
+
+    The status bar's context line is the one part of the shell whose ids are not
+    all in that initial render: ``app.layout`` draws the bar's *empty* state,
+    and ``on_status_bar`` — itself a shell callback, mounted for the app's whole
+    life — refills it on every store change. ``btn-status-bar-dir`` only exists
+    once there is a directory to reopen at, so the filled context is rendered
+    here too. It is still derived, not hand-listed: a second control added to
+    that line is picked up without editing this function.
     """
-    return _ids(app_module.app.layout)
+    filled = html.Span(
+        _status_context("/a/project", 0, "anthropic", "m", True)
+    )
+    return _ids(app_module.app.layout) | _ids(filled)
 
 
 def _page_ids(*components: Any) -> set[str]:
@@ -654,6 +667,56 @@ class TestShellIds:
             "status-bar-nav-settings",
             "status-bar-nav-docs",
         } <= _shell_ids()
+
+    def test_the_directory_button_is_part_of_the_shell(self) -> None:
+        """The bar's working-directory control counts as a shell id.
+
+        It rides in the context line, which is refilled by ``on_status_bar``
+        rather than drawn once, so it is absent from the empty bar and present
+        the moment a project is open. Treating it as page content would make
+        ``on_status_bar_dir`` look half-rendered on every screen; treating it
+        as shell is what it actually is — mounted for the app's whole life,
+        alongside the two stores its callback writes.
+        """
+        assert "btn-status-bar-dir" in _shell_ids()
+        assert "btn-status-bar-dir" not in _ids(app_module.app.layout)
+
+    def test_the_directory_button_is_never_page_content(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """No screen may mount a second control answering to that id.
+
+        ``on_status_bar_dir`` writes the session store and the URL, so a page
+        that rendered its own ``btn-status-bar-dir`` would give one id two
+        meanings and make which one fires depend on render order.
+        """
+        offenders = [
+            label
+            for label, present in _phase_screens(tmp_path)
+            if "btn-status-bar-dir" in present
+        ]
+        assert not offenders
+
+    def test_the_directory_callback_is_satisfied_on_every_screen(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The guard above skips shell-only callbacks; this pins that it is one.
+
+        Every id ``on_status_bar_dir`` touches — its button, the session store
+        and the URL — lives in the shell, so it can fire from any screen the
+        app can draw.
+        """
+        shell = _shell_ids()
+        # Found by its Input rather than by name: the registry is keyed by a
+        # callback's outputs, so the function's name is not in it.
+        matching = [
+            every
+            for _, inputs, every in _callback_refs()
+            if "btn-status-bar-dir" in inputs
+        ]
+        assert len(matching) == 1, "exactly one callback owns the bar's directory"
+        assert {"btn-status-bar-dir", "session", "url"} <= matching[0]
+        assert matching[0] <= shell
 
     def test_the_removed_shell_ids_are_gone(self) -> None:
         """The external-link drawer and the grid background left the shell.

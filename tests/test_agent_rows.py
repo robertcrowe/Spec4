@@ -5,8 +5,8 @@ drift from the pipeline — so the rows are checked against ``AGENT_KEYS``, the
 one definition of the seven agents and their order. The action can disagree
 with the readiness state — so every row is compared against
 ``project_manager.agent_button_state`` directly, on a fixture that puts more
-than one state on screen at once. The five states can drift from the design
-manifest — so all five variants are asserted, not just the ones a given fixture
+than one state on screen at once. The six states can drift from the design
+manifest — so all six variants are asserted, not just the ones a given fixture
 happens to produce. And a missing ``usage.json`` entry can turn a normal state
 into a crash — so an omitted agent gets its own fixture, and the assertion is
 both that the cells are blank and that nothing raised.
@@ -42,16 +42,17 @@ from spec4.layouts._agent_rows import (
 )
 from spec4.session import _default_session
 
-# The five states, named here rather than reached through the module under
+# The six states, named here rather than reached through the module under
 # test, so a renamed constant fails loudly instead of silently shrinking the
 # mapping this file checks.
 _START = project_manager.AGENT_BTN_START
+_CONTINUE = project_manager.AGENT_BTN_CONTINUE
 _MODIFY = project_manager.AGENT_BTN_MODIFY
 _NEEDS_UPDATE = project_manager.AGENT_BTN_NEEDS_UPDATE
 _NOT_READY = project_manager.AGENT_BTN_NOT_READY
 _REQUIRED = project_manager.AGENT_BTN_REQUIRED
 
-_ALL_STATES = (_START, _MODIFY, _NEEDS_UPDATE, _NOT_READY, _REQUIRED)
+_ALL_STATES = (_START, _CONTINUE, _MODIFY, _NEEDS_UPDATE, _NOT_READY, _REQUIRED)
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +106,21 @@ def two_state_project(tmp_path: pathlib.Path) -> pathlib.Path:
     (base / "ai_features.json").write_text("{}")
     time.sleep(0.02)
     # Now bump an Agentifier input past its output, so it reads stale.
+    (base / "vision.json").write_text("{}")
+    return tmp_path
+
+
+@pytest.fixture
+def designer_not_started(tmp_path: pathlib.Path) -> pathlib.Path:
+    """A round where Designer's input is in place and its output is not.
+
+    The smallest project that produces a genuine ``start``: one artifact, so
+    there is no freshness chain to fall out of order and no output to compare
+    against. ``two_state_project`` cannot stand in — its rewritten
+    ``vision.json`` puts the downstream agents in ``not_ready``, which is a
+    state the Continue rule must leave alone.
+    """
+    base = project_manager.ensure_version_dir(tmp_path, 0)
     (base / "vision.json").write_text("{}")
     return tmp_path
 
@@ -376,20 +392,20 @@ class TestTheButtonRoutesLikeTheOldOnes:
 
 
 # ---------------------------------------------------------------------------
-# The five variants, against the design manifest
+# The six variants, against the design manifest
 # ---------------------------------------------------------------------------
 
 
-class TestTheFiveActionVariants:
-    """D-AR1: the manifest's five buttons, all five asserted.
+class TestTheSixActionVariants:
+    """D-AR1: the manifest's six buttons, all six asserted.
 
     They are checked through ``_agent_action_button`` rather than through a
     fixture that happens to produce them, because no single project state puts
-    all five on screen at once — and a mapping is only correct if every entry
+    all six on screen at once — and a mapping is only correct if every entry
     is.
     """
 
-    def test_the_mapping_covers_exactly_the_five_states(self) -> None:
+    def test_the_mapping_covers_exactly_the_six_states(self) -> None:
         assert set(ACTION_BUTTON_PROPS) == set(_ALL_STATES)
         assert set(ACTION_LABELS) == set(_ALL_STATES)
 
@@ -407,6 +423,22 @@ class TestTheFiveActionVariants:
         assert required.variant == start.variant == "filled"
         assert getattr(required, "color", None) is None
         assert required.children == "Required"
+
+    def test_continue_is_the_same_button_as_start(self) -> None:
+        """D-AR1: Continue relabels Start, it does not restyle it.
+
+        The two mean the same thing to the eye — the next thing to do with this
+        agent — and differ only in whether there is a conversation to pick up.
+        A second treatment here would say they were different actions.
+        """
+        start = _agent_action_button("brainstormer", _START)
+        keep_going = _agent_action_button("brainstormer", _CONTINUE)
+        assert keep_going.variant == start.variant == "filled"
+        # D-LR2: no local colour, so it takes the theme primary like Start.
+        assert getattr(keep_going, "color", None) is None
+        assert keep_going.className == start.className
+        assert keep_going.disabled is False
+        assert keep_going.children == "Continue"
 
     def test_modify_is_a_neutral_outline_with_green_text(self) -> None:
         button = _agent_action_button("brainstormer", _MODIFY)
@@ -446,7 +478,7 @@ class TestTheFiveActionVariants:
         assert _action_class(state).split()[0] == "agent-row-action"
 
     def test_only_two_states_need_a_modifier(self) -> None:
-        """Mantine draws three of the five as the manifest specifies them; the
+        """Mantine draws four of the six as the manifest specifies them; the
         other two are corrected in CSS, and this pins which."""
         modified = {
             state for state in _ALL_STATES if len(_action_class(state).split()) > 1
@@ -461,6 +493,144 @@ class TestTheFiveActionVariants:
             if "color" in props
         }
         assert coloured == {_NEEDS_UPDATE: "yellow"}
+
+
+# ---------------------------------------------------------------------------
+# Continue: the one state read from the session rather than from disk
+# ---------------------------------------------------------------------------
+
+
+class TestContinueForAnInProgressAgent:
+    """An agent you are halfway through says Continue, not Start.
+
+    ``start`` is decided by the absence of an artifact, and an agent mid-
+    conversation has no artifact either — the JSON only lands when the turn
+    that produces it finishes. So a developer who left Brainstormer three
+    questions in came back to a button that said Start, which reads as "throw
+    that away and begin again" when the transcript is in fact still there.
+
+    The rule is narrow on purpose, and both halves of that are asserted here:
+    it relabels ``start`` and only ``start``, and it fires on a non-empty
+    ``{agent}_messages`` list and nothing else. Every other state is decided by
+    the artifacts alone and must be unmoved by anything in the session.
+    """
+
+    def _in_progress(
+        self, working_dir: pathlib.Path, agent: str
+    ) -> dict[str, Any]:
+        return _session(
+            working_dir,
+            **{f"{agent}_messages": [{"role": "user", "content": "hi"}]},
+        )
+
+    def test_a_transcript_with_no_artifact_yields_continue(
+        self, designer_not_started: pathlib.Path
+    ) -> None:
+        """Designer's input is present and its output is not — a `start`."""
+        project = designer_not_started
+        assert (
+            project_manager.agent_button_state(
+                project, "designer", _session(project)
+            )
+            == _START
+        )
+        assert (
+            project_manager.agent_button_state(
+                project, "designer", self._in_progress(project, "designer")
+            )
+            == _CONTINUE
+        )
+
+    def test_an_empty_message_list_still_yields_start(
+        self, designer_not_started: pathlib.Path
+    ) -> None:
+        """`_default_session` seeds every agent's list empty; that is not a run."""
+        session = _session(designer_not_started, designer_messages=[])
+        assert (
+            project_manager.agent_button_state(
+                designer_not_started, "designer", session
+            )
+            == _START
+        )
+
+    @pytest.mark.parametrize("messages", [None, "", 0, {"role": "user"}])
+    def test_a_transcript_of_the_wrong_shape_yields_start(
+        self, designer_not_started: pathlib.Path, messages: Any
+    ) -> None:
+        """Anything that is not a non-empty list is a session that has not run."""
+        session = _session(designer_not_started, designer_messages=messages)
+        assert (
+            project_manager.agent_button_state(
+                designer_not_started, "designer", session
+            )
+            == _START
+        )
+
+    def test_no_session_at_all_yields_start(
+        self, designer_not_started: pathlib.Path
+    ) -> None:
+        assert (
+            project_manager.agent_button_state(
+                designer_not_started, "designer", None
+            )
+            == _START
+        )
+
+    def test_it_reads_only_its_own_agents_transcript(
+        self, designer_not_started: pathlib.Path
+    ) -> None:
+        """A conversation with Brainstormer says nothing about Designer."""
+        session = self._in_progress(designer_not_started, "brainstormer")
+        assert (
+            project_manager.agent_button_state(
+                designer_not_started, "designer", session
+            )
+            == _START
+        )
+
+    @pytest.mark.parametrize(
+        ("agent", "expected"),
+        [
+            ("code_scanner", _MODIFY),
+            ("agentifier", _NEEDS_UPDATE),
+            ("phaser", _NOT_READY),
+        ],
+    )
+    def test_no_other_state_is_touched_by_a_transcript(
+        self, two_state_project: pathlib.Path, agent: str, expected: str
+    ) -> None:
+        session = self._in_progress(two_state_project, agent)
+        assert (
+            project_manager.agent_button_state(two_state_project, agent, session)
+            == expected
+        )
+
+    def test_required_survives_a_transcript_too(
+        self, two_state_project: pathlib.Path
+    ) -> None:
+        """The brownfield gate is upstream of everything, this rule included."""
+        (two_state_project / ".spec4" / "v0" / "IMPLEMENTED").write_text("")
+        session = self._in_progress(two_state_project, "code_scanner")
+        assert (
+            project_manager.agent_button_state(
+                two_state_project, "code_scanner", session
+            )
+            == _REQUIRED
+        )
+
+    def test_the_row_renders_the_continue_button(
+        self, designer_not_started: pathlib.Path
+    ) -> None:
+        """End to end: the state reaches the table as the label the row draws."""
+        project = designer_not_started
+        session = self._in_progress(project, "designer")
+        rows = {row.key: row for row in agent_rows(project, 0, session)}
+        assert rows["designer"].action == _CONTINUE
+        assert rows["designer"].disabled is False
+
+        rendered = _rows_of(_agent_rows(project, 0, session))
+        by_id = {r.id: r for r in rendered}
+        assert _text(_button(by_id["agent-row-designer"])) == "Continue"
 
 
 # ---------------------------------------------------------------------------

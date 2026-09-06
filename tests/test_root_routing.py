@@ -24,7 +24,12 @@ from spec4.app_constants import (
     PHASE_ROOT,
     ROOT_PATH,
 )
-from spec4.callbacks import on_browser_navigate, on_dir_select, on_status_bar
+from spec4.callbacks import (
+    on_browser_navigate,
+    on_dir_select,
+    on_status_bar,
+    on_status_bar_dir,
+)
 from spec4.layouts import STATUS_EMPTY
 from spec4.project_manager import directory_opens
 from spec4.session import _default_session
@@ -38,10 +43,18 @@ def _route(pathname: str, session: Any = None, prefs: Any = None) -> Any:
 
 
 def _ids(component: Any) -> set[str]:
+    """Every string component id in a rendered tree, or in a list of them.
+
+    A bare list is accepted because `on_status_bar` returns one: the context
+    line's children, not a component wrapping them.
+    """
     found: set[str] = set()
-    stack = [component]
+    stack: list[Any] = [component]
     while stack:
         node = stack.pop()
+        if isinstance(node, (list, tuple)):
+            stack.extend(node)
+            continue
         node_id = getattr(node, "id", None)
         if isinstance(node_id, str):
             found.add(node_id)
@@ -230,6 +243,81 @@ class TestTheOtherPaths:
             "working_dir": str(tmp_path),
         }
         assert on_browser_navigate("/agents", live, {}) is no_update
+
+
+class TestTheBarReopensThePicker:
+    """The fourth path to the picker: the status bar's directory field.
+
+    ``/dir`` was previously only reachable from the setup wizard's Back button
+    or from a browser that already had the URL, so a developer sitting on the
+    project view had no way to switch projects without editing the address bar.
+    The bar's directory is now the control, and this pins the three things that
+    makes true: it is a button when there is a project, it is not one when
+    there isn't, and pressing it opens the picker *at* the project without
+    committing anything.
+    """
+
+    def test_the_directory_is_a_button(self, tmp_path: pathlib.Path) -> None:
+        context, _, _ = on_status_bar(
+            {**_default_session(), "working_dir": str(tmp_path)}, {}
+        )
+        assert "btn-status-bar-dir" in _ids(context)
+        # And it still reads as the same field it was — the path, not a label.
+        assert str(tmp_path) in _text(context)
+
+    def test_the_empty_state_is_text_not_a_button(self) -> None:
+        """With no project there is nothing to reopen at, so no control."""
+        context, _, _ = on_status_bar({}, {})
+        assert "btn-status-bar-dir" not in _ids(context)
+        assert STATUS_EMPTY in _text(context)
+
+    def test_a_gone_directory_offers_no_button_either(self) -> None:
+        """The bar drops a remembered-but-gone path, and the control with it."""
+        context, _, _ = on_status_bar(
+            {**_default_session(), "working_dir": None},
+            {"working_dir": "/no/such/project"},
+        )
+        assert "btn-status-bar-dir" not in _ids(context)
+
+    def test_pressing_it_opens_the_picker_at_the_project(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        session = {**_default_session(), "working_dir": str(tmp_path)}
+        new_session, pathname = on_status_bar_dir(1, session)
+        assert new_session["phase"] == PHASE_DIRECTORY_PICKER
+        assert new_session["browser_path"] == str(tmp_path)
+        assert pathname == "/dir"
+        # The picker really does browse there, rather than falling back home.
+        assert str(tmp_path) in _text(layouts._working_dir_layout(new_session))
+
+    def test_pressing_it_commits_nothing(self, tmp_path: pathlib.Path) -> None:
+        """Backing out of the picker must leave the project exactly as it was.
+
+        Only `on_dir_select` opens a directory, so this writes neither the
+        session's `working_dir` nor the pref — it has no prefs Output at all.
+        """
+        session = {**_default_session(), "working_dir": str(tmp_path)}
+        new_session, _ = on_status_bar_dir(1, session)
+        assert new_session["working_dir"] == str(tmp_path)
+
+    def test_it_does_not_fire_on_the_initial_render(self) -> None:
+        assert on_status_bar_dir(None, _default_session()) == (no_update, no_update)
+        assert on_status_bar_dir(0, _default_session()) == (no_update, no_update)
+
+    def test_the_path_it_navigates_to_is_the_picker(self) -> None:
+        """The pathname is not a second opinion about which screen /dir is."""
+        _, pathname = on_status_bar_dir(1, _default_session())
+        assert PATH_TO_PHASE[pathname] == PHASE_DIRECTORY_PICKER
+
+    def test_the_picker_it_opens_is_the_one_the_router_would(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """Routing the URL it sets must not undo the phase it just wrote."""
+        session = {**_default_session(), "working_dir": str(tmp_path)}
+        opened, pathname = on_status_bar_dir(1, session)
+        routed = _route(pathname, session=opened, prefs={"working_dir": str(tmp_path)})
+        assert routed["phase"] == PHASE_DIRECTORY_PICKER
+        assert "btn-dir-select" in _ids(_page(routed))
 
 
 class TestDirectoryOpens:

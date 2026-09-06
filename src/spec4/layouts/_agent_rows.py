@@ -109,27 +109,30 @@ _AGENT_ROWS: tuple[AgentRowSpec, ...] = tuple(
 
 ACTION_LABELS: dict[str, str] = {
     project_manager.AGENT_BTN_START: "Start",
+    project_manager.AGENT_BTN_CONTINUE: "Continue",
     project_manager.AGENT_BTN_MODIFY: "Modify",
     project_manager.AGENT_BTN_NEEDS_UPDATE: "Needs Update",
     project_manager.AGENT_BTN_NOT_READY: "Not Ready",
     project_manager.AGENT_BTN_REQUIRED: "Required",
 }
 
-# D-AR1: the five action states and the button each one draws, exactly as the
-# design manifest specifies them for `agent-rows` — Start filled, Required
-# filled (the same button as Start), Modify a neutral outline with green text,
-# Needs Update a warn outline, Not Ready a disabled outline. It is one
-# constant, in one place, because five states written inline at the point of
-# render is five chances to drift from the manifest.
+# D-AR1: the six action states and the button each one draws, exactly as the
+# design manifest specifies them for `agent-rows` — Start filled, Continue
+# filled (the same button as Start), Required filled (likewise), Modify a
+# neutral outline with green text, Needs Update a warn outline, Not Ready a
+# disabled outline. It is one constant, in one place, because six states
+# written inline at the point of render is six chances to drift from the
+# manifest.
 #
-# Per D-LR2 no entry names its accent. The three states the manifest draws in
-# green (Start, Required, Modify) simply pass no `color` and take the theme
-# primary; Modify's neutral border is CSS on `.agent-row-action--modify`, not a
-# colour prop. Only Needs Update carries a colour, because warn is not the
+# Per D-LR2 no entry names its accent. The four states the manifest draws in
+# green (Start, Continue, Required, Modify) simply pass no `color` and take the
+# theme primary; Modify's neutral border is CSS on `.agent-row-action--modify`,
+# not a colour prop. Only Needs Update carries a colour, because warn is not the
 # accent, and Not Ready carries none at all — Mantine greys a disabled button
 # from `disabled` alone.
 ACTION_BUTTON_PROPS: dict[str, dict[str, Any]] = {
     project_manager.AGENT_BTN_START: {"variant": "filled"},
+    project_manager.AGENT_BTN_CONTINUE: {"variant": "filled"},
     project_manager.AGENT_BTN_REQUIRED: {"variant": "filled"},
     project_manager.AGENT_BTN_MODIFY: {"variant": "outline"},
     project_manager.AGENT_BTN_NEEDS_UPDATE: {"variant": "outline", "color": "yellow"},

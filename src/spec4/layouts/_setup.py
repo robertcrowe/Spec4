@@ -6,7 +6,7 @@ from dash import html
 import dash_mantine_components as dmc
 
 from spec4 import providers, websearch
-from spec4.layouts._shared import _card, _error
+from spec4.layouts._shared import PROGRESS_CLASS_NAMES, _card, _error
 
 # Component ids for the two places the same fields are rendered: the setup
 # wizard (the default) and the per-agent gate (an override). Only one of the
@@ -222,6 +222,7 @@ def _setup_model_layout(
                             animated=True,
                             striped=True,
                             size="sm",
+                            classNames=PROGRESS_CLASS_NAMES,
                         ),
                     ],
                     id="setup-probe-progress-container",
