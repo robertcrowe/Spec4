@@ -22,6 +22,8 @@ tests that want a different overlay can take the fixture and reassign
 
 from __future__ import annotations
 
+import pathlib
+import sys
 from collections.abc import Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -49,3 +51,17 @@ def stub_prioritizer() -> Iterator[MagicMock]:
         "spec4.agentifier.agentifier._call_prioritizer", side_effect=_stub
     ) as mock:
         yield mock
+
+
+# ---------------------------------------------------------------------------
+# The eval scripts, importable
+# ---------------------------------------------------------------------------
+
+# ``tests/agentifier/test_fanout_baseline.py`` imports ``fanout_baseline`` from
+# ``evals/scout/``, which is a script directory rather than a package and so is
+# not on ``sys.path`` by default. Without this, a bare ``uv run pytest`` stops
+# at collection — one unimportable module aborts the whole run — and the rest
+# of the suite never gets a chance to say anything.
+_EVAL_SCRIPTS = pathlib.Path(__file__).resolve().parent.parent / "evals" / "scout"
+if _EVAL_SCRIPTS.is_dir() and str(_EVAL_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_EVAL_SCRIPTS))

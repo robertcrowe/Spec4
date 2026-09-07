@@ -9,7 +9,8 @@ import dash_mantine_components as dmc
 from spec4 import project_manager
 from spec4.app_constants import PROJECT_MODE_NEW
 from spec4.layouts import _llm_gate
-from spec4.layouts._shared import PROGRESS_CLASS_NAMES, cost_summary_card
+from spec4.layouts._round_cost import run_cost_strip
+from spec4.layouts._shared import PROGRESS_CLASS_NAMES
 from spec4.agents.designer import (
     detect_has_ui_source,
     detect_no_ui,
@@ -417,13 +418,12 @@ def _step6_content(
     )
     # The Designer run ends here — every draw and refine lands on this
     # preview, and the generation thread has flushed its usage by the time
-    # the poll delivers it. Same card the chat agents show under their last
-    # message; omitted when the caller has no session (no project dir).
-    cost_card = cost_summary_card(
-        (session or {}).get("working_dir"), session, "designer", "Designer"
-    )
-    if cost_card is not None:
-        children.append(cost_card)
+    # the poll delivers it. The same three-line strip the chat agents show
+    # under their last message and the project view closes with; omitted when
+    # the caller has no session (no project dir).
+    cost_strip = run_cost_strip((session or {}).get("working_dir"), session, "designer")
+    if cost_strip is not None:
+        children.append(cost_strip)
     if store.get("finalized"):
         children.append(
             dmc.Alert(

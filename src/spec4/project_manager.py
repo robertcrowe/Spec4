@@ -13,7 +13,7 @@ import tempfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from spec4.app_constants import PROJECT_MODE_EXISTING
 
@@ -341,6 +341,54 @@ def active_version(
         if v is not None:
             return int(v)
     return latest_phase_version(working_dir) or 0
+
+
+class RoundsOnDisk(NamedTuple):
+    """Every round the project has on disk, and which one is active.
+
+    ``rounds`` is ascending by round number, which is not what
+    ``Path.iterdir`` gives back and not what a lexicographic sort of the
+    directory names gives either — ``v10`` sorts before ``v9`` as text, and a
+    round selector listing the rounds in that order would be quietly wrong the
+    first time a project reached ten rounds.
+
+    ``active`` is the round the rest of the app considers current, and it is
+    ``None`` only when there is no round at all. It can name a round that is
+    *not* in ``rounds``: a session pins ``phase_version`` at flow start, and
+    the directory for that round is not created until the first agent persists
+    an artifact into it. A caller populating a selector should fall back to the
+    highest entry in ``rounds`` when ``active`` is not among them, rather than
+    offering a value its own option list does not contain.
+    """
+
+    rounds: tuple[int, ...]
+    active: int | None
+
+
+def rounds_on_disk(
+    working_dir: str | Path | None, session: dict[str, Any] | None = None
+) -> RoundsOnDisk:
+    """The rounds present under ``.spec4/``, recomputed from disk every call.
+
+    Nothing here is memoised and nothing is stashed in a store. That is the
+    whole point of the function rather than an oversight: a round created since
+    the screen was last drawn — by the persist funnel, or by the developer
+    running a new round in another tab — has to appear the next time the
+    selector is built, with no restart and no cache to invalidate.
+
+    ``session`` is threaded through to :func:`active_version` so that the
+    active round reported here is the same one the status bar and the round
+    tree are showing. Reading it from disk alone would disagree with both
+    whenever a session is pinned to an earlier round than the newest folder,
+    and the Artifact View would then default its selector to one round while
+    drawing the tree of another.
+    """
+    if not working_dir:
+        return RoundsOnDisk((), None)
+    rounds = tuple(sorted(_phase_version_dirs(working_dir)))
+    if not rounds:
+        return RoundsOnDisk((), None)
+    return RoundsOnDisk(rounds, active_version(working_dir, session))
 
 
 def session_is_brownfield(session: dict[str, Any] | None) -> bool:
@@ -1250,6 +1298,15 @@ def cost_summary(
     could not be priced is counted in ``calls_missing_cost`` and excluded
     from ``cost_usd``, so the caller can say so rather than show a confident
     undercount.
+
+    ``unpriced`` names those excluded calls — this agent's own, grouped the
+    same way :func:`round_cost` groups the round's, and through the same
+    function. It is here because counting a gap and naming it are one fact
+    told at two densities, and the chat frame's run strip renders both lines
+    from the same three-line renderer the project view uses: a summary that
+    carried only the count would have left that renderer with nothing to name
+    and would have quietly reintroduced the divergence the shared renderer
+    exists to prevent.
     """
     data = load_usage(working_dir, version)
     if data is None:
@@ -1261,6 +1318,11 @@ def cost_summary(
         "round": str(data.get("round") or f"v{version}"),
         "agent": _cost_block(entry),
         "total": _cost_block(data.get("totals")),
+        # Scoped to this one agent by handing `unpriced_calls` a one-entry
+        # mapping rather than the whole file: the block above is this agent's,
+        # and a list of the *round's* gaps beside it would name calls that are
+        # not in the figure it explains.
+        "unpriced": unpriced_calls({agent: entry}),
         "cost_source": (
             notes.get("computed_cost_source") if isinstance(notes, dict) else None
         ),

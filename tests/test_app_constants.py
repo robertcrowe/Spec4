@@ -33,6 +33,10 @@ class TestPathToPhase:
     def test_chat_maps_to_chat(self) -> None:
         assert PATH_TO_PHASE["/chat"] == "chat"
 
+    def test_artifacts_maps_to_artifacts(self) -> None:
+        """The Artifact View's route, and the nav entry's ``href``."""
+        assert PATH_TO_PHASE["/artifacts"] == "artifacts"
+
     def test_all_phases_covered(self) -> None:
         expected = {
             "working_dir",
@@ -40,8 +44,13 @@ class TestPathToPhase:
             "agent_select",
             "chat",
             "designer",
+            "artifacts",
         }
         assert set(PATH_TO_PHASE.values()) == expected
+
+    def test_every_path_maps_to_a_distinct_phase(self) -> None:
+        """Two paths onto one phase would make the nav's active item ambiguous."""
+        assert len(set(PATH_TO_PHASE.values())) == len(PATH_TO_PHASE)
 
     def test_no_phase_is_named_landing(self) -> None:
         assert "landing" not in set(PATH_TO_PHASE.values())

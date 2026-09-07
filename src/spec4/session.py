@@ -117,6 +117,22 @@ def _default_session() -> dict[str, Any]:
         "phaser_messages": [],
         "phases": [],
         "phase_version": None,
+        # The Artifact View's selection, and the only state it keeps. Both live
+        # in the browser session store beside everything else here — there is no
+        # server-side session and no second Store component, so a selection is
+        # as local to the browser as the provider keys are.
+        #
+        # `selected_round` is initialised to the active round, which is
+        # `phase_version` above: unresolved until a project is open, and the
+        # same value the status bar and the round tree read. Readers take it
+        # with `.get()` and fall back to `project_manager.active_version`, so a
+        # session store written before these keys existed — a tab left open
+        # across an upgrade — is not a missing-key error, and callbacks that
+        # ignore the selection are unaffected by its arrival.
+        "selected_round": None,
+        # No file chosen. The content pane's empty state, not a default file:
+        # opening the screen must not pick something on the developer's behalf.
+        "selected_file": None,
         "deployer_state": STATE_IN_PROGRESS,
         "deployer_messages": [],
         "brainstormer_stale_acknowledged": {},

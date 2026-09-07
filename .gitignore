@@ -13,7 +13,7 @@ wheels/
 .venv
 
 # Spec4 artifacts
-.spec4/
+# .spec4/
 
 # My stuff
 mystuff/

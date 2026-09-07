@@ -1,0 +1,311 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "development_tool_shell",
+      "name": "Development Tool Shell",
+      "purpose": "Replaces the marketing-style header and layout with a dense, status-bar-driven shell so the app reads as a professional development tool rather than a promotional site.",
+      "invocation": {
+        "trigger": "The app loads or the user navigates between views"
+      },
+      "inputs": [
+        {
+          "name": "working_directory",
+          "type": "text",
+          "description": "The currently open project's folder path",
+          "required": true
+        },
+        {
+          "name": "current_round",
+          "type": "number",
+          "description": "The active round number being worked on",
+          "required": true
+        },
+        {
+          "name": "default_provider_model",
+          "type": "text",
+          "description": "The provider and model currently set as default",
+          "required": true
+        },
+        {
+          "name": "spec4_version",
+          "type": "text",
+          "description": "The running version identifier of the app",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "A rendered application shell with a status bar and primary navigation",
+        "format": "structured layout",
+        "schema_notes": "Status bar shows working directory, round, default provider/model, and version; nav shows Project, Artifacts, Settings, and one Docs link; no other chrome is present"
+      },
+      "success_criteria": [
+        "Status bar always shows current working directory, round, provider/model, and version when available",
+        "No external-link drawer, footer, in-app landing page, grid background, kicker labels, gradient text, or hover glows remain in the shell or on the project view",
+        "No emoji appear anywhere in the app: the sweep is global in this round, including screens whose layout is otherwise untouched",
+        "Vertical spacing in the shell and on the project view is roughly half the prior layout's",
+        "Exactly one accent colour is used for all primary actions, active states, and focus indicators; it is set once as the theme primary, so every screen inherits it",
+        "The wordmark is the only place a second colour appears",
+        "Layout and density changes are confined to the shell and the project view; the chat frame, setup wizard, gate card, and Designer wizard keep their current layouts this round"
+      ],
+      "failure_modes": [
+        {
+          "mode": "Status bar shows blank or stale working directory after switching projects",
+          "likelihood": "medium",
+          "mitigation": "Recompute status bar contents whenever the active project or round changes"
+        },
+        {
+          "mode": "A marketing-era style bleeds back in through an unreviewed component",
+          "likelihood": "medium",
+          "mitigation": "Treat the removal list as a checklist reviewed against every screen before release"
+        },
+        {
+          "mode": "Accent color is applied inconsistently across components",
+          "likelihood": "low",
+          "mitigation": "Define the accent as the single theme primary so all components inherit it uniformly"
+        }
+      ],
+      "dependencies": [],
+      "entities": [
+        "WorkingDirectory",
+        "Round",
+        "ProviderModel"
+      ],
+      "references": []
+    },
+    {
+      "id": "open_to_the_project",
+      "name": "Open To The Project",
+      "purpose": "Ensures returning users land directly on their project instead of passing through an introductory screen, matching the expectations of an experienced developer tool.",
+      "invocation": {
+        "trigger": "The user navigates to the application's root location"
+      },
+      "inputs": [
+        {
+          "name": "remembered_working_directory",
+          "type": "text",
+          "description": "A previously opened project folder path, if one is remembered",
+          "required": false
+        }
+      ],
+      "outputs": {
+        "primary": "Either the project view for the remembered directory, or a directory picker",
+        "format": "navigation result",
+        "schema_notes": "Exactly one of the two destinations is shown; no intermediate screen exists"
+      },
+      "success_criteria": [
+        "When a working directory is remembered, the project view for it appears with no intervening screen",
+        "When no working directory is remembered, the directory picker appears immediately",
+        "No introduction or landing screen is ever shown under any condition"
+      ],
+      "failure_modes": [
+        {
+          "mode": "Remembered directory no longer exists or is inaccessible",
+          "likelihood": "medium",
+          "mitigation": "Detect the invalid directory and fall back to the directory picker with a clear message"
+        },
+        {
+          "mode": "Brief flash of an intermediate screen before the correct destination renders",
+          "likelihood": "low",
+          "mitigation": "Resolve the destination before the first render completes"
+        }
+      ],
+      "dependencies": [
+        "round_tree",
+        "agent_rows",
+        "round_cost"
+      ],
+      "entities": [
+        "WorkingDirectory",
+        "ProjectView"
+      ],
+      "references": []
+    },
+    {
+      "id": "round_tree",
+      "name": "Round Tree",
+      "purpose": "Gives the user an at-a-glance, ordered view of every artifact in the current round and whether each is present, needs updating, or missing, so they know what to work on next.",
+      "invocation": {
+        "trigger": "The project view loads or the active round changes"
+      },
+      "inputs": [
+        {
+          "name": "current_round_artifacts",
+          "type": "list of items",
+          "description": "The set of artifacts belonging to the current round in pipeline order",
+          "required": true
+        },
+        {
+          "name": "artifact_dependency_graph",
+          "type": "structured data",
+          "description": "Relationships used to determine whether an artifact is stale relative to its upstream artifacts",
+          "required": true
+        },
+        {
+          "name": "usage_record",
+          "type": "structured data",
+          "description": "The round's recorded usage information, used to exempt it from staleness checks",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "A single-round tree listing each artifact with its status and lane coloring",
+        "format": "ordered list with a legend",
+        "schema_notes": "One line per artifact in pipeline order; status is one of present, needs update, or missing; lane is one of prompt-for-agent, reference-for-agent, or record-for-you; a three-item legend explains the lanes"
+      },
+      "success_criteria": [
+        "Every artifact in the current round appears exactly once, in pipeline order",
+        "An artifact's status correctly reflects whether any upstream artifact is newer",
+        "The usage record is never shown as needing update regardless of upstream changes",
+        "Only the current round's artifacts appear; no other round's artifacts are shown",
+        "Each artifact's lane coloring matches its designated category and the legend accurately describes all three lanes"
+      ],
+      "failure_modes": [
+        {
+          "mode": "Status is computed incorrectly due to an incomplete dependency graph",
+          "likelihood": "medium",
+          "mitigation": "Recompute status directly from the current dependency graph on every load rather than caching a prior result"
+        },
+        {
+          "mode": "An artifact is missing from disk but expected",
+          "likelihood": "medium",
+          "mitigation": "Represent absence explicitly as the missing status rather than omitting the line"
+        },
+        {
+          "mode": "An artifact is placed in the wrong lane",
+          "likelihood": "low",
+          "mitigation": "Derive lane assignment from a fixed, reviewed mapping rather than inference"
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell"
+      ],
+      "entities": [
+        "Round",
+        "Artifact",
+        "WorkingDirectory"
+      ],
+      "references": []
+    },
+    {
+      "id": "agent_rows",
+      "name": "Agent Rows",
+      "purpose": "Shows the seven pipeline agents as compact, information-dense rows so the user can see at a glance what each agent produces, what it last ran on, and what to do next.",
+      "invocation": {
+        "trigger": "The round tree has rendered for the current round"
+      },
+      "inputs": [
+        {
+          "name": "agent_pipeline_order",
+          "type": "list of items",
+          "description": "The seven agents in their fixed execution order",
+          "required": true
+        },
+        {
+          "name": "agent_artifact_mapping",
+          "type": "structured data",
+          "description": "Which artifact each agent produces",
+          "required": true
+        },
+        {
+          "name": "usage_record",
+          "type": "structured data",
+          "description": "Per-agent model used and token counts for the current round",
+          "required": true
+        },
+        {
+          "name": "agent_state",
+          "type": "structured data",
+          "description": "The existing readiness state per agent used to choose the row's action",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "One row per agent showing name, produced artifact, last-run model, tokens in and out, and an action",
+        "format": "ordered list of rows",
+        "schema_notes": "Action is one of Start, Modify, Needs Update, Not Ready, Required, following existing semantics; model field is blank when the agent has not yet run this round"
+      },
+      "success_criteria": [
+        "All seven agents appear in fixed pipeline order with no step numbers, descriptions, or emoji",
+        "The action shown for each agent matches its existing state exactly",
+        "The model field is blank when an agent has not run this round and shows the correct model otherwise",
+        "Token counts shown match the recorded usage for that agent this round",
+        "Activating a row's action navigates to that agent exactly as the current agent-select buttons do; no routing is re-derived"
+      ],
+      "failure_modes": [
+        {
+          "mode": "Usage record lacks an entry for an agent that has run",
+          "likelihood": "medium",
+          "mitigation": "Treat a missing entry as not-yet-run and show blank fields rather than an error"
+        },
+        {
+          "mode": "Action shown does not match the underlying readiness state",
+          "likelihood": "low",
+          "mitigation": "Derive the action directly from the existing state model rather than re-deriving it independently"
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell"
+      ],
+      "entities": [
+        "Agent",
+        "Artifact",
+        "UsageRecord"
+      ],
+      "references": []
+    },
+    {
+      "id": "round_cost",
+      "name": "Round Cost",
+      "purpose": "Gives the user a trustworthy running estimate of what the current round has cost so far, being explicit about what could and could not be priced.",
+      "invocation": {
+        "trigger": "The project view loads or the round's usage record changes"
+      },
+      "inputs": [
+        {
+          "name": "usage_totals",
+          "type": "structured data",
+          "description": "Aggregated token and cost totals for the current round, including any calls that could not be priced",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "An estimated cost figure for the round, with token counts and any unpriced calls named",
+        "format": "labelled figure with supporting detail",
+        "schema_notes": "Figure is always labelled as an estimate; unpriced calls are named and excluded from the total rather than folded into it"
+      },
+      "success_criteria": [
+        "The displayed figure is always labelled as an estimate",
+        "Token totals shown match the underlying usage record",
+        "Any call that could not be priced is named explicitly and excluded from the total rather than silently ignored or shown as zero",
+        "The figure never displays as an all-zero cost when the true cost is unknown"
+      ],
+      "failure_modes": [
+        {
+          "mode": "An unpriced call is silently included in the total, understating cost",
+          "likelihood": "medium",
+          "mitigation": "Exclude unpriced calls from the total and list them by name separately"
+        },
+        {
+          "mode": "Cost shows as zero for a round with actual unpriced activity",
+          "likelihood": "medium",
+          "mitigation": "Distinguish 'no activity' from 'activity with unknown price' and never conflate the two"
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell"
+      ],
+      "entities": [
+        "UsageRecord",
+        "Round"
+      ],
+      "references": []
+    }
+  ],
+  "nfr_goals": [
+    "The shell and navigation render in well under a second on every view",
+    "Visual density and accent color usage remain consistent across all screens with no per-view drift",
+    "The project view remains fully usable without any network access beyond explicit LLM calls",
+    "Status information (round, artifact state, cost) always reflects the true current state of the working directory, never a stale cached view"
+  ]
+}

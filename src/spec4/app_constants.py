@@ -17,6 +17,7 @@ PATH_TO_PHASE = {
     "/agents": "agent_select",
     "/chat": "chat",
     "/design": "designer",
+    "/artifacts": "artifacts",
 }
 
 # The application root, whose destination is decided rather than looked up.

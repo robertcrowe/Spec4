@@ -420,6 +420,9 @@ class TestLayout:
         assert ids == [
             "chat-token-count",
             "chat-elapsed",
+            # Open sits immediately before the Download it belongs to; the
+            # pairing itself is `tests/test_chat_open_links.py`'s subject.
+            "btn-open-review",
             "btn-dl-review",
             "btn-rescan-project",
             "btn-review-to-brainstormer",
@@ -457,7 +460,11 @@ class TestLayout:
         by_id = {getattr(c, "id", ""): c for c in _bar_children(session)}
         counter, elapsed = by_id["chat-token-count"], by_id["chat-elapsed"]
         assert elapsed.size == counter.size
-        assert elapsed.c == counter.c
+        # Both are the turn's numbers, so both are monospace and neither
+        # carries a colour of its own — the dimming is a rule in v3.css keyed
+        # on the two ids together, which is what keeps them alike now.
+        assert elapsed.className == counter.className == "mono"
+        assert getattr(elapsed, "c", None) == getattr(counter, "c", None) is None
 
     def test_elapsed_readout_starts_empty(self) -> None:
         """The server cannot tick; the client owns the text for the stream."""

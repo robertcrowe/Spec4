@@ -1,0 +1,132 @@
+{
+  "vision_statement": {
+    "name": "Spec4",
+    "vision": {
+      "purpose": "A local-first pipeline of seven planning agents \u2014 CodeScanner, Brainstormer, Agentifier, Designer, StackAdvisor, Phaser, Deployer \u2014 that turns a rough idea or an existing codebase into a versioned folder of specs (`.spec4/v{N}/`), ready for a coding agent to execute phase by phase. Runs as a locally served web app at `localhost:8050`, with bring-your-own-key (BYOK) access across eight LLM providers; keys stay in the browser and never reach the server or disk.\n\nThis round's goal: extend the dev-tool register established for the app shell and home screen to the chat frame, and add the Artifact View that the round tree was designed to open into \u2014 completing the two items v0 marked for v1. The setup wizard, gate card, project-mode question, directory picker, and Designer wizard are unchanged this round (that remains v2).",
+      "ui_surface": "Web app \u2014 Python, Dash, Dash Mantine Components \u2014 served locally at localhost:8050. Unchanged architecture; this round extends the existing dev-tool register to the chat frame and adds one new screen (Artifact View) on the same foundation, not a rewrite.",
+      "target_audience": [
+        "Developers who already use Claude Code, Kiro, or similar AI coding agents daily, and who are skeptical of spec-driven tooling. Single audience \u2014 no secondary users."
+      ],
+      "key_features_mvp": [
+        {
+          "Development Tool Shell": {
+            "description": "Header becomes a status bar: working directory (monospace), round (v{N}), default provider and model (monospace), Spec4 version. Primary nav: Project, Artifacts, Settings, plus one Docs link. Removes the external-link drawer, footer, and in-app landing page. Removes grid background, kicker labels, gradient text, hero spacing, card hover effects, button glows, and all emoji. Cuts vertical spacing roughly in half. Keeps the dark theme. #39FF14 green becomes the sole Mantine primary/accent color (primary buttons, active state, focus rings); secondary buttons are neutral outlines. #1E88E5 blue survives only in the wordmark. Monospace for any file, path, command, model name, or figure.",
+            "example": "The header reads as a status line, not a hero banner.",
+            "id": "development_tool_shell"
+          }
+        },
+        {
+          "Open To The Project": {
+            "description": "When a working directory is remembered, `/` opens the project view directly; otherwise it opens the directory picker. No introduction screen.",
+            "example": "Returning users land straight in their project, not on a splash page.",
+            "id": "open_to_the_project"
+          }
+        },
+        {
+          "Round Tree": {
+            "description": "The project view's first element is the current round's `.spec4/v{N}/` folder as a tree: one line per artifact in pipeline order, each with a status \u2014 present, needs update (an upstream artifact is newer), or missing. Files are colored by lane with a three-item legend: prompts for the agent (phases/), reference for the agent (code_review.json, vision.json, feature_specs.json, ai_features.json, design/mock.html, design/manifest.json, stack.json), a record for you (deployment-plan.md, usage.json). Status comes from the existing dependency graph; usage.json is never marked needs-update. Each line opens the Artifact View at that file.",
+            "example": "The round is shown as its files.",
+            "id": "round_tree"
+          }
+        },
+        {
+          "Agent Rows": {
+            "description": "The seven agents as compact rows in pipeline order replace the cards. Each row: agent name, the artifact it produces (monospace), the model it last ran on this round (from usage.json's per-agent models list; blank if it has not run), tokens in and out this round, and the action button using the existing state model \u2014 Start, Continue (an agent with an in-progress conversation and no artifact yet), Modify, Needs Update, Not Ready, Required \u2014 with its existing semantics and routing. No step numbers, descriptions, or emoji.",
+            "example": "A dense list of agent status rows, not a grid of descriptive cards.",
+            "id": "agent_rows"
+          }
+        },
+        {
+          "Round Cost": {
+            "description": "The round's estimated cost so far, from usage.json totals, on the project view, following the cost card's existing labelling rules: labelled 'estimated', tokens shown, calls that could not be priced named and excluded, never '$0.0000' for unknown.",
+            "example": "\"Estimated cost, v0: $0.7312 \u00b7 2 of 19 calls could not be priced and are excluded\" \u2014 never \"$0.0000\".",
+            "id": "round_cost"
+          }
+        },
+        {
+          "Artifact View": {
+            "description": "A screen at /artifacts that renders any file from the current round's .spec4/v{N}/ folder in monospace. Left: a round selector listing every round on disk (defaulting to the active round) above the round tree from the project view, same lanes and status flags, with the selected file marked. Right: the file \u2014 JSON pretty-printed, Markdown and other text as-is, with line numbers \u2014 under a one-line monospace header giving path, size, last modified, and lane. A Download button; for design/mock.html, also an 'Open rendered' button that opens the mock in a new tab the way the Designer wizard already does. A missing file shows its line in the tree and, when selected, the message 'missing \u2014 produced by {Agent}'. Only files in the reviewed artifact table are ever read, resolved strictly under the project's .spec4/ folder; no other path can be requested through this screen.",
+            "example": "Selecting stack.json in the tree shows its path, size, and last-modified time above the pretty-printed JSON, with a Download button beside it.",
+            "id": "artifact_view",
+            "depends_on": [
+              "development_tool_shell"
+            ]
+          }
+        },
+        {
+          "Artifact Links": {
+            "description": "The Artifacts item returns to the nav, between Project and Settings. Every line in the project view's round tree opens the Artifact View at that file. Every 'Download X' button in the chat frame's action row gains an 'Open X' button beside it that does the same.",
+            "example": "Clicking the vision.json line in the round tree opens the Artifact View with that file selected.",
+            "id": "artifact_links",
+            "depends_on": [
+              "artifact_view"
+            ]
+          }
+        },
+        {
+          "Chat Frame Register": {
+            "description": "The chat frame keeps every function it has \u2014 the agent pill bar, transcript, live progress bar with chars and elapsed counters, turn tokens, Fast Forward with its info modal, retry panel, breadth panel, downloads, continue buttons, composer, model chip, and status line \u2014 and takes the v0 register. Pill bar: the seven agents as plain text in pipeline order, the active one marked the way the active nav item is, completed ones at full weight, unreachable ones dimmed with the existing tooltip, no arrows between them; the pill bar's '\u2190 Back' button and every per-agent '\u2190 Back to X' button in the action row are removed, since the pill bar and the status bar's Project link already provide that navigation. Transcript: messages are blocks, not bubbles, with a dimmed one-word speaker label above each; the user's block carries a neutral left rule; no fills; default height grows to about 60% of the viewport, still scrollable. The run's cost, when a run completes, is shown as the same three-line strip the project view uses for round cost, replacing the prior card styling. Action row: counters (chars, turn tokens, elapsed) in monospace; one filled-green primary per row (the Continue button); Fast Forward, Download, Open, and Re-scan as neutral outlines (Re-scan in the warn tone); the 'Continue to Designer' skip beside 'Continue to Agentifier' stays an outline. Composer unchanged. Model chip shows the model name in monospace. Progress bar: thin, striped, animated \u2014 the only motion on screen, used purely as a live-activity signal.",
+            "example": "The pill bar reads as a row of plain labels, not a stepper with arrows; a completed run's cost shows as a plain three-line strip, not a card.",
+            "id": "chat_frame_register",
+            "depends_on": [
+              "development_tool_shell"
+            ]
+          }
+        }
+      ],
+      "differentiators": [
+        "The open `.spec4` file format \u2014 existing, unchanged; the round tree and now the Artifact View make it directly visible and navigable.",
+        "Any LLM model usable at any pipeline step \u2014 existing, unchanged.",
+        "Per-step cost tracking \u2014 existing, unchanged.",
+        "Staleness detection \u2014 existing, unchanged."
+      ],
+      "future_enhancements": [
+        {
+          "Register Extension (v2)": {
+            "description": "The setup wizard, per-agent gate card, project-mode question, directory picker, and Designer wizard inherit the dev-tool register established in v0 and extended to the chat frame and Artifact View in this round.",
+            "example": "The setup wizard's provider step uses the same neutral outlines and monospace model names as the chat frame's model chip."
+          }
+        }
+      ],
+      "monetization": {
+        "current": "None \u2014 open source, Apache 2.0 license.",
+        "future_options": []
+      },
+      "constraints": [
+        "Dash and Dash Mantine Components only \u2014 no new front-end dependency.",
+        "API keys never reach the server or disk.",
+        "The gate card, model chip, and retry panel share one model-selection path; nothing parallel is added.",
+        "Existing component ids are a test contract and are kept, except the Back buttons being removed, whose tests are updated.",
+        "usage.json stays out of the dependency graph (never contributes to staleness/status).",
+        "Standing rule for every element on screen: if it is not a fact, a command, an artifact, or a control, it goes.",
+        "Layout state lives in the two browser stores.",
+        "The accent is the theme primary color; no component sets a color locally.",
+        "Monospace for files, paths, model names, commands, and figures.",
+        "No emoji, no icons.",
+        "No decorative motion; motion is used only as a live-activity signal (e.g., the progress bar).",
+        "Artifact View reads only files in the reviewed artifact table, resolved strictly under the project's .spec4/ folder \u2014 no other path can be requested through this screen."
+      ],
+      "references": []
+    },
+    "revision_history": [
+      {
+        "version": 1,
+        "based_on_version": 0,
+        "goal": "Extend the v0 dev-tool register to the chat frame and ship the Artifact View that the round tree was built to open into, completing the two v1 items scheduled in the previous round; the setup wizard, gate card, project-mode question, directory picker, and Designer wizard remain untouched (v2).",
+        "changes": {
+          "added": [
+            "Artifact View",
+            "Artifact Links",
+            "Chat Frame Register"
+          ],
+          "modified": [
+            "Round Tree",
+            "Agent Rows"
+          ],
+          "removed": []
+        },
+        "rationale": "These two features complete the v1 future-enhancement items scoped in the previous round: extending the dev-tool register to the chat frame, and building the Artifact View the round tree was designed to open into."
+      }
+    ]
+  }
+}

@@ -258,7 +258,7 @@ class TestTheBarReopensThePicker:
     """
 
     def test_the_directory_is_a_button(self, tmp_path: pathlib.Path) -> None:
-        context, _, _ = on_status_bar(
+        context, *_ = on_status_bar(
             {**_default_session(), "working_dir": str(tmp_path)}, {}
         )
         assert "btn-status-bar-dir" in _ids(context)
@@ -267,13 +267,13 @@ class TestTheBarReopensThePicker:
 
     def test_the_empty_state_is_text_not_a_button(self) -> None:
         """With no project there is nothing to reopen at, so no control."""
-        context, _, _ = on_status_bar({}, {})
+        context, *_ = on_status_bar({}, {})
         assert "btn-status-bar-dir" not in _ids(context)
         assert STATUS_EMPTY in _text(context)
 
     def test_a_gone_directory_offers_no_button_either(self) -> None:
         """The bar drops a remembered-but-gone path, and the control with it."""
-        context, _, _ = on_status_bar(
+        context, *_ = on_status_bar(
             {**_default_session(), "working_dir": None},
             {"working_dir": "/no/such/project"},
         )
@@ -378,7 +378,7 @@ class TestTheGoneDirectoryLeavesNothingBehind:
 
     def test_the_status_bar_does_not_name_a_gone_directory(self) -> None:
         gone = "/no/such/project"
-        context, _, _ = on_status_bar(
+        context, *_ = on_status_bar(
             {**_default_session(), "working_dir": None}, {"working_dir": gone}
         )
         assert gone not in _text(context)
@@ -387,7 +387,7 @@ class TestTheGoneDirectoryLeavesNothingBehind:
     def test_the_status_bar_still_names_a_real_directory(
         self, tmp_path: pathlib.Path
     ) -> None:
-        context, _, _ = on_status_bar(
+        context, *_ = on_status_bar(
             {**_default_session(), "working_dir": str(tmp_path)}, {}
         )
         assert str(tmp_path) in _text(context)

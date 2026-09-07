@@ -18,15 +18,19 @@ from __future__ import annotations
 import os
 import pathlib
 from typing import Any
+from unittest.mock import patch
 
 import pytest
+from dash import html, no_update
 
 from spec4 import project_manager
+from spec4.app_constants import PATH_TO_PHASE
 from spec4.app_constants import AGENT_KEYS
-from spec4.callbacks import on_round_tree
+from spec4.callbacks import on_round_tree, on_round_tree_line
 from spec4.layouts import _agent_select_layout, _round_tree, round_tree_lines
 from spec4.layouts._round_tree import (
     ARTIFACT_LANES,
+    LINE_TYPE,
     LANE_PROMPT,
     LANE_RECORD,
     LANE_REF,
@@ -36,6 +40,8 @@ from spec4.layouts._round_tree import (
     STATUS_NEEDS_UPDATE,
     STATUS_PRESENT,
     _ARTIFACTS_BY_AGENT,
+    line_id,
+    rendered_tree_lines,
 )
 from spec4.session import _default_session
 
@@ -378,6 +384,35 @@ def _text(node: Any) -> str:
     return _text(inner) if inner is not None else ""
 
 
+def _listing(tree: Any) -> Any:
+    """The tree's ``<ol>`` — the element the callback replaces wholesale."""
+    return next(
+        node for node in tree.children if getattr(node, "id", "") == "round-tree-list"
+    )
+
+
+def _line_ids(tree: Any) -> set[str]:
+    """The `index` of every pattern-matching line id in a rendered tree.
+
+    Collected by shape rather than by name, the way `_pill_agents` collects the
+    action buttons: the whole point of the id is that it is a dict.
+    """
+    found: set[str] = set()
+    stack: list[Any] = [tree]
+    while stack:
+        node = stack.pop()
+        node_id = getattr(node, "id", None)
+        if isinstance(node_id, dict) and node_id.get("type") == LINE_TYPE:
+            found.add(node_id["index"])
+        children = getattr(node, "children", None)
+        if children is None:
+            continue
+        if not isinstance(children, (list, tuple)):
+            children = [children]
+        stack.extend(children)
+    return found
+
+
 class TestRendering:
     def test_it_renders_its_ids(self, round_dir: pathlib.Path) -> None:
         assert {"round-tree", "round-tree-head", "round-tree-list"} <= _ids(
@@ -471,19 +506,225 @@ class TestRendering:
         assert not any("Icon" in name for name in names)
         assert all(ord(char) < 128 for char in _text(tree))
 
-    def test_the_lines_are_not_clickable(self, round_dir: pathlib.Path) -> None:
-        """Opening a file is the Artifact View's job, in v1."""
+    def test_the_default_form_is_not_clickable(self, round_dir: pathlib.Path) -> None:
+        """The plain form is still plain, and is still the default.
+
+        `linked` is keyword-only with a default of False precisely so that a
+        call site that has not thought about links keeps the tree it had. This
+        is the other half of the inversion below: the link form is opt-in.
+        """
         tree = _round_tree(round_dir, 0)
         stack = [tree]
         while stack:
             node = stack.pop()
             assert type(node).__name__ not in ("A", "Link", "Button", "Anchor")
+            assert not isinstance(getattr(node, "id", None), dict)
             children = getattr(node, "children", None)
             if children is None:
                 continue
             if not isinstance(children, (list, tuple)):
                 children = [children]
             stack.extend(children)
+
+    def test_the_link_form_makes_every_line_clickable(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """Opening a file was the Artifact View's job "in v1" — this is v1.
+
+        Every line, not merely some: a tree where the artifact a developer
+        wants happens not to be a link is worse than one where nothing is,
+        because there is nothing on screen saying which lines lead anywhere.
+        """
+        tree = _round_tree(round_dir, 0, linked=True)
+        expected = {line.path for line in rendered_tree_lines(round_dir, 0)}
+        assert _line_ids(tree) == {line_id(path)["index"] for path in expected}
+
+    def test_the_ids_come_from_the_one_helper(self, round_dir: pathlib.Path) -> None:
+        """Render and Input cannot drift: both ask `line_id`.
+
+        A pattern id that does not match its Input produces a control that
+        does nothing, with no error anywhere, so the id dict is asserted whole
+        rather than by its `index` alone.
+        """
+        listing = _listing(_round_tree(round_dir, 0, linked=True))
+        for row in listing.children:
+            control = row.children
+            assert control.id == line_id(control.id["index"])
+            assert control.id["type"] == LINE_TYPE
+
+    def test_a_linked_line_keeps_the_plain_lines_classes(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """One code path: linking wraps the row, it does not rebuild it.
+
+        The lane class, the status token and the `mono` / `is-missing` /
+        `is-stale` modifiers are computed once and are the same in both forms,
+        so the two trees cannot drift in anything but clickability.
+        """
+        plain = _listing(_round_tree(round_dir, 0)).children
+        linked = _listing(_round_tree(round_dir, 0, linked=True)).children
+        assert len(plain) == len(linked)
+        for plain_row, linked_row in zip(plain, linked):
+            assert plain_row.className == linked_row.className
+            assert _text(plain_row) == _text(linked_row)
+            # The two spans inside are identical; the link is a wrapper.
+            assert [child.className for child in plain_row.children] == [
+                child.className for child in linked_row.children.children
+            ]
+
+    def test_the_control_is_keyboard_operable(self, round_dir: pathlib.Path) -> None:
+        """A button, not a bare div with a click handler.
+
+        The mock draws an anchor; the app has no href to give it — the click
+        moves the app, not the document — so it is the same choice `.sb-dir`
+        makes for the status bar's directory field.
+        """
+        listing = _listing(_round_tree(round_dir, 0, linked=True))
+        for row in listing.children:
+            assert type(row.children).__name__ == "Button"
+
+    def test_no_line_names_a_colour(self, round_dir: pathlib.Path) -> None:
+        """D-LR2: lane and accent both arrive through classes, never props."""
+        stack: list[Any] = [
+            _round_tree(round_dir, 0, linked=True, selected="vision.json")
+        ]
+        while stack:
+            node = stack.pop()
+            assert getattr(node, "color", None) is None
+            assert getattr(node, "style", None) is None
+            children = getattr(node, "children", None)
+            if children is None:
+                continue
+            if not isinstance(children, (list, tuple)):
+                children = [children]
+            stack.extend(children)
+
+
+class TestTheSelectedLine:
+    """The current file is marked with the shell's active-state mechanism."""
+
+    def test_the_selected_line_is_marked(self, round_dir: pathlib.Path) -> None:
+        listing = _listing(
+            _round_tree(round_dir, 0, linked=True, selected="vision.json")
+        )
+        marked = [row for row in listing.children if "is-selected" in row.className]
+        assert len(marked) == 1
+        assert "vision.json" in _text(marked[0])
+
+    def test_nothing_is_marked_by_default(self, round_dir: pathlib.Path) -> None:
+        listing = _listing(_round_tree(round_dir, 0, linked=True))
+        assert not any("is-selected" in row.className for row in listing.children)
+
+    def test_a_selection_that_is_not_in_the_tree_marks_nothing(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """No line is invented for it, and no other line is marked instead."""
+        listing = _listing(
+            _round_tree(round_dir, 0, linked=True, selected="not/a/file.json")
+        )
+        assert not any("is-selected" in row.className for row in listing.children)
+
+    def test_the_mark_is_a_class_not_a_colour(self, round_dir: pathlib.Path) -> None:
+        """The same mechanism `sb-nav-link--active` uses in the header."""
+        listing = _listing(
+            _round_tree(round_dir, 0, linked=True, selected="usage.json")
+        )
+        row = next(r for r in listing.children if "is-selected" in r.className)
+        assert getattr(row, "color", None) is None
+        assert getattr(row, "style", None) is None
+
+
+class TestThePhaseFilesExpand:
+    """`phases/` is a directory; a click has to name one file.
+
+    The reviewed table carries the directory, because that is what Phaser
+    produces and what the lane and staleness rules are written against. What a
+    screen lists is one line per phase file on disk, so that every line in the
+    tree is something the Artifact View can open.
+    """
+
+    def test_the_reviewed_table_still_carries_the_directory(self) -> None:
+        assert "phases/" in {a.path for a in ROUND_ARTIFACTS}
+        assert "phases/" in {line.path for line in round_tree_lines(None, None)}
+
+    def test_each_phase_file_gets_its_own_line(self, round_dir: pathlib.Path) -> None:
+        base = project_manager.get_version_dir(round_dir, 0)
+        for name in ("phase2.md", "phase3.md"):
+            (base / "phases" / name).write_text("# a phase\n")
+
+        paths = [line.path for line in rendered_tree_lines(round_dir, 0)]
+        assert "phases/" not in paths
+        assert "phases/phase1.md" in paths
+        assert "phases/phase2.md" in paths
+        assert "phases/phase3.md" in paths
+
+    def test_they_sort_by_phase_number_not_by_name(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """`phase10.md` comes after `phase9.md`, which a plain sort reverses."""
+        base = project_manager.get_version_dir(round_dir, 0)
+        for name in ("phase2.md", "phase9.md", "phase10.md"):
+            (base / "phases" / name).write_text("# a phase\n")
+
+        phases = [
+            line.path
+            for line in rendered_tree_lines(round_dir, 0)
+            if line.path.startswith("phases/")
+        ]
+        assert phases == [
+            "phases/phase1.md",
+            "phases/phase2.md",
+            "phases/phase9.md",
+            "phases/phase10.md",
+        ]
+
+    def test_they_keep_the_directory_lane_and_status(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """Lanes come from `ROUND_ARTIFACTS`, never from the file extension."""
+        base = project_manager.get_version_dir(round_dir, 0)
+        (base / "phases" / "phase2.md").write_text("# a phase\n")
+        newer = (base / "phases" / "phase1.md").stat().st_mtime + 1000
+        os.utime(base / "stack.json", (newer, newer))
+
+        group = _by_path(round_tree_lines(round_dir, 0))["phases/"]
+        expanded = [
+            line
+            for line in rendered_tree_lines(round_dir, 0)
+            if line.path.startswith("phases/")
+        ]
+        assert expanded
+        for line in expanded:
+            assert line.lane == LANE_PROMPT == group.lane
+            assert line.status == group.status
+
+    def test_an_empty_phases_folder_keeps_the_directory_line(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """A line that vanished would say nothing about what is missing."""
+        base = project_manager.get_version_dir(round_dir, 0)
+        for child in (base / "phases").iterdir():
+            child.unlink()
+
+        line = _by_path(rendered_tree_lines(round_dir, 0))["phases/"]
+        assert line.status == STATUS_MISSING
+        assert line.lane == LANE_PROMPT
+
+    def test_no_round_at_all_keeps_the_directory_line(self) -> None:
+        paths = [line.path for line in rendered_tree_lines(None, None)]
+        assert "phases/" in paths
+
+    def test_every_expanded_line_is_individually_addressable(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """The point of the expansion: one click names one exact file."""
+        base = project_manager.get_version_dir(round_dir, 0)
+        (base / "phases" / "phase2.md").write_text("# a phase\n")
+
+        ids = _line_ids(_round_tree(round_dir, 0, linked=True))
+        assert "phases/phase1.md" in ids
+        assert "phases/phase2.md" in ids
+        assert "phases/" not in ids
 
 
 def _pill_agents(component: Any) -> set[str]:
@@ -519,6 +760,47 @@ class TestItSitsFirstInTheProjectView:
         # The seven action buttons carry pattern-matching ids, so they are
         # collected by shape rather than by name.
         assert _pill_agents(view) == set(AGENT_KEYS)
+
+    def test_the_project_view_asks_for_the_link_form(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """It calls the shared renderer with links on — not a tree of its own.
+
+        Asserted through what reaches the page rather than by inspecting the
+        call, because what matters is that the lines a developer sees are the
+        ones they can click.
+        """
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        view = _agent_select_layout(session)
+        assert _line_ids(view)
+
+    def test_every_line_in_the_view_is_a_link(self, round_dir: pathlib.Path) -> None:
+        """The count is derived, never hard-coded.
+
+        `phases/` expands into whatever `.md` files the round actually holds,
+        so a count written down here would break the first time a phase file
+        was added. The expectation comes from `ROUND_ARTIFACTS` and the disk,
+        which is where the tree's own line list comes from.
+        """
+        base = project_manager.get_version_dir(round_dir, 0)
+        for name in ("phase2.md", "phase3.md"):
+            (base / "phases" / name).write_text("# a phase\n")
+
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        expected = {line.path for line in rendered_tree_lines(round_dir, 0)}
+        # The derivation, restated from the table rather than from the
+        # function under test: everything but `phases/`, plus the phase files.
+        from_table = {a.path for a in ROUND_ARTIFACTS} - {"phases/"}
+        from_disk = {
+            f"phases/{child.name}"
+            for child in (base / "phases").iterdir()
+            if child.is_file()
+        }
+        assert expected == from_table | from_disk
+
+        ids = _line_ids(_agent_select_layout(session))
+        assert ids == expected
+        assert len(ids) == len(ROUND_ARTIFACTS) - 1 + len(from_disk)
 
 
 # ---------------------------------------------------------------------------
@@ -587,3 +869,199 @@ class TestTheCallbackRecomputes:
         head, lines = on_round_tree("round-tree", None)
         assert head is not None
         assert len(lines) == len(_ALL_ARTIFACTS)
+
+
+# ---------------------------------------------------------------------------
+# The line click
+# ---------------------------------------------------------------------------
+
+
+class _FakeCtx:
+    """Stand-in for dash.ctx carrying only the pattern-matching triggered id."""
+
+    def __init__(self, triggered_id: Any) -> None:
+        self.triggered_id = triggered_id
+
+
+def _click(path: str | None, session: Any, n_clicks: Any = None) -> Any:
+    """Click a tree line, the way Dash would deliver it.
+
+    The triggered id is built by `line_id`, the same helper the renderer uses,
+    so a test cannot pass against an id shape the tree does not actually write.
+    """
+    triggered = line_id(path) if path is not None else None
+    with patch("spec4.callbacks.ctx", _FakeCtx(triggered)):
+        return on_round_tree_line(n_clicks if n_clicks is not None else [1], session)
+
+
+class TestClickingALine:
+    def test_it_opens_the_artifact_view(self, round_dir: pathlib.Path) -> None:
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        new_session, pathname = _click("vision.json", session)
+        assert pathname == "/artifacts"
+        assert PATH_TO_PHASE[pathname] == "artifacts"
+
+    def test_it_records_the_exact_file(self, round_dir: pathlib.Path) -> None:
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        new_session, _ = _click("design/manifest.json", session)
+        assert new_session["selected_file"] == "design/manifest.json"
+
+    def test_it_records_the_round(self, round_dir: pathlib.Path) -> None:
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        new_session, _ = _click("vision.json", session)
+        assert new_session["selected_round"] == 0
+
+    def test_an_expanded_phase_file_is_addressable(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """The reason `phases/` expands: a click names one file, not a folder."""
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        new_session, pathname = _click("phases/phase1.md", session)
+        assert new_session["selected_file"] == "phases/phase1.md"
+        assert pathname == "/artifacts"
+
+    def test_the_target_is_resolved_at_click_time(self, tmp_path: pathlib.Path) -> None:
+        """The failure mode this link has: the round moves under the page.
+
+        The tree was drawn while the session was on round 0; by the time the
+        developer clicks, the session has been pinned to round 1. The pairing
+        written has to be the round that is current *now* — a value captured at
+        render time would open the previous round's copy of the file.
+        """
+        project_manager.ensure_version_dir(tmp_path, 0)
+        project_manager.ensure_version_dir(tmp_path, 1)
+        session = {
+            **_default_session(),
+            "working_dir": str(tmp_path),
+            "phase_version": 1,
+        }
+        new_session, _ = _click("vision.json", session)
+        assert new_session["selected_round"] == 1
+
+    def test_it_leaves_the_rest_of_the_session_alone(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """Only the two selection keys move; a click is not a state reset."""
+        session = {
+            **_default_session(),
+            "working_dir": str(round_dir),
+            "messages": [{"role": "user", "content": "hi"}],
+            "active_agent": "phaser",
+        }
+        new_session, _ = _click("stack.json", session)
+        changed = {
+            key
+            for key in set(session) | set(new_session)
+            if session.get(key) != new_session.get(key)
+        }
+        assert changed == {"selected_round", "selected_file"}
+
+    def test_a_second_click_replaces_the_first(self, round_dir: pathlib.Path) -> None:
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        once, _ = _click("vision.json", session)
+        twice, _ = _click("usage.json", once, n_clicks=[1, 1])
+        assert twice["selected_file"] == "usage.json"
+
+    def test_no_project_open_is_not_an_error(self) -> None:
+        """No working directory means no round — the file is still recorded."""
+        new_session, pathname = _click("vision.json", _default_session())
+        assert new_session["selected_file"] == "vision.json"
+        assert new_session["selected_round"] is None
+        assert pathname == "/artifacts"
+
+    def test_an_empty_session_is_not_an_error(self) -> None:
+        new_session, pathname = _click("vision.json", None)
+        assert new_session["selected_file"] == "vision.json"
+        assert pathname == "/artifacts"
+
+
+class TestTheClickGuards:
+    """A page load must never write a selection into the session store.
+
+    `prevent_initial_call` covers the first render; these cover the fire Dash
+    sends whenever the set of matching components changes, which on this page
+    is *every* render — the tree is rebuilt each time. Without the guards,
+    simply opening the project view would navigate away from it.
+    """
+
+    def test_a_render_with_no_click_writes_nothing(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        assert _click("vision.json", session, n_clicks=[None]) == (
+            no_update,
+            no_update,
+        )
+        assert _click("vision.json", session, n_clicks=[0]) == (
+            no_update,
+            no_update,
+        )
+        assert _click("vision.json", session, n_clicks=[]) == (
+            no_update,
+            no_update,
+        )
+
+    def test_a_missing_triggered_id_writes_nothing(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        assert _click(None, session) == (no_update, no_update)
+
+    def test_a_triggered_id_with_no_path_writes_nothing(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        with patch("spec4.callbacks.ctx", _FakeCtx({"type": LINE_TYPE, "index": ""})):
+            assert on_round_tree_line([1], session) == (no_update, no_update)
+
+    def test_the_guard_is_registered_on_the_callback_too(self) -> None:
+        """`prevent_initial_call=True`, asserted on the registration itself."""
+        from dash._callback import GLOBAL_CALLBACK_LIST
+
+        registered = [
+            spec
+            for spec in GLOBAL_CALLBACK_LIST
+            if any(LINE_TYPE in str(dep.get("id", "")) for dep in spec["inputs"])
+        ]
+        assert len(registered) == 1
+        assert registered[0]["prevent_initial_call"] is True
+
+
+class TestTheSelectionReachesTheTree:
+    """The store the click writes is what marks the line on the next render."""
+
+    def test_the_recompute_keeps_the_lines_linked(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """The callback replaces the whole list, so it must relink it.
+
+        A recompute in the plain form leaves a tree that looks identical and
+        has silently stopped working — the exact bug this asserts against.
+        """
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        _, lines = on_round_tree("round-tree", session)
+        assert _line_ids(html.Ol(lines))
+
+    def test_the_recompute_marks_the_selected_file(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        session = {
+            **_default_session(),
+            "working_dir": str(round_dir),
+            "selected_file": "vision.json",
+        }
+        _, lines = on_round_tree("round-tree", session)
+        marked = [row for row in lines if "is-selected" in row.className]
+        assert len(marked) == 1
+        assert "vision.json" in _text(marked[0])
+
+    def test_a_click_then_a_render_marks_what_was_clicked(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """The round trip: click, store, redraw."""
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        clicked, _ = _click("stack.json", session)
+        _, lines = on_round_tree("round-tree", clicked)
+        marked = [row for row in lines if "is-selected" in row.className]
+        assert len(marked) == 1
+        assert "stack.json" in _text(marked[0])

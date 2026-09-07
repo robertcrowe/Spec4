@@ -1,4 +1,4 @@
-"""The shell is a status bar and three nav links, and nothing else.
+"""The shell is a status bar and four nav links, and nothing else.
 
 Two altitudes here. The first calls ``_status_bar()`` directly and asserts on
 the component tree it returns — what is present, what the nav says, and what
@@ -15,10 +15,11 @@ from typing import Any
 
 import spec4.app as app_module
 from spec4 import __version__
+from spec4.app_constants import PATH_TO_PHASE, PHASE_ROOT
 from spec4.callbacks import on_status_bar
 from spec4 import llm_selection
 from spec4.layouts import STATUS_EMPTY, _status_bar
-from spec4.layouts._status_bar import NOT_CONNECTED
+from spec4.layouts._status_bar import ARTIFACTS_PATH, NAV_ORDER, NOT_CONNECTED
 from spec4.session import _default_session
 
 # The marketing-era shell, gone in this round. `nav-*` are the external-link
@@ -119,27 +120,52 @@ class TestStatusBarLayout:
             "status-bar-context",
             "status-bar-version",
             "status-bar-nav-project",
+            "status-bar-nav-artifacts",
             "status-bar-nav-settings",
             "status-bar-nav-docs",
         } <= ids
 
-    def test_the_nav_is_exactly_project_settings_docs(self) -> None:
-        assert _nav_labels(_status_bar()) == ["Project", "Settings", "Docs"]
+    def test_the_nav_is_exactly_project_artifacts_settings_docs(self) -> None:
+        assert _nav_labels(_status_bar()) == [
+            "Project",
+            "Artifacts",
+            "Settings",
+            "Docs",
+        ]
 
-    def test_there_is_no_artifacts_nav_item(self) -> None:
-        """Not as a link and not as a disabled placeholder either.
+    def test_the_declared_order_is_the_rendered_order(self) -> None:
+        """``NAV_ORDER`` is data the tests read; the bar is what a user sees.
 
-        Artifacts arrives in v1 with the Artifact View; a greyed-out item now
-        would promise a screen that does not exist.
+        They are pinned to each other so the register cannot be changed in one
+        place and asserted from the other.
         """
-        bar = _status_bar()
-        assert not any("artifact" in label.lower() for label in _nav_labels(bar))
-        assert not any("artifact" in i.lower() for i in _ids(bar))
+        assert _nav_labels(_status_bar()) == list(NAV_ORDER)
+
+    def test_artifacts_sits_between_project_and_settings(self) -> None:
+        """The position the Artifact Links specification fixes, not merely its
+        presence: the entry is a second way into the open project, so it goes
+        beside Project rather than beside the app's own configuration."""
+        labels = _nav_labels(_status_bar())
+        assert labels.index("Project") < labels.index("Artifacts")
+        assert labels.index("Artifacts") < labels.index("Settings")
+
+    def test_artifacts_is_an_in_app_route(self) -> None:
+        """A ``dcc.Link`` to the routing table's path, not a page reload."""
+        entry = _nav(_status_bar()).children[1]
+        assert type(entry).__name__ == "Link"
+        assert entry.href == ARTIFACTS_PATH
+        assert PATH_TO_PHASE[ARTIFACTS_PATH] == "artifacts"
 
     def test_docs_is_the_one_external_link(self) -> None:
-        docs = _nav(_status_bar()).children[2]
+        docs = _nav(_status_bar()).children[3]
         assert docs.href.startswith("https://")
         assert docs.target == "_blank"
+
+    def test_no_nav_entry_names_a_colour(self) -> None:
+        """D-LR2: the active accent is the theme primary, never a local prop."""
+        for entry in _nav(_status_bar()).children:
+            assert getattr(entry, "color", None) is None
+            assert getattr(entry, "style", None) is None
 
     def test_the_version_is_the_running_one(self) -> None:
         versions = [
@@ -231,7 +257,7 @@ def _session(**extra: Any) -> dict[str, Any]:
 
 class TestStatusBarCallback:
     def test_it_shows_the_four_values(self, tmp_path: pathlib.Path) -> None:
-        context, _, _ = on_status_bar(_session(working_dir=str(tmp_path)), {})
+        context, *_ = on_status_bar(_session(working_dir=str(tmp_path)), {})
         text = _text(context)
         assert str(tmp_path) in text
         assert "round v0" in text
@@ -246,7 +272,7 @@ class TestStatusBarCallback:
         ``Not connected`` that replaces them. Two dashes there would say "we do
         not know which model", when what is true is "there is no connection".
         """
-        context, _, _ = on_status_bar({}, {})
+        context, *_ = on_status_bar({}, {})
         text = _text(context)
         assert text.count(STATUS_EMPTY) == 2
         assert NOT_CONNECTED in text
@@ -265,8 +291,8 @@ class TestStatusBarCallback:
         first.mkdir()
         second.mkdir()
 
-        before, _, _ = on_status_bar(_session(working_dir=str(first)), {})
-        after, _, _ = on_status_bar(_session(working_dir=str(second)), {})
+        before, *_ = on_status_bar(_session(working_dir=str(first)), {})
+        after, *_ = on_status_bar(_session(working_dir=str(second)), {})
 
         assert str(first) in _text(before)
         assert str(first) not in _text(after)
@@ -274,7 +300,7 @@ class TestStatusBarCallback:
 
     def test_it_follows_the_round(self, tmp_path: pathlib.Path) -> None:
         session = _session(working_dir=str(tmp_path), phase_version=3)
-        context, _, _ = on_status_bar(session, {})
+        context, *_ = on_status_bar(session, {})
         assert "round v3" in _text(context)
 
     def test_the_directory_falls_back_to_the_remembered_prefs(
@@ -291,7 +317,7 @@ class TestStatusBarCallback:
             "provider": "openai",
             "model": "gpt-5-mini",
         }
-        context, _, _ = on_status_bar({}, prefs)
+        context, *_ = on_status_bar({}, prefs)
         assert str(tmp_path) in _text(context)
 
     def test_a_remembered_model_is_not_reported_as_a_connection(
@@ -314,7 +340,7 @@ class TestStatusBarCallback:
             "model": "claude-sonnet-4-6",
             "api_key": "sk-ant-xxx",
         }
-        context, _, _ = on_status_bar({}, prefs)
+        context, *_ = on_status_bar({}, prefs)
         text = _text(context)
         assert NOT_CONNECTED in text
         assert "anthropic" not in text
@@ -344,7 +370,7 @@ class TestStatusBarCallback:
         self, tmp_path: pathlib.Path
     ) -> None:
         """The guard must not swallow the fields it is guarding."""
-        context, _, _ = on_status_bar(_session(working_dir=str(tmp_path)), {})
+        context, *_ = on_status_bar(_session(working_dir=str(tmp_path)), {})
         text = _text(context)
         assert NOT_CONNECTED not in text
         assert "anthropic" in text
@@ -398,20 +424,44 @@ class TestStatusBarCallback:
                 }
             },
         )
-        context, _, _ = on_status_bar(session, {})
+        context, *_ = on_status_bar(session, {})
         text = _text(context)
         assert "claude-sonnet-4-6" in text
         assert "gpt-5" not in text
 
     def test_it_marks_project_as_current_by_default(self) -> None:
-        _, project, settings = on_status_bar(_session(phase="agent_select"), {})
+        _, project, artifacts, settings = on_status_bar(
+            _session(phase="agent_select"), {}
+        )
         assert "active" in project
+        assert "active" not in artifacts
         assert "active" not in settings
 
     def test_the_setup_wizard_marks_settings(self) -> None:
-        _, project, settings = on_status_bar(_session(phase="setup"), {})
+        _, project, artifacts, settings = on_status_bar(_session(phase="setup"), {})
         assert "active" not in project
+        assert "active" not in artifacts
         assert "active" in settings
+
+    def test_the_artifact_view_marks_artifacts(self) -> None:
+        _, project, artifacts, settings = on_status_bar(_session(phase="artifacts"), {})
+        assert "active" not in project
+        assert "active" in artifacts
+        assert "active" not in settings
+
+    def test_exactly_one_item_is_ever_marked(self) -> None:
+        """One accent, one active state: two marked items would be two.
+
+        Every phase the app can sit in is walked, so a phase added later
+        without a nav rule fails here rather than lighting up nothing.
+        """
+        for phase in [PHASE_ROOT, *PATH_TO_PHASE.values()]:
+            marked = [
+                cls
+                for cls in on_status_bar(_session(phase=phase), {})[1:]
+                if "active" in cls
+            ]
+            assert len(marked) == 1, phase
 
     def test_it_survives_empty_stores(self) -> None:
         """The very first render, before either store has been written."""

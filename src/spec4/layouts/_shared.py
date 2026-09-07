@@ -6,8 +6,6 @@ from typing import Any
 from dash import dcc, html
 import dash_mantine_components as dmc
 
-from spec4 import project_manager
-
 
 # ---------------------------------------------------------------------------
 # Primitive UI helpers
@@ -37,31 +35,42 @@ def _error(msg: str) -> Any:
     return dmc.Alert(msg, color="red", variant="light", mt="sm")
 
 
-# ---------------------------------------------------------------------------
-# Cost summary card — shown at the end of every user-visible agent run
-# ---------------------------------------------------------------------------
+def _sep() -> Any:
+    """The dimmed ``·`` between two fields of a one-line mono strip.
 
-COST_DISCLAIMER = (
-    "Estimates only. Costs are derived from provider-reported token counts and "
-    "LiteLLM's community-maintained price map, which can lag provider price "
-    "sheets and has no entry for some models. Your provider's billing is the "
-    "authoritative figure."
-)
+    Two such strips exist — the status bar's context line and the Artifact
+    View's file header — and the design mock draws them with the same dot at
+    the same weight and the same padding. One helper and one CSS rule
+    (``.sb-sep``) rather than two of each, so a change to the separator cannot
+    land on only one of the strips that use it.
+    """
+    return html.Span("·", className="sb-sep")
 
-# The same caveat at the density the project view's one-line strip can carry.
-# It names the price source the round's ``usage.json`` recorded, so a file
-# written by an older Spec4 against a different map still describes itself
-# rather than whatever this build happens to use.
+
+# ---------------------------------------------------------------------------
+# Cost wording — the pieces every cost surface in the app is built from
+# ---------------------------------------------------------------------------
+#
+# The frames live elsewhere: `_round_cost` draws the three-line strip that both
+# the project view and the chat frame wear. What is here is the wording those
+# lines are assembled from — the money format, the token readout, the sentence
+# about calls that could not be priced — so that a reworded caveat lands on
+# every surface at once rather than on whichever one somebody remembered.
+
+# The standing caveat, at the density a one-line strip can carry. It names the
+# price source the round's ``usage.json`` recorded, so a file written by an
+# older Spec4 against a different map still describes itself rather than
+# whatever this build happens to use.
 PRICE_SOURCE_FALLBACK = "LiteLLM's price map"
 
 
 def price_source_note(source: Any) -> str:
     """``Estimates from <source>. Your provider's billing is authoritative.``
 
-    The short form of :data:`COST_DISCLAIMER`, for a surface that has one line
-    rather than a paragraph. Both say the same two things — these figures are
-    estimates, and the provider's bill is the real number — and both live here
-    so a reworded caveat cannot land on only one of them.
+    Two things, on one line: these figures are estimates, and the provider's
+    bill is the real number. It is the third line of every cost strip in the
+    app and lives here, beside the wording of the other two, so that a
+    reworded caveat cannot land on only one of them.
 
     Two sentences rather than the mock's one clause, because the source the
     file records carries its own parenthetical and a semicolon after it left
@@ -137,9 +146,9 @@ def _cost_figure(block: dict[str, Any]) -> str:
 def _excluded_note(block: dict[str, Any]) -> str:
     """``2 of 19 calls could not be priced and are excluded``, or ``""``.
 
-    The sentence, without a frame around it: the chat card parenthesises it
-    onto its cost line and the project view's round cost gives it a line of
-    its own with the calls named, but neither writes the wording twice.
+    The sentence, without a frame around it. The cost strip gives it a line
+    of its own with the calls named; anything with less room can parenthesise
+    it onto the figure. Neither writes the wording twice.
     """
     excluded = _excluded_calls(block)
     if not excluded:
@@ -148,63 +157,6 @@ def _excluded_note(block: dict[str, Any]) -> str:
     noun = "call" if calls == 1 else "calls"
     verb = "is" if excluded == 1 else "are"
     return f"{excluded} of {calls} {noun} could not be priced and {verb} excluded"
-
-
-def _cost_line(label: str, block: dict[str, Any]) -> str:
-    """``<label>: <cost> · Tokens: …`` with the pricing gaps spelled out.
-
-    A call the provider reported usage for but LiteLLM could not price is
-    excluded from the figure, so the figure is an undercount by exactly the
-    calls counted in the note. When nothing could be priced there is no figure
-    at all, and the line says so instead of showing ``$0.0000`` — and then the
-    note is redundant, because the figure has already accounted for every
-    call. The token counts follow either way: they are ground truth and do not
-    depend on pricing.
-    """
-    text = f"{label}: {_cost_figure(block)}"
-    note = "" if block.get("cost_usd") is None else _excluded_note(block)
-    if note:
-        text = f"{text} ({note})"
-    return f"{text} · {_token_part(block)}"
-
-
-def cost_summary_card(
-    working_dir: Any, session: dict[str, Any] | None, agent_key: str, agent_label: str
-) -> Any | None:
-    """The estimated-cost card for a finished agent run, or None.
-
-    Reads the round's ``usage.json`` at render time — the persist funnel (chat
-    turns) and the Designer generation thread (mock draws) have both flushed
-    their usage by the time a run is complete, and reading the file means a
-    resumed session shows the same numbers. None when there is no project
-    directory or no usage file yet, so the caller simply omits the card.
-
-    Two figures: the agent's summed cost in this round (sub-agents rolled in,
-    re-runs included — the same block ``spec4-usage`` prints) and the round's
-    running total. Both are LiteLLM estimates; the disclaimer is part of the
-    card, not optional.
-    """
-    if not working_dir:
-        return None
-    version = project_manager.active_version(working_dir, session)
-    summary = project_manager.cost_summary(working_dir, version, agent_key)
-    if summary is None:
-        return None
-    return dmc.Paper(
-        [
-            dmc.Text("Estimated cost", fw=600, mb="xs"),
-            dmc.Text(_cost_line(f"{agent_label} run", summary["agent"])),
-            dmc.Text(
-                _cost_line(f"Running total for {summary['round']}", summary["total"])
-            ),
-            dmc.Text(COST_DISCLAIMER, size="sm", c="dimmed", mt="xs"),
-        ],
-        id="cost-summary-card",
-        withBorder=True,
-        p="md",
-        radius="md",
-        mb="md",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -221,20 +173,39 @@ def _reformat_inline_lists(text: str) -> str:
     return text
 
 
-def _render_message(msg: dict[str, Any]) -> html.Div:
+def _render_message(msg: dict[str, Any], speaker: str = "Agent") -> html.Div:
+    """One transcript message, as a block rather than a bubble.
+
+    A dimmed one-word label says who is speaking and the block itself carries
+    no fill — the developer is reading a transcript, and two competing tinted
+    rounded rectangles were chrome around the only thing on the screen that
+    matters. The user's block keeps a neutral left rule, which is enough to
+    find their own turns while scrolling back and is the one mark that does
+    not read as a colour.
+
+    Two nested divs on purpose. The outer wrapper is what the auto-scroll
+    clientside callback measures: it finds the last ``.chat-bubble-user`` and
+    scrolls that element's *parent* to the top of the viewport, so the class
+    has to sit on the inner block with a wrapper above it. That class name is
+    a JavaScript selector contract, not a description of a fill — see
+    ``app.py`` and ``tests/test_chat_transcript_blocks.py``.
+    """
     is_user = msg["role"] == "user"
     content = msg["content"] if is_user else _reformat_inline_lists(msg["content"])
     return html.Div(
-        dmc.Paper(
-            dcc.Markdown(content, style={"margin": 0}),
-            p="sm",
-            radius="md",
-            className="chat-bubble-user" if is_user else "chat-bubble-assistant",
-            style={"maxWidth": "85%"} if is_user else {"width": "100%"},
+        html.Div(
+            [
+                html.Div("You" if is_user else speaker, className="msg-label"),
+                html.Div(
+                    dcc.Markdown(content, style={"margin": 0}),
+                    className="msg-body",
+                ),
+            ],
+            className=(
+                "chat-msg chat-bubble-user"
+                if is_user
+                else "chat-msg chat-bubble-assistant"
+            ),
         ),
-        style={
-            "display": "flex",
-            "justifyContent": "flex-end" if is_user else "flex-start",
-            "marginBottom": "8px",
-        },
+        className="msg-row",
     )

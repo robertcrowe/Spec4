@@ -1,0 +1,88 @@
+{
+  "vision_statement": {
+    "name": "Spec4",
+    "vision": {
+      "purpose": "A local-first pipeline of seven planning agents \u2014 CodeScanner, Brainstormer, Agentifier, Designer, StackAdvisor, Phaser, Deployer \u2014 that turns a rough idea or an existing codebase into a versioned folder of specs (`.spec4/v{N}/`), ready for a coding agent to execute phase by phase. Runs as a locally served web app at `localhost:8050`, with bring-your-own-key (BYOK) access across eight LLM providers; keys stay in the browser and never reach the server or disk.\n\nThis round's goal: rework the app's shell and home screen so Spec4 looks and behaves like a development tool rather than a marketing demo. The current UI shares a template with the marketing site (spec4.ai) \u2014 hero spacing, marketing-style agent cards, an external-link drawer, grid background, kicker labels, gradient text \u2014 which undermines credibility with its actual audience.",
+      "ui_surface": "Web app \u2014 Python, Dash, Dash Mantine Components \u2014 served locally at localhost:8050. Unchanged architecture; this round is a layout/density pass on existing components, not a rewrite.",
+      "target_audience": [
+        "Developers who already use Claude Code, Kiro, or similar AI coding agents daily, and who are skeptical of spec-driven tooling. Single audience \u2014 no secondary users."
+      ],
+      "key_features_mvp": [
+        {
+          "Development Tool Shell": {
+            "description": "Header becomes a status bar: working directory (monospace), round (v{N}), default provider and model (monospace), Spec4 version. Primary nav: Project, Artifacts, Settings, plus one Docs link. Removes the external-link drawer, footer, and in-app landing page. Removes grid background, kicker labels, gradient text, hero spacing, card hover effects, button glows, and all emoji. Cuts vertical spacing roughly in half. Keeps the dark theme. #39FF14 green becomes the sole Mantine primary/accent color (primary buttons, active state, focus rings); secondary buttons are neutral outlines. #1E88E5 blue survives only in the wordmark. Monospace for any file, path, command, model name, or figure.",
+            "example": "The header reads as a status line, not a hero banner.",
+            "id": "development_tool_shell"
+          }
+        },
+        {
+          "Open To The Project": {
+            "description": "When a working directory is remembered, `/` opens the project view directly; otherwise it opens the directory picker. No introduction screen.",
+            "example": "Returning users land straight in their project, not on a splash page.",
+            "id": "open_to_the_project"
+          }
+        },
+        {
+          "Round Tree": {
+            "description": "The project view's first element is the current round's `.spec4/v{N}/` folder as a tree: one line per artifact in pipeline order, each with a status \u2014 present, needs update (an upstream artifact is newer), or missing. Files are colored by lane with a three-item legend: prompts for the agent (phases/), reference for the agent (code_review.json, vision.json, feature_specs.json, ai_features.json, design/mock.html, design/manifest.json, stack.json), a record for you (deployment-plan.md, usage.json). Status comes from the existing dependency graph; usage.json is never marked needs-update. Display only this round \u2014 opening a file is the next round.",
+            "example": "The round is shown as its files.",
+            "id": "round_tree"
+          }
+        },
+        {
+          "Agent Rows": {
+            "description": "The seven agents as compact rows in pipeline order replace the cards. Each row: agent name, the artifact it produces (monospace), the model it last ran on this round (from usage.json's per-agent models list; blank if it has not run), tokens in and out this round, and the action button using the existing state model \u2014 Start, Modify, Needs Update, Not Ready, Required \u2014 with its existing semantics and routing. No step numbers, descriptions, or emoji.",
+            "example": "A dense list of agent status rows, not a grid of descriptive cards.",
+            "id": "agent_rows"
+          }
+        },
+        {
+          "Round Cost": {
+            "description": "The round's estimated cost so far, from usage.json totals, on the project view, following the cost card's existing labelling rules: labelled 'estimated', tokens shown, calls that could not be priced named and excluded, never '$0.0000' for unknown.",
+            "example": "\"Estimated cost, v0: $0.7312 \u00b7 2 of 19 calls could not be priced and are excluded\" \u2014 never \"$0.0000\".",
+            "id": "round_cost"
+          }
+        }
+      ],
+      "differentiators": [
+        "The open `.spec4` file format \u2014 existing, unchanged; this round makes it visible for the first time by showing the round as its files (the round tree).",
+        "Any LLM model usable at any pipeline step \u2014 existing, unchanged.",
+        "Per-step cost tracking \u2014 existing, unchanged.",
+        "Staleness detection \u2014 existing, unchanged."
+      ],
+      "future_enhancements": [
+        {
+          "Chat Frame Register (v1)": {
+            "description": "The chat frame \u2014 agent pill bar, transcript, action row, cost card, model chip, status line \u2014 keeps every function and adopts the same register: denser framing, green primary buttons, no emoji, monospace for counters and model names.",
+            "example": ""
+          }
+        },
+        {
+          "Artifact View (v1)": {
+            "description": "An artifact view that renders any .spec4 file in monospace, reached from the round tree and from an Open button beside each Download button.",
+            "example": ""
+          }
+        },
+        {
+          "Register Extension (v2)": {
+            "description": "The setup wizard, per-agent gate card, project-mode question, directory picker, and Designer wizard inherit the dev-tool register established in this round.",
+            "example": ""
+          }
+        }
+      ],
+      "monetization": {
+        "current": "None \u2014 open source, Apache 2.0 license.",
+        "future_options": []
+      },
+      "constraints": [
+        "Dash and Dash Mantine Components remain the UI foundation \u2014 this round is a layout and density pass on existing components, not a rewrite.",
+        "API keys never reach the server or disk.",
+        "The gate card, model chip, and retry panel share one model-selection path; nothing parallel is added.",
+        "Existing component ids are a test contract and are kept.",
+        "usage.json stays out of the dependency graph (never contributes to staleness/status).",
+        "Standing rule for every element on screen: if it is not a fact, a command, an artifact, or a control, it goes."
+      ],
+      "references": []
+    }
+  }
+}

@@ -1,0 +1,603 @@
+{
+  "entities": [
+    {
+      "name": "Project",
+      "fields": [
+        "workingDirectory",
+        "round",
+        "roundsOnDisk",
+        "defaultProvider",
+        "defaultModel",
+        "version"
+      ]
+    },
+    {
+      "name": "Round",
+      "fields": [
+        "identifier",
+        "specFolder"
+      ]
+    },
+    {
+      "name": "Artifact",
+      "fields": [
+        "path",
+        "lane",
+        "mtime",
+        "upstream",
+        "exempt",
+        "producedBy",
+        "status"
+      ]
+    },
+    {
+      "name": "DependencyGraph",
+      "fields": [
+        "artifactPath",
+        "upstreamPaths"
+      ]
+    },
+    {
+      "name": "Agent",
+      "fields": [
+        "name",
+        "produces",
+        "lastModel",
+        "tokensIn",
+        "tokensOut",
+        "actionState"
+      ]
+    },
+    {
+      "name": "UsageRecord",
+      "fields": [
+        "scope",
+        "calls",
+        "tokensIn",
+        "tokensOut",
+        "costUsd",
+        "unpriced",
+        "priceSource"
+      ]
+    },
+    {
+      "name": "CostEstimate",
+      "fields": [
+        "label",
+        "figure",
+        "tokensLine",
+        "unpricedLine",
+        "note"
+      ]
+    },
+    {
+      "name": "ArtifactFile",
+      "fields": [
+        "round",
+        "path",
+        "size",
+        "modified",
+        "lane",
+        "content",
+        "producedBy"
+      ]
+    },
+    {
+      "name": "ChatSession",
+      "fields": [
+        "agent",
+        "model",
+        "pipelineState",
+        "charsReceived",
+        "turnTokensIn",
+        "turnTokensOut",
+        "elapsed",
+        "statusLine",
+        "produces",
+        "nextAgent",
+        "skipToAgent"
+      ]
+    },
+    {
+      "name": "Message",
+      "fields": [
+        "speaker",
+        "paragraphs",
+        "codeBlock"
+      ]
+    },
+    {
+      "name": "NavigationRegister",
+      "fields": [
+        "entries",
+        "activeEntry"
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "project-view",
+      "audience": "Developer using AI coding agents",
+      "purpose": "Land directly on the project: round tree, agent rows, round cost.",
+      "surfaces": [
+        "Status Bar & Primary Nav",
+        "Round Tree",
+        "Agent Rows",
+        "Round Cost"
+      ]
+    },
+    {
+      "id": "chat-frame",
+      "audience": "Developer using AI coding agents",
+      "purpose": "Run and converse with one pipeline agent (Brainstormer) in the dev-tool register.",
+      "surfaces": [
+        "Status Bar & Primary Nav",
+        "Pipeline Indicator",
+        "Transcript",
+        "Run Cost",
+        "Action Row",
+        "Progress Signal",
+        "Composer",
+        "Model Chip & Status Line"
+      ]
+    },
+    {
+      "id": "artifact-view",
+      "audience": "Developer using AI coding agents",
+      "purpose": "Open and read any artifact from any round without leaving the app.",
+      "surfaces": [
+        "Status Bar & Primary Nav",
+        "Round Selector",
+        "Artifact Tree",
+        "Content Pane",
+        "Pane State Insets"
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "name": "Status Bar & Primary Nav",
+      "kind": "non_ai",
+      "screen": "project-view",
+      "implements_features": [
+        "Development Tool Shell",
+        "Open To The Project",
+        "Artifact Links"
+      ],
+      "inputs": [
+        "nav links: Project, Artifacts, Settings, Docs (Docs is the one external link; Settings opens the existing model/provider change flow)",
+        "working-directory path: a control that opens the directory picker at the current project (btn-status-bar-dir); rendered as plain text when no directory is open"
+      ],
+      "output": "Status strip (directory · round · provider · model · version) and nav with one active entry, recomputed on every render",
+      "states": [
+        "project active",
+        "artifacts active",
+        "settings active"
+      ],
+      "reads": [
+        "Project",
+        "NavigationRegister"
+      ],
+      "writes": [
+        "NavigationRegister"
+      ],
+      "depends_on": [],
+      "implements_feature_ids": [
+        "development_tool_shell",
+        "open_to_the_project",
+        "artifact_links"
+      ]
+    },
+    {
+      "name": "Round Tree",
+      "kind": "non_ai",
+      "screen": "project-view",
+      "implements_features": [
+        "Round Tree",
+        "Artifact Links"
+      ],
+      "inputs": [
+        "artifact line link (opens Artifact View at that file)"
+      ],
+      "output": "Ordered artifact list with lane colour, status flag (needs update / missing) and three-item legend; lanes come from the reviewed table in layouts/_round_tree.py (ROUND_ARTIFACTS), not from the mock's sample data — deployment-plan.md is in the record lane",
+      "states": [
+        "present",
+        "needs update",
+        "missing"
+      ],
+      "reads": [
+        "Artifact",
+        "DependencyGraph",
+        "Round"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Status Bar & Primary Nav"
+      ],
+      "implements_feature_ids": [
+        "round_tree",
+        "artifact_links"
+      ]
+    },
+    {
+      "name": "Agent Rows",
+      "kind": "non_ai",
+      "screen": "project-view",
+      "implements_features": [
+        "Agent Rows"
+      ],
+      "inputs": [
+        "action button per agent: Start, Continue and Required are filled green (the same variant); Modify is a neutral outline with green text; Needs Update is a warn outline; Not Ready is a disabled outline. Activating a button routes to that agent exactly as today; Continue resumes an in-progress conversation"
+      ],
+      "output": "Seven rows: agent, produces, last model, tokens this round, action",
+      "states": [
+        "Start",
+        "Continue",
+        "Required",
+        "Modify",
+        "Needs Update",
+        "Not Ready (disabled)",
+        "blank model/tokens when not run"
+      ],
+      "reads": [
+        "Agent",
+        "UsageRecord"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Status Bar & Primary Nav"
+      ],
+      "implements_feature_ids": [
+        "agent_rows"
+      ]
+    },
+    {
+      "name": "Round Cost",
+      "kind": "non_ai",
+      "screen": "project-view",
+      "implements_features": [
+        "Round Cost"
+      ],
+      "inputs": [],
+      "output": "Three-line strip: labelled estimate + tokens, priced/unpriced calls named, LiteLLM note",
+      "states": [
+        "priced",
+        "partially unpriced",
+        "all unpriced (unknown)",
+        "no calls"
+      ],
+      "reads": [
+        "UsageRecord",
+        "CostEstimate"
+      ],
+      "writes": [],
+      "depends_on": [],
+      "implements_feature_ids": [
+        "round_cost"
+      ]
+    },
+    {
+      "name": "Pipeline Indicator",
+      "kind": "non_ai",
+      "screen": "chat-frame",
+      "implements_features": [
+        "Chat Frame Register"
+      ],
+      "inputs": [
+        "agent name links (done/reachable)"
+      ],
+      "output": "Seven agent names as plain text: active (accent, underline), done/reachable (full weight), unreachable (dimmed); no arrows, no Back",
+      "states": [
+        "active",
+        "done",
+        "reachable",
+        "unreachable"
+      ],
+      "reads": [
+        "ChatSession",
+        "Agent"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Status Bar & Primary Nav"
+      ],
+      "implements_feature_ids": [
+        "chat_frame_register"
+      ]
+    },
+    {
+      "name": "Transcript",
+      "kind": "ai",
+      "screen": "chat-frame",
+      "implements_features": [
+        "Chat Frame Register"
+      ],
+      "inputs": [],
+      "output": "Bordered, independently scrollable panel (~60vh) of speaker-labelled blocks; agent JSON output as mono code block on panel colour",
+      "states": [
+        "messages",
+        "streaming"
+      ],
+      "reads": [
+        "Message",
+        "ChatSession"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Pipeline Indicator"
+      ],
+      "affordance": "Speaker-labelled message blocks; user blocks carry a 2px neutral left rule and keep className chat-bubble-user (the scroll-to-latest clientside callback selects on it)",
+      "invocation": "Rendered when the chat frame opens and on each new message",
+      "catalog_surface": "Agent run (Brainstormer)",
+      "catalog_surface_id": "agent_run__brainstormer_",
+      "implements_feature_ids": [
+        "chat_frame_register"
+      ]
+    },
+    {
+      "name": "Run Cost",
+      "kind": "non_ai",
+      "screen": "chat-frame",
+      "implements_features": [
+        "Chat Frame Register",
+        "Round Cost"
+      ],
+      "inputs": [],
+      "output": "Same three-line cost strip as Round Cost, scoped to this run",
+      "states": [
+        "priced",
+        "partially unpriced"
+      ],
+      "reads": [
+        "UsageRecord",
+        "CostEstimate"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Round Cost"
+      ],
+      "implements_feature_ids": [
+        "chat_frame_register",
+        "round_cost"
+      ]
+    },
+    {
+      "name": "Action Row",
+      "kind": "non_ai",
+      "screen": "chat-frame",
+      "implements_features": [
+        "Chat Frame Register",
+        "Artifact Links"
+      ],
+      "inputs": [
+        "per-agent buttons exactly as the existing _chat_action_buttons defines them, minus every '← Back to X' button. Variant rule: the Continue/Send-to-next button is the only filled-green button; Fast Forward, Download, Open, Re-scan Project and the 'Continue to Designer' skip are neutral outlines, Re-scan in the warn tone",
+        "mid-run: chars counter · elapsed (mono, dimmed) · Fast Forward (outline) with its info modal unchanged",
+        "run complete: chars · turn tokens · elapsed (mono, dimmed) · Open {artifact} (outline, opens the Artifact View at that file) · Download {artifact} (outline) · continue button(s)"
+      ],
+      "output": "Mono dimmed counters left; actions right. The mock draws the run-complete state",
+      "states": [
+        "mid-run (counters + Fast Forward)",
+        "run complete (counters + Open + Download + continue)",
+        "no controls (pre-stream)"
+      ],
+      "reads": [
+        "ChatSession",
+        "ArtifactFile"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Transcript"
+      ],
+      "implements_feature_ids": [
+        "chat_frame_register",
+        "artifact_links"
+      ]
+    },
+    {
+      "name": "Progress Signal",
+      "kind": "non_ai",
+      "screen": "chat-frame",
+      "implements_features": [
+        "Chat Frame Register"
+      ],
+      "inputs": [],
+      "output": "4px striped bar, accent at reduced opacity on panel colour, animating while a stream is live; hidden otherwise; the only moving element. The mock draws it alongside the run-complete action row for visibility — in the app the two do not appear together",
+      "states": [
+        "active",
+        "idle"
+      ],
+      "reads": [
+        "ChatSession"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Action Row"
+      ],
+      "implements_feature_ids": [
+        "chat_frame_register"
+      ]
+    },
+    {
+      "name": "Composer",
+      "kind": "ai",
+      "screen": "chat-frame",
+      "implements_features": [
+        "Chat Frame Register"
+      ],
+      "inputs": [
+        "textarea (3 lines, placeholder Reply
+)",
+        "Send (neutral outline)"
+      ],
+      "output": "Reply appended to the transcript and sent to the active agent",
+      "states": [
+        "idle",
+        "agent replying"
+      ],
+      "reads": [
+        "ChatSession"
+      ],
+      "writes": [
+        "Message"
+      ],
+      "depends_on": [
+        "Transcript"
+      ],
+      "affordance": "Three-line textarea with Send button at the right end",
+      "invocation": "User types a reply and presses Send",
+      "catalog_surface": "Agent run (Brainstormer)",
+      "catalog_surface_id": "agent_run__brainstormer_",
+      "implements_feature_ids": [
+        "chat_frame_register"
+      ]
+    },
+    {
+      "name": "Model Chip & Status Line",
+      "kind": "non_ai",
+      "screen": "chat-frame",
+      "implements_features": [
+        "Chat Frame Register"
+      ],
+      "inputs": [
+        "change (dimmed text)"
+      ],
+      "output": "Model name in mono inside a neutral outline pill with 'change' as dimmed text; dimmed mono status line at right ('Brainstormer is replying
+' only while a stream is live)",
+      "states": [
+        "replying",
+        "idle"
+      ],
+      "reads": [
+        "ChatSession"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Composer"
+      ],
+      "implements_feature_ids": [
+        "chat_frame_register"
+      ]
+    },
+    {
+      "name": "Round Selector",
+      "kind": "non_ai",
+      "screen": "artifact-view",
+      "implements_features": [
+        "Artifact View"
+      ],
+      "inputs": [
+        "round links v0 v1 v2 v3"
+      ],
+      "output": "Rounds on disk as mono text, active round marked like the active nav item",
+      "states": [
+        "active round"
+      ],
+      "reads": [
+        "Project",
+        "Round"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Status Bar & Primary Nav"
+      ],
+      "implements_feature_ids": [
+        "artifact_view"
+      ]
+    },
+    {
+      "name": "Artifact Tree",
+      "kind": "non_ai",
+      "screen": "artifact-view",
+      "implements_features": [
+        "Artifact View",
+        "Round Tree",
+        "Artifact Links"
+      ],
+      "inputs": [
+        "artifact line link"
+      ],
+      "output": "Round tree exactly as the project view draws it, with the selected file in accent text",
+      "states": [
+        "selected",
+        "present",
+        "needs update",
+        "missing"
+      ],
+      "reads": [
+        "Artifact",
+        "DependencyGraph",
+        "Round"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Round Selector"
+      ],
+      "implements_feature_ids": [
+        "artifact_view",
+        "round_tree",
+        "artifact_links"
+      ]
+    },
+    {
+      "name": "Content Pane",
+      "kind": "non_ai",
+      "screen": "artifact-view",
+      "implements_features": [
+        "Artifact View"
+      ],
+      "inputs": [
+        "Download (neutral outline)",
+        "Open rendered (neutral outline; design/mock.html only; opens the mock in a new tab via the existing blob pattern)"
+      ],
+      "output": "Mono header (path · size · modified · lane) then the file: pretty-printed JSON, dimmed line-number gutter, 1px rule, scrolling inside the block",
+      "states": [
+        "file",
+        "empty (Select a file)",
+        "missing — produced by {Agent}"
+      ],
+      "reads": [
+        "ArtifactFile",
+        "Artifact"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Artifact Tree"
+      ],
+      "implements_feature_ids": [
+        "artifact_view"
+      ]
+    },
+    {
+      "name": "Pane State Insets",
+      "kind": "non_ai",
+      "screen": "artifact-view",
+      "implements_features": [
+        "Artifact View"
+      ],
+      "inputs": [],
+      "output": "Two small insets showing the pane's empty state and missing state",
+      "states": [
+        "empty",
+        "missing"
+      ],
+      "reads": [
+        "ArtifactFile"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Content Pane"
+      ],
+      "implements_feature_ids": [
+        "artifact_view"
+      ]
+    }
+  ],
+  "shared_layout": {
+    "nav": "40px status bar: Spec4 wordmark, mono context strip (directory · round · provider · model), right-aligned text nav Project · Artifacts · Settings · Docs with one accent-underlined active entry, then version",
+    "shell": [
+      "Status Bar & Primary Nav",
+      "Dash routing via app_constants.PATH_TO_PHASE: / (project view or directory picker), /chat, /artifacts; the mock's hash router only stands in for this",
+      "single 1100px max-width content column; the Artifact View uses a 300px left column inside it"
+    ]
+  }
+}

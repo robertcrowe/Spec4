@@ -1,0 +1,387 @@
+{
+  "schema_version": "1",
+  "spec4_version": "1.1.0",
+  "litellm_version": "1.82.0",
+  "round": "v1",
+  "created_at": "2026-09-06T21:36:42.863283+00:00",
+  "updated_at": "2026-09-06T22:48:44.844212+00:00",
+  "notes": {
+    "tokens_are_ground_truth": true,
+    "computed_cost_source": "litellm response_cost (community cost map; may lag provider price sheets)",
+    "fast_forward": false
+  },
+  "agents": {
+    "code_scanner": {
+      "calls": 3,
+      "calls_missing_usage": 0,
+      "calls_missing_cost": 0,
+      "input_tokens": 81036,
+      "output_tokens": 36916,
+      "total_tokens": 117952,
+      "cached_input_tokens": 0,
+      "computed_cost_usd": 0.531232,
+      "models": [
+        {
+          "model": "claude-sonnet-5",
+          "provider": "anthropic"
+        }
+      ],
+      "history": [
+        {
+          "timestamp": "2026-09-06T21:31:19.681239+00:00",
+          "agent": "code_scanner",
+          "model": "claude-sonnet-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 163.373,
+          "prompt_tokens": 23461,
+          "completion_tokens": 15688,
+          "total_tokens": 39149,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.203802,
+          "usage_missing": false,
+          "error": null
+        },
+        {
+          "timestamp": "2026-09-06T21:34:02.184621+00:00",
+          "agent": "code_scanner",
+          "model": "claude-sonnet-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 163.728,
+          "prompt_tokens": 26459,
+          "completion_tokens": 16651,
+          "total_tokens": 43110,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.219428,
+          "usage_missing": false,
+          "error": null
+        },
+        {
+          "timestamp": "2026-09-06T21:36:57.403531+00:00",
+          "agent": "code_scanner",
+          "model": "claude-sonnet-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 31.297,
+          "prompt_tokens": 31116,
+          "completion_tokens": 4577,
+          "total_tokens": 35693,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.108002,
+          "usage_missing": false,
+          "error": null
+        }
+      ]
+    },
+    "brainstormer": {
+      "calls": 4,
+      "calls_missing_usage": 0,
+      "calls_missing_cost": 0,
+      "input_tokens": 42221,
+      "output_tokens": 23842,
+      "total_tokens": 66063,
+      "cached_input_tokens": 0,
+      "computed_cost_usd": 0.322862,
+      "models": [
+        {
+          "model": "claude-sonnet-5",
+          "provider": "anthropic"
+        }
+      ],
+      "history": [
+        {
+          "timestamp": "2026-09-06T21:42:35.693122+00:00",
+          "agent": "brainstormer",
+          "model": "claude-sonnet-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 5.928,
+          "prompt_tokens": 11226,
+          "completion_tokens": 398,
+          "total_tokens": 11624,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.026432,
+          "usage_missing": false,
+          "error": null
+        },
+        {
+          "timestamp": "2026-09-06T21:43:04.422401+00:00",
+          "agent": "brainstormer",
+          "model": "claude-sonnet-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 45.311,
+          "prompt_tokens": 12910,
+          "completion_tokens": 4240,
+          "total_tokens": 17150,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.06822,
+          "usage_missing": false,
+          "error": null
+        },
+        {
+          "timestamp": "2026-09-06T21:44:50.079714+00:00",
+          "agent": "brainstormer",
+          "model": "claude-sonnet-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 65.373,
+          "prompt_tokens": 14254,
+          "completion_tokens": 7715,
+          "total_tokens": 21969,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.105658,
+          "usage_missing": false,
+          "error": null
+        },
+        {
+          "timestamp": "2026-09-06T21:45:54.170292+00:00",
+          "agent": "feature_speccer",
+          "model": "claude-sonnet-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 103.852,
+          "prompt_tokens": 3831,
+          "completion_tokens": 11489,
+          "total_tokens": 15320,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.12255200000000001,
+          "usage_missing": false,
+          "error": null
+        }
+      ]
+    },
+    "designer": {
+      "calls": 1,
+      "calls_missing_usage": 0,
+      "calls_missing_cost": 0,
+      "input_tokens": 19200,
+      "output_tokens": 35524,
+      "total_tokens": 54724,
+      "cached_input_tokens": 0,
+      "computed_cost_usd": 1.9682,
+      "models": [
+        {
+          "model": "claude-fable-5-1",
+          "provider": "anthropic"
+        }
+      ],
+      "history": [
+        {
+          "timestamp": "2026-09-06T22:13:57.956148+00:00",
+          "agent": "designer",
+          "model": "claude-fable-5-1",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 373.607,
+          "prompt_tokens": 19200,
+          "completion_tokens": 35524,
+          "total_tokens": 54724,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 1.9682,
+          "usage_missing": false,
+          "error": null
+        }
+      ]
+    },
+    "stack_advisor": {
+      "calls": 4,
+      "calls_missing_usage": 0,
+      "calls_missing_cost": 0,
+      "input_tokens": 170509,
+      "output_tokens": 22253,
+      "total_tokens": 192762,
+      "cached_input_tokens": 0,
+      "computed_cost_usd": 0.563548,
+      "models": [
+        {
+          "model": "claude-sonnet-5",
+          "provider": "anthropic"
+        }
+      ],
+      "history": [
+        {
+          "timestamp": "2026-09-06T22:21:49.588153+00:00",
+          "agent": "stack_advisor",
+          "model": "claude-sonnet-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 53.352,
+          "prompt_tokens": 36458,
+          "completion_tokens": 4524,
+          "total_tokens": 40982,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.118156,
+          "usage_missing": false,
+          "error": null
+        },
+        {
+          "timestamp": "2026-09-06T22:22:46.582926+00:00",
+          "agent": "stack_advisor",
+          "model": "claude-sonnet-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 11.622,
+          "prompt_tokens": 41941,
+          "completion_tokens": 897,
+          "total_tokens": 42838,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.092852,
+          "usage_missing": false,
+          "error": null
+        },
+        {
+          "timestamp": "2026-09-06T22:23:03.413051+00:00",
+          "agent": "stack_advisor",
+          "model": "claude-sonnet-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 12.803,
+          "prompt_tokens": 45737,
+          "completion_tokens": 998,
+          "total_tokens": 46735,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.101454,
+          "usage_missing": false,
+          "error": null
+        },
+        {
+          "timestamp": "2026-09-06T22:23:49.778985+00:00",
+          "agent": "stack_advisor",
+          "model": "claude-sonnet-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 154.194,
+          "prompt_tokens": 46373,
+          "completion_tokens": 15834,
+          "total_tokens": 62207,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.25108600000000003,
+          "usage_missing": false,
+          "error": null
+        }
+      ]
+    },
+    "phaser": {
+      "calls": 4,
+      "calls_missing_usage": 0,
+      "calls_missing_cost": 0,
+      "input_tokens": 151849,
+      "output_tokens": 37642,
+      "total_tokens": 189491,
+      "cached_input_tokens": 0,
+      "computed_cost_usd": 1.700295,
+      "models": [
+        {
+          "model": "claude-opus-5",
+          "provider": "anthropic"
+        }
+      ],
+      "history": [
+        {
+          "timestamp": "2026-09-06T22:38:09.039963+00:00",
+          "agent": "phaser",
+          "model": "claude-opus-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 56.089,
+          "prompt_tokens": 34059,
+          "completion_tokens": 4133,
+          "total_tokens": 38192,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.27362,
+          "usage_missing": false,
+          "error": null
+        },
+        {
+          "timestamp": "2026-09-06T22:39:08.038837+00:00",
+          "agent": "phaser",
+          "model": "claude-opus-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 53.872,
+          "prompt_tokens": 37529,
+          "completion_tokens": 3740,
+          "total_tokens": 41269,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.281145,
+          "usage_missing": false,
+          "error": null
+        },
+        {
+          "timestamp": "2026-09-06T22:40:44.280906+00:00",
+          "agent": "phaser",
+          "model": "claude-opus-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 95.48,
+          "prompt_tokens": 38985,
+          "completion_tokens": 7407,
+          "total_tokens": 46392,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.3801,
+          "usage_missing": false,
+          "error": null
+        },
+        {
+          "timestamp": "2026-09-06T22:44:22.113184+00:00",
+          "agent": "phaser",
+          "model": "claude-opus-5",
+          "provider": "anthropic",
+          "streamed": true,
+          "duration_s": 268.72,
+          "prompt_tokens": 41276,
+          "completion_tokens": 22362,
+          "total_tokens": 63638,
+          "cached_tokens": 0,
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "computed_cost_usd": 0.76543,
+          "usage_missing": false,
+          "error": null
+        }
+      ]
+    }
+  },
+  "totals": {
+    "calls": 16,
+    "calls_missing_usage": 0,
+    "calls_missing_cost": 0,
+    "input_tokens": 464815,
+    "output_tokens": 156177,
+    "total_tokens": 620992,
+    "cached_input_tokens": 0,
+    "computed_cost_usd": 5.086137
+  }
+}

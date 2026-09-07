@@ -1,0 +1,1137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spec4 — /Users/rc/projects/bws4</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --panel: #12121c;
+    --panel-2: #1a1a24;
+    --border: #2a2a3a;
+    --text: #f5f5f7;
+    --dim: #a0a0b0;
+    --faint: #5a5a6a;
+    --accent: #39FF14;
+    --accent-hover: #31e510;
+    --wordmark-blue: #1E88E5;
+    --lane-prompt: #e8925a;
+    --lane-record: #b39ddb;
+    --warn: #d8b84a;
+    --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    line-height: 20px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-variant-ligatures: none;
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  /* ---------- Status bar ---------- */
+  .statusbar {
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+  }
+
+  .sb-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+  }
+
+  .wordmark {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 20px;
+    flex: none;
+  }
+  .wm-spec { color: var(--wordmark-blue); }
+  .wm-4 { color: var(--accent); }
+
+  .sb-ctx {
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sb-ctx .sep { color: var(--faint); padding: 0 6px; }
+  .sb-ctx .dim { color: var(--dim); }
+
+  .sb-nav {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: none;
+  }
+  .sb-nav a {
+    color: var(--dim);
+    line-height: 38px;
+    border-bottom: 1px solid transparent;
+    margin-bottom: -1px;
+    padding: 0 2px;
+  }
+  .sb-nav a:hover { color: var(--text); }
+  .sb-nav a.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .sb-version {
+    color: var(--dim);
+    margin-left: 8px;
+    padding-left: 16px;
+    border-left: 1px solid var(--border);
+    line-height: 20px;
+  }
+
+  /* ---------- View ---------- */
+  .view {
+    max-width: 1100px;
+    padding: 16px 16px 32px;
+  }
+
+  section + section { margin-top: 24px; }
+
+  .section-head {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 24px;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  /* ---------- Round tree ---------- */
+  .tree-list {
+    list-style: none;
+    width: 100%;
+    border-top: 1px solid var(--border);
+  }
+  .tree-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 24px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+  }
+  .tree-list li:nth-child(even) { background: var(--panel); }
+  .tree-list .name { white-space: nowrap; }
+  .tree-list .lane-prompt { color: var(--lane-prompt); }
+  .tree-list .lane-ref { color: var(--text); }
+  .tree-list .lane-record { color: var(--lane-record); }
+  .tree-list .status { color: var(--dim); white-space: nowrap; }
+  .tree-list li.is-missing .name { opacity: 0.55; }
+  .tree-list li.is-missing .status { color: var(--faint); }
+  .tree-list a.tree-link {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    color: inherit;
+  }
+  .tree-list a.tree-link:hover .name { text-decoration: underline; }
+  .tree-list li.is-selected .name { color: var(--accent); }
+
+  .legend {
+    list-style: none;
+    display: flex;
+    gap: 24px;
+    margin-top: 8px;
+    color: var(--dim);
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .legend li { display: flex; align-items: center; gap: 6px; }
+  .swatch {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    flex: none;
+  }
+  .swatch.lane-prompt { background: var(--lane-prompt); }
+  .swatch.lane-ref { background: var(--text); }
+  .swatch.lane-record { background: var(--lane-record); }
+
+  /* ---------- Agent rows ---------- */
+  .agents-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--border);
+  }
+  .agents-table th,
+  .agents-table td {
+    height: 32px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .agents-table th {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--dim);
+    background: var(--panel);
+  }
+  .agents-table td.agent { font-weight: 500; width: 140px; }
+  .agents-table td.produces { width: 220px; }
+  .agents-table td.model { width: 220px; }
+  .agents-table td.tokens { width: 220px; color: var(--text); }
+  .agents-table td.model:empty::after,
+  .agents-table td.tokens:empty::after { content: ""; }
+  .agents-table th.action,
+  .agents-table td.action { text-align: right; width: 120px; }
+  .agents-table tr.is-disabled td.agent,
+  .agents-table tr.is-disabled td.produces { color: var(--dim); }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-block;
+    height: 24px;
+    min-width: 96px;
+    padding: 0 10px;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 22px;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .btn:hover { border-color: #3a3a4a; }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+  }
+  .btn-primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+  .btn-modify {
+    color: var(--accent);
+    border-color: #3a3a4a;
+  }
+  .btn-modify:hover { border-color: #4a4a5a; }
+  .btn-warn {
+    color: var(--warn);
+    border-color: rgba(216, 184, 74, 0.45);
+  }
+  .btn-warn:hover { border-color: var(--warn); }
+  .btn-outline { color: var(--text); border-color: #3a3a4a; }
+  .btn:disabled,
+  .btn:disabled:hover {
+    color: var(--faint);
+    border-color: var(--border);
+    background: transparent;
+    cursor: default;
+  }
+
+  /* ---------- Round cost ---------- */
+  .cost {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+  }
+  .cost-line {
+    line-height: 24px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cost-line .sep { color: var(--faint); padding: 0 6px; }
+  .cost-line .label { color: var(--dim); }
+  .cost-note {
+    color: var(--dim);
+    font-size: 12px;
+    line-height: 16px;
+    margin-top: 4px;
+  }
+
+  /* ---------- Chat frame ---------- */
+  .pipeline {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    height: 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  .pipeline a,
+  .pipeline span {
+    color: var(--text);
+    line-height: 30px;
+    border-bottom: 1px solid transparent;
+    margin-bottom: -1px;
+    padding: 0 2px;
+    white-space: nowrap;
+  }
+  .pipeline .is-active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .pipeline .is-unreachable { color: var(--faint); }
+
+  .transcript {
+    height: 60vh;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    padding: 12px 16px;
+  }
+  .msg + .msg { margin-top: 16px; }
+  .msg-label {
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--dim);
+    margin-bottom: 2px;
+  }
+  .msg-body p + p { margin-top: 8px; }
+  .msg.is-user {
+    border-left: 2px solid #3a3a4a;
+    padding-left: 10px;
+  }
+  .msg pre.code {
+    background: var(--panel);
+    padding: 8px 12px;
+    margin-top: 8px;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 20px;
+  }
+
+  .chat .cost { margin-top: 12px; }
+
+  .action-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-top: 1px solid var(--border);
+    margin-top: 12px;
+    padding-top: 8px;
+    line-height: 24px;
+  }
+  .action-meta {
+    color: var(--dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .action-meta .sep { color: var(--faint); padding: 0 6px; }
+  .action-btns { display: flex; gap: 8px; flex: none; }
+
+  .progress {
+    height: 4px;
+    margin-top: 8px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+  .progress.is-active {
+    background-image: linear-gradient(-45deg,
+      rgba(57, 255, 20, 0.45) 25%, transparent 25%, transparent 50%,
+      rgba(57, 255, 20, 0.45) 50%, rgba(57, 255, 20, 0.45) 75%, transparent 75%);
+    background-size: 12px 12px;
+    animation: stripes 0.6s linear infinite;
+  }
+  @keyframes stripes { to { background-position: 12px 0; } }
+
+  .composer {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    margin-top: 12px;
+  }
+  .composer textarea {
+    flex: 1;
+    display: block;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    line-height: 20px;
+    padding: 6px 8px;
+    resize: vertical;
+  }
+  .composer textarea::placeholder { color: var(--faint); }
+
+  .model-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 8px;
+  }
+  .model-chip {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 10px;
+    border: 1px solid #3a3a4a;
+    border-radius: 11px;
+    color: var(--text);
+  }
+  .model-change { color: var(--dim); margin-left: 8px; }
+  .status-line { color: var(--dim); white-space: nowrap; }
+
+  /* ---------- Artifact view ---------- */
+  .artifact-layout {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+  .round-select {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    height: 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  .round-select a {
+    color: var(--dim);
+    line-height: 30px;
+    border-bottom: 1px solid transparent;
+    margin-bottom: -1px;
+    padding: 0 2px;
+  }
+  .round-select a:hover { color: var(--text); }
+  .round-select a.is-active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .file-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    line-height: 24px;
+    margin-bottom: 8px;
+    color: var(--dim);
+  }
+  .file-head .file-meta {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .file-head .path { color: var(--text); }
+  .file-head .sep { color: var(--faint); padding: 0 6px; }
+  .file-head .btn { flex: none; }
+
+  .file-block {
+    border: 1px solid var(--border);
+    max-height: calc(100vh - 176px);
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 20px;
+    font-variant-ligatures: none;
+  }
+  .file-block .line { display: flex; min-width: max-content; }
+  .file-block .ln {
+    flex: none;
+    width: 44px;
+    padding-right: 10px;
+    text-align: right;
+    color: var(--faint);
+    background: var(--panel);
+    user-select: none;
+  }
+  .file-block .lc { padding: 0 12px; white-space: pre; }
+  .file-block .k { color: var(--text); }
+  .file-block .v { color: var(--dim); }
+  .file-block .no-preview { color: var(--faint); padding: 0 12px; }
+
+  .file-empty,
+  .file-missing {
+    border: 1px solid var(--border);
+    padding: 32px 16px;
+    color: var(--dim);
+    text-align: center;
+  }
+  .file-missing .path { color: var(--text); }
+
+  .state-insets {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .inset-label {
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--faint);
+    margin-bottom: 4px;
+  }
+  .state-insets .file-empty,
+  .state-insets .file-missing { padding: 20px 12px; }
+</style>
+</head>
+<body>
+
+<header class="statusbar" id="statusbar">
+  <div class="sb-left">
+    <a class="wordmark" href="#project" aria-label="Spec4"><span class="wm-spec">Spec</span><span class="wm-4">4</span></a>
+    <span class="sb-ctx mono" id="sb-ctx"></span>
+  </div>
+  <nav class="sb-nav" aria-label="Primary">
+    <a href="#project" class="active" aria-current="page" data-nav="project">Project</a>
+    <a href="#artifacts" data-nav="artifacts">Artifacts</a>
+    <a href="#settings" data-nav="settings">Settings</a>
+    <a href="https://spec4.ai/docs" data-nav="docs" rel="noopener">Docs</a>
+    <span class="sb-version mono" id="sb-version"></span>
+  </nav>
+</header>
+
+<!-- ================= Screen 1: Project view ================= -->
+<main class="view" id="project-view">
+
+  <section aria-labelledby="tree-head">
+    <h2 class="section-head" id="tree-head"></h2>
+    <ol class="tree-list" id="tree-list"></ol>
+    <ul class="legend" aria-label="Lanes">
+      <li><span class="swatch lane-prompt"></span>prompts for the agent</li>
+      <li><span class="swatch lane-ref"></span>reference for the agent</li>
+      <li><span class="swatch lane-record"></span>a record for you</li>
+    </ul>
+  </section>
+
+  <section aria-label="Agents">
+    <table class="agents-table">
+      <thead>
+        <tr>
+          <th scope="col">Agent</th>
+          <th scope="col">Produces</th>
+          <th scope="col">Last model</th>
+          <th scope="col">Tokens this round</th>
+          <th scope="col" class="action"><span class="sr-only"></span></th>
+        </tr>
+      </thead>
+      <tbody id="agent-rows"></tbody>
+    </table>
+  </section>
+
+  <section class="cost" aria-label="Round cost">
+    <div class="cost-line mono" id="cost-line"></div>
+    <div class="cost-line mono" id="cost-unpriced"></div>
+    <div class="cost-note" id="cost-note"></div>
+  </section>
+
+</main>
+
+<!-- ================= Screen 2: Chat frame ================= -->
+<main class="view chat" id="chat-view" hidden>
+
+  <div class="pipeline" id="pipeline" aria-label="Pipeline"></div>
+
+  <div class="transcript" id="transcript" aria-label="Transcript" tabindex="0"></div>
+
+  <div class="cost" aria-label="Run cost">
+    <div class="cost-line mono" id="run-cost-line"></div>
+    <div class="cost-line mono" id="run-cost-unpriced"></div>
+    <div class="cost-note" id="run-cost-note"></div>
+  </div>
+
+  <div class="action-row">
+    <div class="action-meta mono" id="action-meta"></div>
+    <div class="action-btns" id="action-btns"></div>
+  </div>
+
+  <div class="progress is-active" id="progress" role="progressbar" aria-label="Agent activity"></div>
+
+  <div class="composer">
+    <textarea id="composer-input" rows="3" placeholder="Reply…" aria-label="Reply"></textarea>
+    <button type="button" class="btn btn-outline" id="send-btn">Send</button>
+  </div>
+
+  <div class="model-line">
+    <div>
+      <span class="model-chip mono" id="model-chip"></span><span class="model-change">change</span>
+    </div>
+    <div class="status-line mono" id="status-line"></div>
+  </div>
+
+</main>
+
+<!-- ================= Screen 3: Artifact view ================= -->
+<main class="view" id="artifact-view" hidden>
+  <div class="artifact-layout">
+
+    <aside aria-label="Rounds and artifacts">
+      <div class="round-select mono" id="round-select"></div>
+      <h2 class="section-head" id="av-tree-head"></h2>
+      <ol class="tree-list" id="av-tree-list"></ol>
+      <ul class="legend" aria-label="Lanes">
+        <li><span class="swatch lane-prompt"></span>prompts for the agent</li>
+        <li><span class="swatch lane-ref"></span>reference for the agent</li>
+        <li><span class="swatch lane-record"></span>a record for you</li>
+      </ul>
+    </aside>
+
+    <div>
+      <div id="file-pane"></div>
+
+      <div class="state-insets" aria-label="Pane states">
+        <div>
+          <div class="inset-label">empty state</div>
+          <div class="file-empty mono">Select a file</div>
+        </div>
+        <div>
+          <div class="inset-label">missing state</div>
+          <div class="file-missing mono"><span class="path">deployment-plan.md</span> — missing — produced by Deployer</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+  // ------------------------------------------------------------------
+  // Project state — the shell recomputes the status bar from this on
+  // every render so it can never show a stale directory or round.
+  // ------------------------------------------------------------------
+  var project = {
+    workingDirectory: "/Users/rc/projects/bws4",
+    round: 3,
+    roundsOnDisk: [0, 1, 2, 3],
+    defaultProvider: "anthropic",
+    defaultModel: "claude-sonnet-4-6",
+    version: "0.6.0"
+  };
+
+  // Current round's artifacts, in pipeline order. `mtime` null = missing
+  // from disk. `upstream` drives staleness: an artifact needs update when
+  // any upstream artifact is newer. usage.json is exempt. `agent` is the
+  // producer, used by the Artifact View's missing-file message.
+  var artifacts = [
+    { path: "code_review.json",      lane: "ref",    mtime: "2026-03-02T09:14:00Z", upstream: [], agent: "CodeScanner" },
+    { path: "vision.json",           lane: "ref",    mtime: "2026-03-04T16:42:00Z", upstream: ["code_review.json"], agent: "Brainstormer" },
+    { path: "feature_specs.json",    lane: "ref",    mtime: "2026-03-04T17:05:00Z", upstream: ["vision.json"], agent: "Brainstormer" },
+    { path: "ai_features.json",      lane: "ref",    mtime: "2026-03-04T17:31:00Z", upstream: ["vision.json", "feature_specs.json"], agent: "Agentifier" },
+    { path: "design/mock.html",      lane: "ref",    mtime: "2026-03-05T10:20:00Z", upstream: ["vision.json", "feature_specs.json", "ai_features.json"], agent: "Designer" },
+    { path: "design/manifest.json",  lane: "ref",    mtime: "2026-03-05T10:20:00Z", upstream: ["vision.json", "feature_specs.json", "ai_features.json"], agent: "Designer" },
+    { path: "stack.json",            lane: "ref",    mtime: "2026-03-03T11:08:00Z", upstream: ["vision.json", "ai_features.json"], agent: "StackAdvisor" },
+    { path: "phases/phase1.md",      lane: "prompt", mtime: "2026-03-05T12:02:00Z", upstream: ["stack.json", "design/manifest.json"], agent: "Phaser" },
+    { path: "phases/phase2.md",      lane: "prompt", mtime: "2026-03-05T12:02:00Z", upstream: ["stack.json", "design/manifest.json"], agent: "Phaser" },
+    { path: "phases/phase3.md",      lane: "prompt", mtime: "2026-03-05T12:02:00Z", upstream: ["stack.json", "design/manifest.json"], agent: "Phaser" },
+    { path: "phases/phase4.md",      lane: "prompt", mtime: "2026-03-05T12:02:00Z", upstream: ["stack.json", "design/manifest.json"], agent: "Phaser" },
+    { path: "phases/phase5.md",      lane: "prompt", mtime: "2026-03-05T12:02:00Z", upstream: ["stack.json", "design/manifest.json"], agent: "Phaser" },
+    { path: "deployment-plan.md",    lane: "prompt", mtime: null,                   upstream: ["phases/phase5.md"], agent: "Deployer" },
+    { path: "usage.json",            lane: "record", mtime: "2026-03-05T12:44:00Z", upstream: [], exempt: true, agent: "Spec4" }
+  ];
+
+  var laneLabel = {
+    prompt: "prompts for the agent",
+    ref:    "reference for the agent",
+    record: "a record for you"
+  };
+
+  // Seven agents in fixed pipeline order. `action` comes from the existing
+  // readiness state model; it is not re-derived here. Model/tokens come
+  // from the round's usage record and are blank when the agent has not run.
+  var agents = [
+    { name: "CodeScanner",  produces: "code_review.json",   model: "claude-sonnet-4-6", tokensIn: 41206, tokensOut: 3118, action: "Modify" },
+    { name: "Brainstormer", produces: "vision.json",        model: "claude-sonnet-4-6", tokensIn: 32880, tokensOut: 2914, action: "Modify" },
+    { name: "Agentifier",   produces: "ai_features.json",   model: "gpt-5-mini",        tokensIn: 17451, tokensOut: 1206, action: "Modify" },
+    { name: "Designer",     produces: "design/mock.html",   model: "claude-sonnet-4-6", tokensIn: 18649, tokensOut: 1530, action: "Modify" },
+    { name: "StackAdvisor", produces: "stack.json",         model: "gpt-5-mini",        tokensIn: 8216,  tokensOut: 872,  action: "Needs Update" },
+    { name: "Phaser",       produces: "phases/",            model: null, tokensIn: null, tokensOut: null, action: "Not Ready" },
+    { name: "Deployer",     produces: "deployment-plan.md", model: null, tokensIn: null, tokensOut: null, action: "Not Ready" }
+  ];
+
+  // Aggregated usage for the round. Unpriced calls are listed by name and
+  // are excluded from costUsd, never folded in as zero.
+  var usage = {
+    round: 3,
+    calls: 19,
+    tokensIn: 118402,
+    tokensOut: 9640,
+    costUsd: 0.7312,
+    unpriced: [
+      { agent: "Agentifier",   model: "gpt-5-mini", calls: 1 },
+      { agent: "StackAdvisor", model: "gpt-5-mini", calls: 1 }
+    ],
+    priceSource: "LiteLLM's price map"
+  };
+
+  // ------------------------------------------------------------------
+  // Chat frame state — the Brainstormer run for this round.
+  // ------------------------------------------------------------------
+  var run = {
+    agent: "Brainstormer",
+    model: "claude-sonnet-5",
+    produces: "vision.json",
+    next: "Agentifier",
+    skipTo: "Designer",
+    pipeline: [
+      { name: "CodeScanner",  state: "done" },
+      { name: "Brainstormer", state: "active" },
+      { name: "Agentifier",   state: "reachable" },
+      { name: "Designer",     state: "reachable" },
+      { name: "StackAdvisor", state: "reachable" },
+      { name: "Phaser",       state: "unreachable" },
+      { name: "Deployer",     state: "unreachable" }
+    ],
+    chars: 41206,
+    turnTokensIn: 32880,
+    turnTokensOut: 2914,
+    elapsed: "1m 42s",
+    status: "Brainstormer is replying…",
+    usage: {
+      calls: 6,
+      tokensIn: 32880,
+      tokensOut: 2914,
+      costUsd: 0.2134,
+      unpriced: [],
+      priceSource: "LiteLLM's price map"
+    },
+    messages: [
+      { from: "user", paras: [
+        "Spec4 — a local-first pipeline of seven planning agents that turns a rough idea or an existing codebase into a versioned folder of specs a coding agent can execute phase by phase. Runs as a local web app at localhost:8050, bring-your-own-key across eight providers; keys never leave the browser."
+      ] },
+      { from: "agent", paras: [
+        "Clear framing. Before I draft vision.json I want two things pinned down:",
+        "1. Who is the user — one audience or several? 2. What is this round's goal, as distinct from the product's purpose?"
+      ] },
+      { from: "user", paras: [
+        "One audience: developers who already use Claude Code or Kiro daily and are skeptical of spec-driven tooling. This round: bring the chat frame into the dev-tool register and add the Artifact View the round tree was designed to open into. The wizards stay unchanged until v2."
+      ] },
+      { from: "agent", paras: [
+        "Good — that is enough to draft. Here is the head of vision.json as I would write it; the differentiators are carried forward from v2 unchanged:"
+      ], code: [
+        '{',
+        '  "name": "Spec4",',
+        '  "round": 3,',
+        '  "target_audience": [',
+        '    "Developers who use Claude Code or Kiro daily and are skeptical of spec-driven tooling"',
+        '  ],',
+        '  "this_round": "Chat frame register + Artifact View"',
+        '}'
+      ], after: [
+        "Tell me what is off and I will revise, or continue to Agentifier when it reads right."
+      ] }
+    ]
+  };
+
+  // ------------------------------------------------------------------
+  // Artifact View state — file metadata and content per artifact path.
+  // Only files in the reviewed artifact table are ever resolvable.
+  // ------------------------------------------------------------------
+  var artifactFiles = {
+    "vision.json": {
+      size: "4.2 KB",
+      modified: "2026-09-06 14:12",
+      lines: [
+        '{',
+        '  "name": "Spec4",',
+        '  "round": 3,',
+        '  "purpose": "A local-first pipeline of seven planning agents that turns a rough idea or an existing codebase into a versioned folder of specs (.spec4/v{N}/), ready for a coding agent to execute phase by phase.",',
+        '  "ui_surface": "Web app — Python, Dash, Dash Mantine Components — served locally at localhost:8050.",',
+        '  "target_audience": [',
+        '    "Developers who already use Claude Code, Kiro, or similar AI coding agents daily, and who are skeptical of spec-driven tooling."',
+        '  ],',
+        '  "differentiators": [',
+        '    "The open .spec4 file format, directly visible and navigable in the round tree and Artifact View.",',
+        '    "Any LLM model usable at any pipeline step.",',
+        '    "Per-step cost tracking.",',
+        '    "Staleness detection across the artifact dependency graph."',
+        '  ],',
+        '  "this_round": {',
+        '    "goal": "Extend the dev-tool register to the chat frame and add the Artifact View.",',
+        '    "in_scope": [',
+        '      "Chat frame register",',
+        '      "Artifact View",',
+        '      "Artifact links"',
+        '    ],',
+        '    "deferred": [',
+        '      "Setup wizard",',
+        '      "Gate card",',
+        '      "Directory picker",',
+        '      "Designer wizard"',
+        '    ]',
+        '  },',
+        '  "constraints": {',
+        '    "keys_stay_in_browser": true,',
+        '    "reads_confined_to_spec_folder": true,',
+        '    "port": 8050',
+        '  }',
+        '}'
+      ]
+    }
+  };
+
+  var artifactView = { round: "v" + project.round, selected: "vision.json" };
+
+  // ------------------------------------------------------------------
+  var fmt = function (n) { return n.toLocaleString("en-US"); };
+  var esc = function (s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  };
+
+  function renderStatusBar() {
+    var ctx = document.getElementById("sb-ctx");
+    ctx.innerHTML =
+      esc(project.workingDirectory) +
+      '<span class="sep">·</span>round v' + project.round +
+      '<span class="sep">·</span>' + esc(project.defaultProvider) +
+      '<span class="sep">·</span>' + esc(project.defaultModel);
+    document.getElementById("sb-version").textContent = project.version;
+    document.title = "Spec4 — " + project.workingDirectory;
+  }
+
+  function renderNav(active) {
+    document.querySelectorAll(".sb-nav a").forEach(function (a) {
+      var on = a.getAttribute("data-nav") === active;
+      a.classList.toggle("active", on);
+      if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+    });
+  }
+
+  function artifactStatus(a, byPath) {
+    if (!a.mtime) return "missing";
+    if (a.exempt) return "present";
+    var t = Date.parse(a.mtime);
+    for (var i = 0; i < a.upstream.length; i++) {
+      var up = byPath[a.upstream[i]];
+      if (up && up.mtime && Date.parse(up.mtime) > t) return "needs update";
+    }
+    return "present";
+  }
+
+  function artifactsByPath() {
+    var byPath = {};
+    artifacts.forEach(function (a) { byPath[a.path] = a; });
+    return byPath;
+  }
+
+  // Draws the round tree into a list; each line is a link into the
+  // Artifact View. `selected` marks one path in accent (Artifact View).
+  function renderTree(headEl, listEl, round, selected) {
+    headEl.textContent = ".spec4/" + round + "/";
+    var byPath = artifactsByPath();
+    listEl.innerHTML = artifacts.map(function (a) {
+      var status = artifactStatus(a, byPath);
+      var cls = status === "missing" ? " is-missing" : "";
+      if (selected && a.path === selected) cls += " is-selected";
+      // "present" is the default and is not labelled; only exceptions show.
+      var label = status === "present" ? "" : status;
+      return '<li class="mono' + cls + '">' +
+        '<a class="tree-link" href="#artifacts/' + esc(round) + '/' + esc(a.path) + '" data-path="' + esc(a.path) + '" data-round="' + esc(round) + '">' +
+        '<span class="name lane-' + a.lane + '">' + esc(a.path) + '</span>' +
+        '<span class="status">' + label + '</span>' +
+        '</a></li>';
+    }).join("");
+  }
+
+  var actionClass = {
+    "Start":        "btn-primary",
+    "Continue":     "btn-primary",
+    "Modify":       "btn-modify",
+    "Needs Update": "btn-warn",
+    "Not Ready":    "btn-outline",
+    "Required":     "btn-outline"
+  };
+
+  function renderAgents() {
+    var body = document.getElementById("agent-rows");
+    body.innerHTML = agents.map(function (ag) {
+      var disabled = ag.action === "Not Ready";
+      var hasRun = ag.model !== null;
+      var tokens = hasRun ? fmt(ag.tokensIn) + " in / " + fmt(ag.tokensOut) + " out" : "";
+      return '<tr' + (disabled ? ' class="is-disabled"' : "") + ">" +
+        '<td class="agent">' + esc(ag.name) + "</td>" +
+        '<td class="produces mono">' + esc(ag.produces) + "</td>" +
+        '<td class="model mono">' + (hasRun ? esc(ag.model) : "") + "</td>" +
+        '<td class="tokens mono">' + tokens + "</td>" +
+        '<td class="action"><button type="button" class="btn ' + actionClass[ag.action] + '"' +
+          ' data-agent="' + esc(ag.name) + '"' + (disabled ? " disabled" : "") + ">" +
+          esc(ag.action) + "</button></td>" +
+        "</tr>";
+    }).join("");
+  }
+
+  // Shared three-line cost strip: used for the round (project view) and
+  // for the completed run (chat frame), sourced from the same estimate.
+  function renderCostStrip(u, label, lineEl, unpricedEl, noteEl) {
+    var unpricedCalls = u.unpriced.reduce(function (n, x) { return n + x.calls; }, 0);
+    var pricedCalls = u.calls - unpricedCalls;
+
+    // Never show an all-zero figure when the true cost is unknown.
+    var figure;
+    if (u.calls === 0) {
+      figure = "no calls recorded";
+    } else if (pricedCalls === 0) {
+      figure = "unknown";
+    } else {
+      figure = "$" + u.costUsd.toFixed(4);
+    }
+
+    var parts = [
+      '<span class="label">' + esc(label) + "</span> " + figure,
+      '<span class="label">Tokens:</span> ' + fmt(u.tokensIn) + " in / " + fmt(u.tokensOut) + " out"
+    ];
+    lineEl.innerHTML = parts.join('<span class="sep">·</span>');
+
+    if (unpricedCalls > 0) {
+      var names = u.unpriced.map(function (x) {
+        return esc(x.agent) + " (" + esc(x.model) + ")";
+      }).join(", ");
+      unpricedEl.textContent = unpricedCalls + " of " + u.calls + " calls could not be priced and are excluded: " + names;
+      unpricedEl.hidden = false;
+    } else if (u.calls > 0) {
+      unpricedEl.textContent = "all " + u.calls + " calls priced";
+      unpricedEl.hidden = false;
+    } else {
+      unpricedEl.textContent = "";
+      unpricedEl.hidden = true;
+    }
+    noteEl.textContent = "Estimates from " + u.priceSource + "; your provider's billing is authoritative.";
+  }
+
+  function renderCost() {
+    renderCostStrip(usage, "Estimated cost, v" + usage.round + ":",
+      document.getElementById("cost-line"),
+      document.getElementById("cost-unpriced"),
+      document.getElementById("cost-note"));
+  }
+
+  // ---------- Chat frame ----------
+  function renderChat() {
+    document.getElementById("pipeline").innerHTML = run.pipeline.map(function (p) {
+      var cls = p.state === "active" ? "is-active" : p.state === "unreachable" ? "is-unreachable" : "";
+      if (p.state === "unreachable") {
+        return '<span class="' + cls + '" aria-disabled="true">' + esc(p.name) + "</span>";
+      }
+      return '<a class="' + cls + '" href="#agent/' + esc(p.name.toLowerCase()) + '"' +
+        (p.state === "active" ? ' aria-current="step"' : "") + ">" + esc(p.name) + "</a>";
+    }).join("");
+
+    document.getElementById("transcript").innerHTML = run.messages.map(function (m) {
+      var isUser = m.from === "user";
+      var html = '<div class="msg' + (isUser ? " is-user" : "") + '">' +
+        '<div class="msg-label">' + (isUser ? "You" : esc(run.agent)) + "</div>" +
+        '<div class="msg-body">' +
+        m.paras.map(function (p) { return "<p>" + esc(p) + "</p>"; }).join("");
+      if (m.code) html += '<pre class="code mono">' + m.code.map(esc).join("\n") + "</pre>";
+      if (m.after) html += m.after.map(function (p) { return '<p style="margin-top:8px">' + esc(p) + "</p>"; }).join("");
+      return html + "</div></div>";
+    }).join("");
+
+    renderCostStrip(run.usage, "Estimated cost, this run:",
+      document.getElementById("run-cost-line"),
+      document.getElementById("run-cost-unpriced"),
+      document.getElementById("run-cost-note"));
+
+    document.getElementById("action-meta").innerHTML =
+      fmt(run.chars) + " chars" +
+      '<span class="sep">·</span>' + fmt(run.turnTokensIn) + " in / " + fmt(run.turnTokensOut) + " out" +
+      '<span class="sep">·</span>Elapsed: ' + esc(run.elapsed);
+
+    document.getElementById("action-btns").innerHTML =
+      '<button type="button" class="btn btn-outline" data-open="' + esc(run.produces) + '">Open ' + esc(run.produces) + "</button>" +
+      '<button type="button" class="btn btn-outline" data-download="' + esc(run.produces) + '">Download</button>' +
+      '<button type="button" class="btn btn-outline" data-goto="' + esc(run.skipTo) + '">Continue to ' + esc(run.skipTo) + "</button>" +
+      '<button type="button" class="btn btn-primary" data-goto="' + esc(run.next) + '">Continue to ' + esc(run.next) + "</button>";
+
+    document.getElementById("model-chip").textContent = run.model;
+    document.getElementById("status-line").textContent = run.status;
+  }
+
+  // ---------- Artifact view ----------
+  function jsonLine(s) {
+    var m = s.match(/^(\s*)("(?:[^"\\]|\\.)*")(\s*:\s*)(.*)$/);
+    if (m) {
+      return esc(m[1]) + '<span class="k">' + esc(m[2]) + "</span>" + esc(m[3]) +
+        '<span class="v">' + esc(m[4]) + "</span>";
+    }
+    if (/^\s*"/.test(s)) return '<span class="v">' + esc(s) + "</span>";
+    return esc(s);
+  }
+
+  function fmtMtime(iso) {
+    return iso.slice(0, 10) + " " + iso.slice(11, 16);
+  }
+
+  function renderFilePane() {
+    var pane = document.getElementById("file-pane");
+    var sel = artifactView.selected;
+    var byPath = artifactsByPath();
+    // Paths outside the reviewed artifact table are never resolvable.
+    var a = sel ? byPath[sel] : null;
+
+    if (!a) {
+      pane.innerHTML = '<div class="file-empty mono">Select a file</div>';
+      return;
+    }
+
+    var full = ".spec4/" + artifactView.round + "/" + a.path;
+    var meta = artifactFiles[a.path];
+    var head = '<span class="path">' + esc(full) + "</span>";
+
+    if (!a.mtime) {
+      head += '<span class="sep">·</span>missing<span class="sep">·</span>' + esc(laneLabel[a.lane]);
+      pane.innerHTML =
+        '<div class="file-head mono"><span class="file-meta">' + head + "</span>" +
+        '<button type="button" class="btn btn-outline" disabled>Download</button></div>' +
+        '<div class="file-missing mono"><span class="path">' + esc(a.path) + "</span> — missing — produced by " + esc(a.agent) + "</div>";
+      return;
+    }
+
+    if (meta && meta.size) head += '<span class="sep">·</span>' + esc(meta.size);
+    head += '<span class="sep">·</span>modified ' + esc(meta && meta.modified ? meta.modified : fmtMtime(a.mtime));
+    head += '<span class="sep">·</span>' + esc(laneLabel[a.lane]);
+
+    var body;
+    if (meta && meta.lines) {
+      body = meta.lines.map(function (line, i) {
+        return '<div class="line"><span class="ln">' + (i + 1) + '</span><span class="lc">' + jsonLine(line) + "</span></div>";
+      }).join("");
+    } else {
+      body = '<div class="line"><span class="ln">1</span><span class="no-preview">preview not included in this mock</span></div>';
+    }
+
+    pane.innerHTML =
+      '<div class="file-head mono"><span class="file-meta">' + head + "</span>" +
+      '<button type="button" class="btn btn-outline" data-download="' + esc(a.path) + '">Download</button></div>' +
+      '<div class="file-block" tabindex="0" aria-label="' + esc(a.path) + '">' + body + "</div>";
+  }
+
+  function renderArtifactView() {
+    document.getElementById("round-select").innerHTML = project.roundsOnDisk.map(function (r) {
+      var id = "v" + r;
+      var on = id === artifactView.round;
+      return '<a href="#artifacts/' + id + '" class="' + (on ? "is-active" : "") + '"' +
+        (on ? ' aria-current="true"' : "") + ">" + id + "</a>";
+    }).join("");
+    renderTree(document.getElementById("av-tree-head"), document.getElementById("av-tree-list"),
+      artifactView.round, artifactView.selected);
+    renderFilePane();
+  }
+
+  function render() {
+    renderStatusBar();
+    renderTree(document.getElementById("tree-head"), document.getElementById("tree-list"), "v" + project.round, null);
+    renderAgents();
+    renderCost();
+    renderChat();
+    renderArtifactView();
+  }
+
+  // ------------------------------------------------------------------
+  // Routing — the hash picks the screen; the nav is recomputed from it.
+  // ------------------------------------------------------------------
+  function showView(id) {
+    ["project-view", "chat-view", "artifact-view"].forEach(function (v) {
+      document.getElementById(v).hidden = v !== id;
+    });
+  }
+
+  function route() {
+    var h = decodeURIComponent(location.hash.replace(/^#/, "")) || "project";
+    if (h.indexOf("agent/") === 0) {
+      renderNav("project");
+      renderChat();
+      showView("chat-view");
+    } else if (h.indexOf("artifacts") === 0) {
+      var m = h.match(/^artifacts(?:\/(v\d+)(?:\/(.+))?)?$/);
+      if (m) {
+        if (m[1]) artifactView.round = m[1];
+        if (m[2]) artifactView.selected = m[2];
+      }
+      renderNav("artifacts");
+      renderArtifactView();
+      showView("artifact-view");
+    } else if (h === "project") {
+      renderNav("project");
+      render();
+      showView("project-view");
+    } else {
+      renderNav(h);
+    }
+  }
+
+  // Row actions route to the agent exactly as the existing agent-select
+  // buttons do; the mock records the intent in the URL hash.
+  document.getElementById("agent-rows").addEventListener("click", function (e) {
+    var btn = e.target.closest("button[data-agent]");
+    if (!btn || btn.disabled) return;
+    location.hash = "agent/" + btn.getAttribute("data-agent").toLowerCase();
+  });
+
+  // Round-tree lines resolve their target at the moment of selection.
+  document.addEventListener("click", function (e) {
+    var link = e.target.closest("a.tree-link");
+    if (!link) return;
+    e.preventDefault();
+    location.hash = "artifacts/" + link.getAttribute("data-round") + "/" + link.getAttribute("data-path");
+  });
+
+  // Chat action row: open the artifact in place, or continue the pipeline.
+  document.getElementById("action-btns").addEventListener("click", function (e) {
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    if (btn.hasAttribute("data-open")) {
+      location.hash = "artifacts/v" + project.round + "/" + btn.getAttribute("data-open");
+    } else if (btn.hasAttribute("data-goto")) {
+      location.hash = "agent/" + btn.getAttribute("data-goto").toLowerCase();
+    }
+  });
+
+  // Nav marks the current view; the router recomputes the active entry.
+  document.querySelector(".sb-nav").addEventListener("click", function (e) {
+    var link = e.target.closest("a[data-nav]");
+    if (!link || link.getAttribute("data-nav") === "docs") return;
+    e.preventDefault();
+    location.hash = link.getAttribute("data-nav");
+  });
+
+  window.addEventListener("hashchange", route);
+
+  render();
+  route();
+</script>
+</body>
+</html>

@@ -38,6 +38,7 @@ from spec4.layouts._agent_rows import (
     agent_row_id,
     agent_rows,
 )
+from spec4.layouts._artifact_view import _artifact_view_layout
 from spec4.layouts._chat import _agent_status_bar, _chat_action_buttons, _chat_layout
 from spec4.layouts._setup import _setup_layout
 from spec4.layouts._shared import (
@@ -51,9 +52,12 @@ from spec4.layouts._round_cost import (
     round_cost_lines,
 )
 from spec4.layouts._round_tree import (
+    LINE_TYPE,
     _round_tree,
     _round_tree_head,
     _round_tree_lines_children,
+    line_id,
+    rendered_tree_lines,
     round_tree_lines,
 )
 from spec4.layouts._status_bar import (
@@ -78,9 +82,12 @@ __all__ = [
     "agent_rows",
     "_round_cost",
     "round_cost_lines",
+    "LINE_TYPE",
     "_round_tree",
     "_round_tree_head",
     "_round_tree_lines_children",
+    "line_id",
+    "rendered_tree_lines",
     "round_tree_lines",
     "_status_bar",
     "_status_context",
@@ -91,6 +98,7 @@ __all__ = [
     "_setup_layout",
     "_working_dir_layout",
     "_agent_select_layout",
+    "_artifact_view_layout",
 ]
 
 
@@ -332,7 +340,12 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
     # strip's lines are recomputed from `usage.json` by `on_round_cost` on
     # every render, like the tree's (D-LR4).
     children = [
-        _round_tree(working_dir, round_number),
+        # `linked=True`: every line opens the file it names in the Artifact
+        # View. The tree is the app's index of the round, so the line a
+        # developer is already reading is the natural way in — which is why
+        # this is the same renderer the Artifact View draws, told to link,
+        # rather than a project-view tree and an artifact-view tree.
+        _round_tree(working_dir, round_number, linked=True),
         _agent_rows(working_dir, round_number, session),
         _round_cost(working_dir, round_number),
     ]

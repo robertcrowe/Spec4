@@ -1,0 +1,312 @@
+{
+  "stack_spec": {
+    "name": "Spec4",
+    "description": "A locally-served, developer-facing pipeline app (Dash + Dash Mantine Components) that turns a rough idea or existing codebase into a versioned folder of specs; this round reworks its shell and project view into a dense, developer-tool UI with a single accent color and no marketing-site chrome.",
+    "languages": [
+      {
+        "name": "Python",
+        "version": "3.12",
+        "role": "Dash application server, callbacks, and UI layout composition (backend and server-rendered UI are one deployable)",
+        "linter": "Ruff (select = [\"E\", \"F\"])",
+        "formatter": "Ruff format",
+        "type_checker": "mypy (strict)",
+        "indentation": "4 spaces",
+        "line_length": 88,
+        "quotes": "double",
+        "trailing_commas": "in multi-line collections and function calls",
+        "naming_conventions": {
+          "variables": "snake_case",
+          "functions": "snake_case",
+          "classes": "PascalCase",
+          "constants": "UPPER_SNAKE_CASE",
+          "files": "snake_case"
+        }
+      },
+      {
+        "name": "CSS",
+        "version": "CSS3",
+        "role": "shell, theme, and project-view spacing/density styling; hand-authored, no preprocessor, no new build tooling",
+        "indentation": "2 spaces",
+        "line_length": 100,
+        "quotes": "double (for consistency with the rest of the codebase)",
+        "semicolons": "yes, one per declaration",
+        "naming_conventions": {
+          "classes": "kebab-case",
+          "files": "snake_case (v3.css retained as the single stylesheet)"
+        }
+      }
+    ],
+    "deployment": {
+      "targets": [
+        {
+          "name": "spec4_app",
+          "kind": "web_app",
+          "purpose": "the single local Dash application: serves the UI (status bar, project view, round tree, agent rows) and runs the pipeline-agent backend in one process",
+          "language": "Python",
+          "runtime": "Python 3.12, served via gunicorn (production-style local serving) or the Dash dev server (DASH_DEBUG=true)",
+          "hosting": "local machine only, at localhost:8050; no cloud hosting, no multi-tenant deployment",
+          "build": "uv build (uv_build backend)",
+          "distribution": "run locally via the `spec4` CLI entrypoint, `uv run python src/spec4/app.py`, or gunicorn per the existing Makefile `deploy` target",
+          "exposure": {
+            "transport": "HTTP on localhost only; not exposed beyond the local machine"
+          }
+        }
+      ]
+    },
+    "libraries": [
+      {
+        "name": "Dash",
+        "purpose": "core web application framework serving both the UI and its server-side callbacks; unchanged this round",
+        "category": "web framework",
+        "language": "Python",
+        "foundational": true,
+        "satisfies_nfr": [
+          "nfr_the_shell_and_navigation_render_in_well_under_a_second_on_every_view"
+        ]
+      },
+      {
+        "name": "Dash Mantine Components",
+        "purpose": "the sole UI component layer; this round's shell/status-bar/tree/rows are built entirely from DMC primitives with the accent set once as the theme primary \u2014 no React, Tailwind, or other new front-end dependency is introduced",
+        "category": "ui component library",
+        "language": "Python",
+        "foundational": true,
+        "satisfies_nfr": [
+          "nfr_visual_density_and_accent_color_usage_remain_consistent_across_all_screens_with_no_per_view_drift",
+          "nfr_the_shell_and_navigation_render_in_well_under_a_second_on_every_view"
+        ]
+      },
+      {
+        "name": "dash-iconify",
+        "purpose": "icon components used in place of the removed emoji throughout the shell and rows",
+        "category": "icons",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "litellm",
+        "purpose": "multi-provider LLM gateway used by the seven pipeline agents; unchanged this round, referenced only for the default provider/model shown in the status bar",
+        "category": "llm gateway",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "mcp",
+        "purpose": "Model Context Protocol client SDK used elsewhere in the pipeline; unchanged this round",
+        "category": "protocol client sdk",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "boto3",
+        "purpose": "AWS SDK supporting litellm's optional Bedrock/SageMaker routing; unchanged this round",
+        "category": "cloud sdk",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "httpx",
+        "purpose": "general HTTP client used across the app; unchanged this round",
+        "category": "http client",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "jsonschema",
+        "purpose": "validates artifact JSON files against their schemas",
+        "category": "validation",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "gunicorn",
+        "purpose": "production-style WSGI server for local deployment",
+        "category": "wsgi server",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "pyyaml",
+        "purpose": "YAML parsing used elsewhere in the pipeline",
+        "category": "serialization",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "mypy",
+        "purpose": "strict static type checking across the codebase",
+        "category": "type checking",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "types-pyyaml",
+        "purpose": "type stubs for pyyaml, required for mypy strict mode",
+        "category": "type stubs",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "pytest",
+        "purpose": "test runner for the existing suite (agents, layouts, callbacks, session, project-manager)",
+        "category": "testing",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "pytest-cov",
+        "purpose": "coverage measurement for the pytest suite",
+        "category": "testing",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "Playwright",
+        "purpose": "browser automation for end-to-end verification of the reworked shell and project view",
+        "category": "testing",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "Ruff",
+        "purpose": "linting (and formatting via ruff format) for all Python source",
+        "category": "linting and formatting",
+        "language": "Python",
+        "foundational": true
+      }
+    ],
+    "persistence": {
+      "artifact_store": {
+        "choice": "local filesystem JSON files under .spec4/v{N}/, one file per artifact, produced by the pipeline agents",
+        "purpose": "source of truth for every Artifact and UsageRecord this round's screens read; read fresh from disk on every render so status is never stale",
+        "durability": "source of truth for artifact content; survives restarts and is unaffected by browser state; the round tree and cost figure are only as current as this round's last agent run",
+        "satisfies_nfr": [
+          "nfr_the_project_view_remains_fully_usable_without_any_network_access_beyond_explicit_llm_calls",
+          "nfr_status_information__round__artifact_state__cost__always_reflects_the_true_current_state_of_the_working_directory__never_a_stale_cached_view"
+        ],
+        "collections": [
+          {
+            "name": "round_artifacts",
+            "entities": [
+              "Artifact"
+            ],
+            "physical": [
+              "one file per artifact under .spec4/v{N}/, path fixed by pipeline order; status derived live from the existing dependency graph (mtime comparison against upstream artifacts)"
+            ],
+            "serves_features": [
+              "round_tree",
+              "agent_rows",
+              "open_to_the_project"
+            ]
+          },
+          {
+            "name": "usage_records",
+            "entities": [
+              "UsageRecord"
+            ],
+            "purpose": "per-round usage/cost rollup; deliberately excluded from the artifact dependency graph and never marked needs-update",
+            "physical": [
+              "usage.json, one per round, per-agent model/tokens/cost totals"
+            ],
+            "serves_features": [
+              "round_cost",
+              "agent_rows"
+            ]
+          }
+        ]
+      },
+      "browser_store": {
+        "choice": "existing browser dcc.Store pair \u2014 sessionStorage (session) and localStorage (prefs); no server-side session",
+        "purpose": "remembers the working directory and default provider/model across navigations and, for prefs, across browser sessions on the same machine, without any state touching the server or disk",
+        "durability": "session store is cleared when the tab closes (not durable); prefs store persists on-device across sessions but is not backed up or synced",
+        "satisfies_nfr": [
+          "nfr_the_project_view_remains_fully_usable_without_any_network_access_beyond_explicit_llm_calls"
+        ],
+        "collections": [
+          {
+            "name": "session_store",
+            "entities": [
+              "WorkingDirectory",
+              "Round"
+            ],
+            "physical": [
+              "sessionStorage, read via callback State"
+            ],
+            "serves_features": [
+              "open_to_the_project",
+              "development_tool_shell"
+            ]
+          },
+          {
+            "name": "prefs_store",
+            "entities": [
+              "ProviderModel"
+            ],
+            "physical": [
+              "localStorage, read via callback State; BYOK provider keys live here client-side only and never reach the server or disk"
+            ],
+            "serves_features": [
+              "development_tool_shell"
+            ]
+          }
+        ]
+      }
+    },
+    "coding_style": {
+      "patterns": [
+        "Dash Mantine Components remains the sole UI/component layer for this round; no React, Tailwind, or other new front-end dependency is introduced",
+        "layout helpers in layouts/_shared.py (e.g. _card, cost_summary_card) are reused rather than duplicated",
+        "agent pipeline order is defined once in app_constants.AGENT_KEYS; all agent-ordered tables (round tree, agent rows) are derived from or asserted against it",
+        "status (artifact presence/staleness, agent action, cost) is recomputed from the existing dependency graph and usage.json on every render, never cached",
+        "existing component ids are kept as a test contract; new components get new ids rather than renaming existing ones",
+        "the accent color is set once as the Mantine theme primary; components inherit it rather than setting color locally"
+      ],
+      "documentation": [
+        "design decisions recorded as numbered comments (D-XX) at the point of implementation, per existing convention"
+      ]
+    },
+    "project_structure": [
+      {
+        "path": "src/spec4/layouts/",
+        "purpose": "Dash Mantine layout components; this round's shell, status bar, project view, round tree, and agent rows are built here"
+      },
+      {
+        "path": "src/spec4/layouts/_shared.py",
+        "purpose": "reusable layout helpers (cards, cost summary) shared across screens"
+      },
+      {
+        "path": "src/spec4/callbacks/",
+        "purpose": "Dash server-side callbacks; new callbacks for the round tree and agent rows read working directory/round/provider state via State from the existing browser stores"
+      },
+      {
+        "path": "src/spec4/assets/v3.css",
+        "purpose": "single stylesheet; this round's theme primary, spacing, and removal of marketing-era styling (grid background, gradients, hover glows) lands here"
+      },
+      {
+        "path": "src/spec4/project_manager.py",
+        "purpose": "existing artifact dependency graph, staleness detection, and agent button state; the round tree and agent rows read status and actions from here unchanged"
+      },
+      {
+        "path": "src/spec4/session.py",
+        "purpose": "session defaults and artifact persistence; source of working-directory and round state"
+      },
+      {
+        "path": "src/spec4/llm_selection.py",
+        "purpose": "per-agent model resolution shared by the gate card, model chip, and retry panel; status bar reads the default provider/model from here"
+      },
+      {
+        "path": "src/spec4/app_constants.py",
+        "purpose": "single source of the seven-agent pipeline order (AGENT_KEYS)"
+      },
+      {
+        "path": "tests/",
+        "purpose": "pytest suite mirroring src/ layout; includes callback co-presence and component-ordering contract tests that must keep passing through this round's layout changes"
+      }
+    ],
+    "references": [
+      {
+        "standard": "Model Context Protocol (MCP)",
+        "url": "https://modelcontextprotocol.io/specification"
+      }
+    ]
+  }
+}

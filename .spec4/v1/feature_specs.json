@@ -1,0 +1,521 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "development_tool_shell",
+      "name": "Development Tool Shell",
+      "purpose": "Establishes a consistent, minimal-chrome informational register (a status strip plus primary navigation) used across every screen, replacing a decorative marketing-style presentation with a compact developer-tool look.",
+      "invocation": {
+        "trigger": "The app loads, or any screen renders (the shell wraps every screen)."
+      },
+      "inputs": [
+        {
+          "name": "working_directory",
+          "type": "text",
+          "description": "The current project's working directory path.",
+          "required": true
+        },
+        {
+          "name": "round_identifier",
+          "type": "text",
+          "description": "The current round number.",
+          "required": true
+        },
+        {
+          "name": "default_provider_and_model",
+          "type": "text",
+          "description": "The currently selected default LLM provider and model.",
+          "required": true
+        },
+        {
+          "name": "app_version",
+          "type": "text",
+          "description": "The current app version identifier.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "A persistent status strip and primary navigation shown around every screen's content.",
+        "format": "Persistent visual frame",
+        "schema_notes": "Status strip fields appear in fixed order (directory, round, provider/model, version); navigation entries appear in fixed order (Project, Artifacts, Settings, Docs)."
+      },
+      "success_criteria": [
+        "The status strip always shows the current directory, round, provider/model, and version.",
+        "Navigation is present and identical across all screens.",
+        "No decorative elements (hero spacing, gradients, glow effects, emoji) appear anywhere.",
+        "Vertical spacing is visibly tighter than the prior presentation.",
+        "Only one accent emphasis color is used anywhere for primary emphasis or active-state indication."
+      ],
+      "failure_modes": [
+        {
+          "mode": "Status strip shows a stale directory or round after a change.",
+          "likelihood": "medium",
+          "mitigation": "Always recompute status strip fields from current session state on every render."
+        },
+        {
+          "mode": "Accent emphasis color leaks into secondary or decorative elements.",
+          "likelihood": "low",
+          "mitigation": "Restrict accent color usage strictly to primary emphasis and active-state indication."
+        }
+      ],
+      "dependencies": [],
+      "entities": [
+        "WorkingDirectory",
+        "Round",
+        "Provider",
+        "Model"
+      ],
+      "references": []
+    },
+    {
+      "id": "open_to_the_project",
+      "name": "Open To The Project",
+      "purpose": "Skips any introductory screen and takes the user straight into their project when a working directory is already known, so returning users land on their work immediately.",
+      "invocation": {
+        "trigger": "The app root is opened."
+      },
+      "inputs": [
+        {
+          "name": "remembered_working_directory",
+          "type": "text",
+          "description": "A working directory remembered from a prior visit, if any.",
+          "required": false
+        }
+      ],
+      "outputs": {
+        "primary": "Navigation to either the project view or the directory picker.",
+        "format": "Screen navigation",
+        "schema_notes": "Exactly one destination is chosen based on whether a working directory is remembered and still valid."
+      },
+      "success_criteria": [
+        "When a directory was remembered, opening root goes directly to the project view with no intermediate screen.",
+        "When no directory is remembered, the directory picker opens.",
+        "No introduction or landing screen ever appears."
+      ],
+      "failure_modes": [
+        {
+          "mode": "A remembered directory that no longer exists is opened anyway.",
+          "likelihood": "medium",
+          "mitigation": "Detect an invalid directory and fall back to the directory picker."
+        },
+        {
+          "mode": "Visible flicker between the picker and the project view on load.",
+          "likelihood": "low",
+          "mitigation": "No landing layout is ever rendered; the page container stays empty until the routing callback resolves the destination."
+        }
+      ],
+      "dependencies": [
+        "round_tree",
+        "agent_rows",
+        "round_cost"
+      ],
+      "entities": [
+        "WorkingDirectory"
+      ],
+      "references": []
+    },
+    {
+      "id": "round_tree",
+      "name": "Round Tree",
+      "purpose": "Shows the current round's full set of expected artifacts as an ordered tree with per-artifact status, so the user can see at a glance what exists, what's outdated, and what's missing.",
+      "invocation": {
+        "trigger": "The project view is opened, or the current round's artifacts change."
+      },
+      "inputs": [
+        {
+          "name": "round_identifier",
+          "type": "text",
+          "description": "The current round number.",
+          "required": true
+        },
+        {
+          "name": "artifact_dependency_graph",
+          "type": "structured data",
+          "description": "The known upstream/downstream relationships between pipeline artifacts.",
+          "required": true
+        },
+        {
+          "name": "artifact_existence_and_timestamps",
+          "type": "structured data",
+          "description": "Which artifacts exist and when each was last produced.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "An ordered list of artifacts with status and lane coloring.",
+        "format": "Tree/list display",
+        "schema_notes": "One entry per pipeline artifact, in pipeline order, each carrying a status (present, needs update, missing) and a lane (prompt for the agent, reference for the agent, record for you)."
+      },
+      "success_criteria": [
+        "Every pipeline artifact for the round appears exactly once, in pipeline order.",
+        "An artifact whose upstream dependency is newer shows needs-update.",
+        "An artifact that does not exist shows missing.",
+        "The usage record never shows needs-update regardless of upstream changes.",
+        "A three-item legend explains the lane distinctions.",
+        "Only the current round's artifacts are shown."
+      ],
+      "failure_modes": [
+        {
+          "mode": "Status miscalculated when dependency information or timestamps are unavailable.",
+          "likelihood": "medium",
+          "mitigation": "Treat unknown state as missing rather than present."
+        },
+        {
+          "mode": "Usage record incorrectly flagged as needing update.",
+          "likelihood": "low",
+          "mitigation": "Exempt the usage record explicitly from the needs-update calculation."
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell"
+      ],
+      "entities": [
+        "Round",
+        "Artifact",
+        "DependencyGraph"
+      ],
+      "references": []
+    },
+    {
+      "id": "agent_rows",
+      "name": "Agent Rows",
+      "purpose": "Presents the seven pipeline agents as compact status rows, each showing what it produces, what it last ran on, its token usage this round, and the next available action, replacing a heavier presentation.",
+      "invocation": {
+        "trigger": "The project view is opened, or an agent's run state changes."
+      },
+      "inputs": [
+        {
+          "name": "agent_pipeline_order",
+          "type": "list of items",
+          "description": "The seven agents in fixed pipeline order.",
+          "required": true
+        },
+        {
+          "name": "agent_produced_artifact",
+          "type": "text",
+          "description": "The artifact each agent produces.",
+          "required": true
+        },
+        {
+          "name": "agent_last_run_model",
+          "type": "text",
+          "description": "The model each agent last ran on this round, from the round's usage totals.",
+          "required": false
+        },
+        {
+          "name": "agent_token_counts",
+          "type": "structured data",
+          "description": "Tokens in and out for each agent this round.",
+          "required": true
+        },
+        {
+          "name": "agent_action_state",
+          "type": "text",
+          "description": "The current action state for each agent (Start, Continue, Modify, Needs Update, Not Ready, Required).",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "One row per agent showing name, produced artifact, last-run model, token counts, and action.",
+        "format": "Ordered list",
+        "schema_notes": "Rows appear in pipeline order; a blank model field indicates the agent has not run this round."
+      },
+      "success_criteria": [
+        "All seven agents appear in pipeline order every time.",
+        "An agent that has not run this round shows a blank model field, never a placeholder value.",
+        "Token counts reflect only the current round.",
+        "The action shown for each agent matches the existing state-routing rules.",
+        "No step numbers, prose descriptions, or emoji appear on any row.",
+        "Activating a row's action navigates to that agent exactly as the prior agent-select buttons did; an agent with an in-progress conversation and no artifact shows Continue and resumes that conversation."
+      ],
+      "failure_modes": [
+        {
+          "mode": "Stale action state shown after an artifact updates elsewhere.",
+          "likelihood": "medium",
+          "mitigation": "Recompute action state from current artifact and dependency status on every render."
+        },
+        {
+          "mode": "Token totals mixed across rounds.",
+          "likelihood": "low",
+          "mitigation": "Scope token aggregation strictly to the active round's usage record."
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell"
+      ],
+      "entities": [
+        "Agent",
+        "Round",
+        "Artifact",
+        "UsageRecord"
+      ],
+      "references": []
+    },
+    {
+      "id": "round_cost",
+      "name": "Round Cost",
+      "purpose": "Surfaces the round's running estimated cost so the user always knows what they've spent before deciding whether to continue.",
+      "invocation": {
+        "trigger": "The project view is opened, or the round's usage record changes."
+      },
+      "inputs": [
+        {
+          "name": "round_usage_totals",
+          "type": "structured data",
+          "description": "Token totals and priced/unpriced call information for the current round.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "A labelled estimated-cost figure with supporting token counts.",
+        "format": "Short summary strip",
+        "schema_notes": "Three lines: labelled estimate, token totals, and any calls excluded from pricing named individually."
+      },
+      "success_criteria": [
+        "The figure is always labelled as an estimate, never presented as exact.",
+        "Any call that could not be priced is named rather than silently dropped or shown as zero.",
+        "The total is never displayed as a zero-cost figure when some usage is unpriced.",
+        "The figure updates whenever the underlying usage record changes."
+      ],
+      "failure_modes": [
+        {
+          "mode": "Unpriced usage silently ignored, making the total look lower than reality.",
+          "likelihood": "medium",
+          "mitigation": "Always name excluded calls alongside the total."
+        },
+        {
+          "mode": "Cost shown as exactly zero when data is simply unavailable.",
+          "likelihood": "medium",
+          "mitigation": "Distinguish 'no usage yet' from 'usage present but unpriced'."
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell"
+      ],
+      "entities": [
+        "Round",
+        "UsageRecord",
+        "CostEstimate"
+      ],
+      "references": []
+    },
+    {
+      "id": "artifact_view",
+      "name": "Artifact View",
+      "purpose": "Lets the user open and read any artifact from any round without leaving the app, giving full visibility into what each agent produced or is expected to produce.",
+      "invocation": {
+        "trigger": "The user navigates to the Artifacts destination, or selects a file from a round tree or link elsewhere in the app."
+      },
+      "inputs": [
+        {
+          "name": "round_identifier",
+          "type": "text",
+          "description": "The round to display, defaulting to the active round.",
+          "required": false
+        },
+        {
+          "name": "selected_file_path",
+          "type": "text",
+          "description": "The artifact selected for viewing within the chosen round.",
+          "required": false
+        },
+        {
+          "name": "rounds_on_disk",
+          "type": "list of items",
+          "description": "Every round present for the current project.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "The rendered content of the selected artifact, or a missing-file message.",
+        "format": "Two-part screen: a round/tree selector and a content pane",
+        "schema_notes": "The content pane shows a one-line header (path, size, last modified, lane) followed by the file's content \u2014 structured content pretty-printed, plain text shown with line numbers; a missing file shows 'missing \u2014 produced by {Agent}' in place of content."
+      },
+      "success_criteria": [
+        "Selecting any listed artifact displays its content correctly, with line numbers for every text file (JSON included, pretty-printed).",
+        "Only files that belong to the reviewed artifact set can ever be opened, and no path outside the project's spec folder can be reached this way.",
+        "Switching rounds updates both the tree and the available files.",
+        "The file that renders the app's mock output can also be opened in a rendered, viewable form separate from its raw text.",
+        "A way to obtain a copy of the currently viewed file is always available.",
+        "A missing artifact is shown in the tree and clearly explained when selected."
+      ],
+      "failure_modes": [
+        {
+          "mode": "A request for a file outside the recognized artifact set is attempted.",
+          "likelihood": "high",
+          "mitigation": "Reject any path not present in the reviewed artifact table, resolved strictly within the project's spec folder."
+        },
+        {
+          "mode": "Viewing a very large file causes the screen to become unresponsive.",
+          "likelihood": "medium",
+          "mitigation": "Apply line numbering and rendering that scales to large plain-text files."
+        },
+        {
+          "mode": "Stale round list after a new round is created.",
+          "likelihood": "low",
+          "mitigation": "Recompute the list of rounds on disk each time the screen opens."
+        }
+      ],
+      "dependencies": [
+        "round_tree"
+      ],
+      "entities": [
+        "Round",
+        "Artifact",
+        "ArtifactFile"
+      ],
+      "references": []
+    },
+    {
+      "id": "artifact_links",
+      "name": "Artifact Links",
+      "purpose": "Makes every artifact reference in the app clickable, so the round tree and chat outputs consistently lead into the Artifact View instead of leaving the user to hunt for files.",
+      "invocation": {
+        "trigger": "The user selects a line in the round tree, or selects an open-artifact control in the chat frame's action row."
+      },
+      "inputs": [
+        {
+          "name": "target_file_path",
+          "type": "text",
+          "description": "The artifact the user wants to open.",
+          "required": true
+        },
+        {
+          "name": "target_round",
+          "type": "text",
+          "description": "The round the artifact belongs to, defaulting to the current round.",
+          "required": false
+        }
+      ],
+      "outputs": {
+        "primary": "Navigation to the Artifact View with the requested file pre-selected.",
+        "format": "Screen navigation",
+        "schema_notes": "The destination always resolves to the exact file/round pairing the user selected."
+      },
+      "success_criteria": [
+        "Every round-tree line opens the Artifact View at that exact file.",
+        "Every place a copy of a file can be obtained from the chat frame also offers a way to open it in place.",
+        "The Artifacts navigation entry is present in the app's primary navigation, positioned between Project and Settings."
+      ],
+      "failure_modes": [
+        {
+          "mode": "A link opens the wrong file or round after a round changes mid-session.",
+          "likelihood": "medium",
+          "mitigation": "Resolve the target at the moment of selection, not at render time."
+        },
+        {
+          "mode": "The navigation entry is missing from a screen that should offer it.",
+          "likelihood": "low",
+          "mitigation": "Keep the navigation register consistent across all screens."
+        }
+      ],
+      "dependencies": [
+        "artifact_view"
+      ],
+      "entities": [
+        "Artifact",
+        "Round",
+        "NavigationRegister"
+      ],
+      "references": []
+    },
+    {
+      "id": "chat_frame_register",
+      "name": "Chat Frame Register",
+      "purpose": "Restyles the existing chat/run interaction surface to match the developer-tool register \u2014 a plain-text pipeline indicator, block-style transcript, consistent cost reporting, and outline-style secondary actions \u2014 while preserving every existing function.",
+      "invocation": {
+        "trigger": "The user is on the chat frame for any agent's run."
+      },
+      "inputs": [
+        {
+          "name": "agent_pipeline_state",
+          "type": "structured data",
+          "description": "The seven agents in order along with which is active, completed, or unreachable.",
+          "required": true
+        },
+        {
+          "name": "transcript_messages",
+          "type": "list of items",
+          "description": "The messages exchanged during the run.",
+          "required": true
+        },
+        {
+          "name": "live_progress_signal",
+          "type": "structured data",
+          "description": "Elapsed time and character counters reflecting live activity.",
+          "required": true
+        },
+        {
+          "name": "turn_token_counts",
+          "type": "structured data",
+          "description": "Token counts for the current turn.",
+          "required": true
+        },
+        {
+          "name": "run_cost_on_completion",
+          "type": "structured data",
+          "description": "The completed run's usage/cost summary.",
+          "required": false
+        },
+        {
+          "name": "retry_and_breadth_panel_state",
+          "type": "structured data",
+          "description": "State needed to show retry and breadth options.",
+          "required": false
+        }
+      ],
+      "outputs": {
+        "primary": "A rendered chat frame with restyled pipeline indicator, transcript, action row, composer, and progress signal.",
+        "format": "Interactive screen",
+        "schema_notes": "Pipeline indicator lists all seven agents in order with active/completed/unreachable states; transcript is a sequence of speaker-labelled blocks; completed-run cost uses the same three-line summary as round cost."
+      },
+      "success_criteria": [
+        "All prior functions remain reachable and working: pipeline indicator, transcript, progress signal, turn tokens, fast-forward with its explanatory panel, retry, breadth, downloads, continue, composer, model indicator, status line.",
+        "The pipeline indicator shows plain text with no connecting arrows and correctly reflects active/completed/unreachable state.",
+        "No per-agent or pipeline-level back control remains, since equivalent navigation exists via the pipeline indicator and the status strip.",
+        "Transcript blocks show a dimmed one-word speaker label and no filled background.",
+        "The transcript's default height is noticeably taller than before while remaining independently scrollable.",
+        "On run completion, cost is shown in the same three-line form used elsewhere.",
+        "Exactly one strongly emphasized action exists per row (the continue action); all others are neutral outlines, except the rescan action shown in a warning tone.",
+        "The live-activity signal is the only moving element on the screen.",
+        "Chars, turn-token and elapsed counters, and the model name in the model chip, render in monospace."
+      ],
+      "failure_modes": [
+        {
+          "mode": "Removing back controls leaves a run state unreachable from the pipeline indicator.",
+          "likelihood": "medium",
+          "mitigation": "Verify every navigable state remains reachable via the pipeline indicator or status strip before removing legacy controls."
+        },
+        {
+          "mode": "Transcript height change breaks scroll behavior at small viewport sizes.",
+          "likelihood": "low",
+          "mitigation": "Keep the transcript independently scrollable regardless of viewport size."
+        },
+        {
+          "mode": "The completion cost strip fails to match the round-cost presentation.",
+          "likelihood": "low",
+          "mitigation": "Source both from the same cost-estimation output."
+        }
+      ],
+      "dependencies": [
+        "round_cost",
+        "development_tool_shell"
+      ],
+      "entities": [
+        "Agent",
+        "ChatSession",
+        "Message",
+        "UsageRecord",
+        "CostEstimate"
+      ],
+      "references": []
+    }
+  ],
+  "nfr_goals": [
+    "All artifact reads are strictly confined to the current project's spec folder, with no other path ever reachable.",
+    "Provider keys never leave the browser under any feature in this round.",
+    "Screens render fast enough to feel instantaneous for local file and round data (sub-second).",
+    "The visual and navigational register is fully consistent across every screen in the app.",
+    "Viewing or obtaining a copy of an artifact works consistently regardless of round or file size, without noticeable delay for typical spec file sizes."
+  ]
+}

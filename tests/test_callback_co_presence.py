@@ -33,6 +33,7 @@ from spec4 import providers
 from spec4.app_constants import AGENT_KEYS, STATE_VISION_COMPLETE
 from spec4.callbacks import on_gate_chip, on_gate_connect, on_gate_pick
 from spec4.layouts import _AGENT_ROWS, _agent_select_layout
+from spec4.layouts._chat import CHAT_ARTIFACTS
 from spec4.layouts._status_bar import _status_context
 from spec4.layouts.designer import (
     _step1_content,
@@ -80,6 +81,51 @@ _ROUND_COST_IDS = {
 # whole of what had to survive the swap, and `_PROJECT_VIEW_IDS` below pins the
 # rest of the view to what replaced them.
 _AGENT_CARD_SURVIVING_IDS = {"btn-agent-change-provider"}
+
+# The Artifact View's ids. New ids throughout: nothing here renames or reuses
+# an id another screen already owns, which is what keeps the rest of this
+# file's contracts intact.
+#
+# The tree ids matter most. The Artifact View draws the *same* round tree the
+# project view does, and it draws it for whichever round the developer
+# selected — so it must not carry `round-tree-list`, or `on_round_tree` would
+# write the active round's files into it. The two sets are asserted disjoint
+# in `test_it_reuses_no_existing_screen_id` below.
+_ARTIFACT_VIEW_IDS = {
+    "artifact-view-root",
+    "artifact-view-sidebar",
+    "artifact-view-content",
+    "artifact-view-content-body",
+    "artifact-view-header",
+    "artifact-view-tree",
+    "artifact-view-tree-head",
+    "artifact-view-tree-list",
+    "artifact-view-tree-legend",
+    "artifact-round-select",
+}
+
+# Rendered only while a file is open, so it is not in the set above — every id
+# there is asserted present on a screen with nothing selected. It is named
+# because `on_artifact_pane` writes the component that contains it, and a
+# rename would otherwise be invisible here.
+_ARTIFACT_VIEW_CONDITIONAL_IDS = {"artifact-view-scroll"}
+
+# The controls that *lead into* the artifacts screen from the chat frame's
+# action row: one Open button per downloadable artifact, each with a callback
+# of its own that writes the selection and sets the URL.
+#
+# They are listed here, and one at a time, for the reason the tree's and the
+# rows' ids are listed: these are the ids six separate callbacks take as their
+# Input, and a rename would leave a live-looking button wired to nothing. They
+# are deliberately *not* in `_ARTIFACT_VIEW_IDS` — they render on the chat
+# frame, not on the screen they open, and `test_it_reuses_no_existing_screen_id`
+# below asserts that separation on every screen it walks.
+#
+# Six callbacks rather than one taking six Inputs, because only the active
+# agent's row is ever on screen: a single callback would be half-rendered on
+# every one of them, which is the failure this whole file exists for. The
+# guard above proves that per-button shape actually holds.
+_CHAT_OPEN_IDS = {f"btn-open-{key}" for key in CHAT_ARTIFACTS}
 
 # Everything the project view mounts, exactly. An id retired with the cards
 # that came back, or a new one added without a decision, fails here.
@@ -249,6 +295,19 @@ def _phase_screens(tmp_path: pathlib.Path) -> list[tuple[str, set[str]]]:
                     {**base, "phase": "agent_select", "project_mode": None}
                 )
             ),
+        )
+    )
+
+    # The Artifact View. Both panes are placeholders this round, so the screen
+    # contributes ids without yet contributing callbacks — which is exactly
+    # what has to be walked before the panes fill in, so that the first
+    # callback added there is checked against a screen the guard already knows
+    # about rather than against one somebody remembers to add later.
+    screens.append(("artifacts", _page_ids(_render({**base, "phase": "artifacts"}))))
+    screens.append(
+        (
+            "artifacts: no project open",
+            _page_ids(_render(_session(phase="artifacts"))),
         )
     )
 
@@ -648,6 +707,117 @@ class TestRoundCostIds:
         assert reached
 
 
+class TestChatOpenIds:
+    """The Open buttons are page content on the chat frame, and each one is
+    the sole Input of its own callback.
+
+    The pairing with Download is `tests/test_chat_open_links.py`'s subject;
+    what belongs *here* is the co-presence half of it — that the six ids are
+    six separately-mounted controls rather than one callback's worth of Inputs
+    that never render together.
+    """
+
+    def test_they_are_page_content_not_shell(self) -> None:
+        assert not _CHAT_OPEN_IDS & _shell_ids()
+
+    def test_every_one_of_them_is_rendered_by_some_screen(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The guard skips a callback no screen can fire, so an Open button
+        the screen list never draws would leave its callback unchecked."""
+        drawn: set[str] = set()
+        for _, present in _phase_screens(tmp_path):
+            drawn |= present & _CHAT_OPEN_IDS
+        assert drawn == _CHAT_OPEN_IDS
+
+    def test_no_screen_renders_more_than_one_of_them(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """One agent's row at a time — which is exactly why there are six
+        callbacks and not one."""
+        for label, present in _phase_screens(tmp_path):
+            assert len(present & _CHAT_OPEN_IDS) <= 1, label
+
+    def test_they_do_not_reach_the_artifacts_screen(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """They open that screen; they are not part of it."""
+        for label, present in _phase_screens(tmp_path):
+            if label.startswith("artifacts"):
+                assert not present & _CHAT_OPEN_IDS, label
+
+    def test_each_is_the_only_page_input_of_its_own_callback(self) -> None:
+        """The shape the co-presence guard needs. A callback taking two of
+        these could never fire, and would fail silently rather than loudly."""
+        for name, inputs, _ in _callback_refs():
+            shared = inputs & _CHAT_OPEN_IDS
+            assert len(shared) <= 1, f"{name}: {sorted(shared)}"
+        wired = {
+            next(iter(inputs & _CHAT_OPEN_IDS))
+            for _, inputs, _ in _callback_refs()
+            if inputs & _CHAT_OPEN_IDS
+        }
+        assert wired == _CHAT_OPEN_IDS
+
+
+class TestArtifactViewIds:
+    """The Artifact View's three ids are new, page-level, and its own.
+
+    Page content rather than shell: the screen is drawn into ``page-content``
+    like every other, so a callback added to it later must be checked against
+    the screens it can fire on. Asserting that here — before there is a
+    callback — is what makes the guard above cover the panes as they fill in.
+    """
+
+    def test_the_screen_is_page_content_not_shell(self) -> None:
+        assert not _ARTIFACT_VIEW_IDS & _shell_ids()
+
+    def test_the_artifact_screen_renders_every_id(self, tmp_path: pathlib.Path) -> None:
+        session = _session(working_dir=str(tmp_path), phase="artifacts")
+        assert _ARTIFACT_VIEW_IDS <= _page_ids(_render(session))
+
+    def test_it_reuses_no_existing_screen_id(self, tmp_path: pathlib.Path) -> None:
+        """New ids, not renamed ones — the existing ids are a test contract.
+
+        Every other screen the guard walks is rendered and checked against the
+        new set, so an id borrowed from the project view or the chat frame
+        fails here rather than by making some other file's assertion ambiguous.
+        """
+        for label, present in _phase_screens(tmp_path):
+            if label.startswith("artifacts"):
+                continue
+            assert not (
+                (_ARTIFACT_VIEW_IDS | _ARTIFACT_VIEW_CONDITIONAL_IDS) & present
+            ), label
+
+    def test_its_tree_does_not_share_the_project_view_s_ids(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """Both screens draw the round tree; only one of them may own its ids.
+
+        `on_round_tree` recomputes the project view's tree for the *active*
+        round. Were the Artifact View's tree mounted under the same ids, that
+        callback would fire on this screen too and replace the selected
+        round's files with the active round's — no error, no log, just the
+        wrong round's tree a moment after the right one.
+        """
+        session = _session(working_dir=str(tmp_path), phase="artifacts")
+        assert not _ROUND_TREE_IDS & _page_ids(_render(session))
+
+    def test_the_project_view_ids_are_untouched(self, tmp_path: pathlib.Path) -> None:
+        """The screen this round adds must not disturb the one it links from."""
+        session = _session(working_dir=str(tmp_path), phase="agent_select")
+        assert _PROJECT_VIEW_IDS <= _page_ids(_render(session))
+
+    def test_the_screen_is_reached_by_the_screen_list(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        reached = any(
+            "artifact-view-root" in present for _, present in _phase_screens(tmp_path)
+        )
+        assert reached
+
+
 class TestShellIds:
     def test_the_shell_is_not_empty(self) -> None:
         assert {"session", "prefs", "url", "page-content"} <= _shell_ids()
@@ -748,7 +918,7 @@ class TestShellIds:
         assert "session" not in _page_ids(_render(session))
 
 
-@pytest.mark.parametrize("phase", ["working_dir", "setup", "agent_select"])
+@pytest.mark.parametrize("phase", ["working_dir", "setup", "agent_select", "artifacts"])
 def test_every_phase_renders(phase: str) -> None:
     assert _render(_session(phase=phase)) is not None
 

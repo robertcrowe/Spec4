@@ -30,6 +30,7 @@ from spec4.layouts import (
     _setup_layout,
     _agent_select_layout,
     _chat_layout,
+    _artifact_view_layout,
 )
 from spec4.layouts.designer import designer_layout
 
@@ -265,6 +266,29 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
     prevent_initial_call=True,
 )
 
+# The Artifact View's Open-rendered button, for design/mock.html. The exact
+# blob pattern above, reused rather than reimplemented: a Blob URL is the one
+# mechanism in the app that opens rendered HTML in a new tab without a Flask
+# route serving a path a client could tamper with. The dummy output is the
+# same shared one mock-fullscreen-btn writes to — neither callback's return
+# value means anything, so there is nothing for two callbacks to race over by
+# sharing it.
+app.clientside_callback(  # type: ignore[no-untyped-call]
+    """
+    function(n_clicks, store_data) {
+        if (!n_clicks || !store_data || !store_data.mock_html) return window.dash_clientside.no_update;
+        var blob = new Blob([store_data.mock_html], {type: 'text/html'});
+        var url = URL.createObjectURL(blob);
+        window.open(url, '_blank');
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("_designer-fs-dummy", "children", allow_duplicate=True),
+    Input("artifact-open-rendered-btn", "n_clicks"),
+    State("artifact-mock-store", "data"),
+    prevent_initial_call=True,
+)
+
 # Step-5 progress paint. render_designer_step deliberately ignores plain
 # buffer ticks (re-rendering the step subtree 4x/sec churned dash-renderer's
 # paths map and could silently drop the completion delivery), so the bar and
@@ -370,6 +394,8 @@ def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any,
         content = _chat_layout(session, prefs)
     elif phase == "designer":
         content = designer_layout(session, prefs)
+    elif phase == "artifacts":
+        content = _artifact_view_layout(session)
     else:
         content = []
     return content, (render_count or 0) + 1, new_session

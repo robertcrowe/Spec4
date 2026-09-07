@@ -2,7 +2,7 @@
 
 A 40px monospace status line in place of the marketing header: wordmark, then
 the working directory, the round, and the default provider and model, then the
-three nav links and the running version. It is mounted once in the app shell
+four nav links and the running version. It is mounted once in the app shell
 (``app.layout``), so its ids are shell ids and its callback can never be
 half-rendered.
 
@@ -20,8 +20,11 @@ from dash import dcc, html
 
 from spec4 import __version__
 from spec4.app_constants import ROOT_PATH
+from spec4.layouts._shared import _sep
 
 __all__ = [
+    "ARTIFACTS_PATH",
+    "NAV_ORDER",
     "NOT_CONNECTED",
     "STATUS_BAR_HEIGHT",
     "STATUS_EMPTY",
@@ -50,10 +53,16 @@ NOT_CONNECTED = "Not connected"
 # The one external link in the app.
 DOCS_URL = "https://spec4.ai/docs"
 
+# The Artifact View's route, named here so the nav entry and the routing table
+# cannot drift apart — `PATH_TO_PHASE` is asserted against this constant rather
+# than against a second copy of the string.
+ARTIFACTS_PATH = "/artifacts"
 
-def _sep() -> Any:
-    """The dimmed ``·`` between two context fields."""
-    return html.Span("·", className="sb-sep")
+# The primary navigation, in the order it renders. Declared as data as well as
+# rendered, because the Artifact Links specification fixes the *order* — the
+# Artifacts entry sits between Project and Settings — and an order that only
+# exists inside a component tree is one a test has to reverse-engineer.
+NAV_ORDER: tuple[str, ...] = ("Project", "Artifacts", "Settings", "Docs")
 
 
 def _dir_field(working_dir: str | None) -> Any:
@@ -133,11 +142,19 @@ def _status_nav_class(active: bool) -> str:
 def _status_bar() -> html.Div:
     """The application header: wordmark, context line, nav, version.
 
-    Nav is exactly three items. ``Project`` and ``Settings`` are in-app routes
-    and go through ``dcc.Link`` so they move the URL without a page reload,
-    which is what ``on_browser_navigate`` turns into a phase change; ``Docs``
-    is the one external link. There is deliberately no Artifacts item and no
-    disabled placeholder for one — the Artifact View arrives in v1.
+    Nav is exactly four items, in the order the Artifact Links specification
+    fixes: ``Project``, ``Artifacts``, ``Settings``, ``Docs``. The first three
+    are in-app routes and go through ``dcc.Link`` so they move the URL without
+    a page reload, which is what ``on_browser_navigate`` turns into a phase
+    change; ``Docs`` is the one external link.
+
+    ``Artifacts`` sits between ``Project`` and ``Settings`` because that is
+    where the register puts it, not where it happened to be added: the
+    Artifact View is a second way of looking at the open project, and Settings
+    is the app's own configuration. Every item is plain text carrying no
+    ``color`` of its own (D-LR2) — the active one is marked by
+    ``_status_nav_class``, and the accent it picks up is the Mantine theme
+    primary.
     """
     return html.Div(
         [
@@ -166,6 +183,12 @@ def _status_bar() -> html.Div:
                         href="/agents",
                         id="status-bar-nav-project",
                         className=_status_nav_class(True),
+                    ),
+                    dcc.Link(
+                        "Artifacts",
+                        href=ARTIFACTS_PATH,
+                        id="status-bar-nav-artifacts",
+                        className=_status_nav_class(False),
                     ),
                     dcc.Link(
                         "Settings",

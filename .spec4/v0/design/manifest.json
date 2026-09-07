@@ -1,0 +1,217 @@
+{
+  "entities": [
+    {
+      "name": "WorkingDirectory",
+      "fields": [
+        "path"
+      ]
+    },
+    {
+      "name": "Round",
+      "fields": [
+        "number",
+        "folder"
+      ]
+    },
+    {
+      "name": "ProviderModel",
+      "fields": [
+        "provider",
+        "model"
+      ]
+    },
+    {
+      "name": "ProjectView",
+      "fields": [
+        "workingDirectory",
+        "round",
+        "defaultProviderModel",
+        "version"
+      ]
+    },
+    {
+      "name": "Artifact",
+      "fields": [
+        "path",
+        "lane",
+        "mtime",
+        "upstream",
+        "exempt",
+        "status"
+      ]
+    },
+    {
+      "name": "Agent",
+      "fields": [
+        "name",
+        "produces",
+        "lastModel",
+        "tokensIn",
+        "tokensOut",
+        "action"
+      ]
+    },
+    {
+      "name": "UsageRecord",
+      "fields": [
+        "round",
+        "calls",
+        "tokensIn",
+        "tokensOut",
+        "costUsd",
+        "unpriced",
+        "priceSource"
+      ]
+    },
+    {
+      "name": "TreeLine",
+      "fields": [
+        "path",
+        "lane",
+        "status"
+      ]
+    },
+    {
+      "name": "AgentRow",
+      "fields": [
+        "agent",
+        "produces",
+        "model",
+        "tokens",
+        "action",
+        "disabled"
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "project-view",
+      "audience": "Developers using AI coding agents daily",
+      "purpose": "Working surface for an open project: current round's files, agent states, and round cost",
+      "surfaces": [
+        "status-bar",
+        "round-tree",
+        "agent-rows",
+        "round-cost"
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "name": "status-bar",
+      "kind": "non_ai",
+      "screen": "project-view",
+      "implements_features": [
+        "Development Tool Shell",
+        "Open To The Project"
+      ],
+      "inputs": [
+        "nav links: Project, Settings, Docs"
+      ],
+      "output": "Wordmark, working directory \u00b7 round \u00b7 provider \u00b7 model in mono, nav with current item marked, version",
+      "states": [
+        "idle"
+      ],
+      "reads": [
+        "ProjectView",
+        "WorkingDirectory",
+        "Round",
+        "ProviderModel"
+      ],
+      "writes": [],
+      "depends_on": [],
+      "implements_feature_ids": [
+        "development_tool_shell",
+        "open_to_the_project"
+      ]
+    },
+    {
+      "name": "round-tree",
+      "kind": "non_ai",
+      "screen": "project-view",
+      "implements_features": [
+        "Round Tree"
+      ],
+      "inputs": [],
+      "output": "Mono heading .spec4/v{N}/, one full-width line per artifact in pipeline order coloured by lane (reference lane uncoloured), status at right only when 'needs update' or 'missing', three-item lane legend",
+      "states": [
+        "idle",
+        "needs-update",
+        "missing"
+      ],
+      "reads": [
+        "Artifact",
+        "Round",
+        "UsageRecord"
+      ],
+      "writes": [],
+      "depends_on": [
+        "status-bar"
+      ],
+      "implements_feature_ids": [
+        "round_tree"
+      ]
+    },
+    {
+      "name": "agent-rows",
+      "kind": "non_ai",
+      "screen": "project-view",
+      "implements_features": [
+        "Agent Rows"
+      ],
+      "inputs": [
+        "action button per row: Start (filled green), Continue (filled green, same as Start \u2014 shown instead of Start when the agent has an in-progress conversation), Required (filled green, same as Start), Modify (neutral outline, green text), Needs Update (warn outline), Not Ready (disabled outline). Activating a button routes to that agent exactly as the current agent-select buttons do"
+      ],
+      "output": "Seven-row table: Agent \u00b7 Produces \u00b7 Last model \u00b7 Tokens this round \u00b7 action",
+      "states": [
+        "idle",
+        "not-run (blank model/tokens)",
+        "disabled"
+      ],
+      "reads": [
+        "Agent",
+        "UsageRecord"
+      ],
+      "writes": [],
+      "depends_on": [
+        "status-bar"
+      ],
+      "implements_feature_ids": [
+        "agent_rows"
+      ]
+    },
+    {
+      "name": "round-cost",
+      "kind": "non_ai",
+      "screen": "project-view",
+      "implements_features": [
+        "Round Cost"
+      ],
+      "inputs": [],
+      "output": "Three lines: estimated cost and tokens; unpriced calls named with models and excluded; dimmed price-source disclaimer",
+      "states": [
+        "idle",
+        "unknown-cost",
+        "no-calls"
+      ],
+      "reads": [
+        "UsageRecord",
+        "Round"
+      ],
+      "writes": [],
+      "depends_on": [
+        "status-bar"
+      ],
+      "implements_feature_ids": [
+        "round_cost"
+      ]
+    }
+  ],
+  "shared_layout": {
+    "nav": "Plain text links in the 40px status bar: Project, Settings, Docs; active item in accent green with 1px underline. Project is this screen. Settings opens the existing model/provider change flow and setup wizard. Docs is the one external link, to spec4.ai. No Artifacts link this round.",
+    "shell": [
+      "status-bar",
+      "main view up to 1100px wide, 16px padding, 8px rhythm"
+    ]
+  }
+}

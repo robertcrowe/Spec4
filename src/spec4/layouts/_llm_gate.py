@@ -225,11 +225,15 @@ def model_chip(session: dict[str, Any], agent: str) -> Any:
     """
     override = llm_selection.entry(session, agent)
     if override is not None:
-        text = f"Model: {override.get('model')}"
+        name = str(override.get("model"))
     else:
-        text = f"Model: {(session.get('llm_config') or {}).get('model') or '—'}"
+        name = str((session.get("llm_config") or {}).get("model") or "—")
+    # The model name is an identifier — `claude-sonnet-5`, `gpt-5-mini` — so it
+    # is monospace, like every other identifier the app prints. The words
+    # around it are prose and stay in the UI face; the class goes on the name
+    # alone rather than on the button, and carries no colour of its own.
     return dmc.Button(
-        f"{text} · Change",
+        ["Model: ", html.Span(name, className="mono"), " · Change"],
         id="btn-agent-llm-chip",
         variant="outline",
         color="gray",

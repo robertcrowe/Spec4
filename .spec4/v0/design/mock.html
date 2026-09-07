@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spec4 — /Users/rc/projects/bws4</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --panel: #12121c;
+    --panel-2: #1a1a24;
+    --border: #2a2a3a;
+    --text: #f5f5f7;
+    --dim: #a0a0b0;
+    --faint: #5a5a6a;
+    --accent: #39FF14;
+    --accent-hover: #31e510;
+    --wordmark-blue: #1E88E5;
+    --lane-prompt: #e8925a;
+    --lane-record: #b39ddb;
+    --warn: #d8b84a;
+    --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    line-height: 20px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: inherit; text-decoration: none; }
+
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-variant-ligatures: none;
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  /* ---------- Status bar ---------- */
+  .statusbar {
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+  }
+
+  .sb-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+  }
+
+  .wordmark {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 20px;
+    flex: none;
+  }
+  .wm-spec { color: var(--wordmark-blue); }
+  .wm-4 { color: var(--accent); }
+
+  .sb-ctx {
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sb-ctx .sep { color: var(--faint); padding: 0 6px; }
+  .sb-ctx .dim { color: var(--dim); }
+
+  .sb-nav {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex: none;
+  }
+  .sb-nav a {
+    color: var(--dim);
+    line-height: 38px;
+    border-bottom: 1px solid transparent;
+    margin-bottom: -1px;
+    padding: 0 2px;
+  }
+  .sb-nav a:hover { color: var(--text); }
+  .sb-nav a.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .sb-version {
+    color: var(--dim);
+    margin-left: 8px;
+    padding-left: 16px;
+    border-left: 1px solid var(--border);
+    line-height: 20px;
+  }
+
+  /* ---------- View ---------- */
+  .view {
+    max-width: 1100px;
+    padding: 16px 16px 32px;
+  }
+
+  section + section { margin-top: 24px; }
+
+  .section-head {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 24px;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  /* ---------- Round tree ---------- */
+  .tree-list {
+    list-style: none;
+    width: 100%;
+    border-top: 1px solid var(--border);
+  }
+  .tree-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 24px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+  }
+  .tree-list li:nth-child(even) { background: var(--panel); }
+  .tree-list .name { white-space: nowrap; }
+  .tree-list .lane-prompt { color: var(--lane-prompt); }
+  .tree-list .lane-ref { color: var(--text); }
+  .tree-list .lane-record { color: var(--lane-record); }
+  .tree-list .status { color: var(--dim); white-space: nowrap; }
+  .tree-list li.is-missing .name { opacity: 0.55; }
+  .tree-list li.is-missing .status { color: var(--faint); }
+
+  .legend {
+    list-style: none;
+    display: flex;
+    gap: 24px;
+    margin-top: 8px;
+    color: var(--dim);
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .legend li { display: flex; align-items: center; gap: 6px; }
+  .swatch {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    flex: none;
+  }
+  .swatch.lane-prompt { background: var(--lane-prompt); }
+  .swatch.lane-ref { background: var(--text); }
+  .swatch.lane-record { background: var(--lane-record); }
+
+  /* ---------- Agent rows ---------- */
+  .agents-table {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--border);
+  }
+  .agents-table th,
+  .agents-table td {
+    height: 32px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .agents-table th {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--dim);
+    background: var(--panel);
+  }
+  .agents-table td.agent { font-weight: 500; width: 140px; }
+  .agents-table td.produces { width: 220px; }
+  .agents-table td.model { width: 220px; }
+  .agents-table td.tokens { width: 220px; color: var(--text); }
+  .agents-table td.model:empty::after,
+  .agents-table td.tokens:empty::after { content: ""; }
+  .agents-table th.action,
+  .agents-table td.action { text-align: right; width: 120px; }
+  .agents-table tr.is-disabled td.agent,
+  .agents-table tr.is-disabled td.produces { color: var(--dim); }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-block;
+    height: 24px;
+    min-width: 96px;
+    padding: 0 10px;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 22px;
+    text-align: center;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .btn:hover { border-color: #3a3a4a; }
+  .btn-primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
+  }
+  .btn-primary:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+  .btn-modify {
+    color: var(--accent);
+    border-color: #3a3a4a;
+  }
+  .btn-modify:hover { border-color: #4a4a5a; }
+  .btn-warn {
+    color: var(--warn);
+    border-color: rgba(216, 184, 74, 0.45);
+  }
+  .btn-warn:hover { border-color: var(--warn); }
+  .btn-outline { color: var(--text); border-color: #3a3a4a; }
+  .btn:disabled,
+  .btn:disabled:hover {
+    color: var(--faint);
+    border-color: var(--border);
+    background: transparent;
+    cursor: default;
+  }
+
+  /* ---------- Round cost ---------- */
+  .cost {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+  }
+  .cost-line {
+    line-height: 24px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cost-line .sep { color: var(--faint); padding: 0 6px; }
+  .cost-line .label { color: var(--dim); }
+  .cost-note {
+    color: var(--dim);
+    font-size: 12px;
+    line-height: 16px;
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<header class="statusbar" id="statusbar">
+  <div class="sb-left">
+    <a class="wordmark" href="#project" aria-label="Spec4"><span class="wm-spec">Spec</span><span class="wm-4">4</span></a>
+    <span class="sb-ctx mono" id="sb-ctx"></span>
+  </div>
+  <nav class="sb-nav" aria-label="Primary">
+    <a href="#project" class="active" aria-current="page" data-nav="project">Project</a>
+    <a href="#settings" data-nav="settings">Settings</a>
+    <a href="https://spec4.ai/docs" data-nav="docs" rel="noopener">Docs</a>
+    <span class="sb-version mono" id="sb-version"></span>
+  </nav>
+</header>
+
+<main class="view" id="project-view">
+
+  <section aria-labelledby="tree-head">
+    <h2 class="section-head" id="tree-head"></h2>
+    <ol class="tree-list" id="tree-list"></ol>
+    <ul class="legend" aria-label="Lanes">
+      <li><span class="swatch lane-prompt"></span>prompts for the agent</li>
+      <li><span class="swatch lane-ref"></span>reference for the agent</li>
+      <li><span class="swatch lane-record"></span>a record for you</li>
+    </ul>
+  </section>
+
+  <section aria-label="Agents">
+    <table class="agents-table">
+      <thead>
+        <tr>
+          <th scope="col">Agent</th>
+          <th scope="col">Produces</th>
+          <th scope="col">Last model</th>
+          <th scope="col">Tokens this round</th>
+          <th scope="col" class="action"><span class="sr-only"></span></th>
+        </tr>
+      </thead>
+      <tbody id="agent-rows"></tbody>
+    </table>
+  </section>
+
+  <section class="cost" aria-label="Round cost">
+    <div class="cost-line mono" id="cost-line"></div>
+    <div class="cost-line mono" id="cost-unpriced"></div>
+    <div class="cost-note" id="cost-note"></div>
+  </section>
+
+</main>
+
+<script>
+  // ------------------------------------------------------------------
+  // Project state — the shell recomputes the status bar from this on
+  // every render so it can never show a stale directory or round.
+  // ------------------------------------------------------------------
+  var project = {
+    workingDirectory: "/Users/rc/projects/bws4",
+    round: 3,
+    defaultProvider: "anthropic",
+    defaultModel: "claude-sonnet-4-6",
+    version: "0.6.0"
+  };
+
+  // Current round's artifacts, in pipeline order. `mtime` null = missing
+  // from disk. `upstream` drives staleness: an artifact needs update when
+  // any upstream artifact is newer. usage.json is exempt.
+  var artifacts = [
+    { path: "code_review.json",      lane: "ref",    mtime: "2026-03-02T09:14:00Z", upstream: [] },
+    { path: "vision.json",           lane: "ref",    mtime: "2026-03-04T16:42:00Z", upstream: ["code_review.json"] },
+    { path: "feature_specs.json",    lane: "ref",    mtime: "2026-03-04T17:05:00Z", upstream: ["vision.json"] },
+    { path: "ai_features.json",      lane: "ref",    mtime: "2026-03-04T17:31:00Z", upstream: ["vision.json", "feature_specs.json"] },
+    { path: "design/mock.html",      lane: "ref",    mtime: "2026-03-05T10:20:00Z", upstream: ["vision.json", "feature_specs.json", "ai_features.json"] },
+    { path: "design/manifest.json",  lane: "ref",    mtime: "2026-03-05T10:20:00Z", upstream: ["vision.json", "feature_specs.json", "ai_features.json"] },
+    { path: "stack.json",            lane: "ref",    mtime: "2026-03-03T11:08:00Z", upstream: ["vision.json", "ai_features.json"] },
+    { path: "phases/phase1.md",      lane: "prompt", mtime: "2026-03-05T12:02:00Z", upstream: ["stack.json", "design/manifest.json"] },
+    { path: "phases/phase2.md",      lane: "prompt", mtime: "2026-03-05T12:02:00Z", upstream: ["stack.json", "design/manifest.json"] },
+    { path: "phases/phase3.md",      lane: "prompt", mtime: "2026-03-05T12:02:00Z", upstream: ["stack.json", "design/manifest.json"] },
+    { path: "phases/phase4.md",      lane: "prompt", mtime: "2026-03-05T12:02:00Z", upstream: ["stack.json", "design/manifest.json"] },
+    { path: "phases/phase5.md",      lane: "prompt", mtime: "2026-03-05T12:02:00Z", upstream: ["stack.json", "design/manifest.json"] },
+    { path: "deployment-plan.md",    lane: "prompt", mtime: null,                   upstream: ["phases/phase5.md"] },
+    { path: "usage.json",            lane: "record", mtime: "2026-03-05T12:44:00Z", upstream: [], exempt: true }
+  ];
+
+  // Seven agents in fixed pipeline order. `action` comes from the existing
+  // readiness state model; it is not re-derived here. Model/tokens come
+  // from the round's usage record and are blank when the agent has not run.
+  var agents = [
+    { name: "CodeScanner",  produces: "code_review.json",   model: "claude-sonnet-4-6", tokensIn: 41206, tokensOut: 3118, action: "Modify" },
+    { name: "Brainstormer", produces: "vision.json",        model: "claude-sonnet-4-6", tokensIn: 32880, tokensOut: 2914, action: "Modify" },
+    { name: "Agentifier",   produces: "ai_features.json",   model: "gpt-5-mini",        tokensIn: 17451, tokensOut: 1206, action: "Modify" },
+    { name: "Designer",     produces: "design/mock.html",   model: "claude-sonnet-4-6", tokensIn: 18649, tokensOut: 1530, action: "Modify" },
+    { name: "StackAdvisor", produces: "stack.json",         model: "gpt-5-mini",        tokensIn: 8216,  tokensOut: 872,  action: "Needs Update" },
+    { name: "Phaser",       produces: "phases/",            model: null, tokensIn: null, tokensOut: null, action: "Not Ready" },
+    { name: "Deployer",     produces: "deployment-plan.md", model: null, tokensIn: null, tokensOut: null, action: "Not Ready" }
+  ];
+
+  // Aggregated usage for the round. Unpriced calls are listed by name and
+  // are excluded from costUsd, never folded in as zero.
+  var usage = {
+    round: 3,
+    calls: 19,
+    tokensIn: 118402,
+    tokensOut: 9640,
+    costUsd: 0.7312,
+    unpriced: [
+      { agent: "Agentifier",   model: "gpt-5-mini", calls: 1 },
+      { agent: "StackAdvisor", model: "gpt-5-mini", calls: 1 }
+    ],
+    priceSource: "LiteLLM's price map"
+  };
+
+  // ------------------------------------------------------------------
+  var fmt = function (n) { return n.toLocaleString("en-US"); };
+  var esc = function (s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  };
+
+  function renderStatusBar() {
+    var ctx = document.getElementById("sb-ctx");
+    ctx.innerHTML =
+      esc(project.workingDirectory) +
+      '<span class="sep">·</span>round v' + project.round +
+      '<span class="sep">·</span>' + esc(project.defaultProvider) +
+      '<span class="sep">·</span>' + esc(project.defaultModel);
+    document.getElementById("sb-version").textContent = project.version;
+    document.title = "Spec4 — " + project.workingDirectory;
+  }
+
+  function artifactStatus(a, byPath) {
+    if (!a.mtime) return "missing";
+    if (a.exempt) return "present";
+    var t = Date.parse(a.mtime);
+    for (var i = 0; i < a.upstream.length; i++) {
+      var up = byPath[a.upstream[i]];
+      if (up && up.mtime && Date.parse(up.mtime) > t) return "needs update";
+    }
+    return "present";
+  }
+
+  function renderTree() {
+    document.getElementById("tree-head").textContent = ".spec4/v" + project.round + "/";
+    var byPath = {};
+    artifacts.forEach(function (a) { byPath[a.path] = a; });
+    var list = document.getElementById("tree-list");
+    list.innerHTML = artifacts.map(function (a) {
+      var status = artifactStatus(a, byPath);
+      var cls = status === "missing" ? " is-missing" : "";
+      // "present" is the default and is not labelled; only exceptions show.
+      var label = status === "present" ? "" : status;
+      return '<li class="mono' + cls + '">' +
+        '<span class="name lane-' + a.lane + '">' + esc(a.path) + '</span>' +
+        '<span class="status">' + label + '</span>' +
+        '</li>';
+    }).join("");
+  }
+
+  var actionClass = {
+    "Start":        "btn-primary",
+    "Modify":       "btn-modify",
+    "Needs Update": "btn-warn",
+    "Not Ready":    "btn-outline",
+    "Required":     "btn-outline"
+  };
+
+  function renderAgents() {
+    var body = document.getElementById("agent-rows");
+    body.innerHTML = agents.map(function (ag) {
+      var disabled = ag.action === "Not Ready";
+      var hasRun = ag.model !== null;
+      var tokens = hasRun ? fmt(ag.tokensIn) + " in / " + fmt(ag.tokensOut) + " out" : "";
+      return '<tr' + (disabled ? ' class="is-disabled"' : "") + ">" +
+        '<td class="agent">' + esc(ag.name) + "</td>" +
+        '<td class="produces mono">' + esc(ag.produces) + "</td>" +
+        '<td class="model mono">' + (hasRun ? esc(ag.model) : "") + "</td>" +
+        '<td class="tokens mono">' + tokens + "</td>" +
+        '<td class="action"><button type="button" class="btn ' + actionClass[ag.action] + '"' +
+          ' data-agent="' + esc(ag.name) + '"' + (disabled ? " disabled" : "") + ">" +
+          esc(ag.action) + "</button></td>" +
+        "</tr>";
+    }).join("");
+  }
+
+  function renderCost() {
+    var line = document.getElementById("cost-line");
+    var unpricedLine = document.getElementById("cost-unpriced");
+    var note = document.getElementById("cost-note");
+    var unpricedCalls = usage.unpriced.reduce(function (n, u) { return n + u.calls; }, 0);
+    var pricedCalls = usage.calls - unpricedCalls;
+
+    // Never show an all-zero figure when the true cost is unknown.
+    var figure;
+    if (usage.calls === 0) {
+      figure = "no calls recorded";
+    } else if (pricedCalls === 0) {
+      figure = "unknown";
+    } else {
+      figure = "$" + usage.costUsd.toFixed(4);
+    }
+
+    var parts = [
+      '<span class="label">Estimated cost, v' + usage.round + ":</span> " + figure,
+      '<span class="label">Tokens:</span> ' + fmt(usage.tokensIn) + " in / " + fmt(usage.tokensOut) + " out"
+    ];
+    line.innerHTML = parts.join('<span class="sep">·</span>');
+
+    if (unpricedCalls > 0) {
+      var names = usage.unpriced.map(function (u) {
+        return esc(u.agent) + " (" + esc(u.model) + ")";
+      }).join(", ");
+      unpricedLine.textContent = unpricedCalls + " of " + usage.calls + " calls could not be priced and are excluded: " + names;
+      unpricedLine.hidden = false;
+    } else if (usage.calls > 0) {
+      unpricedLine.textContent = "all " + usage.calls + " calls priced";
+      unpricedLine.hidden = false;
+    } else {
+      unpricedLine.textContent = "";
+      unpricedLine.hidden = true;
+    }
+    note.textContent = "Estimates from " + usage.priceSource + "; your provider's billing is authoritative.";
+  }
+
+  function render() {
+    renderStatusBar();
+    renderTree();
+    renderAgents();
+    renderCost();
+  }
+
+  // Row actions route to the agent exactly as the existing agent-select
+  // buttons do; the mock records the intent in the URL hash.
+  document.getElementById("agent-rows").addEventListener("click", function (e) {
+    var btn = e.target.closest("button[data-agent]");
+    if (!btn || btn.disabled) return;
+    location.hash = "agent/" + btn.getAttribute("data-agent").toLowerCase();
+  });
+
+  // Nav marks the current view; the mock has only the project view.
+  document.querySelector(".sb-nav").addEventListener("click", function (e) {
+    var link = e.target.closest("a[data-nav]");
+    if (!link || link.getAttribute("data-nav") === "docs") return;
+    e.preventDefault();
+    document.querySelectorAll(".sb-nav a").forEach(function (a) {
+      a.classList.remove("active");
+      a.removeAttribute("aria-current");
+    });
+    link.classList.add("active");
+    link.setAttribute("aria-current", "page");
+    location.hash = link.getAttribute("data-nav");
+  });
+
+  render();
+</script>
+</body>
+</html>

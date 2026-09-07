@@ -1,0 +1,309 @@
+{
+  "code_review": {
+    "schema_version": 1,
+    "is_software_project": true,
+    "project_type": "web application \u2014 Dash SPA (AI-assisted software-project-planning tool)",
+    "existing_self_description": {
+      "text": "AI-assisted software project planning \u2014 from idea to executable coding phases.",
+      "source": "README.md"
+    },
+    "architecture": {
+      "summary": "Spec4 is a pipeline of specialized LLM agents (Brainstormer, CodeScanner, Agentifier sub-pipeline, StackAdvisor, Phaser, Designer, Deployer) fronted by a single Dash server process; a parallel agentifier sub-pipeline (Scout, Linker, Composer, Tier Analyst, Spec Drafter, Prioritizer, Cross-Cutting Analyst) discovers AI-opportunity features grounded in a local markdown pattern library.",
+      "pattern": "pipeline",
+      "inferred_from": "src/spec4/app.py"
+    },
+    "languages": [
+      {
+        "name": "Python",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "JavaScript",
+        "source": "src/spec4/assets/chat_input.js"
+      },
+      {
+        "name": "CSS",
+        "source": "src/spec4/assets/v3.css"
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "Dash",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "Dash Mantine Components",
+        "source": "pyproject.toml"
+      }
+    ],
+    "runtime_versions": {
+      "python": ">=3.12",
+      "_source": "pyproject.toml / .python-version"
+    },
+    "build_system": {
+      "tool": "uv",
+      "manifest": "pyproject.toml",
+      "build_backend": "uv_build"
+    },
+    "dependencies": [
+      {
+        "name": "boto3",
+        "purpose": "AWS SDK \u2014 direct dependency, usage site not visible in provided excerpts",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "dash",
+        "purpose": "Core web UI framework",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "dash-iconify",
+        "purpose": "Icon components for Dash UI",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "dash-mantine-components",
+        "purpose": "Mantine-styled Dash component library",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "gunicorn",
+        "purpose": "Production WSGI server",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "httpx",
+        "purpose": "HTTP client",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "jsonschema",
+        "purpose": "JSON schema validation for phase/spec artifacts",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "litellm",
+        "purpose": "Multi-provider LLM gateway used by all agent calls",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "mcp",
+        "purpose": "Model Context Protocol Python SDK",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pyyaml",
+        "purpose": "YAML parsing",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "mypy",
+        "purpose": "Static type checking (strict mode)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "playwright",
+        "purpose": "Browser automation, likely for UI screenshot/e2e scripts",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pytest",
+        "purpose": "Test framework",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pytest-cov",
+        "purpose": "Test coverage measurement",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "ruff",
+        "purpose": "Linting",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "types-pyyaml",
+        "purpose": "Type stubs for pyyaml",
+        "source": "pyproject.toml"
+      }
+    ],
+    "commands": {
+      "build": "uv build",
+      "test": "uv run pytest",
+      "lint": "uv run ruff check src/ tests/",
+      "run": "uv run python src/spec4/app.py",
+      "dev": "DASH_DEBUG=true uv run python src/spec4/app.py",
+      "deploy": "uv run gunicorn 'spec4.app:server' --bind 0.0.0.0:8050 --workers 1 --threads 4"
+    },
+    "entrypoints": {
+      "main": "src/spec4/app.py",
+      "wsgi_app": "spec4.app:server",
+      "cli_script": "spec4 = spec4.app:main",
+      "dev_server": "DASH_DEBUG=true uv run python src/spec4/app.py",
+      "ui_root": "src/spec4/app.py"
+    },
+    "directory_map": [
+      {
+        "path": "src/spec4/agents/",
+        "role": "Planning-pipeline agents (Brainstormer, CodeScanner, Deployer, Designer, FeatureSpeccer, Phaser, StackAdvisor) + internal schema/probe helpers"
+      },
+      {
+        "path": "src/spec4/agentifier/",
+        "role": "AI-opportunity discovery sub-pipeline (Scout, Linker, Composer, Tier Analyst, Spec Drafter, Prioritizer, Cross-Cutting Analyst, Requires Reconciler, Reference Verifier)"
+      },
+      {
+        "path": "src/spec4/agentifier/patterns/",
+        "role": "Markdown knowledge base of AI mechanism & 9-tier complexity docs grounding Agentifier LLM prompts"
+      },
+      {
+        "path": "src/spec4/callbacks/",
+        "role": "Dash server-side callback registrations"
+      },
+      {
+        "path": "src/spec4/layouts/",
+        "role": "Dash Mantine UI layout modules (chat, setup, status bar, round tree/cost, designer)"
+      },
+      {
+        "path": "src/spec4/assets/",
+        "role": "Static JS/CSS/image assets served by Dash"
+      },
+      {
+        "path": "evals/",
+        "role": "Offline scoring harnesses & calibration fixtures per agent (agentifier, deployer, designer, phaser, scout, stack_advisor, tier_calibration)"
+      },
+      {
+        "path": "scripts/",
+        "role": "Developer utility scripts (e2e_agentifier.py, screenshot_ui.py)"
+      },
+      {
+        "path": "BWS4-logos/",
+        "role": "Brand image assets for the Built With Spec4 showcase"
+      },
+      {
+        "path": "tests/",
+        "role": "pytest suite (inferred from ruff per-file-ignores)"
+      },
+      {
+        "path": "mystuff/",
+        "role": "Informal scratch notes, not part of the shipped package"
+      }
+    ],
+    "env_vars": [
+      {
+        "name": "LITELLM_LOG",
+        "purpose": "Suppresses litellm's startup debug/warning logging (must be set before litellm import)",
+        "required": false,
+        "source": "src/spec4/app.py"
+      },
+      {
+        "name": "DASH_DEBUG",
+        "purpose": "Enables Dash hot-reload/dev mode",
+        "required": false,
+        "source": "Makefile"
+      }
+    ],
+    "auth": {
+      "model": "none"
+    },
+    "ai_capabilities": [
+      {
+        "name": "spec4 internal agent pipeline",
+        "kind": "agent_framework",
+        "description": "Sequential pipeline of specialized LLM agents (Brainstormer, CodeScanner, Agentifier, StackAdvisor, Phaser, Designer, Deployer) that turns a rough idea into structured, ordered development phases",
+        "location": "src/spec4/agents/, src/spec4/agentifier/",
+        "source": "src/spec4/app.py"
+      },
+      {
+        "name": "litellm",
+        "kind": "llm_api",
+        "description": "Multi-provider LLM gateway backing every agent call in the pipeline",
+        "location": "src/spec4/llm.py, src/spec4/llm_selection.py",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "agentifier pattern loader",
+        "kind": "rag",
+        "description": "Loads curated markdown mechanism/tier reference docs and injects them as grounding context into the Tier Analyst / Composer LLM prompts",
+        "location": "src/spec4/agentifier/pattern_loader.py",
+        "source": "src/spec4/agentifier/pattern_loader.py"
+      }
+    ],
+    "ui_summary": {
+      "has_ui": true,
+      "kind": "spa",
+      "framework": "Dash + Dash Mantine Components",
+      "styling": "Dash Mantine Components primitives + custom CSS (v3.css) + a dark theme constant",
+      "entry_files": [
+        "src/spec4/app.py",
+        "src/spec4/layouts/_chat.py",
+        "src/spec4/layouts/designer.py"
+      ]
+    },
+    "coding_style": {
+      "linter": {
+        "value": "ruff",
+        "source": "pyproject.toml"
+      },
+      "type_checker": {
+        "value": "mypy strict",
+        "source": "pyproject.toml"
+      },
+      "indentation": {
+        "value": "4 spaces",
+        "inferred_from": "src/spec4/app.py"
+      },
+      "quotes": {
+        "value": "double",
+        "inferred_from": "src/spec4/app.py"
+      },
+      "line_length": {
+        "value": 88,
+        "source": "pyproject.toml"
+      },
+      "naming_conventions": {
+        "functions": {
+          "value": "snake_case",
+          "inferred_from": "src/spec4/app.py"
+        },
+        "classes": {
+          "value": "PascalCase",
+          "inferred_from": "evals/agentifier/mechanism_scoring.py"
+        }
+      }
+    },
+    "notes": {
+      "test_coverage": {
+        "has_tests": true,
+        "framework": "pytest",
+        "coverage_summary": "A pytest suite exists under tests/ (inferred from ruff per-file-ignores referencing tests/agentifier/*.py and tests/integration/*.py); a .coverage artifact at the repo root confirms pytest-cov is actively run. Additional self-tests validate the eval harnesses themselves (evals/agentifier/test_mechanism_scoring.py, evals/scout/test_phantom_link_check.py, evals/scout/test_relevance_judge.py).",
+        "inferred_from": "pyproject.toml ruff per-file-ignores; .coverage file"
+      },
+      "ci_cd": {
+        "present": false
+      },
+      "incomplete_or_dead_code": [
+        "mypy's [[tool.mypy.overrides]] list includes module a2a_sdk (and a2a_sdk.*) with ignore_missing_imports = true, but a2a_sdk does not appear anywhere in pyproject.toml's declared dependencies \u2014 likely leftover configuration from a removed or not-yet-added integration (config drift).",
+        "mypy strict mode is configured in pyproject.toml, but the Makefile exposes no typecheck target and no documented invocation for running it was found \u2014 the configured type-checking workflow isn't wired into any run command.",
+        "pyproject.toml's ruff per-file-ignores configure E501 exemptions for evals/*.py, but the Makefile's lint target only checks src/ tests/ \u2014 the evals/ directory is configured for linting but never actually linted by the documented command."
+      ],
+      "change_risks": [
+        {
+          "area": "import ordering in src/spec4/app.py",
+          "risk": "a code comment (tagged D-LR1) states the LITELLM_LOG env var and litellm.suppress_debug_info must be set before litellm is first imported anywhere, and spec4.callbacks imports must occur after the app object is constructed \u2014 reordering silently breaks startup behavior.",
+          "mitigation_hint": "preserve the existing import sequence and noqa: E402 suppressions; do not reorder these imports without re-reading the D-LR1 comment."
+        }
+      ],
+      "other_notes": [
+        ".python-version file present alongside the pyproject.toml requires-python constraint",
+        "Secondary CLI script: `spec4-usage = spec4.usage_report:main` (pyproject.toml [project.scripts]), distinct from the primary spec4 app entrypoint",
+        "Makefile.publish exists separately from Makefile, likely for PyPI publishing steps (contents not shown in excerpts)",
+        "Developer script: scripts/e2e_agentifier.py (end-to-end Agentifier test runner)",
+        "Developer script: scripts/screenshot_ui.py (UI screenshot capture utility)",
+        "boto3 is a direct (non-dev) dependency, yet an app.py comment states litellm's associated AWS/Bedrock/SageMaker integration 'is not used by Spec4' \u2014 its actual call site was not visible in the provided excerpts",
+        "No database, ORM, or persistence layer was observed; session/plan state appears to be held in Dash session state and local files (e.g. .spec4/v0/ai_features.json) rather than a formal database",
+        "No containerization, orchestration, PaaS, or IaC config files were observed in the provided listing; deployment today is via gunicorn directly per the Makefile serve target",
+        "mcp (Model Context Protocol SDK) is declared as a runtime dependency but no usage site was visible in provided excerpts; distinct from agentifier/patterns/mechanisms/mcp.md, which is a reference doc Agentifier uses to recommend MCP for the end user's future project, not evidence Spec4 itself implements or drives MCP"
+      ]
+    }
+  }
+}

@@ -1,12 +1,118 @@
 /* v3 Design System */
 
-/* Chat scroll area — vertically resizable by the user */
+/* ===== Chat frame =====
+   The pipeline indicator: seven plain labels in pipeline order, no arrows and
+   no chips. Every one of them is a control except the active one, so each
+   strips the whole of a button's chrome — inherited font, no border, no
+   background, no padding — exactly as `.sb-dir` and the round tree's lines do,
+   and for the same reason: the row has to read as labels, not as buttons. The
+   active state is the header nav's, class for class: theme primary on the text
+   and on a 1px rule underneath, so a re-themed accent moves both. */
+.pipeline {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  height: 32px;
+  min-width: 0;
+  border-bottom: 1px solid #2a2a3a;
+  flex: 1;
+}
+
+.pipeline-agent {
+  font: inherit;
+  font-size: 13px;
+  color: #a0a0b0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+  padding: 0 2px;
+  line-height: 30px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pipeline-agent:hover:not(:disabled) { color: #f5f5f7; }
+
+/* Done: full weight and full contrast. The agent has produced its artifact,
+   and that is the one thing a plain label can say without a badge. */
+.pipeline-agent--done {
+  color: #f5f5f7;
+  font-weight: 500;
+}
+
+.pipeline-agent--active {
+  color: var(--mantine-primary-color-filled);
+  border-bottom-color: var(--mantine-primary-color-filled);
+  cursor: default;
+}
+
+/* Unreachable: recedes, and says why on hover — the title is the precondition
+   message, which is the only explanation a dimmed label carries. */
+.pipeline-agent--unreachable,
+.pipeline-agent:disabled {
+  color: #5a5a6a;
+  cursor: not-allowed;
+}
+
+.pipeline-agent:focus-visible {
+  outline: 1px solid var(--mantine-primary-color-filled);
+  outline-offset: 1px;
+}
+
+/* The transcript. 60vh rather than a pixel height, so it is the same share of
+   whatever window it opens in; `overflow-y: auto` on this element is what
+   keeps it scrolling *itself* rather than growing the page — the failure mode
+   at a small viewport, where a taller transcript would push the composer off
+   the bottom instead of scrolling. `min-height` bounds the short-window case,
+   and the user can still drag the corner. */
 #chat-scroll-area {
-  resize: vertical;
+  height: 60vh;
   min-height: 200px;
+  overflow-y: auto;
+  resize: vertical;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 8px;
   padding: 8px;
+}
+
+/* ===== Transcript blocks =====
+   Blocks, not bubbles. Neither speaker's turn is filled or rounded: what
+   separates them is the dimmed one-word label above each and, on the user's,
+   a neutral left rule. `.chat-bubble-user` survives as the class name because
+   the auto-scroll callback in `app.py` selects on it — it is a JavaScript
+   contract wearing a CSS name, and `test_chat_transcript_blocks.py` pins it. */
+.msg-row + .msg-row { margin-top: 16px; }
+
+.chat-msg.chat-bubble-user,
+.chat-msg.chat-bubble-assistant {
+  background: none !important;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.chat-msg.chat-bubble-user {
+  border-left: 2px solid #3a3a4a;
+  padding-left: 10px;
+}
+
+.msg-label {
+  font-size: 11px;
+  line-height: 16px;
+  color: #a0a0b0;
+  margin-bottom: 2px;
+}
+
+/* The counters and the elapsed readout. Monospace comes from `.mono`; the
+   dimming is here rather than on the components, which carry no colour of
+   their own (D-LR2) — these are the turn's numbers, standing beside the
+   actions rather than competing with them. */
+#chat-token-count,
+#chat-turn-tokens,
+#chat-elapsed {
+  color: #a0a0b0;
 }
 
 /* Chat send button matches textarea height */
@@ -159,11 +265,15 @@ header[class*="AppShell-header"] {
 .logo-spec { color: #1E88E5; }
 .logo-4    { color: var(--mantine-primary-color-filled); }
 
-/* ===== Chat Bubbles ===== */
+/* ===== Chat text =====
+   What is left of the bubble rules once the fills are gone: the text colour
+   both blocks share. `.chat-bubble-assistant` keeps its panel fill because one
+   thing that is not a transcript message still wears the class — the
+   Agentifier breadth panel, whose checkbox labels inherit their colour from
+   it, and which is a panel the developer acts in rather than a turn they read.
+   The `.chat-msg` rules above unfill the transcript's copy of it. */
 .chat-bubble-user {
-  background: #12121c !important;
   color: #f5f5f7 !important;
-  border: 1px solid #3a3a4a;
 }
 
 .chat-bubble-user p,
@@ -275,6 +385,41 @@ code, pre, kbd {
    supposed to be there, but it does not compete with the files that exist. */
 .tree-list li.is-missing .name { opacity: 0.55; }
 .tree-list li.is-missing .status { color: #5a5a6a; }
+
+/* A linked line. The whole row is the control, so the click target is the
+   line the developer is reading rather than a word inside it. Every scrap of
+   button chrome is stripped — inherited font and colour, no border, no
+   background, no padding — for the same reason `.sb-dir` is: the row has to
+   keep reading as a line of a listing, and the underline on hover is the only
+   thing that says it can be pressed. */
+.tree-list button.tree-link {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tree-list button.tree-link:hover .name { text-decoration: underline; }
+
+.tree-list button.tree-link:focus-visible {
+  outline: 1px solid var(--mantine-primary-color-filled);
+  outline-offset: -1px;
+}
+
+/* The file currently open in the Artifact View. The same active-state
+   mechanism the header nav uses — a modifier class taking the theme primary,
+   never a colour named by a layout (D-LR2). */
+.tree-list li.is-selected .name { color: var(--mantine-primary-color-filled); }
 
 .legend {
   list-style: none;
@@ -393,26 +538,40 @@ code, pre, kbd {
 
 /* Warn, at the weight the mock draws it. Mantine's outline shade for yellow
    is pale enough to read as the same near-white as the neutral buttons, which
-   is the one thing this state must not do. */
-.agent-row-action--needs-update {
+   is the one thing this state must not do.
+
+   Two selectors, one rule. `.btn-warn` is the chat frame's Re-scan Project,
+   which is the same statement in a different row — the app has one warn tone,
+   and a second copy of these declarations is how it would end up with two.
+   The agent-row modifier keeps its own name because the row's tests assert on
+   it and because it is a *state* there; `.btn-warn` is a tone anywhere. */
+.agent-row-action--needs-update,
+.btn-warn {
   color: var(--mantine-color-yellow-5);
   /* The mock's border is its own text colour at 45%, not a darker step down
      the palette — a darker yellow reads as orange next to the accent. */
   border-color: color-mix(in srgb, var(--mantine-color-yellow-5) 45%, transparent);
 }
 
-.agent-row-action--needs-update:hover {
+.agent-row-action--needs-update:hover,
+.btn-warn:hover {
   color: var(--mantine-color-yellow-5);
   border-color: var(--mantine-color-yellow-5);
 }
 
-/* ===== Round cost =====
-   The round's spend, closing the project view. A panel rather than more bare
-   rows: the tree and the table are lists of things, and this is one figure
-   about all of them, so it needs an edge to read as a summary and not as a
-   fourth kind of row. 24px lines match the tree's, which is what keeps the
-   three blocks reading as one column. */
-.round-cost {
+/* ===== Cost strip =====
+   A scope's spend, in three dense lines. Two screens wear it — the round's,
+   closing the project view, and the finished run's, under the last message of
+   a completed chat turn — and they share this rule for the same reason they
+   share one renderer: the two strips say the same kind of thing and must not
+   drift into looking like two different components.
+
+   A panel rather than more bare rows: on the project view the tree and the
+   table are lists of things, and this is one figure about all of them, so it
+   needs an edge to read as a summary and not as a fourth kind of row. 24px
+   lines match the tree's, which is what keeps the three blocks reading as one
+   column. */
+.cost-strip {
   display: block;
   background: #12121c;
   border: 1px solid #2a2a3a;
@@ -423,7 +582,7 @@ code, pre, kbd {
 /* Figures never wrap. A narrow window ellipsises the tail of the unpriced
    list — the count and the first names are the part that has to survive —
    rather than reflowing the cost onto a second line. */
-.round-cost .cost-line {
+.cost-strip .cost-line {
   line-height: 24px;
   white-space: nowrap;
   overflow: hidden;
@@ -434,11 +593,19 @@ code, pre, kbd {
 /* The disclaimer is the one line here that is prose, so it is the one line
    that is not monospace and not full contrast: it is a standing caveat, not a
    number to read off. */
-.round-cost .cost-note {
+.cost-strip .cost-note {
   color: #a0a0b0;
   font-size: 12px;
   line-height: 16px;
   margin-top: 4px;
+}
+
+/* On the chat frame the strip sits between the transcript and the action row,
+   and the transcript above it is tight to its own bottom edge (the divider
+   that opens the action row is the separator down there). The mock's 12px is
+   what keeps the strip from touching the last message. */
+#cost-summary-card {
+  margin-top: 12px;
 }
 
 /* ===== Progress stripes =====
@@ -462,3 +629,164 @@ code, pre, kbd {
 .progress-stripe[data-striped] {
   background-image: linear-gradient(45deg, rgba(0, 0, 0, 0.35) 25%, transparent 25%, transparent 50%, rgba(0, 0, 0, 0.35) 50%, rgba(0, 0, 0, 0.35) 75%, transparent 75%, transparent); /* register-exception: the stripe is the live-activity signal, not chrome */
 }
+
+/* ===== Artifact view =====
+   Two panes on one grid: a fixed 300px selector column and a content column
+   that takes the rest. `minmax(0, 1fr)` rather than `1fr` is what lets the
+   content pane's own scroller take over on a wide file — a bare `1fr` sizes to
+   its content and pushes the grid wider than the window instead.
+
+   The left column holds the round selector above the app's round tree; the
+   right holds the one-line file header and the scrolling file block. */
+.artifact-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+/* The round selector: one strip of rounds above the tree, the current one
+   marked. Each round is a button rather than a link for the same reason the
+   tree's lines are — it moves the app, not the document — and every scrap of
+   button chrome is stripped so the strip still reads as the mock's row of
+   round labels. The active round takes the theme primary through the class,
+   never through a colour named by a layout (D-LR2). */
+.round-select {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 32px;
+  border-bottom: 1px solid #2a2a3a;
+  margin-bottom: 12px;
+}
+
+.round-select button {
+  font: inherit;
+  color: #a0a0b0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+  padding: 0 2px;
+  line-height: 30px;
+  cursor: pointer;
+}
+
+.round-select button:hover { color: #f5f5f7; }
+
+.round-select button.is-active {
+  color: var(--mantine-primary-color-filled);
+  border-bottom-color: var(--mantine-primary-color-filled);
+}
+
+.round-select button:focus-visible {
+  outline: 1px solid var(--mantine-primary-color-filled);
+  outline-offset: 1px;
+}
+
+/* The content pane with nothing to show: no file chosen, a file that is not
+   in this round, or one that is listed and absent. All three are bordered like
+   the file block they stand in for, so choosing a file changes what is in the
+   frame rather than whether there is one. */
+.file-empty,
+.file-missing {
+  border: 1px solid #2a2a3a;
+  padding: 32px 16px;
+  color: #a0a0b0;
+  text-align: center;
+}
+
+/* The filename inside a missing-file sentence, lifted out of the dimmed prose
+   around it — the one thing the developer is scanning that line for. */
+.file-missing .path { color: #f5f5f7; }
+
+/* The content pane's head: the one-line file header beside its controls
+   (Download, and — for the mock — Open rendered). Only the header half
+   ellipsises rather than wraps, for the same reason the status bar's context
+   line does — a second line here would push the file block down the screen
+   every time a deep phase path was opened; the controls are `flex: none` so
+   a long path shrinks against them rather than the other way round. The
+   separator between the header's own fields is `.sb-sep`, shared with that
+   bar. */
+.file-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  line-height: 24px;
+  margin-bottom: 8px;
+  color: #a0a0b0;
+}
+
+.file-head .file-meta {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-head .path { color: #f5f5f7; }
+
+.file-head .file-controls {
+  flex: none;
+  display: flex;
+  gap: 8px;
+}
+
+/* The file block: one scroller around a gutter and the content beside it. */
+.file-block {
+  border: 1px solid #2a2a3a;
+}
+
+/* The height that keeps the block inside the window, so the page itself never
+   scrolls — the pane scrolls and the header above it stays put. It is set on
+   the ScrollArea's root *and* on the viewport Mantine renders inside it: a
+   percentage height against a max-height-constrained parent resolves to auto,
+   so a bound on the root alone would clip the file rather than scroll it. The
+   two are one rule for the same reason the gutter and the content are — a
+   bound on only one of them is the bug. */
+.file-block,
+.file-block [class*="ScrollArea-viewport"] {
+  max-height: calc(100vh - 176px);
+}
+
+/* `max-content` is what lets a long line scroll horizontally: without it the
+   row shrinks to the scroller's width and the content wraps against a gutter
+   that has stopped lining up with it. */
+.file-lines {
+  display: flex;
+  min-width: max-content;
+}
+
+/* Font and line height for the gutter and the content, in ONE rule.
+   This is the whole alignment mechanism. The numbers sit in a separate `<pre>`
+   from the text they number, so they line up only because both elements lay
+   out identically — two rules could drift by half a pixel and slide the gutter
+   off its lines by a whole row twenty lines down. Anything that changes the
+   metrics of one of these has to change the other, and the only way to be sure
+   of that is for there to be one place to change. */
+.file-lines pre {
+  margin: 0;
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 20px;
+  font-variant-ligatures: none;
+  tab-size: 4;
+  white-space: pre;
+}
+
+/* The gutter is furniture, not content: it does not shrink, it does not take
+   the caret, and dragging across the file must not select it — a developer
+   copying twenty lines out of a phase file wants the twenty lines, not the
+   numbers down their left. */
+.file-gutter {
+  flex: none;
+  width: 44px;
+  padding-right: 10px;
+  text-align: right;
+  color: #5a5a6a;
+  background: #12121c;
+  user-select: none;
+}
+
+.file-content { padding: 0 12px; }
