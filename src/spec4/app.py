@@ -126,7 +126,20 @@ app.layout = dmc.MantineProvider(
                 dmc.AppShellHeader(_status_bar()),
                 dmc.AppShellMain(
                     dmc.Container(
-                        html.Div(id="page-content"),
+                        # `disable_n_clicks`: an html component with an id counts
+                        # every click that bubbles through it, and the count is a
+                        # prop change on the slot itself. In dash-renderer 4.1 a
+                        # non-children prop change on a container re-hydrates its
+                        # subtree from a cached selector snapshot rather than from
+                        # the children the last callback delivered; because every
+                        # screen's root sits at this one path, that snapshot can be
+                        # a *previous screen* — a click in the chat box then drew
+                        # an empty project view over the chat frame. Nothing
+                        # listens to clicks on the slot, so the count is switched
+                        # off, and the slot only ever re-renders for new children.
+                        # `tests/integration/test_page_slot_e2e.py` walks the
+                        # sequence that exposed it.
+                        html.Div(id="page-content", disable_n_clicks=True),
                         size="xl",
                         # Half the previous vertical padding (was "lg"): the
                         # shell frames a dense development tool now, not a

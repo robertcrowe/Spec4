@@ -1021,29 +1021,37 @@ def on_designer_refine_cancel(n: Any, store: Any) -> Any:
     Output("designer-session-store", "data", allow_duplicate=True),
     Input("designer-refine-upload", "contents"),
     State("designer-refine-upload", "filename"),
+    State({"type": "designer-refine-annotation", "index": ALL}, "value"),
     State("designer-refine-input", "value"),
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
 def on_designer_refine_upload(
-    contents: Any, filename: Any, refine_text: Any, store: Any
+    contents: Any, filename: Any, annotations: Any, refine_text: Any, store: Any
 ) -> Any:
     if not contents or not store:
         return no_update
     images: list[dict[str, str]] = list(store.get("refine_images", []))
-    images.append({"data": contents, "filename": filename or "image"})
+    for i, ann in enumerate(annotations or []):
+        if i < len(images):
+            images[i] = {**images[i], "annotation": ann or ""}
+    new_contents = contents if isinstance(contents, list) else [contents]
+    new_filenames = filename if isinstance(filename, list) else [filename]
+    for data, fname in zip(new_contents, new_filenames):
+        images.append({"data": data, "filename": fname or "image", "annotation": ""})
     return {**store, "refine_images": images, "refine_text": refine_text or ""}
 
 
 @callback(
     Output("designer-session-store", "data", allow_duplicate=True),
     Input({"type": "designer-refine-image-delete", "index": ALL}, "n_clicks"),
+    State({"type": "designer-refine-annotation", "index": ALL}, "value"),
     State("designer-refine-input", "value"),
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
 def on_designer_refine_image_delete(
-    n_clicks_list: Any, refine_text: Any, store: Any
+    n_clicks_list: Any, annotations: Any, refine_text: Any, store: Any
 ) -> Any:
     if not any(n for n in (n_clicks_list or []) if n):
         return no_update
@@ -1052,6 +1060,9 @@ def on_designer_refine_image_delete(
         return no_update
     idx: int = triggered["index"]
     images: list[dict[str, str]] = list((store or {}).get("refine_images", []))
+    for i, ann in enumerate(annotations or []):
+        if i < len(images):
+            images[i] = {**images[i], "annotation": ann or ""}
     if 0 <= idx < len(images):
         images.pop(idx)
     return {**(store or {}), "refine_images": images, "refine_text": refine_text or ""}
@@ -1063,6 +1074,7 @@ def on_designer_refine_image_delete(
     Output("mock-stream-interval", "disabled", allow_duplicate=True),
     Input("btn-designer-regenerate", "n_clicks"),
     State("designer-refine-input", "value"),
+    State({"type": "designer-refine-annotation", "index": ALL}, "value"),
     State("designer-session-store", "data"),
     State("session", "data"),
     State("image-support-store", "data"),
@@ -1071,6 +1083,7 @@ def on_designer_refine_image_delete(
 def on_designer_regenerate(
     n: Any,
     refine_text: Any,
+    annotations: Any,
     store: Any,
     session: Any,
     image_support: Any,
@@ -1080,9 +1093,18 @@ def on_designer_regenerate(
     pref: str = store.get("preference_text", "")
     if refine_text and refine_text.strip():
         pref = f"{pref}\n\n--- Refinement ---\n{refine_text.strip()}"
+    refine_images: list[dict[str, str]] = list(store.get("refine_images", []))
+    for i, ann in enumerate(annotations or []):
+        if i < len(refine_images):
+            refine_images[i] = {**refine_images[i], "annotation": ann or ""}
+    # Same shape the create path (on_designer_generate_mock) builds for
+    # screenshots — {"data", "annotation"} — so build_mock_prompt sends refine
+    # images through the identical image_url + "Note: ..." rendering.
     screenshots: list[dict[str, str]] = list(store.get("screenshots", []))
-    for img in store.get("refine_images", []):
-        screenshots.append({"data": img["data"], "annotation": img["filename"]})
+    for img in refine_images:
+        screenshots.append(
+            {"data": img["data"], "annotation": img.get("annotation", "")}
+        )
     existing_html: str | None = store.get("mock_html") or None
     updated = {**store, "preference_text": pref, "screenshots": screenshots}
     sess = session or {}

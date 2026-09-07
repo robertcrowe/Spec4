@@ -1,0 +1,790 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "development_tool_shell",
+      "name": "Development Tool Shell",
+      "purpose": "Provides the single persistent status bar and primary navigation that frames every screen, replacing the prior marketing-style header and footer with a compact, information-dense developer-tool bar.",
+      "invocation": {
+        "trigger": "Any screen loads, or the working directory, round, or default provider/model changes."
+      },
+      "inputs": [
+        {
+          "name": "working_directory_path",
+          "type": "text",
+          "description": "The path of the currently open project.",
+          "required": true
+        },
+        {
+          "name": "current_round_number",
+          "type": "number",
+          "description": "The round currently active in the project.",
+          "required": true
+        },
+        {
+          "name": "default_provider_and_model",
+          "type": "text",
+          "description": "The provider and model configured as the project default.",
+          "required": true
+        },
+        {
+          "name": "app_version",
+          "type": "text",
+          "description": "The running version of the tool.",
+          "required": true
+        },
+        {
+          "name": "viewport_width",
+          "type": "number",
+          "description": "Available horizontal space, used to decide what truncates.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "A rendered status bar and four-item navigation.",
+        "format": "Persistent header row plus navigation row on every screen.",
+        "schema_notes": "Slots for path, round, provider/model, version, and links to Project, Artifacts, Settings, and Docs."
+      },
+      "success_criteria": [
+        "Round, provider+model, and version are always fully visible regardless of width",
+        "Only the working-directory path ever truncates, always from its start, leaving the project name visible",
+        "No external-link drawer, footer, or landing page appears anywhere",
+        "A single accent color marks every primary action, active nav state, and focus indicator",
+        "Vertical spacing is visibly tighter than the prior register"
+      ],
+      "failure_modes": [
+        {
+          "mode": "Wrong element truncates under extreme narrowness",
+          "likelihood": "medium",
+          "mitigation": "Enforce a fixed truncation order with the directory path always first"
+        },
+        {
+          "mode": "Two accent colors compete for primary emphasis",
+          "likelihood": "low",
+          "mitigation": "Restrict the accent color to a single role across the app"
+        }
+      ],
+      "dependencies": [],
+      "entities": [
+        "WorkingDirectory",
+        "Round",
+        "Provider",
+        "Model",
+        "Navigation"
+      ],
+      "references": []
+    },
+    {
+      "id": "open_to_the_project",
+      "name": "Open To The Project",
+      "purpose": "Sends the user straight into their current project when one is already known, removing any need for an introductory screen.",
+      "invocation": {
+        "trigger": "The app is opened at its root address."
+      },
+      "inputs": [
+        {
+          "name": "remembered_working_directory",
+          "type": "text",
+          "description": "A previously opened project directory, if one is remembered.",
+          "required": false
+        }
+      ],
+      "outputs": {
+        "primary": "Either the project view or the directory picker.",
+        "format": "Full-screen navigation to exactly one destination.",
+        "schema_notes": "Never shows both destinations at once."
+      },
+      "success_criteria": [
+        "With a remembered directory, the project view appears with no intermediate screen",
+        "With no remembered directory, the directory picker appears immediately",
+        "No introduction or landing screen is ever shown"
+      ],
+      "failure_modes": [
+        {
+          "mode": "A remembered directory no longer exists",
+          "likelihood": "medium",
+          "mitigation": "Fall back to the directory picker and let the user choose again"
+        },
+        {
+          "mode": "Stale directory memory opens the wrong project",
+          "likelihood": "low",
+          "mitigation": "Always show the working-directory path prominently so the user can confirm"
+        }
+      ],
+      "dependencies": [
+        "entry_screens_register",
+        "agent_rows",
+        "round_cost",
+        "round_tree"
+      ],
+      "entities": [
+        "WorkingDirectory",
+        "Project"
+      ],
+      "references": []
+    },
+    {
+      "id": "round_tree",
+      "name": "Round Tree",
+      "purpose": "Shows the current round's full set of planning artifacts as a single ordered list, so the user can see at a glance what exists, what's stale, and what's missing.",
+      "invocation": {
+        "trigger": "The project view is opened, or an artifact's underlying data changes."
+      },
+      "inputs": [
+        {
+          "name": "current_round_artifacts",
+          "type": "list of items",
+          "description": "Every artifact expected in the current round.",
+          "required": true
+        },
+        {
+          "name": "artifact_dependency_graph",
+          "type": "structured data",
+          "description": "Which artifacts depend on which others, used to compute staleness.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "An ordered list of artifact lines with status and lane.",
+        "format": "One line per artifact.",
+        "schema_notes": "Each line carries artifact name, status (present, needs update, or missing), and lane (prompt, reference, or record)."
+      },
+      "success_criteria": [
+        "Artifacts always appear in pipeline order",
+        "An artifact whose upstream source changed after it was produced shows as needing an update",
+        "The round's usage record never shows as needing an update",
+        "Each line's lane matches the three-item legend",
+        "Selecting a line opens that artifact's detail view"
+      ],
+      "failure_modes": [
+        {
+          "mode": "Status miscalculated because an upstream timestamp is missing",
+          "likelihood": "medium",
+          "mitigation": "Treat unknown upstream state as needing an update rather than marking it present"
+        },
+        {
+          "mode": "A lane is mis-colored",
+          "likelihood": "low",
+          "mitigation": "Derive lane strictly from a fixed artifact-to-lane mapping"
+        }
+      ],
+      "dependencies": [],
+      "entities": [
+        "Round",
+        "Artifact",
+        "Lane"
+      ],
+      "references": []
+    },
+    {
+      "id": "agent_rows",
+      "name": "Agent Rows",
+      "purpose": "Lists the seven planning agents in pipeline order as compact rows, each showing its produced artifact, the model it last used, this round's token counts, and the single next action available.",
+      "invocation": {
+        "trigger": "The project view is opened, or an agent's run state changes."
+      },
+      "inputs": [
+        {
+          "name": "agent_pipeline_order",
+          "type": "list of items",
+          "description": "The fixed sequence of the seven agents.",
+          "required": true
+        },
+        {
+          "name": "per_agent_last_model",
+          "type": "text per agent",
+          "description": "The model each agent last ran with this round, blank if not yet run.",
+          "required": true
+        },
+        {
+          "name": "per_agent_tokens_in_out",
+          "type": "number pair per agent",
+          "description": "Tokens consumed and produced this round for each agent.",
+          "required": true
+        },
+        {
+          "name": "per_agent_run_state",
+          "type": "text",
+          "description": "The agent's current state used to decide which action to show.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "Seven compact rows, one per agent.",
+        "format": "One row per agent, fixed pipeline order.",
+        "schema_notes": "Each row has agent name, artifact name, last-run model, tokens in/out, and one action."
+      },
+      "success_criteria": [
+        "Rows appear in fixed pipeline order with no numbering",
+        "The shown action always matches the agent's real state",
+        "A model name only appears once that agent has actually run this round",
+        "Choosing the action routes to the correct next screen for that agent"
+      ],
+      "failure_modes": [
+        {
+          "mode": "Shown action does not match actual state after a run completes",
+          "likelihood": "medium",
+          "mitigation": "Recompute state from the same usage record and dependency graph the round tree uses"
+        },
+        {
+          "mode": "Token counts fail to update after a run",
+          "likelihood": "low",
+          "mitigation": "Refresh counts from the same record the round cost reads"
+        }
+      ],
+      "dependencies": [],
+      "entities": [
+        "Agent",
+        "Artifact",
+        "Model",
+        "TokenCount",
+        "RunState"
+      ],
+      "references": []
+    },
+    {
+      "id": "round_cost",
+      "name": "Round Cost",
+      "purpose": "Gives an at-a-glance estimate of how much the current round has spent so far, based on recorded token usage.",
+      "invocation": {
+        "trigger": "The project view is opened, or the round's usage record changes."
+      },
+      "inputs": [
+        {
+          "name": "round_usage_totals",
+          "type": "structured data",
+          "description": "Aggregated token and cost totals for the round.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "A labelled cost estimate with token counts.",
+        "format": "Short summary line(s).",
+        "schema_notes": "Names any call excluded from the estimate because it could not be priced."
+      },
+      "success_criteria": [
+        "The figure is always labelled as an estimate",
+        "Token totals are shown alongside the cost",
+        "Any unpriced call is named rather than silently folded into the total",
+        "The estimate is never shown as a zero value when the true cost is unknown"
+      ],
+      "failure_modes": [
+        {
+          "mode": "A provider's pricing is unavailable",
+          "likelihood": "medium",
+          "mitigation": "Exclude and name that call rather than assume zero cost"
+        },
+        {
+          "mode": "Totals lag behind the latest run",
+          "likelihood": "low",
+          "mitigation": "Recompute from the same usage record every time the view opens"
+        }
+      ],
+      "dependencies": [],
+      "entities": [
+        "Round",
+        "TokenCount",
+        "Cost"
+      ],
+      "references": []
+    },
+    {
+      "id": "artifact_view",
+      "name": "Artifact View",
+      "purpose": "Lets the user open and read any artifact from the current or a past round, with the file's content, status, and location shown together.",
+      "invocation": {
+        "trigger": "A round-tree line, an artifact link, or the Artifacts navigation item is chosen."
+      },
+      "inputs": [
+        {
+          "name": "selected_round",
+          "type": "text",
+          "description": "The round whose artifacts should be listed.",
+          "required": true
+        },
+        {
+          "name": "selected_artifact_path",
+          "type": "text",
+          "description": "The specific artifact to display.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "The artifact's content and metadata.",
+        "format": "A round selector and artifact tree on one side, the file's content on the other.",
+        "schema_notes": "Header line gives path, size, last-modified time, and lane; text content is line-numbered, structured content is pretty-printed; a missing file shows which agent would produce it instead of content."
+      },
+      "success_criteria": [
+        "Every round on disk appears in the round selector, defaulting to the active round",
+        "The tree beside the content uses the same lanes and status flags as the project view",
+        "The selected file is visibly marked in the tree",
+        "A missing artifact shows its producing agent's name instead of an error",
+        "Only files belonging to the reviewed artifact set can ever be opened this way",
+        "A download option is always available, and the design mock additionally offers a rendered preview in a new view"
+      ],
+      "failure_modes": [
+        {
+          "mode": "A request targets a path outside the recognized artifact set",
+          "likelihood": "low",
+          "mitigation": "Resolve only files in the fixed artifact table, under the project's own planning folder, and reject anything else"
+        },
+        {
+          "mode": "A very large file slows the view",
+          "likelihood": "low",
+          "mitigation": "Still render with line numbers without blocking navigation"
+        },
+        {
+          "mode": "Round selector omits a round present on disk",
+          "likelihood": "low",
+          "mitigation": "Rescan available rounds each time the view opens"
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell",
+        "round_tree"
+      ],
+      "entities": [
+        "Round",
+        "Artifact",
+        "Lane"
+      ],
+      "references": []
+    },
+    {
+      "id": "artifact_links",
+      "name": "Artifact Links",
+      "purpose": "Makes every artifact reachable from wherever it's mentioned \u2014 navigation, round tree, and chat downloads \u2014 so the user is never more than one choice away from seeing a file.",
+      "invocation": {
+        "trigger": "The navigation is rendered, a round-tree line is rendered, or a download option is rendered in the chat frame."
+      },
+      "inputs": [
+        {
+          "name": "artifact_identity",
+          "type": "text",
+          "description": "The artifact and round a given link should point to.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "A link that opens the artifact view at the right file.",
+        "format": "An inline link beside or in place of existing entries.",
+        "schema_notes": "One link per artifact reference, always pointing at the matching file and round."
+      },
+      "success_criteria": [
+        "The Artifacts destination sits between Project and Settings in the navigation",
+        "Every round-tree line opens the artifact view at that exact file",
+        "Every download option in the chat frame's action row is paired with an equivalent option that opens the file instead of downloading it"
+      ],
+      "failure_modes": [
+        {
+          "mode": "A link opens the wrong round's version of a file",
+          "likelihood": "low",
+          "mitigation": "Always carry the round identity together with the file identity"
+        },
+        {
+          "mode": "A new download option is added without its matching open option",
+          "likelihood": "medium",
+          "mitigation": "Derive both options from one shared list of artifacts"
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell",
+        "artifact_view",
+        "round_tree",
+        "chat_frame_register"
+      ],
+      "entities": [
+        "Artifact",
+        "Round",
+        "Navigation"
+      ],
+      "references": []
+    },
+    {
+      "id": "chat_frame_register",
+      "name": "Chat Frame Register",
+      "purpose": "Keeps the conversation screen's full set of existing functions \u2014 agent progress, transcript, live indicators, retries, downloads \u2014 while presenting them in the plain, low-chrome developer-tool style.",
+      "invocation": {
+        "trigger": "A conversation with any agent is opened or continues."
+      },
+      "inputs": [
+        {
+          "name": "agent_pipeline_state",
+          "type": "list of items",
+          "description": "Which agents are completed, active, or unreachable.",
+          "required": true
+        },
+        {
+          "name": "transcript_messages",
+          "type": "list of items",
+          "description": "The conversation history for the current agent.",
+          "required": true
+        },
+        {
+          "name": "live_run_progress",
+          "type": "structured data",
+          "description": "Character and elapsed-time counters for an in-progress run.",
+          "required": true
+        },
+        {
+          "name": "run_cost_summary",
+          "type": "structured data",
+          "description": "The cost of a completed run.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "The reworked conversation screen.",
+        "format": "Plain-text agent progress row, block-style transcript, action row, and composer.",
+        "schema_notes": "Exactly one primary action per row; a completed run's cost appears as the same summary style used for round cost."
+      },
+      "success_criteria": [
+        "Every function present before the rework still works: progress indicators, turn tokens, fast-forward with its explanation, retry, alternative-response choice, downloads, continue actions, composer, model indicator, status line",
+        "The agent progress row shows plain text only, active agent marked the same way as the active nav item, completed agents at full emphasis, unreachable agents dimmed with their explanation still available, no connecting marks between them",
+        "Duplicated back-navigation controls are gone, since the agent progress row and the status bar's project link already provide that path",
+        "Transcript messages read as plain blocks with a dimmed one-word label, no fill color, and a neutral marker on the user's own messages",
+        "A completed run's cost renders in the same three-line style as round cost",
+        "Exactly one primary-emphasis action appears per row, with all others neutral",
+        "The live-activity indicator is the only moving element on screen"
+      ],
+      "failure_modes": [
+        {
+          "mode": "A function is silently dropped during the visual rework",
+          "likelihood": "medium",
+          "mitigation": "Verify each pre-existing function against a checklist before release"
+        },
+        {
+          "mode": "Removed back-navigation leaves a dead end",
+          "likelihood": "low",
+          "mitigation": "Confirm the agent progress row and status bar project link always remain reachable"
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell",
+        "round_cost"
+      ],
+      "entities": [
+        "Agent",
+        "Message",
+        "RunProgress",
+        "Cost",
+        "Model"
+      ],
+      "references": []
+    },
+    {
+      "id": "entry_screens_register",
+      "name": "Entry Screens Register",
+      "purpose": "Brings the directory picker and the project-mode question in line with the developer-tool look while keeping their exact existing behavior.",
+      "invocation": {
+        "trigger": "The directory picker or the project-mode question is shown."
+      },
+      "inputs": [
+        {
+          "name": "candidate_directories",
+          "type": "list of items",
+          "description": "Subdirectories available to browse into.",
+          "required": true
+        },
+        {
+          "name": "current_path_input",
+          "type": "text",
+          "description": "The path currently typed or selected.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "The reworked picker and question screens.",
+        "format": "Single-column directory list, one-row folder-creation entry, two-line question with two side-by-side choices.",
+        "schema_notes": "Exactly one primary-emphasis action on each screen."
+      },
+      "success_criteria": [
+        "Directory names and the path entry render in fixed-width type",
+        "Subdirectories list one per line rather than as a grid",
+        "The folder-creation option and its text entry share one row",
+        "The question's explanation is no longer than two lines and its two choices sit on one row, one of them primary",
+        "The picker still browses, creates, and selects a directory exactly as before",
+        "The question is still asked once per session"
+      ],
+      "failure_modes": [
+        {
+          "mode": "A long directory name breaks the single-column layout",
+          "likelihood": "low",
+          "mitigation": "Truncate the name rather than wrap or overflow"
+        },
+        {
+          "mode": "The reworked question is asked more than once per session",
+          "likelihood": "low",
+          "mitigation": "Keep the existing once-per-session behavior unchanged"
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell"
+      ],
+      "entities": [
+        "WorkingDirectory",
+        "ProjectMode"
+      ],
+      "references": []
+    },
+    {
+      "id": "setup_wizard_register",
+      "name": "Setup Wizard Register",
+      "purpose": "Presents the existing three-step setup in the same terse developer-tool style, dropping explanatory prose and alert-style notices while keeping every field and step working exactly as before.",
+      "invocation": {
+        "trigger": "Setup is opened for an unconfigured provider, or the user revisits an existing step."
+      },
+      "inputs": [
+        {
+          "name": "provider_choice",
+          "type": "text",
+          "description": "The provider being configured.",
+          "required": true
+        },
+        {
+          "name": "key_entry",
+          "type": "text",
+          "description": "The credential entered for the provider.",
+          "required": true
+        },
+        {
+          "name": "model_choice",
+          "type": "text",
+          "description": "The default model selected for the provider.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "The reworked three-step setup.",
+        "format": "A compact step indicator with one short title and one primary action per step.",
+        "schema_notes": "The never-stored-outside-your-system notice becomes one dimmed line under the key entry; the connected-provider notice becomes one dimmed line above the model choice; the free-tier notice is removed."
+      },
+      "success_criteria": [
+        "Each step keeps its fields, identifiers, and validation exactly as before",
+        "Each step shows exactly one primary action (Connect, then Continue)",
+        "Clearing saved credentials is a neutral, warning-toned action",
+        "The within-wizard back action has no directional mark",
+        "No action in the wizard returns to the directory picker"
+      ],
+      "failure_modes": [
+        {
+          "mode": "Removing prose accidentally removes needed guidance",
+          "likelihood": "low",
+          "mitigation": "Keep the single dimmed line carrying the essential notice"
+        },
+        {
+          "mode": "A step's validation regresses during the visual rework",
+          "likelihood": "low",
+          "mitigation": "Keep field identifiers and validation logic untouched"
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell"
+      ],
+      "entities": [
+        "Provider",
+        "Credential",
+        "Model",
+        "SetupStep"
+      ],
+      "references": []
+    },
+    {
+      "id": "gate_card_register",
+      "name": "Gate Card Register",
+      "purpose": "Turns the shared per-agent model gate into a compact one-line panel naming the agent and its default model, with a small, clear set of choices, reused identically wherever a model must be confirmed.",
+      "invocation": {
+        "trigger": "An agent is about to run and its model has not yet been confirmed for this round."
+      },
+      "inputs": [
+        {
+          "name": "agent_name",
+          "type": "text",
+          "description": "The agent the gate is confirming a model for.",
+          "required": true
+        },
+        {
+          "name": "default_model",
+          "type": "text",
+          "description": "The model that would be used if the default is accepted.",
+          "required": true
+        },
+        {
+          "name": "current_selection_state",
+          "type": "text",
+          "description": "Whether a model has already been chosen or kept for this agent.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "The reworked gate panel.",
+        "format": "One monospace naming line plus a two- or three-action row.",
+        "schema_notes": "'Use default' is primary; 'Pick a model' and 'Keep <model>' are neutral; picking expands the setup wizard's model fields inline."
+      },
+      "success_criteria": [
+        "The panel's first line names the agent and its default model in fixed-width type",
+        "Exactly one component serves all seven agents and the Designer entry point",
+        "Expanding 'Pick a model' reveals the same fields the setup wizard uses",
+        "The separate agent-name heading above the panel on the Designer entry point is gone, since the status bar and agent progress row already name the agent",
+        "The underlying selection identifiers, behavior, and capability check are unchanged"
+      ],
+      "failure_modes": [
+        {
+          "mode": "The panel diverges from the setup wizard's fields over time",
+          "likelihood": "low",
+          "mitigation": "Keep the expanded fields sourced from the same definition as the setup wizard"
+        },
+        {
+          "mode": "Removing the heading leaves the Designer entry point unclear about which agent is active",
+          "likelihood": "low",
+          "mitigation": "Confirm the status bar and agent progress row always name the current agent"
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell",
+        "setup_wizard_register"
+      ],
+      "entities": [
+        "Agent",
+        "Model",
+        "SetupStep"
+      ],
+      "references": []
+    },
+    {
+      "id": "designer_wizard_register",
+      "name": "Designer Wizard Register",
+      "purpose": "Brings the seven-step Designer flow in line with the developer-tool look \u2014 trimming explanatory text and decorative step markers \u2014 while keeping every step, field, and outcome the same.",
+      "invocation": {
+        "trigger": "The Designer agent's gate is passed and its multi-step flow begins."
+      },
+      "inputs": [
+        {
+          "name": "current_step_index",
+          "type": "number",
+          "description": "Which of the seven steps is active.",
+          "required": true
+        },
+        {
+          "name": "uploaded_reference_material",
+          "type": "file",
+          "description": "Screenshots or reference images supplied for the design.",
+          "required": false
+        },
+        {
+          "name": "generated_mock_state",
+          "type": "text",
+          "description": "Whether a mock has been generated, approved, or needs regeneration.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "The reworked seven-step flow.",
+        "format": "A plain-text step row plus one instruction line and one primary action per step.",
+        "schema_notes": "Upload zones are a plain dashed outline with one dimmed line of text; approval and disclaimer notices are single dimmed lines, not alerts."
+      },
+      "success_criteria": [
+        "The step row renders as plain text with no circular markers or check marks; the active step is marked the same way as the active nav item, completed steps at full emphasis, later steps dimmed",
+        "Each step shows at most one instruction line and exactly one primary action",
+        "The introductory paragraph and usage explanation are gone",
+        "The look-and-feel disclaimer and the approval notice each render as a single dimmed line",
+        "The live preview, its full-view option, the cost summary, and the retry option all keep working exactly as before"
+      ],
+      "failure_modes": [
+        {
+          "mode": "Removing the usage explanation leaves new users confused about a step's purpose",
+          "likelihood": "low",
+          "mitigation": "Keep the one-line instruction on every step"
+        },
+        {
+          "mode": "The step row becomes ambiguous about which step is active once icons are removed",
+          "likelihood": "low",
+          "mitigation": "Reuse the exact active/complete/dimmed marking used in the agent progress row"
+        }
+      ],
+      "dependencies": [
+        "development_tool_shell",
+        "gate_card_register"
+      ],
+      "entities": [
+        "DesignStep",
+        "DesignMock",
+        "ReferenceMaterial",
+        "Cost"
+      ],
+      "references": []
+    },
+    {
+      "id": "per_agent_effort",
+      "name": "Per-Agent Effort",
+      "purpose": "Lets a reasoning-effort level be chosen per agent alongside its model, so agents that need deeper reasoning can use it while others stay fast and cheap.",
+      "invocation": {
+        "trigger": "A model is resolved for an agent, in the gate panel or the setup wizard's model step."
+      },
+      "inputs": [
+        {
+          "name": "resolved_model_capabilities",
+          "type": "list of items",
+          "description": "The effort levels the chosen model actually supports.",
+          "required": true
+        },
+        {
+          "name": "chosen_effort",
+          "type": "text",
+          "description": "The effort level selected for the agent, or for the default.",
+          "required": true
+        }
+      ],
+      "outputs": {
+        "primary": "The stored effort choice for an agent, or for the default.",
+        "format": "One value alongside the model in the same selection record.",
+        "schema_notes": "Allowed values are always 'default' plus low, medium, high, with xhigh or max appearing only when the resolved model supports them."
+      },
+      "success_criteria": [
+        "The offered effort values always match what the resolved model actually supports",
+        "An agent left on 'default' inherits the default's effort exactly as it inherits its model",
+        "The effort appears after the model name wherever the model is shown, but only when it isn't 'default'",
+        "Every run records which effort was actually used",
+        "An unsupported effort value never causes a run to fail",
+        "The gate, the model indicator, the retry flow, and the setup wizard all read and write the same stored value"
+      ],
+      "failure_modes": [
+        {
+          "mode": "A model's supported effort levels are misreported",
+          "likelihood": "medium",
+          "mitigation": "Trust only the resolved capability check, never an assumed list"
+        },
+        {
+          "mode": "An unsupported effort value is sent to a model that rejects it",
+          "likelihood": "low",
+          "mitigation": "Drop the parameter silently rather than let the run fail"
+        },
+        {
+          "mode": "Gate and wizard fall out of sync on the stored value",
+          "likelihood": "low",
+          "mitigation": "Keep one single read/write path for the field"
+        }
+      ],
+      "dependencies": [
+        "gate_card_register",
+        "setup_wizard_register",
+        "chat_frame_register",
+        "development_tool_shell"
+      ],
+      "entities": [
+        "Agent",
+        "Model",
+        "Effort",
+        "RunRecord"
+      ],
+      "references": []
+    }
+  ],
+  "nfr_goals": [
+    "A single accent color and consistent low-chrome visual language across every screen, with no exceptions",
+    "Provider credentials remain visible only to the user's own browser and are never transmitted elsewhere or written to disk",
+    "The status bar's round, provider, model, and version stay fully legible regardless of window width",
+    "Cost and token figures stay accurate and reflect the latest completed run, never showing an unknown cost as zero",
+    "The visual register rework is complete after this round, with no screens left needing it"
+  ]
+}

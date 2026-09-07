@@ -1014,6 +1014,135 @@ class TestRefinePersistsManifest:
         assert prior.read_text() == '{"screens": ["kept"]}'
 
 
+class TestRefineImageAnnotations:
+    """Refine images carry an annotation the same way step-4 screenshots do
+    (mirrors TestBuildMockPrompt.test_annotation_included_with_image)."""
+
+    def test_upload_syncs_existing_annotation_and_appends_new_image(self) -> None:
+        dmod = _dmod()
+        store = {
+            "step": 7,
+            "refine_images": [
+                {
+                    "data": "data:image/png;base64,a",
+                    "filename": "a.png",
+                    "annotation": "",
+                }
+            ],
+        }
+        out = dmod.on_designer_refine_upload(
+            "data:image/png;base64,b",
+            "b.png",
+            ["match the header style"],
+            "",
+            store,
+        )
+        images = out["refine_images"]
+        assert images[0]["annotation"] == "match the header style"
+        assert images[1] == {
+            "data": "data:image/png;base64,b",
+            "filename": "b.png",
+            "annotation": "",
+        }
+
+    def test_multiple_files_selected_at_once_are_all_appended(self) -> None:
+        """multiple=True hands contents/filename as parallel lists."""
+        dmod = _dmod()
+        store = {"step": 7, "refine_images": []}
+        out = dmod.on_designer_refine_upload(
+            ["data:image/png;base64,a", "data:image/png;base64,b"],
+            ["a.png", "b.png"],
+            [],
+            "",
+            store,
+        )
+        images = out["refine_images"]
+        assert [img["filename"] for img in images] == ["a.png", "b.png"]
+        assert all(img["annotation"] == "" for img in images)
+
+    def test_delete_preserves_the_other_images_annotations(
+        self, monkeypatch: Any
+    ) -> None:
+        dmod = _dmod()
+        monkeypatch.setattr(
+            dmod, "ctx", _Ctx({"type": "designer-refine-image-delete", "index": 1})
+        )
+        store = {
+            "step": 7,
+            "refine_images": [
+                {
+                    "data": "data:image/png;base64,a",
+                    "filename": "a.png",
+                    "annotation": "keep this",
+                },
+                {
+                    "data": "data:image/png;base64,b",
+                    "filename": "b.png",
+                    "annotation": "delete me",
+                },
+            ],
+        }
+        # The surviving image's textarea has an edit not yet persisted to the
+        # store — it must still be captured on delete, exactly like upload does.
+        out = dmod.on_designer_refine_image_delete(
+            [None, 1], ["updated note", "delete me"], "", store
+        )
+        assert out["refine_images"] == [
+            {
+                "data": "data:image/png;base64,a",
+                "filename": "a.png",
+                "annotation": "updated note",
+            }
+        ]
+
+
+class TestRegeneratePassesRefineImageAnnotations:
+    """on_designer_regenerate must fold refine_images into screenshots using
+    the same {"data", "annotation"} shape the create path builds — one shape,
+    not two — so the Designer agent sees the developer's note, not a filename.
+    """
+
+    def test_regenerate_payload_carries_the_refine_annotation(
+        self, monkeypatch: Any
+    ) -> None:
+        dmod = _dmod()
+        captured: dict[str, Any] = {}
+
+        def fake_start_gen(
+            store_arg, wd, model, api_key, tavily_key, support, *args, **kwargs
+        ):
+            captured["store"] = store_arg
+            return {}, {}, False
+
+        monkeypatch.setattr(dmod, "_start_gen", fake_start_gen)
+        store = {
+            "step": 7,
+            "preference_text": "",
+            "mock_html": "<html>old</html>",
+            "screenshots": [],
+            "refine_images": [
+                {
+                    "data": "data:image/png;base64,xyz",
+                    "filename": "ref.png",
+                    "annotation": "",
+                }
+            ],
+        }
+        dmod.on_designer_regenerate(1, "", ["match this palette"], store, {}, True)
+
+        screenshots = captured["store"]["screenshots"]
+        assert screenshots == [
+            {"data": "data:image/png;base64,xyz", "annotation": "match this palette"}
+        ]
+        # Same structure the create path passes for screenshots: fed through
+        # build_mock_prompt, the note appears — the filename never does.
+        session = _session(screenshots=screenshots)
+        parts = build_mock_prompt(session, [], True)[1]["content"]
+        combined = " ".join(str(p.get("text", "")) for p in parts)
+        assert "match this palette" in combined
+        assert "ref.png" not in combined
+
+
 class TestRegenerateSourcesCatalogFromDisk:
     """on_designer_regenerate builds the surfaces block from the on-disk
     ai_features.json (which upstream edits write) rather than a possibly-stale
@@ -1034,7 +1163,9 @@ class TestRegenerateSourcesCatalogFromDisk:
             return {}, {}, False
 
         monkeypatch.setattr(dmod, "_start_gen", fake_start_gen)
-        dmod.on_designer_regenerate(1, "AI features changed", store, session, True)
+        dmod.on_designer_regenerate(
+            1, "AI features changed", [], store, session, True
+        )
         return captured["pc"]
 
     def test_disk_ai_features_win_over_session(

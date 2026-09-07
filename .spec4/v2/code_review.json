@@ -1,0 +1,361 @@
+{
+  "code_review": {
+    "schema_version": 1,
+    "is_software_project": true,
+    "project_type": "web application \u2014 Dash SPA implementing an AI-assisted software-planning pipeline",
+    "existing_self_description": {
+      "text": "AI-assisted software project planning \u2014 from idea to executable coding phases.",
+      "source": "README.md"
+    },
+    "architecture": {
+      "summary": "Spec4 is a Dash single-page app whose UI (layouts/, callbacks/) drives a pipeline of seven specialized LLM agents \u2014 CodeScanner, Brainstormer, Agentifier, Designer, StackAdvisor, Phaser, Deployer. Six live under src/spec4/agents/ (FeatureSpeccer is not a top-level agent but Brainstormer's internal spec-drafting step); Agentifier is its own multi-stage sub-pipeline (Scout \u2192 Linker \u2192 Composer \u2192 Tier Analyst \u2192 Spec Drafter \u2192 cross-cutting/priority passes) under src/spec4/agentifier/, guided by a markdown pattern catalog.",
+      "pattern": "pipeline (multi-agent orchestration) within a layered Dash app",
+      "inferred_from": "src/spec4/app.py, src/spec4/agents/, src/spec4/agentifier/"
+    },
+    "languages": [
+      {
+        "name": "Python",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "JavaScript",
+        "source": "src/spec4/assets/chat_input.js"
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "Dash",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "Dash Mantine Components",
+        "source": "pyproject.toml"
+      }
+    ],
+    "runtime_versions": {
+      "python": ">=3.12",
+      "_source": "pyproject.toml"
+    },
+    "build_system": {
+      "tool": "uv",
+      "manifest": "pyproject.toml",
+      "build_backend": "uv_build"
+    },
+    "dependencies": [
+      {
+        "name": "litellm",
+        "purpose": "Unified LLM API client used by the agent pipeline",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "mcp",
+        "purpose": "Model Context Protocol SDK",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "boto3",
+        "purpose": "AWS SDK enabling Bedrock LLM backend via litellm",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "gunicorn",
+        "purpose": "Production WSGI server",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "httpx",
+        "purpose": "HTTP client",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "jsonschema",
+        "purpose": "Schema validation for agent JSON outputs",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pyyaml",
+        "purpose": "YAML parsing",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "dash-iconify",
+        "purpose": "Icon components; declared but not used by the reworked screens",
+        "source": "pyproject.toml"
+      }
+    ],
+    "commands": {
+      "build": "uv build",
+      "test": "uv run pytest",
+      "lint": "uv run ruff check src/ tests/",
+      "run": "uv run python src/spec4/app.py",
+      "dev": "DASH_DEBUG=true uv run python src/spec4/app.py",
+      "deploy": "uv run gunicorn 'spec4.app:server' --bind 0.0.0.0:8050 --workers 1 --threads 4"
+    },
+    "entrypoints": {
+      "main": "src/spec4/app.py",
+      "wsgi_app": "spec4.app:server",
+      "cli_script": "spec4 = spec4.app:main",
+      "dev_server": "DASH_DEBUG=true uv run python src/spec4/app.py",
+      "ui_root": "src/spec4/app.py"
+    },
+    "directory_map": [
+      {
+        "path": "src/spec4/app.py",
+        "role": "Dash app entry: AppShell, status bar, two browser dcc.Stores, clientside callbacks"
+      },
+      {
+        "path": "src/spec4/app_constants.py",
+        "role": "AGENT_KEYS pipeline order, PATH_TO_PHASE routing"
+      },
+      {
+        "path": "src/spec4/session.py",
+        "role": "Session defaults, artifact persistence"
+      },
+      {
+        "path": "src/spec4/project_manager.py",
+        "role": "Artifact dependency graph, staleness detection, agent_button_state, get_version_dir, usage rollups"
+      },
+      {
+        "path": "src/spec4/llm_selection.py",
+        "role": "Per-agent model resolution shared by gate card, model chip, retry panel"
+      },
+      {
+        "path": "src/spec4/usage_report.py",
+        "role": "spec4-usage CLI entry"
+      },
+      {
+        "path": "src/spec4/agents/",
+        "role": "Six pipeline agents (CodeScanner, Brainstormer, Designer, StackAdvisor, Phaser, Deployer) plus FeatureSpeccer (Brainstormer's spec-drafting step) and shared probes"
+      },
+      {
+        "path": "src/spec4/agentifier/",
+        "role": "Seventh pipeline agent \u2014 AI-opportunity discovery sub-pipeline (Scout, Linker, Composer, Tier Analyst, Spec Drafter, cross-cutting analyst, prioritizer) plus markdown pattern catalog"
+      },
+      {
+        "path": "src/spec4/callbacks/",
+        "role": "Dash server-side callbacks wiring UI to agents"
+      },
+      {
+        "path": "src/spec4/layouts/__init__.py",
+        "role": "Project view, directory picker, project-mode question"
+      },
+      {
+        "path": "src/spec4/layouts/_shared.py",
+        "role": "Shared layout helpers reused across screens"
+      },
+      {
+        "path": "src/spec4/layouts/_chat.py",
+        "role": "Chat frame layout"
+      },
+      {
+        "path": "src/spec4/layouts/_round_tree.py",
+        "role": "ROUND_ARTIFACTS table and reviewed-artifact tree renderer"
+      },
+      {
+        "path": "src/spec4/layouts/_round_cost.py",
+        "role": "Cost summary layout"
+      },
+      {
+        "path": "src/spec4/layouts/_agent_rows.py",
+        "role": "Agent-row rendering for project view"
+      },
+      {
+        "path": "src/spec4/layouts/_artifact_view.py",
+        "role": "Artifact viewer surface"
+      },
+      {
+        "path": "src/spec4/layouts/_setup.py",
+        "role": "Setup wizard (SETUP_IDS), shared with per-agent gate (GATE_IDS)"
+      },
+      {
+        "path": "src/spec4/layouts/_llm_gate.py",
+        "role": "Per-agent model gate \u2014 'use default model or pick one for this agent'"
+      },
+      {
+        "path": "src/spec4/layouts/designer.py",
+        "role": "Designer wizard layout"
+      },
+      {
+        "path": "src/spec4/assets/",
+        "role": "Static JS/CSS/images served by Dash"
+      },
+      {
+        "path": "evals/",
+        "role": "Offline evaluation/probe harnesses per agent, calibration fixtures, gold-standard JSON"
+      },
+      {
+        "path": "scripts/",
+        "role": "Utility scripts (e2e_agentifier.py, screenshot_ui.py)"
+      },
+      {
+        "path": "mystuff/",
+        "role": "Developer scratch notes, not part of shipped app"
+      },
+      {
+        "path": "BWS4-logos/",
+        "role": "Brand assets for the 'Built With Spec4' companion showcase site"
+      },
+      {
+        "path": "tests/",
+        "role": "pytest suite, including tests/agentifier/ and tests/integration/"
+      }
+    ],
+    "env_vars": [
+      {
+        "name": "LITELLM_LOG",
+        "purpose": "Controls litellm's log verbosity; set to ERROR by default to suppress optional-AWS-dependency startup warnings",
+        "required": false,
+        "source": "src/spec4/app.py"
+      },
+      {
+        "name": "DASH_DEBUG",
+        "purpose": "Enables Dash hot-reload/debug mode in the dev Makefile target",
+        "required": false,
+        "inferred_from": "Makefile"
+      }
+    ],
+    "auth": {
+      "model": "none"
+    },
+    "ai_capabilities": [
+      {
+        "name": "litellm",
+        "kind": "llm_api",
+        "description": "Unified LLM API client that powers every agent in the pipeline (CodeScanner, Brainstormer, Agentifier, Designer, StackAdvisor, Phaser, Deployer, and Brainstormer's FeatureSpeccer step); also enables an AWS Bedrock backend via boto3",
+        "location": "src/spec4/llm.py",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "mcp",
+        "kind": "other",
+        "description": "Model Context Protocol SDK declared as a dependency; no confirmed call site found in sampled source",
+        "location": "pyproject.toml",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "Spec4 Agentifier pipeline",
+        "kind": "agent_framework",
+        "description": "Custom in-house multi-agent pipeline (Scout \u2192 Linker \u2192 Composer \u2192 Tier Analyst \u2192 Spec Drafter, plus cross-cutting/prioritizer passes) that discovers AI-opportunity features in a target codebase and drafts tiered specs for them",
+        "location": "src/spec4/agentifier/",
+        "source": "src/spec4/agentifier/agentifier.py"
+      },
+      {
+        "name": "Spec4 planning-agent pipeline",
+        "kind": "agent_framework",
+        "description": "Top-level chain of seven specialized LLM agents (CodeScanner, Brainstormer, Agentifier, Designer, StackAdvisor, Phaser, Deployer, with FeatureSpeccer as Brainstormer's internal spec-drafting step) that turns a project idea into phased development plans",
+        "location": "src/spec4/agents/, src/spec4/agentifier/",
+        "source": "src/spec4/app.py"
+      }
+    ],
+    "ui_summary": {
+      "has_ui": true,
+      "kind": "spa",
+      "framework": "Dash + Dash Mantine Components",
+      "styling": "Dash Mantine Components (dmc) primitives with custom CSS (src/spec4/assets/v3.css) and Google Fonts. Green #39FF14 is the Mantine theme primary and only accent color, set once at the theme level (D-LR2: no component sets a color locally). A 'mono' CSS class marks paths, file names, model names, and figures throughout the UI.",
+      "entry_files": [
+        "src/spec4/app.py",
+        "src/spec4/layouts/__init__.py",
+        "src/spec4/layouts/_shared.py",
+        "src/spec4/layouts/_chat.py",
+        "src/spec4/layouts/_round_tree.py",
+        "src/spec4/layouts/_round_cost.py",
+        "src/spec4/layouts/_agent_rows.py",
+        "src/spec4/layouts/_artifact_view.py",
+        "src/spec4/layouts/_setup.py",
+        "src/spec4/layouts/_llm_gate.py",
+        "src/spec4/layouts/designer.py"
+      ]
+    },
+    "coding_style": {
+      "linter": {
+        "value": "ruff (rules E, F)",
+        "source": "pyproject.toml"
+      },
+      "line_length": {
+        "value": 88,
+        "source": "pyproject.toml"
+      },
+      "type_checker": {
+        "value": "mypy strict",
+        "source": "pyproject.toml"
+      },
+      "quotes": {
+        "value": "double",
+        "inferred_from": "src/spec4/app.py"
+      },
+      "indentation": {
+        "value": "4 spaces",
+        "inferred_from": "src/spec4/app.py"
+      },
+      "naming_conventions": {
+        "functions": {
+          "value": "snake_case",
+          "inferred_from": "src/spec4/app.py"
+        }
+      }
+    },
+    "notes": {
+      "test_coverage": {
+        "has_tests": true,
+        "framework": "pytest",
+        "coverage_summary": "tests/ (including tests/agentifier/ and tests/integration/) contains layout/callback contract tests: test_callback_co_presence.py enumerates every screen's component ids; test_cost_summary.py, test_agent_llm_selection.py, and test_code_scanner_progress.py assert relative ordering/id sequences in the chat frame; test_round_tree.py, test_agent_rows.py, test_root_routing.py, and test_agent_button_state.py cover the project-view surfaces including the Continue state. A .coverage file (pytest-cov output) is present at the repo root.",
+        "inferred_from": "tests/ directory contents"
+      },
+      "ci_cd": {
+        "present": false
+      },
+      "incomplete_or_dead_code": [
+        "a2a_sdk appears only in pyproject.toml's [[tool.mypy.overrides]] ignore-list, not in declared dependencies \u2014 suggesting optional or in-progress use of the Agent2Agent SDK not yet a committed dependency.",
+        "dash-iconify is a declared dependency but is not used by the reworked screens; emoji were removed from the UI without icon replacements."
+      ],
+      "change_risks": [
+        {
+          "area": "src/spec4/app.py import ordering (D-LR1)",
+          "risk": "LITELLM_LOG must be set and litellm imported before spec4.callbacks imports, which must come after app is constructed; reordering would silently re-enable litellm's noisy AWS/Bedrock warnings or break callback registration",
+          "mitigation_hint": "preserve current import order; the E402/E501 ruff suppressions on this file are intentional, not an oversight"
+        },
+        {
+          "area": "Callback co-presence",
+          "risk": "every Input of a registered callback must exist in the rendered layout when it fires; test_callback_co_presence.py enumerates each screen's ids",
+          "mitigation_hint": "keep existing ids; when a control is deliberately removed, remove its callback and its test entries in the same change"
+        },
+        {
+          "area": "Ordering assertions in chat frame",
+          "risk": "test_cost_summary.py, test_agent_llm_selection.py, and test_code_scanner_progress.py pin relative orderings",
+          "mitigation_hint": "run uv run pytest after every layout change"
+        },
+        {
+          "area": "Clientside callback DOM selectors in app.py",
+          "risk": "the scroll-to-latest callback queries .chat-bubble-user inside #chat-scroll-area; progress/elapsed tickers target #chat-progress-container and #chat-elapsed; the mock viewer targets #mock-fullscreen-btn",
+          "mitigation_hint": "restyles must keep those class names/ids or update the JS in the same change"
+        },
+        {
+          "area": "Session model",
+          "risk": "all state lives in two browser dcc.Stores (session in sessionStorage, prefs in localStorage); there is no server-side session",
+          "mitigation_hint": "new components must read via callback State, not module globals"
+        },
+        {
+          "area": "Artifact dependency graph",
+          "risk": "usage.json is deliberately excluded from the artifact dependency graph",
+          "mitigation_hint": "never add it to _STALE_DEPENDENCIES or _PIPELINE_ARTIFACT_ORDER; its tree status is presence-only"
+        },
+        {
+          "area": "Artifact View file-reading resolver",
+          "risk": "the Artifact View reads files only from _round_tree.ROUND_ARTIFACTS resolved under project_manager.get_version_dir, rejecting anything else before touching the filesystem",
+          "mitigation_hint": "any new file-reading surface must use the same resolver"
+        }
+      ],
+      "other_notes": [
+        "Directory listing was truncated (131 additional files not shown), so this review cannot claim completeness over remaining layouts/, callbacks/, or agentifier/patterns/ contents.",
+        "spec4-usage = spec4.usage_report:main is a secondary CLI script declared in pyproject.toml, distinct from the primary spec4 entrypoint.",
+        "A separate Makefile.publish exists alongside the main Makefile, likely a PyPI release workflow (contents not sampled).",
+        "mystuff/prompts.txt is a developer scratch file, not part of the shipped application.",
+        ".python-version file present, pinning the local Python toolchain version.",
+        "BWS4-logos/ holds brand assets for the 'Built With Spec4' companion showcase site (bw.spec4.ai) referenced in the README; not part of this app's runtime.",
+        "The project is distributed via PyPI (uv tool install spec4); no Dockerfile, docker-compose, Kubernetes manifests, or IaC files are present, so no deployment block applies.",
+        "Provider API keys and Tavily/Exa web-search keys are entered via the setup wizard and held only in browser dcc.Stores \u2014 there are no corresponding server-side env vars.",
+        "Coding conventions observed but not mappable to a coding_style schema key: design decisions are recorded as numbered comments (D-XX, e.g. D-LR1, D-PM1, D-AR1) at the point of implementation; layout helpers in _shared.py, _round_tree.py, and _round_cost.py are reused, never duplicated; agent order is defined once in app_constants.AGENT_KEYS and every agent-ordered table is asserted against it; status (artifact presence/staleness, agent action, cost) is recomputed from disk on every render, never cached."
+      ]
+    }
+  }
+}

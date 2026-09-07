@@ -1,0 +1,349 @@
+{
+  "stack_spec": {
+    "name": "Spec4",
+    "description": "A locally-served, developer-facing pipeline app (Dash + Dash Mantine Components) that turns a rough idea or existing codebase into a versioned folder of specs. This revision completes the dev-tool register rollout across the five remaining screens (directory picker, project-mode question, setup wizard, gate card, Designer wizard), reorders the project view so agent rows lead, and adds an explicit per-agent reasoning-effort control alongside the existing per-agent model control \u2014 using only the Python standard library, litellm, and existing DMC/Dash primitives, with no new dependency of any kind.",
+    "languages": [
+      {
+        "name": "Python",
+        "version": "3.12",
+        "role": "Dash application server, callbacks, and UI layout composition (backend and server-rendered UI are one deployable)",
+        "linter": "Ruff (select = [\"E\", \"F\"])",
+        "formatter": "Ruff format",
+        "type_checker": "mypy (strict)",
+        "indentation": "4 spaces",
+        "line_length": 88,
+        "quotes": "double",
+        "trailing_commas": "in multi-line collections and function calls",
+        "naming_conventions": {
+          "variables": "snake_case",
+          "functions": "snake_case",
+          "classes": "PascalCase",
+          "constants": "UPPER_SNAKE_CASE",
+          "files": "snake_case"
+        }
+      },
+      {
+        "name": "CSS",
+        "version": "CSS3",
+        "role": "shell, theme, and project-view spacing/density styling; hand-authored, no preprocessor, no new build tooling",
+        "indentation": "2 spaces",
+        "line_length": 100,
+        "quotes": "double (for consistency with the rest of the codebase)",
+        "semicolons": "yes, one per declaration",
+        "naming_conventions": {
+          "classes": "kebab-case",
+          "files": "snake_case (v3.css retained as the single stylesheet)"
+        }
+      }
+    ],
+    "deployment": {
+      "targets": [
+        {
+          "name": "spec4_app",
+          "kind": "web_app",
+          "purpose": "the single local Dash application: serves the UI (status bar, project view with agent rows leading, round tree, round cost, chat frame, Artifact View, directory picker, project-mode question, setup wizard, gate card, Designer wizard) and runs the pipeline-agent backend in one process",
+          "language": "Python",
+          "runtime": "Python 3.12, served via gunicorn (production-style local serving) or the Dash dev server (DASH_DEBUG=true)",
+          "hosting": "local machine only, at localhost:8050; no cloud hosting, no multi-tenant deployment",
+          "build": "uv build (uv_build backend)",
+          "distribution": "run locally via the `spec4` CLI entrypoint, `uv run python src/spec4/app.py`, or gunicorn per the existing Makefile `deploy` target",
+          "exposure": {
+            "transport": "HTTP on localhost only; not exposed beyond the local machine"
+          }
+        }
+      ]
+    },
+    "libraries": [
+      {
+        "name": "Dash",
+        "purpose": "core web application framework serving both the UI and its server-side callbacks; this round's five reworked screens (directory picker, project-mode question, setup wizard, gate card, Designer wizard) and the reordered project view continue to use dcc.Location for routing and dcc.Store/State for reading the shared session and prefs stores; no new Dash capability is introduced",
+        "category": "web framework",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "Dash Mantine Components",
+        "purpose": "the sole UI component layer; this round's remaining register reworks (single-column monospace directory list, folded folder-creation row, two-button mode question, terse setup wizard with dimmed helper lines, one-line gate panel, plain-text Designer stepper) and the new per-agent Effort select are built entirely from existing DMC primitives (dmc.Text, dmc.Select, dmc.TextInput, dmc.Button, dmc.Group/Stack) \u2014 no new component or dependency is introduced; the accent remains the single Mantine theme primary throughout",
+        "category": "ui component library",
+        "language": "Python",
+        "foundational": true,
+        "satisfies_nfr": [
+          "nfr_a_single_accent_color_and_consistent_low_chrome_visual_language_across_every_screen__with_no_exceptions",
+          "nfr_the_status_bar_s_round__provider__model__and_version_stay_fully_legible_regardless_of_window_width",
+          "nfr_the_visual_register_rework_is_complete_after_this_round__with_no_screens_left_needing_it"
+        ]
+      },
+      {
+        "name": "dash-iconify",
+        "purpose": "icon components used in place of the removed emoji throughout the shell and rows; unchanged this round",
+        "category": "icons",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "litellm",
+        "purpose": "multi-provider LLM gateway used by the seven pipeline agents; this round it also backs Per-Agent Effort end to end \u2014 litellm.get_supported_openai_params is reused (no new probing path) to determine only whether 'reasoning_effort' is accepted for the resolved model (not which levels); 'low'/'medium'/'high' are offered when accepted, 'xhigh'/'max' only per a small provider-keyed table in llm_selection.py; drop_params=True continues to silently drop the parameter entirely when unsupported; when the parameter is accepted but a specific level is rejected, the existing retry path retries once with no effort and the call is recorded as 'default (fallback from <value>)'",
+        "category": "llm gateway",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "mcp",
+        "purpose": "Model Context Protocol client SDK used elsewhere in the pipeline; unchanged this round",
+        "category": "protocol client sdk",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "boto3",
+        "purpose": "AWS SDK supporting litellm's optional Bedrock/SageMaker routing; unchanged this round",
+        "category": "cloud sdk",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "httpx",
+        "purpose": "general HTTP client used across the app; unchanged this round",
+        "category": "http client",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "jsonschema",
+        "purpose": "validates artifact JSON files against their schemas; unchanged this round",
+        "category": "validation",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "gunicorn",
+        "purpose": "production-style WSGI server for local deployment; unchanged this round",
+        "category": "wsgi server",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "pyyaml",
+        "purpose": "YAML parsing used elsewhere in the pipeline; unchanged this round",
+        "category": "serialization",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "mypy",
+        "purpose": "strict static type checking across the codebase; unchanged this round",
+        "category": "type checking",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "types-pyyaml",
+        "purpose": "type stubs for pyyaml, required for mypy strict mode; unchanged this round",
+        "category": "type stubs",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "pytest",
+        "purpose": "test runner (uv run pytest) for the existing suite (agents, layouts, callbacks, session, project-manager) plus this round's verification of the five reworked screens, the reordered project view, and per-agent effort resolution/storage; verification for this round is pytest-only, against layout functions and callbacks",
+        "category": "testing",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "pytest-cov",
+        "purpose": "coverage measurement for the pytest suite; unchanged this round",
+        "category": "testing",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "Playwright",
+        "purpose": "browser automation used only by scripts/screenshot_ui.py to capture UI screenshots during development; it is not part of this round's (or any round's) test verification, which is pytest-only",
+        "category": "screenshot tooling",
+        "language": "Python",
+        "foundational": true
+      },
+      {
+        "name": "Ruff",
+        "purpose": "linting (and formatting via ruff format) for all Python source; unchanged this round",
+        "category": "linting and formatting",
+        "language": "Python",
+        "foundational": true
+      }
+    ],
+    "persistence": {
+      "artifact_store": {
+        "choice": "local filesystem JSON files under .spec4/v{N}/, one file per artifact, produced by the pipeline agents",
+        "purpose": "source of truth for every Artifact and UsageRecord the app's screens read; unchanged this round \u2014 Artifact View and its file-resolution logic are carried forward without modification",
+        "durability": "source of truth for artifact content; survives restarts and is unaffected by browser state",
+        "collections": [
+          {
+            "name": "round_artifacts",
+            "entities": [
+              "Artifact"
+            ],
+            "physical": [
+              "one file per artifact under .spec4/v{N}/, path fixed by pipeline order; status derived live from the existing dependency graph (mtime comparison against upstream artifacts); unchanged this round"
+            ],
+            "serves_features": [
+              "round_tree",
+              "agent_rows",
+              "open_to_the_project",
+              "artifact_view",
+              "artifact_links"
+            ]
+          },
+          {
+            "name": "usage_records",
+            "entities": [
+              "UsageRecord"
+            ],
+            "purpose": "per-round usage/cost rollup; deliberately excluded from the artifact dependency graph and never marked needs-update; now also the durable record of which reasoning effort was actually used per call, including fallback-from-rejected-value outcomes",
+            "physical": [
+              "usage.json, one per round, per-agent model/tokens/cost totals; each call's record now also carries an effort field, holding either the effort actually used or 'default (fallback from <value>)' when a rejected effort value triggered the no-effort retry"
+            ],
+            "serves_features": [
+              "round_cost",
+              "agent_rows",
+              "chat_frame_register",
+              "per_agent_effort"
+            ],
+            "satisfies_nfr": [
+              "nfr_cost_and_token_figures_stay_accurate_and_reflect_the_latest_completed_run__never_showing_an_unknown_cost_as_zero"
+            ]
+          }
+        ]
+      },
+      "browser_store": {
+        "choice": "existing browser dcc.Store pair \u2014 sessionStorage (session) and localStorage (prefs); no server-side session",
+        "purpose": "remembers the working directory, project mode, and default/per-agent provider, model, and effort across navigations and, for prefs, across browser sessions on the same machine, without any state touching the server or disk",
+        "durability": "session store is cleared when the tab closes (not durable); prefs store persists on-device across sessions but is not backed up or synced",
+        "satisfies_nfr": [
+          "nfr_provider_credentials_remain_visible_only_to_the_user_s_own_browser_and_are_never_transmitted_elsewhere_or_written_to_disk"
+        ],
+        "collections": [
+          {
+            "name": "session_store",
+            "entities": [
+              "WorkingDirectory",
+              "Round",
+              "ProjectMode",
+              "GateSelection",
+              "Effort"
+            ],
+            "physical": [
+              "sessionStorage, read via callback State; now also holds each agent's chosen model+effort for the current round (GateSelection) and the once-per-session ProjectMode answer"
+            ],
+            "serves_features": [
+              "open_to_the_project",
+              "development_tool_shell",
+              "artifact_view",
+              "entry_screens_register",
+              "gate_card_register",
+              "per_agent_effort"
+            ]
+          },
+          {
+            "name": "prefs_store",
+            "entities": [
+              "ProviderModel",
+              "Effort"
+            ],
+            "physical": [
+              "localStorage, read via callback State; BYOK provider keys live here client-side only and never reach the server or disk; now also holds the project's default effort alongside the default provider/model"
+            ],
+            "serves_features": [
+              "development_tool_shell",
+              "setup_wizard_register",
+              "per_agent_effort"
+            ]
+          }
+        ]
+      }
+    },
+    "coding_style": {
+      "patterns": [
+        "Dash Mantine Components remains the sole UI/component layer; no React, Tailwind, or other new front-end dependency is introduced",
+        "layout helpers in layouts/_shared.py (e.g. _card, cost_summary_card) are reused rather than duplicated, including by the Artifact View's content-pane header",
+        "agent pipeline order is defined once in app_constants.AGENT_KEYS; all agent-ordered tables (round tree, agent rows, chat frame pill bar) are derived from or asserted against it",
+        "status (artifact presence/staleness, agent action, cost) is recomputed from the existing dependency graph and usage.json on every render, never cached",
+        "existing component ids are kept as a test contract, except the removed Back buttons, whose tests are updated",
+        "the accent color is set once as the Mantine theme primary; components inherit it rather than setting color locally",
+        "the active/complete/dimmed marking used by the chat frame's pill bar (layouts/_chat.py) is factored into one shared renderer in layouts/_shared.py and reused as-is by the setup wizard's step indicator and the Designer wizard's step row \u2014 never reimplemented per screen",
+        "per-agent model and effort resolution share one read/write path in llm_selection.py, used identically by the gate card, model chip, retry panel, and setup wizard"
+      ],
+      "documentation": [
+        "design decisions recorded as numbered comments (D-XX) at the point of implementation, per existing convention"
+      ]
+    },
+    "project_structure": [
+      {
+        "path": "src/spec4/layouts/__init__.py",
+        "purpose": "project view (agent rows first, round cost second, round tree third, per this round's reorder), directory picker, and project-mode question; the picker and question this round adopt the dev-tool register (monospace single-column directory list, folded folder-creation row, two-line/two-button mode question) with behavior unchanged"
+      },
+      {
+        "path": "src/spec4/layouts/_setup.py",
+        "purpose": "three-step setup wizard (SETUP_IDS), shared with the per-agent gate (GATE_IDS); this round trims prose to single dimmed lines, removes the free-tier alert and the directory-picker return button, and adds the per-agent/default Effort select beside the model select"
+      },
+      {
+        "path": "src/spec4/layouts/_llm_gate.py",
+        "purpose": "per-agent model gate, reworked this round into a one-line monospace naming panel (agent + default model) with a two-/three-button row; inherits the Effort select when 'Pick a model' expands; the separate 'Designer' heading above the gate on the Designer route is removed"
+      },
+      {
+        "path": "src/spec4/layouts/designer.py",
+        "purpose": "Designer wizard; this round replaces its circular/checked stepper with the shared plain-text stepper renderer from _shared.py, trims intro/help text and upload-zone copy to single dimmed lines, and removes glyphs from step buttons; steps, fields, and preview/cost/retry behavior are unchanged"
+      },
+      {
+        "path": "src/spec4/layouts/artifact_view.py",
+        "purpose": "the Artifact View screen; unchanged this round \u2014 carried forward as-is, including its file-resolution logic"
+      },
+      {
+        "path": "src/spec4/layouts/_chat.py",
+        "purpose": "chat frame layout; unchanged this round \u2014 its plain-text pill bar renderer is the source extracted into layouts/_shared.py for reuse by the setup wizard and Designer wizard steppers"
+      },
+      {
+        "path": "src/spec4/layouts/_shared.py",
+        "purpose": "reusable layout helpers (cards, cost summary, round tree, and \u2014 new this round \u2014 the shared active/complete/dimmed stepper/pill-bar renderer extracted from _chat.py) shared across the project view, chat frame, Artifact View, setup wizard, and Designer wizard"
+      },
+      {
+        "path": "src/spec4/callbacks/",
+        "purpose": "Dash server-side callbacks; this round adds/updates callbacks for the reordered project view, the five reworked screens, and reading/writing the per-agent and default Effort value through the single llm_selection.py path"
+      },
+      {
+        "path": "src/spec4/assets/v3.css",
+        "purpose": "single stylesheet; this round's picker/question/setup/gate/Designer register styling (dashed upload outlines, single-column monospace lists, dimmed helper lines) lands here"
+      },
+      {
+        "path": "src/spec4/project_manager.py",
+        "purpose": "existing artifact dependency graph, staleness detection, and agent button state; unchanged this round"
+      },
+      {
+        "path": "src/spec4/session.py",
+        "purpose": "session defaults and artifact persistence; source of working-directory, round, and project-mode state"
+      },
+      {
+        "path": "src/spec4/llm_selection.py",
+        "purpose": "per-agent model AND effort resolution shared by the gate card, model chip, retry panel, and setup wizard; extended this round with a provider-keyed table of which providers accept 'xhigh'/'max' effort values, used alongside litellm's own accept/reject probe for 'reasoning_effort'; single read/write path for the stored (model, effort) pair"
+      },
+      {
+        "path": "src/spec4/app_constants.py",
+        "purpose": "single source of the seven-agent pipeline order (AGENT_KEYS), used by the round tree, agent rows, and the chat frame's pill bar"
+      },
+      {
+        "path": "tests/",
+        "purpose": "pytest suite mirroring src/ layout; extended this round with tests for the reordered project view, the five reworked screens, and per-agent effort resolution/storage/fallback"
+      }
+    ],
+    "references": [
+      {
+        "standard": "Model Context Protocol (MCP)",
+        "url": "https://modelcontextprotocol.io/specification"
+      },
+      {
+        "standard": "LiteLLM reasoning_effort parameter",
+        "url": "https://docs.litellm.ai/docs/reasoning_content"
+      }
+    ]
+  }
+}

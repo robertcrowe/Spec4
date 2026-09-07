@@ -478,22 +478,37 @@ def _step6_content(
     return dmc.Stack(children, gap="sm")
 
 
-def _refine_image_row(idx: int, filename: str) -> Any:
+def _refine_image_row(idx: int, img: dict[str, str]) -> Any:
     return dmc.Paper(
-        dmc.Group(
-            [
-                dmc.Text(filename, size="sm", style={"flex": 1}, truncate="end"),
-                dmc.Button(
-                    "Remove",
-                    id={"type": "designer-refine-image-delete", "index": idx},
-                    color="red",
-                    variant="subtle",
-                    size="compact-sm",
-                ),
-            ],
-            justify="space-between",
-            wrap="nowrap",
-        ),
+        [
+            dmc.Group(
+                [
+                    dmc.Text(
+                        img.get("filename", ""),
+                        size="sm",
+                        style={"flex": 1},
+                        truncate="end",
+                    ),
+                    dmc.Button(
+                        "Remove",
+                        id={"type": "designer-refine-image-delete", "index": idx},
+                        color="red",
+                        variant="subtle",
+                        size="compact-sm",
+                    ),
+                ],
+                justify="space-between",
+                wrap="nowrap",
+            ),
+            dmc.Textarea(
+                id={"type": "designer-refine-annotation", "index": idx},
+                placeholder="What to take from this image, or avoid",
+                value=img.get("annotation", ""),
+                minRows=2,
+                autosize=True,
+                mt="xs",
+            ),
+        ],
         withBorder=True,
         p="xs",
         radius="sm",
@@ -532,7 +547,7 @@ def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> 
             dcc.Upload(
                 id="designer-refine-upload",
                 accept="image/*",
-                multiple=False,
+                multiple=True,
                 children=dmc.Text(
                     "Drag & drop a reference image (optional)",
                     ta="center",
@@ -550,7 +565,7 @@ def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> 
         children.append(
             dmc.Stack(
                 [
-                    _refine_image_row(i, img["filename"])
+                    _refine_image_row(i, img)
                     for i, img in enumerate(refine_images)
                 ],
                 gap="xs",

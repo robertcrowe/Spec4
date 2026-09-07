@@ -1,0 +1,1249 @@
+{
+  "entities": [
+    {
+      "name": "WorkingDirectory",
+      "fields": [
+        "path",
+        "displayPath",
+        "subdirectories",
+        "remembered",
+        "newFolderName"
+      ]
+    },
+    {
+      "name": "Round",
+      "fields": [
+        "number",
+        "id",
+        "onDisk"
+      ]
+    },
+    {
+      "name": "Provider",
+      "fields": [
+        "id",
+        "name",
+        "connected"
+      ]
+    },
+    {
+      "name": "Model",
+      "fields": [
+        "id",
+        "name",
+        "provider",
+        "supportedEfforts"
+      ]
+    },
+    {
+      "name": "Effort",
+      "fields": [
+        "value",
+        "allowedValues",
+        "isDefault"
+      ]
+    },
+    {
+      "name": "Credential",
+      "fields": [
+        "provider",
+        "key",
+        "remembered",
+        "storageNotice"
+      ]
+    },
+    {
+      "name": "Navigation",
+      "fields": [
+        "items",
+        "active",
+        "version"
+      ]
+    },
+    {
+      "name": "Project",
+      "fields": [
+        "workingDirectory",
+        "round",
+        "defaultProvider",
+        "defaultModel",
+        "defaultEffort",
+        "version",
+        "mode"
+      ]
+    },
+    {
+      "name": "ProjectMode",
+      "fields": [
+        "value",
+        "askedThisSession"
+      ]
+    },
+    {
+      "name": "Artifact",
+      "fields": [
+        "path",
+        "lane",
+        "mtime",
+        "upstream",
+        "agent",
+        "exempt",
+        "status",
+        "size",
+        "lines"
+      ]
+    },
+    {
+      "name": "Lane",
+      "fields": [
+        "id",
+        "label",
+        "swatch"
+      ]
+    },
+    {
+      "name": "Agent",
+      "fields": [
+        "name",
+        "produces",
+        "model",
+        "effort",
+        "tokensIn",
+        "tokensOut",
+        "action",
+        "runState"
+      ]
+    },
+    {
+      "name": "TokenCount",
+      "fields": [
+        "tokensIn",
+        "tokensOut"
+      ]
+    },
+    {
+      "name": "RunState",
+      "fields": [
+        "agent",
+        "state"
+      ]
+    },
+    {
+      "name": "Cost",
+      "fields": [
+        "calls",
+        "tokensIn",
+        "tokensOut",
+        "costUsd",
+        "unpriced",
+        "priceSource"
+      ]
+    },
+    {
+      "name": "Message",
+      "fields": [
+        "from",
+        "paras",
+        "code",
+        "after"
+      ]
+    },
+    {
+      "name": "RunProgress",
+      "fields": [
+        "chars",
+        "turnTokensIn",
+        "turnTokensOut",
+        "elapsed",
+        "status"
+      ]
+    },
+    {
+      "name": "RunRecord",
+      "fields": [
+        "agent",
+        "model",
+        "effort",
+        "usage",
+        "produces",
+        "next",
+        "skipTo"
+      ]
+    },
+    {
+      "name": "SetupStep",
+      "fields": [
+        "index",
+        "name",
+        "state"
+      ]
+    },
+    {
+      "name": "DesignStep",
+      "fields": [
+        "index",
+        "name",
+        "state"
+      ]
+    },
+    {
+      "name": "DesignMock",
+      "fields": [
+        "state",
+        "preferencesText"
+      ]
+    },
+    {
+      "name": "ReferenceMaterial",
+      "fields": [
+        "files"
+      ]
+    },
+    {
+      "name": "GateSelection",
+      "fields": [
+        "agent",
+        "defaultModel",
+        "chosenModel",
+        "chosenEffort",
+        "expanded"
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "project-view",
+      "audience": "Developer running the pipeline",
+      "purpose": "See the seven agents and their next action first, then the round's cost, then the round's artifact record.",
+      "surfaces": [
+        "Status Bar & Nav",
+        "Agent Rows",
+        "Round Cost Strip",
+        "Round Tree",
+        "Lane Legend"
+      ]
+    },
+    {
+      "id": "chat-view",
+      "audience": "Developer running the pipeline",
+      "purpose": "Converse with the active agent, see live run progress, run cost, and continue the pipeline.",
+      "surfaces": [
+        "Status Bar & Nav",
+        "Agent Pipeline Row",
+        "Gate Panel",
+        "Gate Panel — Expanded",
+        "Transcript",
+        "Run Cost Strip",
+        "Run Action Row",
+        "Live Activity Indicator",
+        "Composer",
+        "Model & Status Line"
+      ]
+    },
+    {
+      "id": "artifact-view",
+      "audience": "Developer reading the specs",
+      "purpose": "Browse rounds on disk and read any artifact's content, status and location.",
+      "surfaces": [
+        "Status Bar & Nav",
+        "Round Selector",
+        "Round Tree",
+        "Lane Legend",
+        "Artifact File Pane",
+        "Artifact Pane State Insets"
+      ]
+    },
+    {
+      "id": "picker-view",
+      "audience": "Developer opening a project",
+      "purpose": "Browse, create and select the working directory when none is remembered.",
+      "surfaces": [
+        "Status Bar & Nav",
+        "Directory Path Entry",
+        "Directory List",
+        "Create Folder Row",
+        "Select Directory Action"
+      ]
+    },
+    {
+      "id": "setup-view",
+      "audience": "Developer configuring the default provider",
+      "purpose": "Step 2 of setup — pick the default model and its reasoning effort.",
+      "surfaces": [
+        "Status Bar & Nav",
+        "Setup Stepper",
+        "Default Model Panel",
+        "Setup Button Row"
+      ]
+    },
+    {
+      "id": "designer-view",
+      "audience": "Developer running the Designer agent",
+      "purpose": "Designer wizard, Preferences step — describe the visual direction before generating a mock.",
+      "surfaces": [
+        "Status Bar & Nav",
+        "Agent Pipeline Row",
+        "Designer Stepper",
+        "Design Preferences Entry",
+        "Designer Button Row",
+        "Run Cost Strip"
+      ]
+    },
+    {
+      "id": "mode-inset",
+      "audience": "Developer opening a directory that already has files",
+      "purpose": "Ask once per session whether this is an existing project or a new one.",
+      "surfaces": [
+        "Status Bar & Nav",
+        "Project Mode Question"
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "name": "Status Bar & Nav",
+      "kind": "non_ai",
+      "screen": "all",
+      "implements_features": [
+        "Development Tool Shell",
+        "Open To The Project",
+        "Artifact Links"
+      ],
+      "inputs": [
+        "nav item"
+      ],
+      "output": "Persistent bar with working-directory path (truncates from start, empty when unknown), round, provider, model+effort, version, and Project / Artifacts / Settings / Docs nav",
+      "states": [
+        "path known",
+        "path empty (no directory yet)",
+        "active nav item",
+        "narrow viewport"
+      ],
+      "reads": [
+        "Project",
+        "WorkingDirectory",
+        "Round",
+        "Provider",
+        "Model",
+        "Effort",
+        "Navigation"
+      ],
+      "writes": [],
+      "depends_on": [],
+      "implements_feature_ids": [
+        "development_tool_shell",
+        "open_to_the_project",
+        "artifact_links"
+      ]
+    },
+    {
+      "name": "Agent Rows",
+      "kind": "non_ai",
+      "screen": "project-view",
+      "implements_features": [
+        "Agent Rows",
+        "Per-Agent Effort"
+      ],
+      "inputs": [
+        "action button per agent: Start, Continue and Required are filled green (one variant); Modify a neutral outline with green text; Needs Update a warn outline; Not Ready a disabled outline. Activating a button routes to that agent as today; Continue resumes an in-progress conversation"
+      ],
+      "output": "Seven rows in pipeline order: agent, produced artifact, last model (with effort when not default), tokens in/out, one action",
+      "states": [
+        "Start",
+        "Continue",
+        "Required",
+        "Modify",
+        "Needs Update",
+        "Not Ready (disabled)",
+        "not run (blank model/tokens)"
+      ],
+      "reads": [
+        "Agent",
+        "Model",
+        "Effort",
+        "TokenCount",
+        "RunState"
+      ],
+      "writes": [
+        "RunState"
+      ],
+      "depends_on": [
+        "Status Bar & Nav"
+      ],
+      "implements_feature_ids": [
+        "agent_rows",
+        "per_agent_effort"
+      ]
+    },
+    {
+      "name": "Round Cost Strip",
+      "kind": "non_ai",
+      "screen": "project-view",
+      "implements_features": [
+        "Round Cost"
+      ],
+      "inputs": [],
+      "output": "Three-line estimate: labelled cost + tokens, unpriced-call line, price-source note",
+      "states": [
+        "priced",
+        "partially unpriced",
+        "no calls recorded",
+        "all unpriced (unknown)"
+      ],
+      "reads": [
+        "Cost",
+        "TokenCount",
+        "Round"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Status Bar & Nav"
+      ],
+      "implements_feature_ids": [
+        "round_cost"
+      ]
+    },
+    {
+      "name": "Round Tree",
+      "kind": "non_ai",
+      "screen": "project-view, artifact-view",
+      "implements_features": [
+        "Round Tree",
+        "Artifact Links"
+      ],
+      "inputs": [
+        "artifact line link"
+      ],
+      "output": "Ordered list of artifact lines with lane colour and status (present unlabelled, needs update, missing)",
+      "states": [
+        "present",
+        "needs update",
+        "missing",
+        "selected"
+      ],
+      "reads": [
+        "Artifact",
+        "Lane",
+        "Round"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Status Bar & Nav"
+      ],
+      "implements_feature_ids": [
+        "round_tree",
+        "artifact_links"
+      ]
+    },
+    {
+      "name": "Lane Legend",
+      "kind": "non_ai",
+      "screen": "project-view, artifact-view",
+      "implements_features": [
+        "Round Tree"
+      ],
+      "inputs": [],
+      "output": "Three swatch/label pairs matching the tree's lanes",
+      "states": [
+        "static"
+      ],
+      "reads": [
+        "Lane"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Round Tree"
+      ],
+      "implements_feature_ids": [
+        "round_tree"
+      ]
+    },
+    {
+      "name": "Agent Pipeline Row",
+      "kind": "non_ai",
+      "screen": "chat-view, designer-view",
+      "implements_features": [
+        "Chat Frame Register"
+      ],
+      "inputs": [
+        "agent link"
+      ],
+      "output": "Plain-text row of seven agents; active marked like active nav, done at full emphasis, unreachable dimmed",
+      "states": [
+        "done",
+        "active",
+        "reachable",
+        "unreachable"
+      ],
+      "reads": [
+        "Agent",
+        "RunState"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Status Bar & Nav"
+      ],
+      "implements_feature_ids": [
+        "chat_frame_register"
+      ]
+    },
+    {
+      "name": "Gate Panel",
+      "kind": "non_ai",
+      "screen": "chat-view",
+      "implements_features": [
+        "Gate Card Register",
+        "Per-Agent Effort"
+      ],
+      "inputs": [
+        "Use default (filled)",
+        "Pick a model (outline)",
+        "Keep <model> (outline; only when the agent already has an override from a previous entry — the three-button shape)"
+      ],
+      "output": "One mono naming line 'Model for <agent>: <model> · <effort>' plus the action row. Exactly one gate state is on screen at a time, and the gate precedes the run: while it shows, the transcript, cost strip, action row and composer are not rendered. The mock draws both gate states above a transcript only so both are visible",
+      "states": [
+        "no entry: Use default · Pick a model",
+        "entry present: Keep <model> · Use default · Pick a model",
+        "expanded (see Gate Panel — Expanded)"
+      ],
+      "reads": [
+        "GateSelection",
+        "Agent",
+        "Model",
+        "Effort"
+      ],
+      "writes": [
+        "GateSelection"
+      ],
+      "depends_on": [
+        "Agent Pipeline Row"
+      ],
+      "implements_feature_ids": [
+        "gate_card_register",
+        "per_agent_effort"
+      ]
+    },
+    {
+      "name": "Gate Panel — Expanded",
+      "kind": "non_ai",
+      "screen": "chat-view",
+      "implements_features": [
+        "Gate Card Register",
+        "Per-Agent Effort",
+        "Setup Wizard Register"
+      ],
+      "inputs": [
+        "Provider select",
+        "API key field",
+        "Model select",
+        "Effort select",
+        "Use this model",
+        "Cancel"
+      ],
+      "output": "The setup wizard's own fields revealed inline, with effort beside the model",
+      "states": [
+        "expanded",
+        "effort overridden",
+        "model without effort support (Effort shows only \"default\", disabled)"
+      ],
+      "reads": [
+        "Provider",
+        "Credential",
+        "Model",
+        "Effort",
+        "GateSelection"
+      ],
+      "writes": [
+        "GateSelection",
+        "Effort",
+        "Credential"
+      ],
+      "depends_on": [
+        "Gate Panel"
+      ],
+      "implements_feature_ids": [
+        "gate_card_register",
+        "per_agent_effort",
+        "setup_wizard_register"
+      ]
+    },
+    {
+      "name": "Transcript",
+      "kind": "ai",
+      "screen": "chat-view",
+      "implements_features": [
+        "Chat Frame Register"
+      ],
+      "affordance": "conversational transcript of the active planning agent's turns",
+      "invocation": "user-triggered — a conversation with an agent is opened or continued",
+      "catalog_surface": "Chat Frame Register",
+      "inputs": [],
+      "output": "Plain message blocks with dimmed one-word labels, neutral marker on user turns, code blocks in mono",
+      "states": [
+        "idle",
+        "streaming",
+        "empty",
+        "error"
+      ],
+      "reads": [
+        "Message",
+        "RunRecord"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Agent Pipeline Row"
+      ],
+      "catalog_surface_id": "chat_frame_register",
+      "implements_feature_ids": [
+        "chat_frame_register"
+      ]
+    },
+    {
+      "name": "Run Cost Strip",
+      "kind": "non_ai",
+      "screen": "chat-view, designer-view",
+      "implements_features": [
+        "Round Cost",
+        "Chat Frame Register"
+      ],
+      "inputs": [],
+      "output": "Same three-line cost strip as round cost, scoped to this run",
+      "states": [
+        "priced",
+        "partially unpriced",
+        "no calls recorded"
+      ],
+      "reads": [
+        "Cost",
+        "TokenCount",
+        "RunRecord"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Transcript"
+      ],
+      "implements_feature_ids": [
+        "round_cost",
+        "chat_frame_register"
+      ]
+    },
+    {
+      "name": "Run Action Row",
+      "kind": "non_ai",
+      "screen": "chat-view",
+      "implements_features": [
+        "Chat Frame Register",
+        "Artifact Links"
+      ],
+      "inputs": [
+        "Open artifact",
+        "Download",
+        "Continue to <skip>",
+        "Continue to <next>"
+      ],
+      "output": "Run meta (chars, turn tokens, elapsed) at left; one primary action and neutral others at right",
+      "states": [
+        "run in progress",
+        "run complete"
+      ],
+      "reads": [
+        "RunProgress",
+        "RunRecord",
+        "Artifact"
+      ],
+      "writes": [
+        "RunState"
+      ],
+      "depends_on": [
+        "Transcript"
+      ],
+      "implements_feature_ids": [
+        "chat_frame_register",
+        "artifact_links"
+      ]
+    },
+    {
+      "name": "Live Activity Indicator",
+      "kind": "non_ai",
+      "screen": "chat-view",
+      "implements_features": [
+        "Chat Frame Register"
+      ],
+      "inputs": [],
+      "output": "Thin striped bar — the only moving element",
+      "states": [
+        "active",
+        "idle"
+      ],
+      "reads": [
+        "RunProgress"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Run Action Row"
+      ],
+      "implements_feature_ids": [
+        "chat_frame_register"
+      ]
+    },
+    {
+      "name": "Composer",
+      "kind": "non_ai",
+      "screen": "chat-view",
+      "implements_features": [
+        "Chat Frame Register"
+      ],
+      "inputs": [
+        "reply textarea",
+        "Send"
+      ],
+      "output": "The user's next turn",
+      "states": [
+        "empty",
+        "typing",
+        "sending"
+      ],
+      "reads": [
+        "Message"
+      ],
+      "writes": [
+        "Message"
+      ],
+      "depends_on": [
+        "Transcript"
+      ],
+      "implements_feature_ids": [
+        "chat_frame_register"
+      ]
+    },
+    {
+      "name": "Model & Status Line",
+      "kind": "non_ai",
+      "screen": "chat-view",
+      "implements_features": [
+        "Chat Frame Register",
+        "Per-Agent Effort"
+      ],
+      "inputs": [
+        "change"
+      ],
+      "output": "Model chip with effort when not default, and the run status line",
+      "states": [
+        "idle",
+        "replying"
+      ],
+      "reads": [
+        "Model",
+        "Effort",
+        "RunProgress"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Composer"
+      ],
+      "implements_feature_ids": [
+        "chat_frame_register",
+        "per_agent_effort"
+      ]
+    },
+    {
+      "name": "Round Selector",
+      "kind": "non_ai",
+      "screen": "artifact-view",
+      "implements_features": [
+        "Artifact View"
+      ],
+      "inputs": [
+        "round link"
+      ],
+      "output": "Every round on disk as a plain-text row, active marked like active nav",
+      "states": [
+        "active round",
+        "past round"
+      ],
+      "reads": [
+        "Round"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Status Bar & Nav"
+      ],
+      "implements_feature_ids": [
+        "artifact_view"
+      ]
+    },
+    {
+      "name": "Artifact File Pane",
+      "kind": "non_ai",
+      "screen": "artifact-view",
+      "implements_features": [
+        "Artifact View",
+        "Artifact Links"
+      ],
+      "inputs": [
+        "Download"
+      ],
+      "output": "Header line (path, size, modified, lane) plus line-numbered content",
+      "states": [
+        "file shown",
+        "no preview",
+        "missing (names producing agent)",
+        "nothing selected"
+      ],
+      "reads": [
+        "Artifact",
+        "Lane",
+        "Round"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Round Tree"
+      ],
+      "implements_feature_ids": [
+        "artifact_view",
+        "artifact_links"
+      ]
+    },
+    {
+      "name": "Artifact Pane State Insets",
+      "kind": "non_ai",
+      "screen": "artifact-view",
+      "implements_features": [
+        "Artifact View"
+      ],
+      "inputs": [],
+      "output": "Side-by-side empty and missing pane states",
+      "states": [
+        "empty",
+        "missing"
+      ],
+      "reads": [
+        "Artifact"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Artifact File Pane"
+      ],
+      "implements_feature_ids": [
+        "artifact_view"
+      ]
+    },
+    {
+      "name": "Directory Path Entry",
+      "kind": "non_ai",
+      "screen": "picker-view",
+      "implements_features": [
+        "Entry Screens Register",
+        "Open To The Project"
+      ],
+      "inputs": [
+        "mono path text input",
+        "Up"
+      ],
+      "output": "The path currently typed or browsed to",
+      "states": [
+        "idle",
+        "typed path",
+        "at filesystem root"
+      ],
+      "reads": [
+        "WorkingDirectory"
+      ],
+      "writes": [
+        "WorkingDirectory"
+      ],
+      "depends_on": [
+        "Status Bar & Nav"
+      ],
+      "implements_feature_ids": [
+        "entry_screens_register",
+        "open_to_the_project"
+      ]
+    },
+    {
+      "name": "Directory List",
+      "kind": "non_ai",
+      "screen": "picker-view",
+      "implements_features": [
+        "Entry Screens Register"
+      ],
+      "inputs": [
+        "directory line"
+      ],
+      "output": "One subdirectory per line in mono, 28px rows",
+      "states": [
+        "populated",
+        "empty",
+        "long name truncated"
+      ],
+      "reads": [
+        "WorkingDirectory"
+      ],
+      "writes": [
+        "WorkingDirectory"
+      ],
+      "depends_on": [
+        "Directory Path Entry"
+      ],
+      "implements_feature_ids": [
+        "entry_screens_register"
+      ]
+    },
+    {
+      "name": "Create Folder Row",
+      "kind": "non_ai",
+      "screen": "picker-view",
+      "implements_features": [
+        "Entry Screens Register"
+      ],
+      "inputs": [
+        "Create folder",
+        "new-folder name input"
+      ],
+      "output": "A new subdirectory under the current path",
+      "states": [
+        "idle",
+        "name entered"
+      ],
+      "reads": [
+        "WorkingDirectory"
+      ],
+      "writes": [
+        "WorkingDirectory"
+      ],
+      "depends_on": [
+        "Directory List"
+      ],
+      "implements_feature_ids": [
+        "entry_screens_register"
+      ]
+    },
+    {
+      "name": "Select Directory Action",
+      "kind": "non_ai",
+      "screen": "picker-view",
+      "implements_features": [
+        "Entry Screens Register",
+        "Open To The Project"
+      ],
+      "inputs": [
+        "Select this directory"
+      ],
+      "output": "The chosen working directory, opening the project",
+      "states": [
+        "enabled"
+      ],
+      "reads": [
+        "WorkingDirectory"
+      ],
+      "writes": [
+        "Project",
+        "WorkingDirectory"
+      ],
+      "depends_on": [
+        "Directory Path Entry"
+      ],
+      "implements_feature_ids": [
+        "entry_screens_register",
+        "open_to_the_project"
+      ]
+    },
+    {
+      "name": "Project Mode Question",
+      "kind": "non_ai",
+      "screen": "mode-inset",
+      "implements_features": [
+        "Entry Screens Register"
+      ],
+      "inputs": [
+        "Existing project",
+        "New project"
+      ],
+      "output": "The recorded project mode for this session",
+      "states": [
+        "asked",
+        "answered"
+      ],
+      "reads": [
+        "ProjectMode",
+        "WorkingDirectory"
+      ],
+      "writes": [
+        "ProjectMode"
+      ],
+      "depends_on": [
+        "Select Directory Action"
+      ],
+      "implements_feature_ids": [
+        "entry_screens_register"
+      ]
+    },
+    {
+      "name": "Setup Stepper",
+      "kind": "non_ai",
+      "screen": "setup-view",
+      "implements_features": [
+        "Setup Wizard Register"
+      ],
+      "inputs": [],
+      "output": "Plain-text 'Provider · Model · Search' row with the active step marked like the active nav item",
+      "states": [
+        "step 1",
+        "step 2 active",
+        "step 3"
+      ],
+      "reads": [
+        "SetupStep"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Status Bar & Nav"
+      ],
+      "implements_feature_ids": [
+        "setup_wizard_register"
+      ]
+    },
+    {
+      "name": "Default Model Panel",
+      "kind": "non_ai",
+      "screen": "setup-view",
+      "implements_features": [
+        "Setup Wizard Register",
+        "Per-Agent Effort"
+      ],
+      "inputs": [
+        "Model select",
+        "Effort select"
+      ],
+      "output": "The default model and effort for the project, with one dimmed connection line and one dimmed effort-scope line",
+      "states": [
+        "connected",
+        "effort default",
+        "effort chosen",
+        "model without effort support (Effort shows only \"default\", disabled)"
+      ],
+      "reads": [
+        "Model",
+        "Effort",
+        "Provider"
+      ],
+      "writes": [
+        "Model",
+        "Effort"
+      ],
+      "depends_on": [
+        "Setup Stepper"
+      ],
+      "implements_feature_ids": [
+        "setup_wizard_register",
+        "per_agent_effort"
+      ]
+    },
+    {
+      "name": "Setup Button Row",
+      "kind": "non_ai",
+      "screen": "setup-view",
+      "implements_features": [
+        "Setup Wizard Register"
+      ],
+      "inputs": [
+        "Back",
+        "Continue"
+      ],
+      "output": "Step navigation with exactly one primary action",
+      "states": [
+        "idle"
+      ],
+      "reads": [
+        "SetupStep"
+      ],
+      "writes": [
+        "SetupStep"
+      ],
+      "depends_on": [
+        "Default Model Panel"
+      ],
+      "implements_feature_ids": [
+        "setup_wizard_register"
+      ]
+    },
+    {
+      "name": "Designer Stepper",
+      "kind": "non_ai",
+      "screen": "designer-view",
+      "implements_features": [
+        "Designer Wizard Register"
+      ],
+      "inputs": [],
+      "output": "Plain-text row of the six stepper labels (No-UI check · Start / Resume · Preferences · Screenshots · Generate · Preview; the refine step reuses Preview's label), active marked like the active nav item, completed at full emphasis, later steps dimmed. Replaces dmc.Stepper; no circles, no check icons",
+      "states": [
+        "completed step",
+        "active step",
+        "later step"
+      ],
+      "reads": [
+        "DesignStep"
+      ],
+      "writes": [],
+      "depends_on": [
+        "Agent Pipeline Row"
+      ],
+      "implements_feature_ids": [
+        "designer_wizard_register"
+      ]
+    },
+    {
+      "name": "Design Preferences Entry",
+      "kind": "ai",
+      "screen": "designer-view",
+      "implements_features": [
+        "Designer Wizard Register"
+      ],
+      "affordance": "free-text visual direction that steers the Designer agent's generated mock",
+      "invocation": "user-triggered — the Designer gate is passed and the Preferences step is reached",
+      "catalog_surface": "Designer Wizard Register",
+      "inputs": [
+        "preferences textarea (six lines)"
+      ],
+      "output": "The stored preference text used when generating the mock",
+      "states": [
+        "empty",
+        "filled",
+        "generating"
+      ],
+      "reads": [
+        "DesignMock",
+        "ReferenceMaterial"
+      ],
+      "writes": [
+        "DesignMock"
+      ],
+      "depends_on": [
+        "Designer Stepper"
+      ],
+      "catalog_surface_id": "designer_wizard_register",
+      "implements_feature_ids": [
+        "designer_wizard_register"
+      ]
+    },
+    {
+      "name": "Designer Button Row",
+      "kind": "non_ai",
+      "screen": "designer-view",
+      "implements_features": [
+        "Designer Wizard Register"
+      ],
+      "inputs": [
+        "Back",
+        "Next"
+      ],
+      "output": "Step navigation with exactly one primary action",
+      "states": [
+        "idle"
+      ],
+      "reads": [
+        "DesignStep"
+      ],
+      "writes": [
+        "DesignStep"
+      ],
+      "depends_on": [
+        "Design Preferences Entry"
+      ],
+      "implements_feature_ids": [
+        "designer_wizard_register"
+      ]
+    },
+    {
+      "name": "Setup Steps 1 and 3 (not drawn)",
+      "kind": "non_ai",
+      "screen": "setup-view",
+      "implements_features": [
+        "Setup Wizard Register"
+      ],
+      "inputs": [
+        "Step 1: Provider select; API key field (masked) with one dimmed line beneath, 'Stored in this browser only, never on the server or disk'; checkbox 'Remember provider and keys in this browser'; button row: Back (outline) at left, Clear saved credentials (warn outline) and Connect (filled) at right",
+        "Step 3: the existing web-search provider and key fields, same panel and field style as step 2; button row: Back (outline), Finish (filled)"
+      ],
+      "output": "Same panel, stepper and button-row pattern as the drawn step 2: one-line title, at most one dimmed notice line, one filled primary per step. No explanatory paragraphs, no alerts, no free-tier warning, no button that leaves the wizard for the directory picker",
+      "states": [
+        "step 1 active",
+        "step 3 active",
+        "connected (dimmed 'Connected to <provider>' line above the model select)"
+      ],
+      "reads": [
+        "Provider",
+        "Credential",
+        "Model",
+        "Effort"
+      ],
+      "writes": [
+        "Provider",
+        "Credential",
+        "Model",
+        "Effort"
+      ],
+      "depends_on": [
+        "Setup Stepper"
+      ],
+      "implements_feature_ids": [
+        "setup_wizard_register"
+      ]
+    },
+    {
+      "name": "Designer Steps other than Preferences (not drawn)",
+      "kind": "non_ai",
+      "screen": "designer-view",
+      "implements_features": [
+        "Designer Wizard Register"
+      ],
+      "inputs": [
+        "No-UI check: one instruction line; Continue (filled) / Skip Designer (outline)",
+        "Start / Resume: one instruction line; Create new design (filled) and, when a prior mock exists, Carry forward (outline) and Start over (warn outline); Skip Designer (outline)",
+        "Screenshots: one instruction line; the screenshot and reference-image upload zones as 1px dashed outlines with one dimmed line of text; each uploaded image as a row with its annotation input and Remove (outline); Back (outline), Generate (filled)",
+        "Generate: the progress bar and status line as on the chat frame; Cancel (outline)",
+        "Preview: Full Screen (outline) at right above the iframe; one dimmed line 'Look-and-feel reference only; not the final UI' replacing the yellow disclaimer; the iframe unchanged; run cost strip; on approval one dimmed line 'Mock approved and saved'; button row: Continue to StackAdvisor (filled), Refine (outline), Start Over (warn outline)",
+        "Refine: one instruction line; refine textarea; the same image rows with annotation inputs; Regenerate (filled), Cancel (outline)"
+      ],
+      "output": "Every step follows the drawn Preferences step: stepper row, one instruction line at most, controls, one filled primary. No intro paragraph, no 'How to use Designer' accordion, no Back button that leaves the wizard for the project view (the status bar's Project link does that), no ↺ or → glyphs",
+      "states": [
+        "no-ui check",
+        "start/resume (new)",
+        "start/resume (prior mock exists)",
+        "screenshots",
+        "generating",
+        "preview",
+        "approved",
+        "refine"
+      ],
+      "reads": [
+        "DesignStep",
+        "DesignMock",
+        "ReferenceMaterial",
+        "RunRecord"
+      ],
+      "writes": [
+        "DesignMock",
+        "ReferenceMaterial"
+      ],
+      "depends_on": [
+        "Designer Stepper"
+      ],
+      "implements_feature_ids": [
+        "designer_wizard_register"
+      ]
+    }
+  ],
+  "shared_layout": {
+    "nav": "Persistent 40px dark status bar: wordmark, mono context slots (working directory — truncating from start and empty when unknown — round, provider, model·effort), and a right-aligned four-item nav (Project, Artifacts, Settings, Docs) with the active item underlined in the single accent, followed by the version.",
+    "shell": [
+      "Status bar with mono context slots",
+      "Primary nav with single-accent active state",
+      "Version slot",
+      "Single-column view container (max 1100px; 720px for wizard/picker screens, 560px for the mode inset)",
+      "Shared cost strip component",
+      "Shared button set (one filled accent primary per row, neutral outlines otherwise)",
+      "Shared plain-text stepper/pipeline row style"
+    ]
+  }
+}
