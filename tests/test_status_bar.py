@@ -11,6 +11,7 @@ load would pass every render test while showing a stale directory.
 from __future__ import annotations
 
 import pathlib
+import re
 from typing import Any
 
 import spec4.app as app_module
@@ -19,7 +20,20 @@ from spec4.app_constants import PATH_TO_PHASE, PHASE_ROOT
 from spec4.callbacks import on_status_bar
 from spec4 import llm_selection
 from spec4.layouts import STATUS_EMPTY, _status_bar
-from spec4.layouts._status_bar import ARTIFACTS_PATH, NAV_ORDER, NOT_CONNECTED
+from spec4.layouts._status_bar import (
+    ARTIFACTS_PATH,
+    NAV_ORDER,
+    NOT_CONNECTED,
+    SLOT_CLASS,
+    SLOT_CONNECTION,
+    SLOT_MODEL,
+    SLOT_PATH,
+    SLOT_PROVIDER,
+    SLOT_ROUND,
+    SLOT_VERSION,
+    _dir_field,
+    _status_context,
+)
 from spec4.session import _default_session
 
 # The marketing-era shell, gone in this round. `nav-*` are the external-link
@@ -194,6 +208,165 @@ class TestStatusBarLayout:
                 children = [children]
             stack.extend(children)
         assert not any("Icon" in name for name in seen)
+
+
+class TestOnlyThePathEverGivesUpSpace:
+    """D-LR10 — the bar's slots, and which of them is allowed to shrink.
+
+    The bar used to ellipsise as one line, so the browser cut whatever sat at
+    its *end*: the model first, then the provider, then the round. Those three
+    are short, fixed, and the reason to look at the bar at all; the working
+    directory is the one arbitrarily long field. The fix is per-slot: every
+    slot is pinned, the path alone shrinks, and it shortens from its start so
+    the project name at the tail survives.
+
+    Asserted at both altitudes, because either alone is half a claim. The
+    layout side says the classes are attached to the right elements; the
+    stylesheet side says those classes still mean what the layout is relying
+    on them to mean. A rule renamed in `v3.css` would pass the first and fail
+    the second.
+    """
+
+    def _slots(self, context: Any) -> dict[str, set[str]]:
+        """Each slot's classes, keyed by the slot class that identifies it."""
+        found: dict[str, set[str]] = {}
+        stack = list(context)
+        while stack:
+            node = stack.pop()
+            classes = set((getattr(node, "className", "") or "").split())
+            for name in classes:
+                if name.startswith("sb-slot--"):
+                    found[name] = classes
+            children = getattr(node, "children", None)
+            if children is None:
+                continue
+            if not isinstance(children, (list, tuple)):
+                children = [children]
+            stack.extend(children)
+        return found
+
+    def _filled(self) -> dict[str, set[str]]:
+        return self._slots(
+            _status_context("/home/dev/Projects/spec4/Spec4", 2, "anthropic", "m", True)
+        )
+
+    def test_every_value_on_the_line_is_its_own_slot(self) -> None:
+        """Four values, four classes the stylesheet can target individually."""
+        assert set(self._filled()) == {
+            SLOT_PATH,
+            SLOT_ROUND,
+            SLOT_PROVIDER,
+            SLOT_MODEL,
+        }
+
+    def test_the_working_directory_carries_the_shrinking_class(self) -> None:
+        assert SLOT_PATH in self._filled()
+
+    def test_round_provider_and_model_carry_the_pinned_class(self) -> None:
+        slots = self._filled()
+        for name in (SLOT_ROUND, SLOT_PROVIDER, SLOT_MODEL):
+            assert SLOT_CLASS in slots[name], name
+            assert SLOT_PATH not in slots[name], name
+
+    def test_the_version_carries_the_pinned_class_too(self) -> None:
+        """It is the one slot that lives in the nav rather than on the line."""
+        version = next(
+            node
+            for node in _nav(_status_bar()).children
+            if getattr(node, "id", None) == "status-bar-version"
+        )
+        classes = set(version.className.split())
+        assert {SLOT_CLASS, SLOT_VERSION} <= classes
+        assert SLOT_PATH not in classes
+
+    def test_the_empty_path_is_still_the_path_slot(self) -> None:
+        """The em dash shrinks in the same place a real path would."""
+        slots = self._slots(_status_context(None, None, None, None, False))
+        assert SLOT_PATH in slots
+
+    def test_not_connected_is_one_pinned_slot_not_two(self) -> None:
+        """It replaces the provider and the model, and it is one phrase."""
+        slots = self._slots(_status_context("/a/b", 0, None, None, False))
+        assert SLOT_PROVIDER not in slots
+        assert SLOT_MODEL not in slots
+        assert SLOT_CLASS in slots[SLOT_CONNECTION]
+
+    def test_the_path_text_is_isolated_left_to_right(self) -> None:
+        """The half of the RTL trick that is easy to leave out.
+
+        `.sb-slot--path` sets `direction: rtl` to move the ellipsis to the
+        front of the path. Without an isolated left-to-right run inside it,
+        `/home/dev/Spec4` renders as `Spec4/dev/home/`, which is the specific
+        way this fix goes wrong.
+        """
+        button = _dir_field("/home/dev/Projects/spec4/Spec4")
+        assert type(button.children).__name__ == "Bdi"
+        assert button.children.children == "/home/dev/Projects/spec4/Spec4"
+
+    def test_the_path_keeps_its_monospace_and_names_no_colour(self) -> None:
+        """D-LR2: the slot classes are layout, not a second styling mechanism."""
+        button = _dir_field("/a/b")
+        assert "sb-dir" in button.className
+        assert getattr(button, "style", None) is None
+        assert "mono" in " ".join(_class_names(_status_bar()))
+
+
+class TestTheStylesheetPinsWhatTheLayoutMarks:
+    """The other half of D-LR10: the classes above still mean what they say."""
+
+    def _css(self) -> str:
+        return (
+            pathlib.Path(app_module.__file__).resolve().parent
+            / "assets"
+            / "v3.css"
+        ).read_text(encoding="utf-8")
+
+    def _rule(self, selector: str) -> str:
+        css = self._css()
+        match = re.search(
+            rf"(?:^|\}}|\*/)\s*{re.escape(selector)}\s*\{{([^}}]*)\}}", css
+        )
+        assert match, f"no rule for {selector} in v3.css"
+        return match.group(1)
+
+    def test_a_slot_never_shrinks(self) -> None:
+        assert "flex: none" in self._rule(f".{SLOT_CLASS}")
+
+    def test_nothing_else_on_the_line_shrinks_either(self) -> None:
+        """The separators are not slots and would otherwise be squeezed."""
+        assert "flex: none" in self._rule(".sb-ctx > *")
+
+    def test_the_path_slot_is_the_one_that_shrinks_and_truncates(self) -> None:
+        rule = self._rule(f".sb-ctx > .{SLOT_PATH}")
+        assert "flex: 0 1 auto" in rule
+        assert "min-width: 0" in rule
+        assert "overflow: hidden" in rule
+        assert "text-overflow: ellipsis" in rule
+
+    def test_the_path_truncates_from_its_start(self) -> None:
+        rule = self._rule(f".sb-ctx > .{SLOT_PATH}")
+        assert "direction: rtl" in rule
+        assert "text-align: left" in rule
+
+    def test_the_reversal_is_scoped_to_that_slot_alone(self) -> None:
+        """On a parent it would reverse the whole bar. It appears once.
+
+        Comments are swept first — the rule explains itself in prose directly
+        above the declaration, and a test that counted the explanation as a
+        second reversal would have to be answered by deleting the comment.
+        """
+        swept = re.sub(r"/\*.*?\*/", "", self._css(), flags=re.S)
+        assert len(re.findall(r"direction:\s*rtl", swept)) == 1
+        assert f".sb-ctx > .{SLOT_PATH} {{" in self._css()
+
+    def test_the_inner_run_is_restored_to_left_to_right(self) -> None:
+        rule = self._rule(f".{SLOT_PATH} > bdi")
+        assert "direction: ltr" in rule
+        assert "unicode-bidi: isolate" in rule
+
+    def test_the_line_no_longer_ellipsises_as_a_whole(self) -> None:
+        """The bug itself: a single ellipsis on `.sb-ctx` cut the model."""
+        assert "text-overflow" not in self._rule(".sb-ctx")
 
 
 class TestTheShellHasNoMarketingChrome:
@@ -466,3 +639,60 @@ class TestStatusBarCallback:
     def test_it_survives_empty_stores(self) -> None:
         """The very first render, before either store has been written."""
         assert on_status_bar(None, None) is not None
+
+
+class TestTheModelSlotCarriesTheEffort:
+    """Instruction 9: `<model> · <effort>`, without giving up the slot rules."""
+
+    def _slot(self, context: Any) -> Any:
+        return next(
+            node
+            for node in context
+            if SLOT_MODEL in set((getattr(node, "className", "") or "").split())
+        )
+
+    def test_a_real_level_is_appended(self) -> None:
+        slot = self._slot(
+            _status_context("/a/b", 1, "anthropic", "claude-sonnet-5", True, "high")
+        )
+        assert slot.children == "claude-sonnet-5 · high"
+
+    def test_the_default_leaves_the_model_alone(self) -> None:
+        for effort in ("default", llm_selection.DEFAULT_EFFORT):
+            slot = self._slot(
+                _status_context("/a/b", 1, "anthropic", "m", True, effort)
+            )
+            assert slot.children == "m"
+
+    def test_the_effort_is_optional_at_the_call_site(self) -> None:
+        """The unfilled bar and the tests that predate the field still call
+        this with five arguments."""
+        assert (
+            self._slot(_status_context("/a/b", 1, "anthropic", "m", True)).children
+            == "m"
+        )
+
+    def test_the_suffixed_slot_still_refuses_to_truncate(self) -> None:
+        """Phase 1's rule survives a longer string: the model slot is pinned
+        and only the path may shrink (D-LR10)."""
+        classes = set(
+            self._slot(
+                _status_context("/a/b", 1, "anthropic", "m", True, "high")
+            ).className.split()
+        )
+        assert SLOT_CLASS in classes
+        assert SLOT_PATH not in classes
+
+    def test_the_line_it_sits_on_is_still_monospace(self) -> None:
+        context = next(
+            node
+            for node in _flatten(_status_bar())
+            if getattr(node, "id", None) == "status-bar-context"
+        )
+        assert "mono" in set(context.className.split())
+
+    def test_an_empty_model_is_still_the_em_dash(self) -> None:
+        """A connected session with no model name renders the empty state, not
+        a bare separator."""
+        slot = self._slot(_status_context("/a/b", 1, "anthropic", None, True, "high"))
+        assert slot.children == STATUS_EMPTY

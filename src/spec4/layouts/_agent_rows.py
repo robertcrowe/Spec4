@@ -35,7 +35,7 @@ from typing import Any, NamedTuple
 from dash import html
 import dash_mantine_components as dmc
 
-from spec4 import project_manager
+from spec4 import llm_selection, project_manager
 from spec4.app_constants import AGENT_KEYS
 from spec4.layouts._round_tree import ARTIFACT_GROUPS
 
@@ -173,11 +173,17 @@ class RowUsage(NamedTuple):
 
     Every field is a string and every field is empty for an agent that has not
     run, so a row's shape never depends on whether the numbers exist.
+
+    ``model`` and ``effort`` stay apart here and are joined for display in
+    :func:`agent_rows`. They are two recorded facts, and a caller asking this
+    what an agent ran on should get the model, not a rendered string it would
+    have to take apart again.
     """
 
     model: str
     tokens_in: str
     tokens_out: str
+    effort: str = llm_selection.DEFAULT_EFFORT
 
     @property
     def tokens(self) -> str:
@@ -198,20 +204,31 @@ def _tokens(value: Any) -> str:
     return f"{value:,}"
 
 
-def _last_model(entry: dict[str, Any]) -> str:
-    """The model this agent last ran on, from its ``models`` list.
+def _last_model(entry: dict[str, Any]) -> tuple[str, str]:
+    """``(model, effort)`` this agent last ran on, from its ``models`` list.
 
-    ``summarize_usage`` appends each distinct (model, provider) pair in
-    first-seen order, so a developer who re-ran an agent on a second model this
-    round has two entries and the *last* one is the run the row is reporting.
+    ``summarize_usage`` appends each distinct (model, provider, effort) triple
+    in first-seen order, so a developer who re-ran an agent on a second model
+    this round has two entries and the *last* one is the run the row is
+    reporting.
+
+    The effort is read off the same entry as the model rather than from a
+    second scan, which is what makes "the effort shown is the effort that model
+    ran at" true by construction: `summarize_usage` keeps them in one dict
+    precisely so this rule needs no second implementation. A record written
+    before the field existed has no effort, and reads as ``"default"`` — which
+    is also what an unset effort means, so it renders exactly as it used to.
     """
     models = entry.get("models")
     if not isinstance(models, list):
-        return ""
+        return "", llm_selection.DEFAULT_EFFORT
     for pair in reversed(models):
         if isinstance(pair, dict) and pair.get("model"):
-            return str(pair["model"])
-    return ""
+            return (
+                str(pair["model"]),
+                str(pair.get("effort") or llm_selection.DEFAULT_EFFORT),
+            )
+    return "", llm_selection.DEFAULT_EFFORT
 
 
 def _row_usage(entry: Any) -> RowUsage:
@@ -227,10 +244,12 @@ def _row_usage(entry: Any) -> RowUsage:
     calls = entry.get("calls")
     if isinstance(calls, bool) or not isinstance(calls, int) or calls < 1:
         return USAGE_BLANK
+    model, effort = _last_model(entry)
     return RowUsage(
-        _last_model(entry),
+        model,
         _tokens(entry.get("input_tokens")),
         _tokens(entry.get("output_tokens")),
+        effort,
     )
 
 
@@ -301,7 +320,16 @@ def agent_rows(
                 key=spec.key,
                 agent=spec.name,
                 produces=spec.produces,
-                model=cells.model,
+                # The last-model cell, effort and all. Joined here rather than
+                # in `RowUsage` so the recorded model stays readable on its own,
+                # and joined by `llm_selection`'s helper rather than locally so
+                # this column, the status bar, the model chip and the retry
+                # panel cannot end up with four suffix rules. An agent that has
+                # not run has no model, and the helper leaves the cell blank
+                # rather than printing a lone effort (D-AR3).
+                model=llm_selection.model_effort_display(
+                    cells.model, cells.effort
+                ),
                 tokens=cells.tokens,
                 action=state,
                 disabled=state == ACTION_DISABLED,
@@ -385,8 +413,9 @@ def _agent_rows(
 ) -> html.Section:
     """The agent table, rendered for a round.
 
-    It sits directly beneath the round tree on the project view: the tree says
-    what the round has produced, and this says what to do about it.
+    It leads the project view (D-LR11): the screen is opened to run something,
+    so it opens with what there is to run, and the tree's record of what the
+    round has produced closes the stack instead.
     """
     return html.Section(
         html.Table(

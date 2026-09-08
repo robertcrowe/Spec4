@@ -546,6 +546,7 @@ def generate_mock_streaming(
     capture_mode: bool = False,
     api_base: str | None = None,
     extra_kwargs: dict[str, Any] | None = None,
+    effort: str = "default",
 ) -> Iterator[str]:
     messages: list[dict[str, Any]] = build_mock_prompt(
         session, ui_source_snippets, image_support, planning_context, existing_html,
@@ -557,23 +558,28 @@ def generate_mock_streaming(
 
     try:
         while True:
-            kwargs: dict[str, Any] = {
-                "model": model,
-                "messages": messages,
-                "stream": True,
-            }
+            # Reassembled into an `llm_config` rather than kwargs: the draw goes
+            # through the same `llm._build_completion_kwargs` every other call
+            # uses, so the omit-effort-on-"default" rule, `drop_params` and the
+            # refused-level retry are shared with the chat agents instead of
+            # being restated here and left to drift.
+            llm_config: dict[str, Any] = {"model": model, "effort": effort}
             if api_key:
-                kwargs["api_key"] = api_key
+                llm_config["api_key"] = api_key
             if api_base is not None:
-                kwargs["api_base"] = api_base
+                llm_config["api_base"] = api_base
             if extra_kwargs:
-                kwargs.update(extra_kwargs)
-            if tools:
-                kwargs["tools"] = tools
+                llm_config.update(extra_kwargs)
+            extra: dict[str, Any] = {"tools": tools} if tools else {}
 
             # Routed through spec4.llm so the mock draw is captured in the
             # round's usage log alongside the chat agents' calls.
-            response = llm.stream_completion(agent_name="designer", **kwargs)
+            response = llm.stream_completion(
+                llm_config=llm_config,
+                messages=messages,
+                agent_name="designer",
+                **extra,
+            )
             logger.debug("Awaiting first output token")
 
             full_text = ""

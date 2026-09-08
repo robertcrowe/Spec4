@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from dash import dcc, html
@@ -45,6 +47,113 @@ def _sep() -> Any:
     land on only one of the strips that use it.
     """
     return html.Span("·", className="sb-sep")
+
+
+# ---------------------------------------------------------------------------
+# Step rows — the one place active / done / dimmed marking is decided
+# ---------------------------------------------------------------------------
+#
+# D-LR9: every stepper in the app is marked here, and nowhere else. The chat
+# frame's pipeline indicator, the setup wizard's step indicator and the
+# Designer wizard's step row are three renderings of one idea — a plain-text
+# row in which exactly one entry is active, the entries already finished read
+# at full weight, and the entries that cannot be entered are dimmed, disabled,
+# and carry the reason as their tooltip. That marking existed once, inside
+# `_chat._agent_status_bar`; copying it into the two wizards is precisely how
+# the three rows would have drifted, since the active mark is the same accent
+# as the active nav item (D-LR2) and a re-themed accent has to move all of
+# them at once.
+#
+# The function is deliberately screen-agnostic. It knows nothing of agents,
+# wizards, routes or preconditions: it is handed labels, a state per label, an
+# optional id and an optional tooltip, and it returns the row. The class prefix
+# is a parameter rather than a constant because the three rows sit in
+# different frames at different densities — what they must share is *which*
+# entry is marked and *how*, not how much padding it has.
+
+# The four states a step can be in. Three of them take a modifier class;
+# ``STEP_UPCOMING`` — reachable, simply not reached yet — deliberately takes
+# none, because a plain label is what "nothing has happened here" looks like.
+STEP_ACTIVE = "active"
+STEP_DONE = "done"
+STEP_UPCOMING = "upcoming"
+STEP_UNREACHABLE = "unreachable"
+
+_STEP_MODIFIERS: dict[str, str] = {
+    STEP_ACTIVE: STEP_ACTIVE,
+    STEP_DONE: STEP_DONE,
+    STEP_UNREACHABLE: STEP_UNREACHABLE,
+}
+
+
+def step_modifier_class(base_class: str, state: str) -> str:
+    """``pipeline-agent`` + ``active`` → ``pipeline-agent--active``.
+
+    Exported so a caller can name the class its stylesheet draws without
+    writing the BEM join a second time — the chat frame's ``_PILL_*``
+    constants, which its tests assert against, are built from this.
+
+    ``STEP_UPCOMING`` has no modifier and returns ``""``.
+    """
+    modifier = _STEP_MODIFIERS.get(state, "")
+    return f"{base_class}--{modifier}" if modifier else ""
+
+
+@dataclass(frozen=True)
+class StepEntry:
+    """One step in a row: what it says, where it stands, and how to enter it.
+
+    ``id`` is whatever the calling screen routes on — a string id or a Dash
+    pattern-matching dict — and is omitted entirely when the entry is not a
+    control. ``tooltip`` is the explanation a dimmed entry carries; it is the
+    only thing a dimmed label has to say for itself, so an unreachable entry
+    without one is a step the developer cannot enter and cannot find out why.
+    """
+
+    label: str
+    state: str = STEP_UPCOMING
+    id: Any = None
+    tooltip: str | None = None
+
+
+def step_row(
+    entries: Sequence[StepEntry],
+    *,
+    base_class: str,
+    row_class: str,
+) -> html.Div:
+    """A plain-text row of steps, marked by state. No connectors.
+
+    The entries are already in order, so nothing is drawn between them: an
+    arrow or a chevron would say what the sequence already said.
+
+    The active entry is a ``<span>`` rather than a control, because clicking it
+    would navigate to where the developer already is. Every other entry is a
+    button carrying the id it is routed by; an unreachable one is disabled and
+    wears its tooltip. That split is the marking, and it is why this lives in
+    one place: it is the same decision on all three of the app's step rows.
+    """
+    items: list[Any] = []
+    for entry in entries:
+        modifier = step_modifier_class(base_class, entry.state)
+        classes = f"{base_class} {modifier}" if modifier else base_class
+        if entry.state == STEP_ACTIVE:
+            items.append(html.Span(entry.label, className=classes))
+            continue
+        kwargs: dict[str, Any] = {}
+        if entry.id is not None:
+            kwargs["id"] = entry.id
+        items.append(
+            html.Button(
+                entry.label,
+                n_clicks=0,
+                disabled=entry.state == STEP_UNREACHABLE,
+                title=entry.tooltip,
+                className=classes,
+                **kwargs,
+            )
+        )
+    return html.Div(items, className=row_class)
 
 
 # ---------------------------------------------------------------------------

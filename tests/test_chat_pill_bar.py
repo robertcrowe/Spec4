@@ -23,6 +23,8 @@ from __future__ import annotations
 import pathlib
 from typing import Any
 
+from dash import html
+
 from spec4.app_constants import (
     AGENT_KEYS,
     STATE_AGENTIFIER_COMPLETE,
@@ -36,6 +38,12 @@ from spec4.layouts._chat import (
     _PILL_DONE,
     _PILL_UNREACHABLE,
     _agent_status_bar,
+)
+from spec4.layouts._shared import (
+    STEP_ACTIVE,
+    STEP_DONE,
+    STEP_UNREACHABLE,
+    step_modifier_class,
 )
 from spec4.session import _validate_agent_preconditions
 
@@ -275,6 +283,138 @@ class TestTheIdsAreUnchanged:
             and not isinstance(getattr(node, "id", None), dict)
         ]
         assert not strays, [getattr(n, "children", n) for n in strays]
+
+
+# ---------------------------------------------------------------------------
+# The extraction (D-LR9) changed nothing the developer can see
+# ---------------------------------------------------------------------------
+
+
+class TestItIsTheSharedRendererAndNothingMoved:
+    """The marking now lives in ``_shared.step_row``; the bar must be identical.
+
+    The tests above already pin the labels, the order, the states and the ids
+    one claim at a time. What is asserted here is the two things they cannot:
+    that the bar is genuinely *produced by* the shared renderer rather than by
+    a copy that happens to agree with it today, and that the whole rendered row
+    — every prop, on every one of the seven, at once — is what it was.
+    """
+
+    def test_the_bar_is_built_by_the_shared_renderer(self, monkeypatch: Any) -> None:
+        """A local copy of the marking would pass every other test in the file.
+
+        The renderer is replaced with a sentinel: a chat frame that still drew
+        its own labels would return the real row and never notice.
+        """
+        import spec4.layouts._chat as chat
+
+        seen: dict[str, Any] = {}
+
+        def _fake(entries: Any, **kwargs: Any) -> Any:
+            seen["entries"] = list(entries)
+            seen["kwargs"] = kwargs
+            return html.Div("sentinel")
+
+        monkeypatch.setattr(chat, "step_row", _fake)
+        rendered = [
+            node
+            for node in _walk(_agent_status_bar(_session()))
+            if getattr(node, "children", None) == "sentinel"
+        ]
+        assert rendered, "the pill bar did not go through _shared.step_row"
+        assert seen["kwargs"] == {"base_class": _PILL_BASE, "row_class": "pipeline"}
+        assert [entry.label for entry in seen["entries"]] == [
+            AGENT_DISPLAY_NAMES[key] for key in AGENT_KEYS
+        ]
+
+    def test_the_whole_row_is_unchanged_prop_for_prop(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The row as Dash serialises it, against what the bar drew before.
+
+        Written out rather than derived, on purpose: this is the one assertion
+        in the file whose job is to be a *photograph* of the pre-extraction
+        output. Deriving it from `AGENT_KEYS` and the state helpers would make
+        it agree with whatever the extraction produced, which is the opposite
+        of what a parity test is for.
+
+        The session is a project in which every agent has run and Agentifier is
+        the active one, so all four states appear at once.
+        """
+        session = _complete_project(tmp_path)
+        session["active_agent"] = "agentifier"
+        # Nothing has been reviewed, so Code Scanner is not done; nothing bars
+        # any agent once a vision statement exists.
+        row = _row(session)
+        props = [node.to_plotly_json()["props"] for node in row.children]
+
+        def pill(agent: str, label: str, modifier: str) -> dict[str, Any]:
+            return {
+                "children": label,
+                "id": {"type": "agent-pill", "agent": agent},
+                "n_clicks": 0,
+                "disabled": False,
+                "title": None,
+                "className": f"{_PILL_BASE} {modifier}".strip(),
+            }
+
+        assert props == [
+            pill("code_scanner", "CodeScanner", _PILL_DONE),
+            pill("brainstormer", "Brainstormer", _PILL_DONE),
+            {
+                "children": "Agentifier",
+                "className": f"{_PILL_BASE} {_PILL_ACTIVE}",
+            },
+            pill("designer", "Designer", _PILL_DONE),
+            pill("stack_advisor", "StackAdvisor", _PILL_DONE),
+            pill("phaser", "Phaser", _PILL_DONE),
+            pill("deployer", "Deployer", _PILL_DONE),
+        ]
+
+    def test_a_dimmed_row_is_unchanged_prop_for_prop(self) -> None:
+        """The other half: an empty project, where four agents are barred.
+
+        Same photograph, taken on the state the first one cannot show — the
+        dimmed class, the disabled flag and the precondition tooltip together
+        on the same element.
+        """
+        row = _row(_session(active_agent="brainstormer"))
+        props = [node.to_plotly_json()["props"] for node in row.children]
+        by_agent = dict(zip(AGENT_KEYS, props, strict=True))
+
+        assert by_agent["code_scanner"] == {
+            "children": "CodeScanner",
+            "id": {"type": "agent-pill", "agent": "code_scanner"},
+            "n_clicks": 0,
+            "disabled": False,
+            "title": None,
+            "className": _PILL_BASE,
+        }
+        assert by_agent["brainstormer"] == {
+            "children": "Brainstormer",
+            "className": f"{_PILL_BASE} {_PILL_ACTIVE}",
+        }
+        for key in ("agentifier", "designer", "stack_advisor", "phaser", "deployer"):
+            entry = by_agent[key]
+            assert entry["disabled"] is True, key
+            assert entry["className"] == f"{_PILL_BASE} {_PILL_UNREACHABLE}", key
+            assert entry["title"], key
+
+    def test_the_pill_classes_are_the_shared_renderer_s(self) -> None:
+        """`_PILL_*` are derived from `step_modifier_class`, not restated.
+
+        The literals are named here because this is the one place the round's
+        stylesheet and the round's tests have to agree on a string.
+        """
+        assert (_PILL_BASE, _PILL_ACTIVE, _PILL_DONE, _PILL_UNREACHABLE) == (
+            "pipeline-agent",
+            "pipeline-agent--active",
+            "pipeline-agent--done",
+            "pipeline-agent--unreachable",
+        )
+        assert _PILL_ACTIVE == step_modifier_class(_PILL_BASE, STEP_ACTIVE)
+        assert _PILL_DONE == step_modifier_class(_PILL_BASE, STEP_DONE)
+        assert _PILL_UNREACHABLE == step_modifier_class(_PILL_BASE, STEP_UNREACHABLE)
 
 
 # ---------------------------------------------------------------------------

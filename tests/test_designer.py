@@ -1559,16 +1559,32 @@ class TestRenderGateSkipsBufferTicks:
         assert "btn-designer-retry" in str(content)
 
     def test_store_trigger_renders_step6(self, monkeypatch) -> None:
+        """The second output is the step row itself, re-rendered.
+
+        It was a `dmc.Stepper`'s `active` index; the plain-text row that
+        replaced the Stepper has no such property, so the callback writes the
+        row into the container instead — which is why what is asserted here is
+        the marked label rather than a number.
+        """
         from dash import no_update
 
-        content, active = self._render(
+        from spec4.layouts._shared import STEP_ACTIVE, step_modifier_class
+        from spec4.layouts.designer import DESIGNER_STEP_CLASS
+
+        content, row = self._render(
             monkeypatch,
             {"step": 6, "mock_html": "<html></html>", "finalized": False},
             {"tokens": 0, "progress": 100, "error": None},
             [{"prop_id": "designer-session-store.data"}],
         )
         assert content is not no_update
-        assert active == 5
+        active_class = step_modifier_class(DESIGNER_STEP_CLASS, STEP_ACTIVE)
+        marked = [
+            entry.children
+            for entry in row.children
+            if active_class in (entry.className or "").split()
+        ]
+        assert marked == ["Preview"]
 
     def test_delivery_response_updating_both_props_renders(
         self, monkeypatch
@@ -2059,7 +2075,7 @@ class TestDesignerRetryWithADifferentModel:
         with patch(
             "spec4.llm_selection.probe_image_support", return_value=True
         ), patch("spec4.llm_selection.probe_tool_support", return_value=True):
-            answered, _ = on_gate_continue(1, "gpt-5", opened)
+            answered, _ = on_gate_continue(1, "gpt-5", None, opened)
         return answered, designer_layout(answered, {})
 
     def test_the_wizard_waits_behind_the_picker_during_selection(self) -> None:
@@ -2103,11 +2119,27 @@ class TestDesignerRetryWithADifferentModel:
             *_, cleared = dmod.on_designer_retry(1, self._STORE, answered, True)
         assert cleared["_designer_failed_draw"] is None
 
-    def test_leaving_designer_discards_the_snapshot(self) -> None:
-        dmod = _dmod()
+    def test_re_entering_designer_discards_the_snapshot(self) -> None:
+        """The wizard's Back button carried this and is gone (the status bar's
+        Project link is the way out now), so the discard moved to the route
+        back *in*: entering Designer from the project view starts it clean.
+
+        Without it, walking away from a failed draw and coming back would
+        resurrect an error the developer already left — and, once the picker
+        had armed it, re-fire the auto-retry with it.
+        """
+        from spec4.callbacks import on_agent_pill_click
+
         answered, _ = self._round_trip()
-        left, _ = dmod.on_designer_back(1, answered)
-        assert left["_designer_failed_draw"] is None
+        assert answered["_designer_failed_draw"] is not None
+        # Designer's own precondition, so the click routes rather than being
+        # refused: reaching the wizard at all means the vision is already there.
+        answered = {**answered, "vision_statement": {"vision": "v"}}
+        with patch("spec4.callbacks.ctx") as fake_ctx:
+            fake_ctx.triggered_id = {"type": "agent-pill", "agent": "designer"}
+            entered, path = on_agent_pill_click([1], answered)
+        assert path == "/design"
+        assert entered["_designer_failed_draw"] is None
 
     def test_a_clean_wizard_is_unaffected(self) -> None:
         from spec4.layouts.designer import designer_layout
@@ -2171,7 +2203,7 @@ class TestDesignerAutoRetry:
         ), patch(
             "spec4.llm_selection.probe_tool_support", return_value=tool_support
         ):
-            answered, _ = on_gate_continue(1, "gpt-5", opened)
+            answered, _ = on_gate_continue(1, "gpt-5", None, opened)
         return answered
 
     def test_choosing_arms_the_one_shot_trigger(self) -> None:
@@ -2282,6 +2314,10 @@ class TestStepFiveImageNotice:
 
     _BUF = {"tokens": 5, "progress": 3, "error": None}
     _STORE = {"step": 5, "screenshots": [], "refine_images": [], "mock_html": ""}
+    # The notice is a dimmed line rather than the orange alert it was; what is
+    # asserted is that it is said at all, so this is the fragment of it that
+    # survives a rewording of the rest.
+    _NOTICE = "takes no image input"
 
     def _render(self, session: dict[str, Any]) -> str:
         dmod = _dmod()
@@ -2306,10 +2342,10 @@ class TestStepFiveImageNotice:
         }
 
     def test_shown_for_an_image_less_model(self) -> None:
-        assert "does not support image input" in self._render(self._override(False))
+        assert self._NOTICE in self._render(self._override(False))
 
     def test_silent_for_a_capable_model(self) -> None:
-        assert "does not support image input" not in self._render(self._override(True))
+        assert self._NOTICE not in self._render(self._override(True))
 
     def test_silent_with_no_override(self) -> None:
-        assert "does not support image input" not in self._render({})
+        assert self._NOTICE not in self._render({})

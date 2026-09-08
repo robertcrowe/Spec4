@@ -1,10 +1,10 @@
 """The cost strip — what a round, or the run that just ended, has spent.
 
 Three dense lines, monospace, the same figures ``spec4-usage`` prints. Two
-surfaces draw it: the project view closes with the *round's* strip (the tree
-says what the round has produced, the agent table says what to do next, and
-this says what it has cost), and the chat frame puts *this run's* strip under
-the last message of a completed run.
+surfaces draw it: the project view puts the *round's* strip between the agent
+table and the tree (the table says what to run next, this says what the round
+has cost so far, and the tree says what it has produced), and the chat frame
+puts *this run's* strip under the last message of a completed run.
 
 They are one renderer, not two that agree. That is the mitigation the chat
 frame's "the completion cost strip fails to match the round-cost presentation"
@@ -312,7 +312,7 @@ def _cost_strip(lines: RoundCost, ids: CostStripIds, label: str) -> html.Section
 def _round_cost(
     working_dir: str | Path | None, round_number: int | None
 ) -> html.Section:
-    """The round-cost strip, closing the project view.
+    """The round-cost strip, between the agent rows and the tree (D-LR11).
 
     The first paint computes its own lines so the view is never briefly blank;
     ``on_round_cost`` recomputes them from disk on every render after that.

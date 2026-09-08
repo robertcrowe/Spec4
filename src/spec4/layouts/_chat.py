@@ -5,7 +5,7 @@ from typing import Any
 from dash import dcc, html
 import dash_mantine_components as dmc
 
-from spec4 import project_manager
+from spec4 import llm_selection, project_manager
 from spec4.app_constants import (
     AGENT_KEYS,
     STATE_AGENTIFIER_COMPLETE,
@@ -20,7 +20,17 @@ from spec4.layouts import _llm_gate
 from spec4.layouts._agent_rows import AGENT_DISPLAY_NAMES
 from spec4.layouts._round_cost import run_cost_strip
 from spec4.layouts._round_tree import PHASES_DIR
-from spec4.layouts._shared import PROGRESS_CLASS_NAMES, _render_message
+from spec4.layouts._shared import (
+    PROGRESS_CLASS_NAMES,
+    STEP_ACTIVE,
+    STEP_DONE,
+    STEP_UNREACHABLE,
+    STEP_UPCOMING,
+    StepEntry,
+    _render_message,
+    step_modifier_class,
+    step_row,
+)
 from spec4.session import _validate_agent_preconditions
 
 # The pipeline indicator's four states, as the modifier classes `v3.css`
@@ -30,10 +40,14 @@ from spec4.session import _validate_agent_preconditions
 # Every scrap of button chrome is stripped in the stylesheet, for the same
 # reason `.sb-dir` and the tree's lines strip theirs: these have to read as
 # seven plain labels, not as seven buttons.
+#
+# The names are derived from the shared renderer (D-LR9) rather than written
+# out, so the constant this module's tests assert against and the class the row
+# actually receives cannot come apart.
 _PILL_BASE = "pipeline-agent"
-_PILL_ACTIVE = "pipeline-agent--active"
-_PILL_DONE = "pipeline-agent--done"
-_PILL_UNREACHABLE = "pipeline-agent--unreachable"
+_PILL_ACTIVE = step_modifier_class(_PILL_BASE, STEP_ACTIVE)
+_PILL_DONE = step_modifier_class(_PILL_BASE, STEP_DONE)
+_PILL_UNREACHABLE = step_modifier_class(_PILL_BASE, STEP_UNREACHABLE)
 
 
 def _completed_agents(session: dict[str, Any]) -> dict[str, bool]:
@@ -80,31 +94,36 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
     active agent is a `<span>` because clicking it would navigate to where the
     developer already is; every other agent keeps the `agent-pill` pattern id
     it has always had, so routing is `on_agent_pill_click` untouched.
+
+    What is decided *here* is only which agent is in which state — the pipeline
+    order, whether each agent's artifact exists, and whether its preconditions
+    hold. The marking itself is `_shared.step_row` (D-LR9), shared with the
+    setup and Designer steppers, so this frame cannot be the only one whose
+    active mark or dimming is right.
     """
     active = session.get("active_agent", "brainstormer")
     done = _completed_agents(session)
-    items: list[Any] = []
+    entries: list[StepEntry] = []
     for key in AGENT_KEYS:
         label = AGENT_DISPLAY_NAMES[key]
         if key == active:
-            items.append(html.Span(label, className=f"{_PILL_BASE} {_PILL_ACTIVE}"))
+            entries.append(StepEntry(label, STEP_ACTIVE))
             continue
         blocked = _validate_agent_preconditions(key, session)
-        classes = [_PILL_BASE]
         if blocked is not None:
-            classes.append(_PILL_UNREACHABLE)
+            state = STEP_UNREACHABLE
         elif done.get(key):
-            classes.append(_PILL_DONE)
-        items.append(
-            html.Button(
+            state = STEP_DONE
+        else:
+            state = STEP_UPCOMING
+        entries.append(
+            StepEntry(
                 label,
+                state,
                 id={"type": "agent-pill", "agent": key},
-                n_clicks=0,
-                disabled=blocked is not None,
                 # Unchanged: the precondition message is the tooltip, and it is
                 # the only explanation a dimmed label carries.
-                title=blocked,
-                className=" ".join(classes),
+                tooltip=blocked,
             )
         )
     return html.Div(
@@ -119,7 +138,7 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
             # `mt` on the divider is what the retired Group's `mb` was doing:
             # `.pipeline` draws its own bottom rule, and without the gap the
             # two lines would sit 1px apart.
-            html.Div(items, className="pipeline"),
+            step_row(entries, base_class=_PILL_BASE, row_class="pipeline"),
             dmc.Divider(mt="sm", mb="md"),
         ]
     )
@@ -632,8 +651,25 @@ def _retry_panel(session: dict[str, Any]) -> Any | None:
     messages = session.get("messages") or []
     if not messages or messages[-1].get("role") != "assistant":
         return None
+    # The model the step ran on, which is also the model Try Again would run it
+    # on again — the fact that makes the choice between the two buttons a real
+    # one. Read through `llm_selection`, and printed by the one helper the
+    # status bar, the model chip and the agent rows print models with, so the
+    # panel cannot name the step's model differently from the bar above it.
+    agent = str(session.get("active_agent") or "")
+    ran_on = llm_selection.model_effort_display(
+        (llm_selection.resolve(session, agent) or {}).get("model"),
+        llm_selection.effort_for(session, agent),
+    )
     return dmc.Alert(
         [
+            dmc.Text(
+                ["Ran on ", html.Span(ran_on, className="mono"), "."],
+                size="sm",
+                mb="xs",
+            )
+            if ran_on
+            else html.Div(),
             dmc.Text(
                 "That request didn't complete. Nothing already saved is lost. "
                 "An overload or rate limit is usually temporary, so running "

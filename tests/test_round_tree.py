@@ -413,6 +413,31 @@ def _line_ids(tree: Any) -> set[str]:
     return found
 
 
+def _line_paths(tree: Any) -> list[str]:
+    """The path behind every line id, in document order.
+
+    ``_line_ids`` collects the same ids into a set, which is the right shape
+    for "is this file reachable" but says nothing about pipeline order — so
+    this walks children front to back and keeps the sequence.
+    """
+    found: list[str] = []
+
+    def walk(node: Any) -> None:
+        node_id = getattr(node, "id", None)
+        if isinstance(node_id, dict) and node_id.get("type") == LINE_TYPE:
+            found.append(node_id["index"])
+        children = getattr(node, "children", None)
+        if children is None:
+            return
+        if not isinstance(children, (list, tuple)):
+            children = [children]
+        for child in children:
+            walk(child)
+
+    walk(tree)
+    return found
+
+
 class TestRendering:
     def test_it_renders_its_ids(self, round_dir: pathlib.Path) -> None:
         assert {"round-tree", "round-tree-head", "round-tree-list"} <= _ids(
@@ -745,11 +770,34 @@ def _pill_agents(component: Any) -> set[str]:
     return found
 
 
-class TestItSitsFirstInTheProjectView:
-    def test_the_tree_is_the_first_element(self, round_dir: pathlib.Path) -> None:
+class TestItClosesTheProjectView:
+    def test_the_tree_is_the_last_of_the_three(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """D-LR11: the record is read after the controls, not before them.
+
+        The tree is no longer the first element — the alerts and the
+        change-provider group still follow it — so what is asserted is its
+        place among the three surfaces, not an absolute index.
+        """
         session = {**_default_session(), "working_dir": str(round_dir)}
         view = _agent_select_layout(session)
-        assert getattr(view.children[0], "id", None) == "round-tree"
+        ids = [getattr(child, "id", None) for child in view.children]
+        assert ids.index("round-tree") > ids.index("agent-rows")
+        assert ids.index("round-tree") > ids.index("round-cost")
+
+    def test_the_lines_are_still_in_pipeline_order(
+        self, round_dir: pathlib.Path
+    ) -> None:
+        """The reorder moved the block, not the lines inside it.
+
+        Expected order is taken from ``rendered_tree_lines`` — the same
+        derivation ``TestPipelineOrder`` checks against ``AGENT_KEYS`` — so a
+        pipeline change reorders both without editing this test.
+        """
+        session = {**_default_session(), "working_dir": str(round_dir)}
+        expected = [line.path for line in rendered_tree_lines(round_dir, 0)]
+        assert _line_paths(_agent_select_layout(session)) == expected
 
     def test_the_existing_project_view_ids_survive(
         self, round_dir: pathlib.Path

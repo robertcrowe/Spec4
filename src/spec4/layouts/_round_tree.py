@@ -1,9 +1,9 @@
 """The round tree — the current round's ``.spec4/v{N}/`` folder, as a list.
 
 One line per artifact, in pipeline order, each carrying a lane and a live
-status. It is the first thing on the project view because it answers the
-question the developer actually arrives with: what has this round produced,
-and what is out of date?
+status. It closes the project view (D-LR11): it is the round's record — what
+has this round produced, and what is out of date? — read after the controls
+that decide what to run next, not before them.
 
 Two rules hold this module together.
 

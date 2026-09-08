@@ -1204,7 +1204,15 @@ def summarize_usage(history: list[dict[str, Any]]) -> dict[str, Any]:
             rollup["computed_cost_usd"] = round(
                 (rollup["computed_cost_usd"] or 0.0) + cost, 8
             )
-        pair = {"model": call.get("model"), "provider": call.get("provider")}
+        # Effort joins the pair rather than getting a list of its own, so the
+        # "last entry is the run being reported" rule the agent rows rely on
+        # keeps model and effort together. A record written before the field
+        # existed reads as "default", which is also what an unset effort means.
+        pair = {
+            "model": call.get("model"),
+            "provider": call.get("provider"),
+            "effort": call.get("effort") or "default",
+        }
         if pair not in rollup["models"]:
             rollup["models"].append(pair)
     return rollup

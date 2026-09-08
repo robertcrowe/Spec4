@@ -577,7 +577,7 @@ class TestRetryWithADifferentModel:
         ) as gen, patch(
             "spec4.callbacks.streaming.start", return_value="sid"
         ):
-            answered, poll = on_gate_continue(1, "gpt-5", opened)
+            answered, poll = on_gate_continue(1, "gpt-5", None, opened)
         return {"session": answered, "poll": poll, "gen": gen}, answered
 
     def test_choosing_a_model_re_runs_the_step_at_once(self) -> None:
@@ -635,7 +635,7 @@ class TestRetryWithADifferentModel:
         with patch(
             "spec4.llm_selection.probe_image_support", return_value=True
         ), patch("spec4.llm_selection.probe_tool_support", return_value=False):
-            answered, poll = on_gate_continue(1, "gpt-5", opened)
+            answered, poll = on_gate_continue(1, "gpt-5", None, opened)
         assert answered["agent_llm"]["phaser"]["model"] == "gpt-5"
         assert answered.get("_stream_id") is None
         assert poll is no_update

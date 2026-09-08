@@ -1,15 +1,23 @@
 """The status bar — the app's whole header.
 
 A 40px monospace status line in place of the marketing header: wordmark, then
-the working directory, the round, and the default provider and model, then the
-four nav links and the running version. It is mounted once in the app shell
-(``app.layout``), so its ids are shell ids and its callback can never be
-half-rendered.
+the working directory, the round, and the provider and model — with the effort
+after the model when one is set — then the four nav links and the running
+version. It is mounted once in the app shell (``app.layout``), so its ids are
+shell ids and its callback can never be half-rendered.
 
 The four values are not baked in here. ``_status_bar`` renders the frame and
 its own empty state; the callback in ``spec4.callbacks`` fills the context line
 from the two browser stores every time either one changes, which is what stops
 the bar showing a stale directory after the developer switches projects.
+
+The provider and model slots describe the project default on every screen
+*except* the two that are about one agent — chat and Designer — where they
+describe that agent's own resolution. The bar's job is to say what the next
+turn will run on, and on those two screens the answer is the agent's override
+whenever it has one. It is one resolution path either way:
+``llm_selection.default_provider_model`` takes the agent key, and the no-op key
+it defaults to is the same one that reads the default.
 """
 
 from __future__ import annotations
@@ -18,7 +26,7 @@ from typing import Any
 
 from dash import dcc, html
 
-from spec4 import __version__
+from spec4 import __version__, llm_selection
 from spec4.app_constants import ROOT_PATH
 from spec4.layouts._shared import _sep
 
@@ -26,6 +34,13 @@ __all__ = [
     "ARTIFACTS_PATH",
     "NAV_ORDER",
     "NOT_CONNECTED",
+    "SLOT_CLASS",
+    "SLOT_CONNECTION",
+    "SLOT_MODEL",
+    "SLOT_PATH",
+    "SLOT_PROVIDER",
+    "SLOT_ROUND",
+    "SLOT_VERSION",
     "STATUS_BAR_HEIGHT",
     "STATUS_EMPTY",
     "_dir_field",
@@ -64,6 +79,40 @@ ARTIFACTS_PATH = "/artifacts"
 # exists inside a component tree is one a test has to reverse-engineer.
 NAV_ORDER: tuple[str, ...] = ("Project", "Artifacts", "Settings", "Docs")
 
+# D-LR10: the bar's five values are slots, and only the path one ever gives up
+# space.
+#
+# The bar used to ellipsise as a single line: `.sb-ctx` carried `overflow:
+# hidden` and `text-overflow: ellipsis`, so under width pressure the browser
+# cut whatever sat at the *end* of it — the model, then the provider, then the
+# round. Those three are short, fixed and the reason to look at the bar at all;
+# the working directory is the one field that is arbitrarily long and the one
+# whose middle nobody reads. So each value gets its own class here: everything
+# wearing `SLOT_CLASS` is `flex: none` in the stylesheet and cannot be
+# compressed, and `SLOT_PATH` alone is allowed to shrink.
+#
+# The path shortens from its *start*, because the project name is at the tail
+# and is the half a developer identifies the bar by. That is done in CSS rather
+# than by shortening the string in Python: how much room the path has is a
+# function of the viewport, which the server does not know, and a fixed
+# character budget computed here would either truncate a path that fitted or
+# fail to truncate one that did not. The rule is `direction: rtl` scoped to
+# this one slot — never to a parent, which would reverse the whole bar — and
+# the path text is wrapped in `<bdi>` so the segments still read left to right
+# (`/home/rcrowe/Spec4`, not `Spec4/rcrowe/home/`).
+SLOT_CLASS = "sb-slot"
+SLOT_PATH = "sb-slot--path"
+SLOT_ROUND = "sb-slot--round"
+SLOT_PROVIDER = "sb-slot--provider"
+SLOT_MODEL = "sb-slot--model"
+SLOT_CONNECTION = "sb-slot--connection"
+SLOT_VERSION = "sb-slot--version"
+
+
+def _slot(*names: str) -> str:
+    """``sb-slot sb-slot--round`` — the base class plus this slot's own."""
+    return " ".join((SLOT_CLASS, *names))
+
 
 def _dir_field(working_dir: str | None) -> Any:
     """The working directory field — a control, not a label.
@@ -82,13 +131,17 @@ def _dir_field(working_dir: str | None) -> Any:
     ``on_status_bar`` rather than as page content.
     """
     if not working_dir:
-        return html.Span(STATUS_EMPTY)
+        return html.Span(STATUS_EMPTY, className=_slot(SLOT_PATH))
     return html.Button(
-        working_dir,
+        # The `<bdi>` is load-bearing, not decoration: `.sb-slot--path` sets
+        # `direction: rtl` so the ellipsis lands at the front of the path
+        # (D-LR10), and without an isolated left-to-right run inside it the
+        # segments would render in reverse order.
+        html.Bdi(working_dir),
         id="btn-status-bar-dir",
         n_clicks=0,
         title="Change project directory",
-        className="sb-dir",
+        className=f"sb-dir {_slot(SLOT_PATH)}",
     )
 
 
@@ -98,6 +151,7 @@ def _status_context(
     provider: str | None,
     model: str | None,
     connected: bool,
+    effort: str = llm_selection.DEFAULT_EFFORT,
 ) -> list[Any]:
     """``dir · round vN · provider · model``, with each field's empty state.
 
@@ -113,19 +167,40 @@ def _status_context(
     ``llm_selection`` the same question an agent turn asks, and the answer, not
     the leftovers, decides what is drawn.
 
+    ``model`` and ``effort`` are *not* always the project default's. On the
+    chat and Designer routes the caller resolves them for the agent on screen,
+    so the bar names the model the next turn will actually run on rather than a
+    default that agent has overridden. ``connected`` stays scoped to the
+    default, because it answers a different question — whether this session
+    ever made a connection — and an override is not evidence of one.
+
+    The effort is rendered as a suffix on the model, and only when it is a real
+    level, by :func:`llm_selection.model_effort_display` — the same helper the
+    model chip, the retry panel, the agent rows and the gate's Keep button
+    call, so all five say the same thing about the same agent.
+
     The unfilled bar passes ``False``: a bar that has not yet been told
     anything must not imply a connection.
     """
     round_text = f"round v{round_number}" if round_number is not None else STATUS_EMPTY
     fields: list[Any] = [
         _dir_field(working_dir),
-        html.Span(round_text),
+        html.Span(round_text, className=_slot(SLOT_ROUND)),
     ]
     if connected:
-        fields.append(html.Span(provider or STATUS_EMPTY))
-        fields.append(html.Span(model or STATUS_EMPTY))
+        fields.append(
+            html.Span(provider or STATUS_EMPTY, className=_slot(SLOT_PROVIDER))
+        )
+        fields.append(
+            html.Span(
+                llm_selection.model_effort_display(model, effort) or STATUS_EMPTY,
+                className=_slot(SLOT_MODEL),
+            )
+        )
     else:
-        fields.append(html.Span(NOT_CONNECTED))
+        # One slot, not two, for the same reason it is one phrase: with no
+        # connection there is no provider and no model to hold apart.
+        fields.append(html.Span(NOT_CONNECTED, className=_slot(SLOT_CONNECTION)))
     children: list[Any] = []
     for index, field in enumerate(fields):
         if index:
@@ -207,7 +282,7 @@ def _status_bar() -> html.Div:
                     html.Span(
                         __version__,
                         id="status-bar-version",
-                        className="sb-version mono",
+                        className=f"sb-version mono {_slot(SLOT_VERSION)}",
                     ),
                 ],
                 className="sb-nav",

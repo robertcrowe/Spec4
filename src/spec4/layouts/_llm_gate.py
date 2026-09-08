@@ -17,7 +17,14 @@ already made and needs it offered back rather than re-entered:
   list and probe results, so there is no key to re-type and no probe to re-run.
 
 Expanding "pick" swaps in the same provider/key/model fields the setup wizard
-uses (``layouts._setup``), so the two cannot drift.
+uses (``layouts._setup``), including its Effort select, so the two cannot
+drift.
+
+Both resting shapes are one monospace line and one row of buttons. The line
+(:func:`naming_line`) names the agent and the model it would run on if the
+default were accepted; the row offers the two or three answers. It carries no
+heading of its own, on either surface — the line names the agent, which is why
+the Designer route no longer draws a separate title above it.
 """
 
 from __future__ import annotations
@@ -46,19 +53,41 @@ def agent_label(agent: str) -> str:
     return _AGENT_LABELS.get(agent, agent)
 
 
-def _describe(provider_key: str | None, model: str | None) -> str:
-    """"gpt-5-mini (OpenAI)" — or just the model when the provider is unknown."""
-    if not model:
-        return "no model selected"
-    info = providers.PROVIDERS.get(provider_key or "", {})
-    label = info.get("label")
-    return f"{model} ({label})" if label else str(model)
+# What the naming line prints where a model would be, before /setup has run.
+# The same em dash the status bar's empty slots use: on a fixed-width line a
+# blank reads as a rendering bug, and "no model selected" is a sentence in a
+# place that holds identifiers.
+_NO_MODEL = "—"
 
 
-def default_description(session: dict[str, Any]) -> str:
-    return _describe(session.get("provider"), (session.get("llm_config") or {}).get(
-        "model"
-    ) or session.get("model"))
+def naming_line(
+    session: dict[str, Any], prefs: dict[str, Any] | None, agent: str
+) -> Any:
+    """``Model for Phaser: claude-sonnet-5 · default`` — the panel's first line.
+
+    The whole of the gate's resting copy, in one monospace line naming the
+    agent and the model it would run on if the developer simply accepted the
+    default. It replaces a heading, two sentences of explanation and a button
+    label that repeated the model: the question the panel asks is *which
+    model*, and stating the answer on offer asks it.
+
+    The effort shows **always** here, ``· default`` included, and that is the
+    one place in the app where it does. Everywhere else a model is printed the
+    effort is a suffix that appears only when it is a real level
+    (:func:`llm_selection.model_effort_display`); here the line is a full
+    statement of the default rather than a label, and a line that dropped half
+    of it when nothing was overridden would leave the developer unable to tell
+    "no effort set" from "this panel does not mention effort".
+
+    Both resting shapes show the *default*, never the carried-forward
+    override — the override is named on the Keep button, which is the thing
+    that would act on it.
+    """
+    _, model, effort = llm_selection.default_provider_model(session, prefs or {})
+    return dmc.Text(
+        f"Model for {agent_label(agent)}: {model or _NO_MODEL} · {effort}",
+        className="mono",
+    )
 
 
 def is_open(session: dict[str, Any], agent: str) -> bool:
@@ -72,60 +101,57 @@ def _draft_for(session: dict[str, Any], agent: str) -> dict[str, Any] | None:
     return draft if isinstance(draft, dict) and draft.get("agent") == agent else None
 
 
-def _resting_card(session: dict[str, Any], agent: str) -> Any:
-    """The two- or three-button shape, depending on a carried-forward override."""
-    label = agent_label(agent)
+def _neutral(label: str, component_id: str) -> Any:
+    """A choice that is not the recommended one.
+
+    Outline in the neutral grey rather than the theme's own outline, which is
+    the accent drawn as a border and would put a second emphasis on the row.
+    ``gray`` is a semantic, not a colour decision — the accent is never named
+    here (D-LR2), and `tests/test_visual_register.py` polices the difference.
+    """
+    return dmc.Button(
+        label,
+        id=component_id,
+        variant="outline",
+        color="gray",
+        size="compact-sm",
+    )
+
+
+def _resting_card(
+    session: dict[str, Any], prefs: dict[str, Any] | None, agent: str
+) -> Any:
+    """The two- or three-button shape, depending on a carried-forward override.
+
+    Which buttons appear is unchanged and is still decided by one thing —
+    whether this agent has an override to be offered back. What changed is the
+    emphasis: **Use default** is the single filled action in both shapes, where
+    Keep used to take it. Accepting the default is the answer that costs
+    nothing and is right for six agents out of seven, and a row whose primary
+    moved depending on what the previous project happened to leave behind was
+    pointing at a different thing on each of the two screens it drew.
+    """
     override = llm_selection.entry(session, agent)
-    default_text = f"Use the default — {default_description(session)}"
+    use_default = dmc.Button(
+        "Use default", id="btn-agent-llm-default", size="compact-sm"
+    )
+    pick = _neutral("Pick a model", "btn-agent-llm-pick")
 
     if override is None:
-        return _card(
-            dmc.Text(f"Which model should {label} use?", size="lg", fw=600, mb="xs"),
-            dmc.Text(
-                "Every agent runs on your default unless you give it one of its "
-                "own. Sub-agents follow whichever you choose here.",
-                c="dimmed",
-                size="sm",
-                mb="md",
-            ),
-            dmc.Group(
-                [
-                    dmc.Button(default_text, id="btn-agent-llm-default"),
-                    dmc.Button(
-                        f"Pick a model for {label}",
-                        id="btn-agent-llm-pick",
-                        variant="outline",
-                    ),
-                ]
-            ),
+        buttons = [use_default, pick]
+    else:
+        kept = llm_selection.model_effort_display(
+            override.get("model"), llm_selection.effort_for(session, agent)
         )
+        buttons = [
+            _neutral(f"Keep {kept or 'it'}", "btn-agent-llm-keep"),
+            use_default,
+            pick,
+        ]
 
-    kept = _describe(override.get("provider"), override.get("model"))
     return _card(
-        dmc.Text(f"{label} used {kept} last time.", size="lg", fw=600, mb="xs"),
-        dmc.Text(
-            "Keeping it needs nothing re-entered — the key and model list came "
-            "with it.",
-            c="dimmed",
-            size="sm",
-            mb="md",
-        ),
-        dmc.Group(
-            [
-                dmc.Button(
-                    f"Keep {override.get('model') or 'it'}",
-                    id="btn-agent-llm-keep",
-                ),
-                dmc.Button(
-                    default_text, id="btn-agent-llm-default", variant="outline"
-                ),
-                dmc.Button(
-                    "Pick a different model",
-                    id="btn-agent-llm-pick",
-                    variant="subtle",
-                ),
-            ]
-        ),
+        naming_line(session, prefs, agent),
+        dmc.Group(buttons, gap="xs", mt="sm", className="btn-row"),
     )
 
 
@@ -155,7 +181,7 @@ def _pick_card(
         if api_key is None:
             api_key = llm_selection.key_for_provider(session, prefs, provider_key)
         return _card(
-            dmc.Text(f"Pick a model for {label}", size="lg", fw=600, mb="md"),
+            naming_line(session, prefs, agent),
             *provider_key_fields(
                 GATE_IDS,
                 provider_label=provider_label,
@@ -180,9 +206,21 @@ def _pick_card(
     current = draft.get("model")
     value = current if current in available else available[0]
     return _card(
-        dmc.Text(f"Pick a model for {label}", size="lg", fw=600, mb="md"),
-        dmc.Alert(f"Connected to {provider_label}", mb="md"),
-        model_field(GATE_IDS, available=available, value=value),
+        naming_line(session, prefs, agent),
+        # The connection is a fact, at the weight a fact gets — the same dimmed
+        # line the setup wizard's model step carries, not a framed alert
+        # (D-LR7).
+        dmc.Text(f"Connected to {provider_label}", className="dim-line", mb="xs"),
+        model_field(
+            GATE_IDS,
+            available=available,
+            value=value,
+            provider_key=provider_key,
+            # The draft's own effort once the gate writes one; until then the
+            # agent's current effort, through the same read path every other
+            # consumer uses.
+            effort=draft.get("effort") or llm_selection.effort_for(session, agent),
+        ),
         _error(error) if error else html.Div(),
         dmc.Group(
             [
@@ -205,7 +243,7 @@ def gate_card(
     """The gate in whichever state it is in, resting or expanded."""
     draft = _draft_for(session, agent)
     if draft is None:
-        return _resting_card(session, agent)
+        return _resting_card(session, prefs, agent)
     return _pick_card(session, prefs or {}, agent, draft)
 
 
@@ -223,15 +261,23 @@ def model_chip(session: dict[str, Any], agent: str) -> Any:
     answer on screen. A change made here applies from the next turn, which
     needs no machinery — the dispatch resolves per turn.
     """
-    override = llm_selection.entry(session, agent)
-    if override is not None:
-        name = str(override.get("model"))
-    else:
-        name = str((session.get("llm_config") or {}).get("model") or "—")
+    # Read, not re-derived. The chip used to pick the override's model or the
+    # session default's by hand, which was a second resolution path that could
+    # disagree with the one the turn actually uses; `resolve` and `effort_for`
+    # are the path, and the effort suffix comes off the same helper the status
+    # bar, the retry panel and the agent rows use.
+    config = llm_selection.resolve(session, agent) or {}
+    name = (
+        llm_selection.model_effort_display(
+            config.get("model"), llm_selection.effort_for(session, agent)
+        )
+        or _NO_MODEL
+    )
     # The model name is an identifier — `claude-sonnet-5`, `gpt-5-mini` — so it
-    # is monospace, like every other identifier the app prints. The words
-    # around it are prose and stay in the UI face; the class goes on the name
-    # alone rather than on the button, and carries no colour of its own.
+    # is monospace, like every other identifier the app prints, and so is the
+    # effort that qualifies it. The words around it are prose and stay in the
+    # UI face; the class goes on the name alone rather than on the button, and
+    # carries no colour of its own.
     return dmc.Button(
         ["Model: ", html.Span(name, className="mono"), " · Change"],
         id="btn-agent-llm-chip",

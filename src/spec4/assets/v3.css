@@ -77,25 +77,32 @@
 }
 
 /* ===== Transcript blocks =====
-   Blocks, not bubbles. Neither speaker's turn is filled or rounded: what
-   separates them is the dimmed one-word label above each and, on the user's,
-   a neutral left rule. `.chat-bubble-user` survives as the class name because
-   the auto-scroll callback in `app.py` selects on it — it is a JavaScript
-   contract wearing a CSS name, and `test_chat_transcript_blocks.py` pins it. */
+   Blocks, not bubbles. The agent's turn sits unfilled on the page; the user's
+   is set on the same dark grey as the composer (`--mantine-color-dark-6`, the
+   textarea's own fill), so what they typed reads as continuous with where
+   they typed it. Beyond that fill, what separates the turns is the dimmed
+   one-word label above each and the neutral left rule on the user's.
+   `.chat-bubble-user` survives as the class name because the auto-scroll
+   callback in `app.py` selects on it — it is a JavaScript contract wearing a
+   CSS name, and `test_chat_transcript_blocks.py` pins it. */
 .msg-row + .msg-row { margin-top: 16px; }
 
 .chat-msg.chat-bubble-user,
 .chat-msg.chat-bubble-assistant {
-  background: none !important;
   border: 0;
   border-radius: 0;
   padding: 0;
   width: 100%;
 }
 
+.chat-msg.chat-bubble-assistant {
+  background: none !important;
+}
+
 .chat-msg.chat-bubble-user {
+  background: var(--mantine-color-dark-6) !important;
   border-left: 2px solid #3a3a4a;
-  padding-left: 10px;
+  padding: 8px 10px;
 }
 
 .msg-label {
@@ -184,13 +191,68 @@ header[class*="AppShell-header"] {
   font-variant-ligatures: none;
 }
 
-/* The context line ellipsises rather than pushing the nav off screen — a deep
-   working directory is the normal case, not the exception. */
+/* The context line gives up space rather than pushing the nav off screen — a
+   deep working directory is the normal case, not the exception — but it gives
+   it up in one place only. It was a single ellipsising line, which meant the
+   browser cut whatever sat at its *end*: the model, then the provider, then
+   the round, all of them short and all of them the reason to look here. It is
+   now a flex row of slots, and the shrinking is decided per slot below
+   (D-LR10). `min-width: 0` is what lets the row be narrower than its content
+   at all — without it a flex item refuses to shrink past `min-content` and the
+   nav is pushed off instead. */
 .sb-ctx {
   color: #f5f5f7;
+  display: flex;
+  align-items: center;
+  min-width: 0;
   white-space: nowrap;
+  /* The line still clips, as it did when it was one ellipsising span — below
+     roughly 800px the path has given up everything it has and the fixed slots
+     are wider than what is left, and a line that overflowed instead would
+     paint the model across the nav. The padding/margin pair reopens the
+     vertical room the clip would otherwise take away, so `.sb-dir`'s focus
+     ring is still drawn in full. */
   overflow: hidden;
+  padding-block: 8px;
+  margin-block: -8px;
+}
+
+/* D-LR10: a slot holds its width. Stated on the class rather than on the four
+   individual slots so that a fifth one added later is fixed by default and has
+   to opt in to shrinking, which is the way round that cannot regress quietly.
+   The separators are not slots and are pinned by the child rule beneath. */
+.sb-slot {
+  flex: none;
+}
+
+.sb-ctx > * {
+  flex: none;
+}
+
+/* The one slot that ever gives up space, and the only place `direction: rtl`
+   appears in the app. Scoped to this element alone: on a parent it would
+   reverse the whole bar. In an RTL box the overflow — and so the ellipsis —
+   lands at the left edge, which is what puts the ellipsis at the *front* of
+   the path and leaves the project name at the tail readable. `text-align:
+   left` keeps a path that fits flush against the wordmark rather than drifting
+   to the right edge, which is where an RTL box would otherwise start it. */
+.sb-ctx > .sb-slot--path {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
   text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+/* The other half of the trick, and the half that is easy to leave out: the
+   path text is one isolated left-to-right run inside the RTL box, so the box
+   decides which *end* is clipped while the segments keep their order. Without
+   this `/home/rcrowe/Spec4` renders as `Spec4/rcrowe/home/`. */
+.sb-slot--path > bdi {
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 .sb-sep {
@@ -320,11 +382,36 @@ code, pre, kbd {
   border-radius: 8px;
 }
 
-/* Designer upload drop zone */
+/* ===== Designer upload zones =====
+   A drop target, drawn as the thing it is: a 1px dashed outline with one
+   dimmed line inside it. The 2px rounded box it replaces was the heaviest
+   edge on a screen whose other panels are 1px and square, which made an
+   optional control the loudest thing on the step. The border is the same
+   `#2a2a3a` every other rule in the app draws an edge with — dashed is what
+   says "drop here", not a colour of its own. */
 .designer-upload-zone {
-  border: 2px dashed var(--mantine-color-dark-4);
-  border-radius: 8px;
+  border: 1px dashed #2a2a3a;
+  padding: 12px;
+  text-align: center;
   cursor: pointer;
+}
+
+/* The one bit of feedback a drop target has to give: it is a control, and
+   nothing else on the step lights up under the pointer. A border step, not a
+   fill or a lift. */
+.designer-upload-zone:hover {
+  border-color: #3a3a4a;
+}
+
+/* ===== Project-view stack =====
+   Agent rows, then the round cost, then the round tree with its legend
+   (D-LR11). One gap declared once and taken by all three blocks, so the
+   reordered stack keeps the shell's rhythm and a future reorder cannot leave
+   two blocks tighter than the third. Spacing is the only separator between
+   them: each block already carries its own top rule or panel edge, and a
+   divider on top of that would read as a card. */
+:root {
+  --stack-gap: 16px;
 }
 
 /* ===== Round tree =====
@@ -339,8 +426,10 @@ code, pre, kbd {
   --lane-record: #b39ddb;
 }
 
+/* Closing the project view, so the margin is what holds the legend off
+   whatever follows rather than what separates the tree from the next block. */
 .round-tree {
-  margin-bottom: 16px;
+  margin-bottom: var(--stack-gap);
 }
 
 .round-tree .section-head {
@@ -450,15 +539,15 @@ code, pre, kbd {
 .swatch.lane-record { background: var(--lane-record); }
 
 /* ===== Agent rows =====
-   The seven pipeline agents as one dense table, directly beneath the tree.
-   32px rows against the tree's 24px lines: the rows carry a control, so they
-   need the height, and the difference is what separates the two blocks
-   without a rule between them. Every column is fixed-width and nowrap so the
-   action buttons line up down the right edge and a long model name cannot
-   ripple the table. */
+   The seven pipeline agents as one dense table, leading the project view
+   directly under the status bar. 32px rows against the tree's 24px lines: the
+   rows carry a control, so they need the height, and the difference is what
+   tells the two blocks apart at a glance without a rule between them. Every
+   column is fixed-width and nowrap so the action buttons line up down the
+   right edge and a long model name cannot ripple the table. */
 .agent-rows {
   display: block;
-  margin-bottom: 16px;
+  margin-bottom: var(--stack-gap);
 }
 
 .agents-table {
@@ -571,12 +660,15 @@ code, pre, kbd {
    needs an edge to read as a summary and not as a fourth kind of row. 24px
    lines match the tree's, which is what keeps the three blocks reading as one
    column. */
+/* On the project view the strip is the middle of the three blocks, so it takes
+   the same gap as the two around it; the chat frame's copy overrides the top
+   of that below. */
 .cost-strip {
   display: block;
   background: #12121c;
   border: 1px solid #2a2a3a;
   padding: 8px 12px;
-  margin-bottom: 16px;
+  margin-bottom: var(--stack-gap);
 }
 
 /* Figures never wrap. A narrow window ellipsises the tail of the unpriced
@@ -628,6 +720,196 @@ code, pre, kbd {
    carries. Motion is allowed here for the same reason. */
 .progress-stripe[data-striped] {
   background-image: linear-gradient(45deg, rgba(0, 0, 0, 0.35) 25%, transparent 25%, transparent 50%, rgba(0, 0, 0, 0.35) 50%, rgba(0, 0, 0, 0.35) 75%, transparent 75%, transparent); /* register-exception: the stripe is the live-activity signal, not chrome */
+}
+
+/* ===== Entry screens =====
+   The directory picker and the project-mode question, at the density of the
+   shell they open into. Two of these rules — the title and the dimmed line —
+   are the mock's general screen primitives rather than anything the picker
+   owns; they are declared here because these are the two screens that first
+   needed them, and any screen that grows a title later takes the same one
+   rather than a size of its own. */
+/* Both screens are narrower than the shell they open in. A path field spanning
+   1200px is a lot of runway for a line that is rarely a third of it, and a
+   two-line question stretched to the same width stops reading as a question at
+   all — these are the mock's narrow and inset widths, and they are the only
+   two screens in the app that take one, because they are the only two that ask
+   for a single thing rather than lay out a record. */
+.picker-view { max-width: 720px; }
+
+.mode-question { max-width: 560px; }
+
+.screen-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 24px;
+  color: #f5f5f7;
+  margin: 0 0 4px;
+}
+
+.dim-line {
+  color: #a0a0b0;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* The path is the field, so it takes the row and Up takes what it needs.
+   `min-width: 0` is what lets a deep path shrink instead of pushing the
+   button off the row — the same reason the status bar's context line has it. */
+.path-row { margin-top: 8px; }
+
+.path-row [class*="TextInput-root"] {
+  flex: 1;
+  min-width: 0;
+}
+
+/* One subdirectory per line, ruled top and bottom like the round tree's
+   listing. A grid of three columns read as a set of chips and made the eye
+   scan in two directions to find a name it already knew; a column of names is
+   what a directory listing looks like everywhere else the developer works. */
+.dir-list {
+  margin-top: 12px;
+  border-top: 1px solid #2a2a3a;
+  border-bottom: 1px solid #2a2a3a;
+}
+
+.dir-list-empty { margin-top: 12px; }
+
+/* A line, not a button: full width, left-aligned, square, and stripped of the
+   weight Mantine gives a control. The height is the mock's 28px row. */
+.dir-line {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 0;
+  color: #f5f5f7;
+  font-weight: 400;
+}
+
+.dir-line:hover { background: #12121c; }
+
+/* The truncation rule the single-column layout depends on. A long directory
+   name is the failure mode this screen has: wrapped, it doubles a 28px row and
+   breaks the rhythm of the column; overflowing, it runs under the edge of the
+   list. Ellipsised, it loses its tail and keeps the line. Both selectors are
+   needed — the label is the element with the text, and it cannot ellipsise
+   inside a flex parent that refuses to shrink. */
+.dir-line [class*="Button-inner"] {
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.dir-line [class*="Button-label"] {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The folder-creation option and the name it needs, on one row. The field is
+   bounded rather than greedy: a name is a word, and a text box the width of
+   the screen invites a path. */
+.create-row { margin-top: 12px; }
+
+.create-row [class*="TextInput-root"] {
+  flex: 1;
+  max-width: 260px;
+}
+
+.btn-row { margin-top: 12px; }
+
+.mode-choices { margin-top: 12px; }
+
+/* ===== Setup wizard =====
+   Three steps, each one short title and one panel of fields. It is the same
+   narrow measure the picker takes, and for the same reason: the wizard asks
+   for one thing at a time, and a provider select stretched across 1200px is a
+   control that has lost its label. */
+.setup-view { max-width: 720px; }
+
+/* The wizards' step indicators, marked by `_shared.step_row` (D-LR9) and drawn
+   here. Deliberately the pipeline row's rule, restated at the wizards' own
+   class names rather than shared with it: the chat frame's row spans the
+   header beside the model chip and these open a column of fields, so they
+   share *which* entry is marked and how, not their density. Everything that
+   carries meaning is identical, the accent included, because all three take it
+   from the theme primary.
+
+   One rule for both wizards, which is how the mock draws them: the setup
+   wizard's three steps and the Designer wizard's six are the same row in the
+   same frame, and a second copy of these declarations is how the two would end
+   up marking their active step differently. */
+.setup-steps,
+.designer-steps {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 32px;
+  min-width: 0;
+  border-bottom: 1px solid #2a2a3a;
+  margin-bottom: 12px;
+}
+
+/* Designer has six steps to the setup wizard's three, and two of them are two
+   words. They stay on one line: the row is a position report, and a stepper
+   that wraps to a second line stops being one. */
+.designer-steps {
+  gap: 12px;
+  overflow: hidden;
+}
+
+.setup-step,
+.designer-step {
+  font: inherit;
+  font-size: 13px;
+  color: #a0a0b0;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+  padding: 0 2px;
+  line-height: 30px;
+  white-space: nowrap;
+  /* A finished step is a report, not a route back — Back is the control that
+     goes there, and it is on the row below. So nothing in this row is
+     clickable and nothing in it invites a click. */
+  cursor: default;
+}
+
+.setup-step--done,
+.designer-step--done {
+  color: #f5f5f7;
+  font-weight: 500;
+}
+
+.setup-step--active,
+.designer-step--active {
+  color: var(--mantine-primary-color-filled);
+  border-bottom-color: var(--mantine-primary-color-filled);
+}
+
+.setup-step--unreachable,
+.setup-step:disabled,
+.designer-step--unreachable,
+.designer-step:disabled {
+  color: #5a5a6a;
+  cursor: not-allowed;
+}
+
+/* Model and effort are one decision, so they are one row: the model takes
+   whatever is left and the effort takes the width its four short words need.
+   `min-width: 0` is what lets a long model name ellipsise inside its select
+   instead of pushing the effort field off the row. */
+.model-effort-row { align-items: flex-end; }
+
+.model-effort-row .model-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.model-effort-row .effort-field {
+  flex: none;
+  width: 150px;
 }
 
 /* ===== Artifact view =====

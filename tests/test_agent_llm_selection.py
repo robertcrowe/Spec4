@@ -42,8 +42,16 @@ from spec4.session import _default_session, _get_agent_gen, _reset_for_new_proje
 
 _SRC = pathlib.Path(__file__).resolve().parents[1] / "src" / "spec4"
 
-_DEFAULT_CONFIG = {"model": "claude-sonnet-4-6", "api_key": "default-key"}
-_OVERRIDE_CONFIG = {"model": "gpt-5-mini", "api_key": "override-key"}
+_DEFAULT_CONFIG = {
+    "model": "claude-sonnet-4-6",
+    "api_key": "default-key",
+    "effort": "default",
+}
+_OVERRIDE_CONFIG = {
+    "model": "gpt-5-mini",
+    "api_key": "override-key",
+    "effort": "default",
+}
 
 
 def _session(**extra: Any) -> dict[str, Any]:
@@ -86,7 +94,11 @@ class TestAgentKeys:
 class TestBuildLlmConfig:
     def test_plain_provider_carries_key_and_model(self) -> None:
         cfg = llm_selection.build_llm_config("openai", "gpt-5-mini", "sk-abc")
-        assert cfg == {"model": "gpt-5-mini", "api_key": "sk-abc"}
+        assert cfg == {
+            "model": "gpt-5-mini",
+            "api_key": "sk-abc",
+            "effort": "default",
+        }
 
     def test_registry_api_base_is_applied(self) -> None:
         cfg = llm_selection.build_llm_config("nebius", "openai/x", "k")
@@ -175,6 +187,171 @@ class TestResolve:
     def test_unconfigured_session_still_yields_none(self) -> None:
         """Preserves the pre-change failure mode rather than inventing a config."""
         assert llm_selection.resolve(_default_session(), "phaser") is None
+
+
+class TestEffortResolution:
+    """Effort resolves by the same route the model does, not a parallel one."""
+
+    def test_an_explicit_effort_resolves_to_that_effort(self) -> None:
+        session = _with_override(
+            "phaser", llm_config={**_OVERRIDE_CONFIG, "effort": "high"}
+        )
+        assert llm_selection.effort_for(session, "phaser") == "high"
+
+    def test_an_agent_on_the_default_inherits_the_defaults_effort(self) -> None:
+        session = _session(llm_config={**_DEFAULT_CONFIG, "effort": "medium"})
+        assert llm_selection.effort_for(session, "phaser") == "medium"
+
+    def test_an_override_does_not_change_another_agents_effort(self) -> None:
+        session = _with_override(
+            "code_scanner", llm_config={**_OVERRIDE_CONFIG, "effort": "low"}
+        )
+        session["llm_config"] = {**_DEFAULT_CONFIG, "effort": "high"}
+        assert llm_selection.effort_for(session, "code_scanner") == "low"
+        assert llm_selection.effort_for(session, "phaser") == "high"
+
+    def test_a_config_written_before_the_field_existed_reads_as_default(self) -> None:
+        session = _session(llm_config={"model": "m", "api_key": "k"})
+        assert llm_selection.effort_for(session, "phaser") == "default"
+
+    def test_an_unconfigured_session_reads_as_default(self) -> None:
+        assert llm_selection.effort_for(_default_session(), "phaser") == "default"
+
+    def test_effort_travels_inside_the_resolved_config(self) -> None:
+        """What makes sub-agent inheritance free: it rides the object itself."""
+        session = _session(llm_config={**_DEFAULT_CONFIG, "effort": "high"})
+        assert (llm_selection.resolve(session, "phaser") or {})["effort"] == "high"
+
+    def test_the_builder_stores_effort_beside_the_model(self) -> None:
+        cfg = llm_selection.build_llm_config("openai", "gpt-5", "sk", "xhigh")
+        assert cfg["model"] == "gpt-5"
+        assert cfg["effort"] == "xhigh"
+
+    def test_the_builder_defaults_to_default(self) -> None:
+        cfg = llm_selection.build_llm_config("openai", "gpt-5", "sk")
+        assert cfg["effort"] == "default"
+
+
+class TestSubAgentsInheritTheParentsEffort:
+    """Instruction: one inheritance rule, not two.
+
+    A sub-agent receives its parent's resolved ``llm_config`` as an argument
+    and never consults the session, so the effort inside that dict reaches it
+    by exactly the mechanism the model does.
+    """
+
+    def test_the_agents_generator_receives_the_parents_effort(self) -> None:
+        session = _with_override(
+            "brainstormer", llm_config={"model": "gpt-5-mini", "effort": "high"}
+        )
+        session["active_agent"] = "brainstormer"
+        with patch("spec4.session.brainstormer.run") as run:
+            run.return_value = iter(())
+            _get_agent_gen(None, session)
+        assert run.call_args[0][2] == {"model": "gpt-5-mini", "effort": "high"}
+
+    def test_an_agent_without_an_override_receives_the_default_effort(self) -> None:
+        session = _with_override("brainstormer")
+        session["llm_config"] = {**_DEFAULT_CONFIG, "effort": "medium"}
+        session["active_agent"] = "phaser"
+        with patch("spec4.session.phaser.run") as run:
+            run.return_value = iter(())
+            _get_agent_gen(None, session)
+        assert run.call_args[0][2]["effort"] == "medium"
+
+
+class TestOfferedEfforts:
+    """The offered values come from the base list plus the provider table.
+
+    D-EF2: the probe is asked only whether the parameter is accepted. It is
+    never a source of which levels a model takes, because LiteLLM does not
+    report that.
+    """
+
+    def _offered(self, provider: str, supported: bool | None = True) -> list[str]:
+        with patch(
+            "spec4.llm_selection.supports_reasoning_effort", return_value=supported
+        ):
+            return llm_selection.offered_efforts(provider, "some-model")
+
+    def test_an_unseeded_provider_offers_exactly_the_base_four(self) -> None:
+        for provider in ("gemini", "mistral", "cohere", "bedrock", "openrouter"):
+            assert self._offered(provider) == ["default", "low", "medium", "high"]
+
+    def test_anthropic_additionally_offers_max(self) -> None:
+        assert self._offered("anthropic") == [
+            "default",
+            "low",
+            "medium",
+            "high",
+            "max",
+        ]
+
+    def test_openai_additionally_offers_xhigh(self) -> None:
+        assert self._offered("openai") == [
+            "default",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+        ]
+
+    def test_an_unanswerable_probe_falls_back_to_the_base_four(self) -> None:
+        """Never raises and never returns an empty list."""
+        assert self._offered("anthropic", None) == [
+            "default",
+            "low",
+            "medium",
+            "high",
+        ]
+
+    def test_a_model_that_does_not_accept_the_parameter_offers_only_default(
+        self,
+    ) -> None:
+        """False is not unknown — this is what disables the select downstream."""
+        assert self._offered("anthropic", False) == ["default"]
+
+    def test_an_unknown_provider_offers_the_base_four(self) -> None:
+        assert self._offered("no-such-provider") == [
+            "default",
+            "low",
+            "medium",
+            "high",
+        ]
+
+    def test_a_missing_provider_offers_the_base_four(self) -> None:
+        with patch(
+            "spec4.llm_selection.supports_reasoning_effort", return_value=True
+        ):
+            assert llm_selection.offered_efforts(None, "m") == [
+                "default",
+                "low",
+                "medium",
+                "high",
+            ]
+
+    def test_the_probe_is_never_asked_which_levels_are_accepted(self) -> None:
+        """A probe that reports levels must not widen what is offered."""
+        with patch(
+            "spec4.llm_selection.supports_reasoning_effort", return_value=True
+        ):
+            offered = llm_selection.offered_efforts("gemini", "m")
+        assert offered == ["default", "low", "medium", "high"]
+
+    def test_the_table_is_seeded_with_exactly_two_providers(self) -> None:
+        assert llm_selection.PROVIDER_EXTRA_EFFORTS == {
+            "anthropic": ("max",),
+            "openai": ("xhigh",),
+        }
+
+    def test_default_is_always_offered_first(self) -> None:
+        for provider, supported in (
+            ("anthropic", True),
+            ("openai", True),
+            ("gemini", None),
+            ("cohere", False),
+        ):
+            assert self._offered(provider, supported)[0] == "default"
 
 
 class TestCapability:
@@ -274,7 +451,9 @@ class TestOverridesSurviveTheDefaultChanging:
         with patch(
             "spec4.llm_selection.probe_image_support", return_value=True
         ), patch("spec4.llm_selection.probe_tool_support", return_value=True):
-            updated, _, _, _, _ = on_setup_model_continue(1, "gpt-5", connected, {})
+            updated, _, _, _, _ = on_setup_model_continue(
+                1, "gpt-5", "default", connected, {}
+            )
 
         assert updated["agent_llm"] == before
         assert updated["agent_llm_asked"] == {"code_scanner": True, "phaser": True}
@@ -472,9 +651,13 @@ class TestGateAnswers:
         with patch(
             "spec4.llm_selection.probe_image_support", return_value=True
         ), patch("spec4.llm_selection.probe_tool_support", return_value=False):
-            updated, _ = on_gate_continue(1, "gpt-5-mini", session)
+            updated, _ = on_gate_continue(1, "gpt-5-mini", None, session)
         entry = updated["agent_llm"]["code_scanner"]
-        assert entry["llm_config"] == {"model": "gpt-5-mini", "api_key": "sk-override"}
+        assert entry["llm_config"] == {
+            "model": "gpt-5-mini",
+            "api_key": "sk-override",
+            "effort": "default",
+        }
         assert entry["image_support"] is True
         assert entry["tool_support"] is False
         assert updated["agent_llm_asked"]["code_scanner"] is True
@@ -553,7 +736,7 @@ class TestGateFailureParity:
         with patch(
             "spec4.llm_selection.probe_image_support", side_effect=RuntimeError
         ), patch("spec4.llm_selection.probe_tool_support", side_effect=RuntimeError):
-            updated, _ = on_gate_continue(1, "gpt-5-mini", session)
+            updated, _ = on_gate_continue(1, "gpt-5-mini", None, session)
         entry = updated["agent_llm"]["code_scanner"]
         assert entry["image_support"] is None
         assert entry["tool_support"] is None
@@ -781,7 +964,7 @@ class TestPerAgentCapabilityReachesTheDesigner:
             "spec4.llm_selection.probe_tool_support", return_value=False
         ) as tool:
             after, _ = on_gate_continue(
-                1, "openrouter/deepseek/deepseek-v4-flash", session
+                1, "openrouter/deepseek/deepseek-v4-flash", None, session
             )
         image.assert_called_once()
         tool.assert_called_once()
@@ -1086,3 +1269,446 @@ class TestIsConnected:
             assert llm_selection.is_connected(session, "phaser") == bool(
                 resolved.get("model")
             )
+
+
+# ---------------------------------------------------------------------------
+# The gate panel's register
+# ---------------------------------------------------------------------------
+#
+# The panel is one monospace naming line and one row of buttons, in both
+# resting shapes and at both render sites. What follows pins the shape, the
+# single primary, the unchanged ids, and the inheritance of the setup wizard's
+# fields — the four things the rework could quietly lose.
+
+
+def _walk(component: Any) -> list[Any]:
+    """Every component in the tree, the root included, depth first."""
+    found = [component]
+    children = getattr(component, "children", None)
+    if children is None:
+        return found
+    if not isinstance(children, (list, tuple)):
+        children = [children]
+    for child in children:
+        if isinstance(child, str):
+            continue
+        found.extend(_walk(child))
+    return found
+
+
+def _classes(node: Any) -> set[str]:
+    return set((getattr(node, "className", "") or "").split())
+
+
+def _buttons(component: Any) -> list[Any]:
+    """The card's buttons, in render order."""
+    return [n for n in _walk(component) if type(n).__name__ == "Button"]
+
+
+def _first_line(card: Any) -> Any:
+    """The panel's first rendered line — the naming line, or nothing."""
+    for node in _walk(card):
+        if type(node).__name__ == "Text" and "mono" in _classes(node):
+            return node
+    return None
+
+
+def _mono_text(component: Any) -> str:
+    """The one monospace run under a component. Fails loudly if there isn't one."""
+    mono = [n for n in _walk(component) if _classes(n) == {"mono"}]
+    assert len(mono) == 1, f"expected one mono run, got {len(mono)}"
+    return str(mono[0].children)
+
+
+_GATE_BUTTON_IDS = {
+    "btn-agent-llm-default",
+    "btn-agent-llm-pick",
+    "btn-agent-llm-keep",
+    "btn-agent-llm-back",
+    "btn-agent-llm-connect",
+    "btn-agent-llm-continue",
+    "btn-agent-llm-chip",
+}
+
+
+class TestGateNamingLine:
+    """Instruction 2/13: one mono line naming the agent and the default."""
+
+    def test_the_no_entry_shape_names_the_agent_and_the_default(self) -> None:
+        line = _first_line(gate_card(_session(), {}, "phaser"))
+        assert line is not None
+        assert line.children == "Model for Phaser: claude-sonnet-4-6 · default"
+
+    def test_the_entry_present_shape_names_the_same_default(self) -> None:
+        """Both shapes state the default. The override is on the Keep button —
+        the panel names what accepting the default would give you, and the
+        button names what keeping the old answer would."""
+        line = _first_line(gate_card(_with_override("phaser"), {}, "phaser"))
+        assert line is not None
+        assert line.children == "Model for Phaser: claude-sonnet-4-6 · default"
+
+    def test_the_line_is_monospace(self) -> None:
+        for session in (_session(), _with_override("phaser")):
+            assert "mono" in _classes(_first_line(gate_card(session, {}, "phaser")))
+
+    def test_it_is_the_first_thing_in_the_panel(self) -> None:
+        """A naming line under the buttons would not be a naming line."""
+        card = gate_card(_session(), {}, "phaser")
+        nodes = _walk(card)
+        assert nodes.index(_first_line(card)) < nodes.index(_buttons(card)[0])
+
+    def test_the_effort_shows_even_when_it_is_the_default(self) -> None:
+        """The one place in the app that prints `· default`.
+
+        Everywhere else the suffix is suppressed; here the line is a full
+        statement of the default, and dropping half of it would leave "no
+        effort set" and "this panel does not mention effort" looking alike.
+        """
+        session = _session(llm_config={**_DEFAULT_CONFIG, "effort": "high"})
+        assert _first_line(gate_card(session, {}, "phaser")).children.endswith("· high")
+        assert _first_line(gate_card(_session(), {}, "phaser")).children.endswith(
+            "· default"
+        )
+
+    def test_no_model_yet_renders_an_em_dash_not_a_blank(self) -> None:
+        session = _session(llm_config=None, model=None)
+        assert _first_line(gate_card(session, {}, "phaser")).children == (
+            "Model for Phaser: — · default"
+        )
+
+
+class TestGateButtonEmphasis:
+    """Instruction 3/14: one filled primary, the rest neutral outlines."""
+
+    def _emphasis(self, card: Any) -> tuple[list[str], list[str]]:
+        filled, neutral = [], []
+        for button in _buttons(card):
+            if getattr(button, "variant", None) is None:
+                filled.append(button.id)
+            else:
+                assert button.variant == "outline", button.id
+                assert button.color == "gray", button.id
+                neutral.append(button.id)
+        return filled, neutral
+
+    def test_the_no_entry_shape_has_one_primary(self) -> None:
+        filled, neutral = self._emphasis(gate_card(_session(), {}, "code_scanner"))
+        assert filled == ["btn-agent-llm-default"]
+        assert neutral == ["btn-agent-llm-pick"]
+
+    def test_the_entry_present_shape_has_one_primary_too(self) -> None:
+        """Use default takes the emphasis in both shapes — it used to be Keep
+        in this one, which moved the primary depending on what the previous
+        project happened to leave behind."""
+        card = gate_card(_with_override("code_scanner"), {}, "code_scanner")
+        filled, neutral = self._emphasis(card)
+        assert filled == ["btn-agent-llm-default"]
+        assert neutral == ["btn-agent-llm-keep", "btn-agent-llm-pick"]
+
+    def test_the_button_labels_are_the_register_s(self) -> None:
+        card = gate_card(_with_override("code_scanner"), {}, "code_scanner")
+        labels = {b.id: b.children for b in _buttons(card)}
+        assert labels["btn-agent-llm-default"] == "Use default"
+        assert labels["btn-agent-llm-pick"] == "Pick a model"
+
+    def test_no_gate_component_names_a_colour_beyond_neutral(self) -> None:
+        """D-LR2: the accent is the theme primary and is never named."""
+        for session in (_session(), _with_override("code_scanner")):
+            for node in _walk(gate_card(session, {}, "code_scanner")):
+                colour = getattr(node, "color", None)
+                assert colour in (None, "gray"), (type(node).__name__, colour)
+
+    def test_the_button_ids_are_unchanged(self) -> None:
+        """A test contract: the callbacks are wired to these exact strings."""
+        from spec4.layouts._setup import GATE_IDS
+
+        seen = set()
+        for session in (_session(), _with_override("code_scanner")):
+            seen |= {b.id for b in _buttons(gate_card(session, {}, "code_scanner"))}
+        assert seen == {
+            "btn-agent-llm-default",
+            "btn-agent-llm-pick",
+            "btn-agent-llm-keep",
+        }
+        assert seen <= _GATE_BUTTON_IDS
+        assert GATE_IDS == {
+            "provider": "agent-llm-provider",
+            "api_key": "agent-llm-api-key",
+            "hint": "agent-llm-api-key-hint",
+            "model": "agent-llm-model",
+            "effort": "agent-llm-effort",
+        }
+
+
+class TestGateRenderSites:
+    """Instruction 8/15: one component, two sites, no route-specific variant."""
+
+    def _designer_session(self) -> dict[str, Any]:
+        return _session(phase="designer", active_agent="designer")
+
+    def test_the_designer_route_has_no_agent_name_heading(self) -> None:
+        """The naming line names the agent; a Title over it said so twice."""
+        layout = designer_layout(self._designer_session(), {})
+        assert not [n for n in _walk(layout) if type(n).__name__ == "Title"]
+        headings = [
+            n.children
+            for n in _walk(layout)
+            if type(n).__name__ in {"Title", "H1", "H2", "H3"}
+        ]
+        assert headings == []
+
+    def test_the_designer_route_still_names_the_agent(self) -> None:
+        line = _first_line(designer_layout(self._designer_session(), {}))
+        assert line.children.startswith("Model for Designer: ")
+
+    def test_both_sites_render_the_same_component(self) -> None:
+        session = self._designer_session()
+        expected = gate_card(session, {}, "designer")
+        assert str(designer_layout(session, {})).count(str(expected)) == 1
+
+        chat = _session(phase="chat", active_agent="code_scanner")
+        assert (
+            str(_chat_layout(chat, {})).count(str(gate_card(chat, {}, "code_scanner")))
+            == 1
+        )
+
+
+class TestGateInheritsTheWizardFields:
+    """Instruction 5/16: the expanded gate is the wizard's own fields."""
+
+    def _expanded(self) -> dict[str, Any]:
+        session = _with_override("code_scanner")
+        session["active_agent"] = "code_scanner"
+        return on_gate_pick(1, session)
+
+    def test_expanding_renders_the_shared_builders_output(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Not a copy: replace the builders and every field disappears."""
+        import spec4.layouts._llm_gate as gate_module
+        from dash import html as dash_html
+        from spec4.layouts._setup import GATE_IDS
+
+        session = self._expanded()
+        before = {
+            n.id
+            for n in _walk(gate_card(session, {}, "code_scanner"))
+            if getattr(n, "id", None)
+        }
+        assert {GATE_IDS["model"], GATE_IDS["effort"]} <= before
+
+        monkeypatch.setattr(gate_module, "model_field", lambda *a, **k: dash_html.Div())
+        monkeypatch.setattr(
+            gate_module, "provider_key_fields", lambda *a, **k: [dash_html.Div()]
+        )
+        after = {
+            n.id
+            for n in _walk(gate_card(session, {}, "code_scanner"))
+            if getattr(n, "id", None)
+        }
+        assert not {GATE_IDS["model"], GATE_IDS["effort"]} & after
+
+    def test_the_effort_select_is_the_wizard_s(self) -> None:
+        from spec4.layouts._setup import GATE_IDS, model_field, provider_key_fields
+        import spec4.layouts._llm_gate as gate_module
+
+        assert gate_module.model_field is model_field
+        assert gate_module.provider_key_fields is provider_key_fields
+        effort = _find(
+            gate_card(self._expanded(), {}, "code_scanner"), GATE_IDS["effort"]
+        )
+        assert effort is not None
+        assert llm_selection.DEFAULT_EFFORT in effort.data
+
+
+class TestGateWritesTheEffort:
+    """Instruction 6/17: one write path, and four surfaces that agree."""
+
+    def _commit(self, effort: Any) -> dict[str, Any]:
+        session = _session(active_agent="code_scanner", phase="chat")
+        session["agent_llm_draft"] = {
+            "agent": "code_scanner",
+            "provider": "openai",
+            "api_key": "sk-override",
+            "available_models": ["gpt-5-mini"],
+        }
+        with (
+            patch("spec4.llm_selection.probe_image_support", return_value=True),
+            patch("spec4.llm_selection.probe_tool_support", return_value=True),
+        ):
+            updated, _ = on_gate_continue(1, "gpt-5-mini", effort, session)
+        return dict(updated)
+
+    def test_the_chosen_effort_lands_on_the_per_agent_entry(self) -> None:
+        entry = self._commit("high")["agent_llm"]["code_scanner"]
+        assert entry["effort"] == "high"
+        assert entry["llm_config"]["effort"] == "high"
+
+    def test_it_is_read_back_through_the_one_path(self) -> None:
+        session = self._commit("high")
+        assert llm_selection.effort_for(session, "code_scanner") == "high"
+        assert llm_selection.effort_for(session, "phaser") == "default"
+
+    def test_the_default_is_untouched_by_it(self) -> None:
+        session = self._commit("high")
+        assert session["llm_config"] == _DEFAULT_CONFIG
+        assert session.get("effort") in (None, "default")
+
+    def _surfaces(self, session: dict[str, Any]) -> dict[str, str]:
+        """What the bar, the chip and the retry panel say about this agent."""
+        from spec4.layouts._chat import _retry_panel
+        from spec4.layouts._status_bar import SLOT_MODEL
+        from spec4.callbacks import on_status_bar
+
+        failed = {
+            **session,
+            "_stream_error": "boom",
+            "_stream_id": None,
+            "messages": [{"role": "assistant", "content": "…"}],
+        }
+        context, *_ = on_status_bar(failed, {})
+        slot = next(n for n in context if SLOT_MODEL in _classes(n))
+        return {
+            "status bar": str(slot.children),
+            "model chip": _mono_text(model_chip(failed, "code_scanner")),
+            "retry panel": _mono_text(_retry_panel(failed)),
+        }
+
+    def test_all_three_surfaces_render_the_same_string(self) -> None:
+        """The four-surfaces-agree assertion the risk assessment asks for,
+        made against an agent with an override so it proves the bar follows
+        the override rather than merely matching the default."""
+        said = self._surfaces(self._commit("high"))
+        assert set(said.values()) == {"gpt-5-mini · high"}, said
+
+    def test_a_default_effort_shows_no_suffix_anywhere(self) -> None:
+        said = self._surfaces(self._commit("default"))
+        assert set(said.values()) == {"gpt-5-mini"}, said
+
+    def test_the_bar_falls_back_to_the_default_off_those_screens(self) -> None:
+        """The scope rule: chat and Designer are about one agent, the project
+        view is not."""
+        from spec4.layouts._status_bar import SLOT_MODEL
+        from spec4.callbacks import on_status_bar
+
+        session = {**self._commit("high"), "phase": "agent_select"}
+        context, *_ = on_status_bar(session, {})
+        slot = next(n for n in context if SLOT_MODEL in _classes(n))
+        assert slot.children == "claude-sonnet-4-6"
+
+
+class TestKeepButtonLabel:
+    """Instruction 4/18: the Keep label carries the effort it would keep."""
+
+    def _keep_label(self, **entry: Any) -> str:
+        session = _with_override("code_scanner", **entry)
+        card = gate_card(session, {}, "code_scanner")
+        return str(_find(card, "btn-agent-llm-keep").children)
+
+    def test_an_overridden_effort_is_named(self) -> None:
+        assert (
+            self._keep_label(
+                effort="high", llm_config={**_OVERRIDE_CONFIG, "effort": "high"}
+            )
+            == "Keep gpt-5-mini · high"
+        )
+
+    def test_a_default_effort_shows_the_model_alone(self) -> None:
+        assert self._keep_label() == "Keep gpt-5-mini"
+
+    def test_it_uses_the_same_helper_as_every_other_surface(self) -> None:
+        session = _with_override(
+            "code_scanner",
+            effort="low",
+            llm_config={**_OVERRIDE_CONFIG, "effort": "low"},
+        )
+        expected = llm_selection.model_effort_display("gpt-5-mini", "low")
+        card = gate_card(session, {}, "code_scanner")
+        assert _find(card, "btn-agent-llm-keep").children == f"Keep {expected}"
+        assert _mono_text(model_chip(session, "code_scanner")) == expected
+
+
+class TestModelEffortDisplay:
+    """The one formatting rule, at its own level."""
+
+    def test_a_real_level_is_suffixed(self) -> None:
+        assert llm_selection.model_effort_display("gpt-5", "high") == "gpt-5 · high"
+
+    def test_the_default_is_not_a_level(self) -> None:
+        assert llm_selection.model_effort_display("gpt-5", "default") == "gpt-5"
+        assert llm_selection.model_effort_display("gpt-5", None) == "gpt-5"
+
+    def test_a_blank_model_stays_blank(self) -> None:
+        """An agent that has not run must not sprout a lone effort."""
+        assert llm_selection.model_effort_display("", "high") == ""
+        assert llm_selection.model_effort_display(None, "high") == ""
+
+    def test_a_recorded_fallback_still_shows(self) -> None:
+        """`llm` records "default (fallback from high)" when a provider refuses
+        a level. It is not "default", and a level that was asked for and
+        refused is worth seeing."""
+        assert (
+            llm_selection.model_effort_display("gpt-5", "default (fallback from high)")
+            == "gpt-5 · default (fallback from high)"
+        )
+
+
+class TestGateEffortOptions:
+    """The gate's twin of the wizard's re-offer, keyed on the draft provider."""
+
+    def _call(self, model: str, effort: str, **draft: Any) -> Any:
+        from spec4.callbacks import on_gate_effort_options
+
+        session = _session(active_agent="code_scanner")
+        session["agent_llm_draft"] = {"agent": "code_scanner", **draft}
+        return on_gate_effort_options(model, effort, session)
+
+    def test_it_offers_what_the_resolved_model_supports(self) -> None:
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=True):
+            offered, value, disabled = self._call("gpt-5", "high", provider="openai")
+        assert offered == [*llm_selection.BASE_EFFORTS, "xhigh"]
+        assert (value, disabled) == ("high", False)
+
+    def test_it_keys_on_the_draft_provider_not_the_default_s(self) -> None:
+        """D-EF4: the levels belong to the provider the override will use.
+
+        The session default here is Anthropic, whose extra level is "max";
+        the draft is OpenAI, whose extra level is "xhigh".
+        """
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=True):
+            offered, *_ = self._call("gpt-5", "default", provider="openai")
+        assert "xhigh" in offered and "max" not in offered
+
+    def test_a_level_the_new_model_lacks_falls_back_to_default(self) -> None:
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=True):
+            _, value, _ = self._call("gpt-5", "max", provider="openai")
+        assert value == llm_selection.DEFAULT_EFFORT
+
+    def test_a_model_that_refuses_the_parameter_disables_the_control(self) -> None:
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=False):
+            offered, value, disabled = self._call(
+                "some-model", "high", provider="openai"
+            )
+        assert offered == [llm_selection.DEFAULT_EFFORT]
+        assert (value, disabled) == (llm_selection.DEFAULT_EFFORT, True)
+
+    def test_it_is_the_same_function_the_layout_builds_the_control_with(
+        self,
+    ) -> None:
+        from spec4.layouts._setup import GATE_IDS, model_field
+
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=True):
+            offered, value, disabled = self._call("gpt-5", "high", provider="openai")
+            row = model_field(
+                GATE_IDS,
+                available=["gpt-5"],
+                value="gpt-5",
+                provider_key="openai",
+                effort="high",
+            )
+        select = _find(row, GATE_IDS["effort"])
+        assert (select.data, select.value, select.disabled) == (
+            offered,
+            value,
+            disabled,
+        )

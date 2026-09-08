@@ -47,6 +47,7 @@ __all__ = [
     "search",
     "stream_completion",
     "stream_turn",
+    "supports_reasoning_effort",
     "supports_response_format",
 ]
 
@@ -101,6 +102,104 @@ def _is_tool_incompatible_error(exc: Exception) -> bool:
     )
 
 
+# The effort meaning "send nothing". Duplicated from
+# `llm_selection.DEFAULT_EFFORT` rather than imported, because llm_selection
+# imports this module and the reverse edge would be a cycle. A test pins the
+# two equal.
+_DEFAULT_EFFORT = "default"
+
+# Message fragments that mark a rejected *value*. Deliberately broad: a level
+# the fallback fails to recognise costs a failed run, while one it recognises
+# in error costs a single retry that raises the same error anyway, so the
+# asymmetry favours matching generously.
+_EFFORT_REJECTION_MARKERS = (
+    "invalid",
+    "not a valid",
+    "not allowed",
+    "not supported",
+    "not support",
+    "unsupported",
+    "does not accept",
+    "must be one of",
+    "unexpected value",
+    "only works",
+    "only available",
+)
+
+
+def _is_effort_rejected_error(exc: Exception, kwargs: dict[str, Any]) -> bool:
+    """Whether this error is "the level was rejected", not "the run failed".
+
+    D-EF3, the second of two failure shapes. The first — a model that does not
+    accept `reasoning_effort` at all — never reaches here: `drop_params=True`
+    makes LiteLLM discard the parameter silently, so no error is raised. This
+    one is the provider accepting the parameter and refusing the *value*
+    (Anthropic takes "max" only on Opus 4.6, for instance). The two are kept
+    separate on purpose and must not be collapsed into one branch.
+
+    Two rules bound what can match:
+
+    * It matches only when `reasoning_effort` was actually sent. A call that
+      omitted the parameter cannot be an effort rejection, whatever it says.
+    * It is consulted only where the request is opened, never around
+      iteration, so a mid-stream failure can never be read as one. That is
+      enforced structurally: the only caller is
+      :func:`_send_with_effort_fallback`, which wraps the opening call alone.
+    """
+    sent = str(kwargs.get("reasoning_effort") or "").lower()
+    if not sent:
+        return False
+    msg = str(exc).lower()
+    if "effort" not in msg and sent not in msg:
+        return False
+    return any(marker in msg for marker in _EFFORT_REJECTION_MARKERS)
+
+
+def _drop_effort(kwargs: dict[str, Any]) -> str:
+    """Strip the effort parameter for a retry; return the level removed.
+
+    `drop_params` goes with it: it was set only to carry `reasoning_effort`
+    past a model that does not accept it, so a retry without the effort is
+    byte-for-byte the request an effort-free call would have made.
+    """
+    rejected = str(kwargs.pop("reasoning_effort"))
+    kwargs.pop("drop_params", None)
+    return rejected
+
+
+def _send_with_effort_fallback(kwargs: dict[str, Any]) -> tuple[Any, str | None]:
+    """Open a sync request, retrying once without the effort if it is refused.
+
+    Returns ``(response, effort_note)``. The note is None on the normal path
+    and ``"default (fallback from <value>)"`` when the level was refused —
+    that string is what `usage.json` records for the call, so a run's history
+    shows the level was asked for and not honoured. Exactly one retry, and
+    never through intermediate levels: the next attempt sends no effort at all.
+    """
+    try:
+        return litellm.completion(**kwargs), None
+    except LiteLLMBadRequestError as exc:
+        if not _is_effort_rejected_error(exc, kwargs):
+            raise
+        rejected = _drop_effort(kwargs)
+        note = f"{_DEFAULT_EFFORT} (fallback from {rejected})"
+        return litellm.completion(**kwargs), note
+
+
+async def _asend_with_effort_fallback(
+    kwargs: dict[str, Any],
+) -> tuple[Any, str | None]:
+    """Async twin of :func:`_send_with_effort_fallback`, same policy."""
+    try:
+        return await litellm.acompletion(**kwargs), None
+    except LiteLLMBadRequestError as exc:
+        if not _is_effort_rejected_error(exc, kwargs):
+            raise
+        rejected = _drop_effort(kwargs)
+        response = await litellm.acompletion(**kwargs)
+        return response, f"{_DEFAULT_EFFORT} (fallback from {rejected})"
+
+
 def _build_completion_kwargs(
     llm_config: dict[str, Any],
     messages: list[dict[str, Any]],
@@ -109,13 +208,20 @@ def _build_completion_kwargs(
 ) -> dict[str, Any]:
     """Assemble a litellm-compatible kwargs dict from llm_config and messages.
 
-    Covers model, api_key, the four aws_* credential keys, api_base, and
-    response_format. Temperature is never included — see the note above.
-    Any additional keyword arguments are merged via **extra. A streamed call
-    (``stream=True``) also asks LiteLLM for a usage chunk
+    Covers model, api_key, the four aws_* credential keys, api_base,
+    response_format and reasoning effort. Temperature is never included — see
+    the note above. Any additional keyword arguments are merged via **extra. A
+    streamed call (``stream=True``) also asks LiteLLM for a usage chunk
     (``stream_options={"include_usage": True}``) so token counts reach the
     usage capture below; ``stream_options`` is exempt from LiteLLM's
     unsupported-param check, so it is safe to send to every provider.
+
+    Effort is the one field read out of ``llm_config`` under a different name
+    than it is sent: it is stored as ``effort`` and transmitted as LiteLLM's
+    ``reasoning_effort``. ``"default"`` means *send nothing* — the parameter is
+    omitted entirely rather than sent as the string "default". This is the only
+    mechanism by which effort ever reaches a provider; no provider-specific
+    thinking or budget parameter is ever constructed (project constraint).
     """
     kwargs: dict[str, Any] = {"model": llm_config["model"], "messages": messages}
     if llm_config.get("api_key"):
@@ -133,6 +239,15 @@ def _build_completion_kwargs(
     if response_format is not None:
         kwargs["response_format"] = response_format
     kwargs.update(extra)
+    effort = str(llm_config.get("effort") or _DEFAULT_EFFORT)
+    if effort != _DEFAULT_EFFORT:
+        kwargs.setdefault("reasoning_effort", effort)
+    if "reasoning_effort" in kwargs:
+        # Scoped to calls that actually carry an effort rather than set once
+        # for every request: `drop_params` makes LiteLLM discard *any*
+        # unsupported parameter silently, and a blanket setting would also
+        # swallow the tool rejection `stream_turn`'s retry depends on seeing.
+        kwargs["drop_params"] = True
     if kwargs.get("stream"):
         kwargs.setdefault("stream_options", _STREAM_USAGE_OPTIONS)
     return kwargs
@@ -302,8 +417,16 @@ def _record_usage(
     started_at: str,
     start_mono: float,
     error: str | None = None,
+    effort_note: str | None = None,
 ) -> None:
-    """Append one usage record for a finished call. Never raises."""
+    """Append one usage record for a finished call. Never raises.
+
+    ``effort_note`` is set only when the requested level was refused and the
+    call was retried without it; it carries the
+    ``"default (fallback from <value>)"`` string that the record must show. On
+    the normal path the effort is read back off the kwargs actually sent, so a
+    call that omitted the parameter records ``"default"``.
+    """
     try:
         model = kwargs.get("model")
         provider = _resolve_provider(model, kwargs.get("api_base"))
@@ -312,6 +435,8 @@ def _record_usage(
             "agent": agent_name,
             "model": model,
             "provider": provider,
+            "effort": effort_note
+            or str(kwargs.get("reasoning_effort") or _DEFAULT_EFFORT),
             "streamed": streamed,
             "duration_s": round(time.monotonic() - start_mono, 3),
             "prompt_tokens": None,
@@ -372,6 +497,7 @@ def _iter_with_usage(
     agent_name: str | None,
     started_at: str,
     start_mono: float,
+    effort_note: str | None = None,
 ) -> Generator[Any, None, None]:
     """Yield raw chunks from a sync stream, recording usage when it ends.
 
@@ -410,6 +536,7 @@ def _iter_with_usage(
             started_at=started_at,
             start_mono=start_mono,
             error=error,
+            effort_note=effort_note,
         )
 
 
@@ -419,6 +546,7 @@ async def _aiter_with_usage(
     agent_name: str | None,
     started_at: str,
     start_mono: float,
+    effort_note: str | None = None,
 ) -> AsyncIterator[Any]:
     """Async twin of :func:`_iter_with_usage`."""
     usage: Any = None
@@ -451,6 +579,7 @@ async def _aiter_with_usage(
             started_at=started_at,
             start_mono=start_mono,
             error=error,
+            effort_note=effort_note,
         )
 
 
@@ -462,25 +591,45 @@ def _open_stream(
     The request itself is made eagerly, so a request-time failure (bad key,
     unsupported tools) raises here — at the call site — exactly as the bare
     ``litellm.completion`` did, and leaves no record: no call was accepted.
+    The one exception is a refused effort level, which is retried once without
+    it rather than raised; because that happens here, at the opening of the
+    request, it cannot be confused with a mid-stream failure.
+
+    This is the funnel every streamed call passes through — ``stream_turn``,
+    ``complete_stream``, ``stream_completion`` and ``complete(stream=True)`` —
+    so the effort fallback covers all four from one place.
     """
     started_at = _utc_now()
     start_mono = time.monotonic()
-    response = litellm.completion(**kwargs)
-    return _iter_with_usage(response, kwargs, agent_name, started_at, start_mono)
+    response, effort_note = _send_with_effort_fallback(kwargs)
+    return _iter_with_usage(
+        response, kwargs, agent_name, started_at, start_mono, effort_note
+    )
 
 
 def stream_completion(
-    *, agent_name: str | None = None, **kwargs: Any
+    *,
+    llm_config: dict[str, Any],
+    messages: list[dict[str, Any]],
+    agent_name: str | None = None,
+    **extra_kwargs: Any,
 ) -> Generator[Any, None, None]:
     """Streamed ``litellm.completion`` with usage capture; yields raw chunks.
 
-    The low-level entry for a call site that assembles its own kwargs and
-    consumes raw LiteLLM chunks (the Designer's mock generator). ``stream``
-    is forced on and the usage chunk is requested; everything else is passed
-    through untouched. Errors propagate unchanged.
+    The entry for a call site that consumes raw LiteLLM chunks rather than text
+    deltas (the Designer's mock generator). ``stream`` is forced on and the
+    usage chunk is requested.
+
+    It takes an ``llm_config`` and builds its kwargs through
+    :func:`_build_completion_kwargs` like every other entry point, rather than
+    accepting a pre-assembled dict. That is deliberate: the omit-effort-on-
+    default rule, ``drop_params`` and the refused-level retry then exist in one
+    place and cannot drift for this one caller. Errors propagate unchanged,
+    except a refused effort level, which is retried once without it.
     """
-    kwargs["stream"] = True
-    kwargs.setdefault("stream_options", _STREAM_USAGE_OPTIONS)
+    kwargs = _build_completion_kwargs(
+        llm_config, messages, stream=True, **extra_kwargs
+    )
     return _open_stream(kwargs, agent_name)
 
 
@@ -494,10 +643,11 @@ def complete(
 ) -> Any:
     """Non-streaming litellm.completion.
 
-    Builds kwargs (model, credentials, api_base, response_format) and calls
-    litellm.completion. No temperature is sent. `agent_name` identifies the
-    caller and tags the usage record; it is not forwarded to the provider.
-    Errors propagate unchanged.
+    Builds kwargs (model, credentials, api_base, response_format, effort) and
+    calls litellm.completion. No temperature is sent. `agent_name` identifies
+    the caller and tags the usage record; it is not forwarded to the provider.
+    Errors propagate unchanged, except a refused effort level, which is retried
+    once without it.
     """
     kwargs = _build_completion_kwargs(
         llm_config, messages, response_format=response_format, **extra_kwargs
@@ -506,7 +656,7 @@ def complete(
         return _open_stream(kwargs, agent_name)
     started_at = _utc_now()
     start_mono = time.monotonic()
-    response = litellm.completion(**kwargs)
+    response, effort_note = _send_with_effort_fallback(kwargs)
     _record_usage(
         agent_name=agent_name,
         kwargs=kwargs,
@@ -515,6 +665,7 @@ def complete(
         streamed=False,
         started_at=started_at,
         start_mono=start_mono,
+        effort_note=effort_note,
     )
     return response
 
@@ -579,18 +730,23 @@ async def acomplete(
     Returns the acompletion response (a regular response object, or an async
     iterable of chunks when stream=True is passed). No temperature is sent.
     `agent_name` identifies the caller and tags the usage record; it is not
-    forwarded to the provider. Errors propagate unchanged. The streamed form
-    is wrapped for usage capture; the wrapper swallows LiteLLM's usage chunk
-    and is otherwise transparent.
+    forwarded to the provider. Errors propagate unchanged, except a refused
+    effort level, which is retried once without it — this is the path the
+    Agentifier's async sub-agents take, and they inherit their parent's effort,
+    so it is where an inherited level most often meets a model that will not
+    take it. The streamed form is wrapped for usage capture; the wrapper
+    swallows LiteLLM's usage chunk and is otherwise transparent.
     """
     kwargs = _build_completion_kwargs(
         llm_config, messages, response_format=response_format, **extra_kwargs
     )
     started_at = _utc_now()
     start_mono = time.monotonic()
-    response = await litellm.acompletion(**kwargs)
+    response, effort_note = await _asend_with_effort_fallback(kwargs)
     if kwargs.get("stream"):
-        return _aiter_with_usage(response, kwargs, agent_name, started_at, start_mono)
+        return _aiter_with_usage(
+            response, kwargs, agent_name, started_at, start_mono, effort_note
+        )
     _record_usage(
         agent_name=agent_name,
         kwargs=kwargs,
@@ -599,6 +755,7 @@ async def acomplete(
         streamed=False,
         started_at=started_at,
         start_mono=start_mono,
+        effort_note=effort_note,
     )
     return response
 
@@ -618,6 +775,35 @@ def supports_response_format(model: str) -> bool:
     except Exception:
         return False
     return "response_format" in params
+
+
+def supports_reasoning_effort(model: str) -> bool | None:
+    """Whether the model accepts `reasoning_effort`. None means "could not tell".
+
+    D-EF2: this answers *whether the parameter is accepted*, never *which
+    levels* it accepts. The levels a model will take are not discoverable from
+    LiteLLM — `get_supported_openai_params` reports parameter names only — so
+    `llm_selection.offered_efforts` derives them from its own base list plus a
+    provider table. Nothing here may be widened into a level list.
+
+    Tri-state on purpose, and the three arms mean different things:
+    ``True`` is "accepted", ``False`` is "probed, not accepted" (which collapses
+    the offered values to "default" alone), and ``None`` is "unknown" (which
+    keeps the base four). Unlike :func:`supports_response_format`, a failure is
+    *not* folded into ``False``: treating unknown as unsupported would silently
+    strip the control from every model LiteLLM has no entry for.
+    """
+    if not model:
+        return None
+    try:
+        params = litellm.get_supported_openai_params(model=model)
+    except Exception:
+        return None
+    if not params:
+        # An unknown model returns None rather than raising; that is an
+        # unknown, not a negative.
+        return None
+    return bool("reasoning_effort" in params)
 
 
 def stream_turn(

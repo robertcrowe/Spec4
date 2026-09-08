@@ -88,6 +88,33 @@ def _text(component: Any) -> str:
     return " ".join(out)
 
 
+def _picker_path(session: dict[str, Any]) -> Any:
+    """The path the picker is browsing, read off its path entry.
+
+    The picker used to say where it was in a "Current location:" sentence, and
+    these tests read it out of the rendered text. It now says it the way a file
+    browser does — in the path field, which is also the thing the developer
+    edits — so the value is read from the field rather than from the prose that
+    no longer exists. The assertions are unchanged: what the picker *shows* is
+    still what is checked.
+    """
+    stack: list[Any] = [layouts._working_dir_layout(session)]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (list, tuple)):
+            stack.extend(node)
+            continue
+        if getattr(node, "id", None) == "dir-path-input":
+            return node.value
+        children = getattr(node, "children", None)
+        if children is None:
+            continue
+        if not isinstance(children, (list, tuple)):
+            children = [children]
+        stack.extend(children)
+    raise AssertionError("the picker rendered no path entry")
+
+
 def _page(session: dict[str, Any], prefs: Any = None) -> Any:
     content, _, _ = app_module.render_page(session, prefs or {}, 0, None, None)
     return content
@@ -109,9 +136,7 @@ class TestRootResolution:
         # And it is the project view that draws, not merely the phase name.
         assert "agent-rows" in _ids(_page(session))
 
-    def test_the_open_project_wins_over_the_pref(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_the_open_project_wins_over_the_pref(self, tmp_path: pathlib.Path) -> None:
         """A directory chosen this session is not re-loaded from the pref.
 
         Re-running `_load_working_dir` would reset the round's chat and agent
@@ -178,9 +203,7 @@ class TestRootResolution:
         self, tmp_path: pathlib.Path
     ) -> None:
         stale = {**_default_session(), "dir_error": "Could not open /gone."}
-        session = _route(
-            ROOT_PATH, session=stale, prefs={"working_dir": str(tmp_path)}
-        )
+        session = _route(ROOT_PATH, session=stale, prefs={"working_dir": str(tmp_path)})
         assert session["dir_error"] is None
 
 
@@ -234,9 +257,7 @@ class TestTheOtherPaths:
         assert session["phase"] == "chat"
         assert session["messages"] == [{"role": "user", "content": "hi"}]
 
-    def test_an_unchanged_phase_is_not_rewritten(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_an_unchanged_phase_is_not_rewritten(self, tmp_path: pathlib.Path) -> None:
         live = {
             **_default_session(),
             "phase": PHASE_PROJECT_VIEW,
@@ -288,7 +309,7 @@ class TestTheBarReopensThePicker:
         assert new_session["browser_path"] == str(tmp_path)
         assert pathname == "/dir"
         # The picker really does browse there, rather than falling back home.
-        assert str(tmp_path) in _text(layouts._working_dir_layout(new_session))
+        assert _picker_path(new_session) == str(tmp_path)
 
     def test_pressing_it_commits_nothing(self, tmp_path: pathlib.Path) -> None:
         """Backing out of the picker must leave the project exactly as it was.
@@ -342,9 +363,7 @@ class TestDirectoryOpens:
     def test_a_non_path_does_not(self, value: Any) -> None:
         assert not directory_opens(value)
 
-    def test_an_unreadable_directory_does_not(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_an_unreadable_directory_does_not(self, tmp_path: pathlib.Path) -> None:
         locked = tmp_path / "locked"
         locked.mkdir(mode=0o000)
         try:
@@ -422,7 +441,7 @@ class TestTheGoneDirectoryLeavesNothingBehind:
         assert new_session["working_dir"] == home
         assert new_prefs["working_dir"] == home
         # And that is what the picker was showing all along.
-        assert home in _text(layouts._working_dir_layout(session))
+        assert _picker_path(session) == home
 
 
 # ---------------------------------------------------------------------------
@@ -476,9 +495,7 @@ class TestNoLandingIsReachable:
                     referenced.add(dep_id)
         assert "btn-landing-start" not in referenced
 
-    def test_the_landing_button_is_on_no_screen(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_the_landing_button_is_on_no_screen(self, tmp_path: pathlib.Path) -> None:
         for phase in (PHASE_ROOT, *PATH_TO_PHASE.values()):
             if phase in ("chat", "designer"):
                 continue  # both need a live project; covered by their own suites

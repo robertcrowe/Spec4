@@ -26,7 +26,7 @@ from __future__ import annotations
 import pathlib
 from typing import Any
 
-from dash import dcc, html
+from dash import html
 import dash_mantine_components as dmc
 
 from spec4 import project_manager
@@ -114,6 +114,14 @@ def _working_dir_layout(session: dict[str, Any]) -> html.Div:
     was asked for a remembered directory that could not be opened, and the
     message names it. It sits above the browser, before the developer starts
     clicking, because it is the answer to "why am I not looking at my project".
+
+    The screen is a file browser, so it is drawn as one: the path in monospace
+    with Up beside it, the subdirectories one per line underneath in the same
+    fixed-width type, the folder-creation option folded onto a single row with
+    the field it needs, and Select as the one filled action. The paragraph that
+    used to explain what a project directory is has gone with the rest of the
+    marketing-era chrome (D-LR7) — the developer is being asked for a
+    directory, and the path entry says that on its own.
     """
     browser_path = session.get("browser_path") or str(pathlib.Path.home())
     # One predicate for what is shown and what `on_dir_select` opens, so the
@@ -129,6 +137,11 @@ def _working_dir_layout(session: dict[str, Any]) -> html.Div:
     except PermissionError:
         subdirs = []
 
+    # One directory per line, and nothing about the line but its name. The id
+    # is built exactly as it was — `on_subdir_click` matches on this pattern,
+    # so the entries' *container* changed here and the entries themselves did
+    # not. `.dir-line` truncates a long name in `v3.css`; a wrapped name would
+    # break the one-per-line rhythm that makes the column scannable.
     subdir_buttons = [
         dmc.Button(
             f"{d.name}",
@@ -136,6 +149,7 @@ def _working_dir_layout(session: dict[str, Any]) -> html.Div:
             variant="subtle",
             size="xs",
             fullWidth=True,
+            className="dir-line mono",
         )
         for d in subdirs[:30]
     ]
@@ -144,82 +158,72 @@ def _working_dir_layout(session: dict[str, Any]) -> html.Div:
 
     return html.Div(
         [
-            dmc.Title("Select Project Directory", order=3, mb="sm"),
+            html.H2("Select project directory", className="screen-title"),
             _error(dir_error) if dir_error else None,
-            dmc.Text(
-                "Where do you want to work? Spec4 needs a project directory. "
-                "If you're starting a new project, the project directory will probably start out empty. "  # noqa: E501
-                "If you're working on an existing project, Spec4 will review your current code using CodeScanner.",  # noqa: E501
-                c="dimmed",
-                mb="lg",
-            ),
-            _card(
-                dmc.Text(
-                    f"Current location: {current}",
-                    size="lg",
-                    mb="sm",
-                    style={"color": "var(--mantine-color-dark-0)", "fontWeight": 400},
-                ),
-                dmc.Group(
-                    [
-                        dmc.Button(
-                            "↑ Up",
-                            id="btn-dir-up",
-                            variant="outline",
-                            color="gray",
-                            size="sm",
-                            disabled=(current == current.parent),
-                        ),
-                        dmc.Button(
-                            "Select This Directory",
-                            id="btn-dir-select",
-                            size="sm",
-                        ),
-                    ],
-                    mb="md",
-                ),
-                dmc.TextInput(
-                    id="dir-path-input",
-                    label="Or type a path directly:",
-                    value=str(current),
-                    mb="md",
-                ),
-                dmc.Accordion(
-                    dmc.AccordionItem(
-                        [
-                            dmc.AccordionControl("Create a new subdirectory here"),
-                            dmc.AccordionPanel(
-                                dmc.Stack(
-                                    [
-                                        dmc.TextInput(
-                                            id="new-folder-name",
-                                            placeholder="Directory name",
-                                        ),
-                                        dmc.Button(
-                                            "Create directory",
-                                            id="btn-create-folder",
-                                            variant="outline",
-                                            size="sm",
-                                        ),
-                                    ],
-                                    gap="xs",
-                                )
-                            ),
-                        ],
-                        value="create",
+            dmc.Group(
+                [
+                    # `classNames` rather than `className`: Mantine sets the
+                    # font on the `<input>` itself, so a class on the root
+                    # would be inherited by everything except the one element
+                    # whose type has to be fixed-width. This is the app's one
+                    # monospace class either way (D-LR7).
+                    dmc.TextInput(
+                        id="dir-path-input",
+                        value=str(current),
+                        classNames={"input": "mono"},
+                        **{"aria-label": "Directory path"},
                     ),
-                    mb="md",
-                ),
-                dmc.Text("Subdirectories:", fw=600, mb="xs"),
-                dmc.SimpleGrid(cols=3, spacing="xs", children=subdir_buttons)
-                if subdir_buttons
-                else dmc.Text(
-                    "(no subdirectories — you can select the current directory)",
-                    size="sm",
-                    c="dimmed",
-                ),
+                    dmc.Button(
+                        "Up",
+                        id="btn-dir-up",
+                        variant="outline",
+                        size="compact-sm",
+                        disabled=(current == current.parent),
+                    ),
+                ],
+                gap="xs",
+                wrap="nowrap",
+                className="path-row",
             ),
-        ]
+            dmc.Stack(subdir_buttons, gap=0, className="dir-list")
+            if subdir_buttons
+            else html.Div(
+                "No subdirectories here — this one can still be selected.",
+                className="dim-line dir-list-empty",
+            ),
+            # One row, not a disclosure: the option and the name it needs are
+            # the same decision, and an accordion made the developer open a
+            # panel to find that out.
+            dmc.Group(
+                [
+                    dmc.Button(
+                        "Create folder",
+                        id="btn-create-folder",
+                        variant="outline",
+                        size="compact-sm",
+                    ),
+                    dmc.TextInput(
+                        id="new-folder-name",
+                        placeholder="new-folder",
+                        classNames={"input": "mono"},
+                        **{"aria-label": "New folder name"},
+                    ),
+                ],
+                gap="xs",
+                wrap="nowrap",
+                className="create-row",
+            ),
+            # The one filled action on the screen. Up and Create folder are
+            # neutral outlines beside it — moves around the filesystem, not the
+            # thing the screen is for. Nothing here names a colour: the
+            # emphasis is the absence of a `variant` (D-LR2).
+            dmc.Group(
+                dmc.Button("Select this directory", id="btn-dir-select"),
+                justify="flex-end",
+                className="btn-row",
+            ),
+        ],
+        className="picker-view",
     )
 
 
@@ -239,50 +243,58 @@ def _project_mode_layout(session: dict[str, Any]) -> html.Div:
 
     This replaces the agent list rather than sitting above it: nothing on the
     page should be startable while the mode is undecided.
+
+    Two dimmed lines and two buttons on one row. The question is a gate on the
+    way to the project view, so it is asked at the size of a gate: what the
+    ambiguity is, what each answer starts with, and that the answer is only
+    good for this session. The bulleted explanation this replaced said the same
+    three things at four times the height, in front of a developer who has to
+    read it every session.
+
+    Nothing here decides *when* the question appears — `needs_project_mode` and
+    the session store do, and neither is touched by this function.
     """
     return html.Div(
         _card(
-            dmc.Title("Is There an Existing Project Here?", order=3, mb="xs"),
-            dcc.Markdown(
-                "This directory already contains files, but that alone doesn't "
-                "tell us much — it could be a project you're modifying, or just "
-                "the skeleton a tool like `uv init` or `npm init` left behind.\n\n"
-                "* **Existing project** — there's real code here to work with. "
-                "Spec4 will start with CodeScanner so it understands what you "
-                "already have.\n"
-                "* **New project** — anything here is scaffolding, and you're "
-                "building something new. Spec4 will start with Brainstormer.",
-                style={
-                    "color": "var(--mantine-color-dark-1)",
-                    "marginBottom": "0.75rem",
-                },
+            html.H2("Is there an existing project here?", className="screen-title"),
+            # Two lines, and they are two lines at the width this panel is
+            # actually drawn at (`.mode-question`, 560px) rather than two
+            # elements that wrap into four.
+            html.Div(
+                "This directory has files — a project you're modifying, or a "
+                "uv init skeleton.",
+                className="dim-line",
             ),
+            html.Div(
+                "Existing starts with CodeScanner, new with Brainstormer; "
+                "asked again next session.",
+                className="dim-line",
+            ),
+            # One filled, one outline: both are answers, but Existing is the
+            # one a directory with files in it usually wants, and a row of two
+            # equal buttons is a row with nothing to press first.
             dmc.Group(
                 [
                     dmc.Button(
                         "Existing project",
                         id="btn-project-mode-existing",
                         n_clicks=0,
+                        size="compact-sm",
                     ),
                     dmc.Button(
                         "New project",
                         id="btn-project-mode-new",
                         n_clicks=0,
                         variant="outline",
-                        color="gray",
+                        size="compact-sm",
                     ),
                 ],
-                gap="md",
-            ),
-            dmc.Text(
-                "You'll be asked again next time you start Spec4, so nothing "
-                "here is permanent.",
-                size="xs",
-                c="dimmed",
-                mt="xs",
+                gap="xs",
+                className="mode-choices",
             ),
             p="xs",
-        )
+        ),
+        className="mode-question",
     )
 
 
@@ -324,30 +336,39 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
         project_manager.active_version(working_dir, session) if working_dir else None
     )
 
-    # The round tree comes first, directly under the status bar: what this
-    # round has produced, before anything about what to run next. Its lines are
-    # computed here for the first paint and recomputed from disk by
-    # `on_round_tree` on every render after that (D-LR4).
+    # D-LR11: the controls precede the record. The agent table comes first,
+    # directly under the status bar — the project view is opened to run
+    # something, so the seven rows and their one action each are what the
+    # screen leads with. The round's cost sits between: it is what the last
+    # run cost, and it belongs beside the control that will spend again rather
+    # than at the foot of the page. The tree closes the stack, with its lane
+    # legend under it — it is the record of what the round has produced, read
+    # after deciding what to do, not before.
     #
-    # The agent table sits directly beneath it, and it is the whole of the
-    # "what next" guidance now — the seven rows say what each agent produces
-    # and what to do with it, so the prose that used to introduce them (and the
-    # step numbers and one-line descriptions on the old cards) is gone rather
-    # than restated above a table that already says it.
-    # The round tree comes first, the agent table beneath it, and the round's
-    # cost closes the block — produced, then to do, then spent, which is the
-    # mock's order and the order the three questions actually occur in. The
-    # strip's lines are recomputed from `usage.json` by `on_round_cost` on
-    # every render, like the tree's (D-LR4).
+    # This replaces the earlier produced-then-to-do-then-spent order (tree,
+    # rows, cost). Only the order changed: all three surfaces keep their
+    # renderers, ids, and status computation.
+    #
+    # The agent table is the whole of the "what next" guidance — the seven rows
+    # say what each agent produces and what to do with it, so the prose that
+    # used to introduce them (and the step numbers and one-line descriptions on
+    # the old cards) is gone rather than restated above a table that already
+    # says it.
+    #
+    # None of the three is cached. Each is computed here for the first paint
+    # and recomputed from disk on every render after that (D-LR4): the rows
+    # from `agent_button_state` and `usage.json`, the strip from `usage.json`
+    # by `on_round_cost`, the tree from project_manager's dependency graph by
+    # `on_round_tree`.
     children = [
+        _agent_rows(working_dir, round_number, session),
+        _round_cost(working_dir, round_number),
         # `linked=True`: every line opens the file it names in the Artifact
         # View. The tree is the app's index of the round, so the line a
         # developer is already reading is the natural way in — which is why
         # this is the same renderer the Artifact View draws, told to link,
         # rather than a project-view tree and an artifact-view tree.
         _round_tree(working_dir, round_number, linked=True),
-        _agent_rows(working_dir, round_number, session),
-        _round_cost(working_dir, round_number),
     ]
 
     if error:

@@ -445,6 +445,294 @@ class TestSupportsResponseFormat:
         assert llm.supports_response_format("") is False
 
 
+class TestSupportsReasoningEffort:
+    """The probe answers "is the parameter accepted", and nothing more.
+
+    Tri-state, and the three arms are not interchangeable: unknown must not
+    collapse into unsupported, or every model LiteLLM has no entry for would
+    silently lose the control.
+    """
+
+    def test_returns_true_when_param_listed(self) -> None:
+        with patch(
+            "spec4.llm.litellm.get_supported_openai_params",
+            return_value=["temperature", "reasoning_effort"],
+        ):
+            assert llm.supports_reasoning_effort("claude-sonnet-4-6") is True
+
+    def test_returns_false_when_param_absent(self) -> None:
+        with patch(
+            "spec4.llm.litellm.get_supported_openai_params",
+            return_value=["temperature", "tools"],
+        ):
+            assert llm.supports_reasoning_effort("gpt-4o") is False
+
+    def test_an_exception_is_unknown_not_unsupported(self) -> None:
+        with patch(
+            "spec4.llm.litellm.get_supported_openai_params",
+            side_effect=Exception("boom"),
+        ):
+            assert llm.supports_reasoning_effort("mystery") is None
+
+    def test_an_unknown_model_is_unknown_not_unsupported(self) -> None:
+        """LiteLLM returns None for a model it has no entry for."""
+        with patch(
+            "spec4.llm.litellm.get_supported_openai_params", return_value=None
+        ):
+            assert llm.supports_reasoning_effort("totally/bogus") is None
+
+    def test_returns_none_on_empty_model(self) -> None:
+        assert llm.supports_reasoning_effort("") is None
+
+
+class TestIsEffortRejectedError:
+    """The second failure shape, kept distinct from the first.
+
+    A model that does not accept `reasoning_effort` at all never raises —
+    drop_params discards it. This predicate is only for the provider taking the
+    parameter and refusing the value.
+    """
+
+    _SENT = {"reasoning_effort": "max"}
+
+    def test_detects_a_refused_level(self) -> None:
+        exc = Exception("max only works on Opus 4.6")
+        assert llm._is_effort_rejected_error(exc, self._SENT) is True
+
+    def test_detects_an_invalid_effort_value(self) -> None:
+        exc = Exception("Invalid value for reasoning_effort: 'max'")
+        assert llm._is_effort_rejected_error(exc, self._SENT) is True
+
+    def test_a_call_that_sent_no_effort_can_never_match(self) -> None:
+        """Rule one: no parameter sent, so no parameter can have been refused."""
+        exc = Exception("Invalid value for reasoning_effort: 'max'")
+        assert llm._is_effort_rejected_error(exc, {"model": "m"}) is False
+
+    def test_ignores_an_unrelated_error(self) -> None:
+        exc = Exception("rate limit exceeded")
+        assert llm._is_effort_rejected_error(exc, self._SENT) is False
+
+    def test_ignores_an_auth_error_even_with_the_effort_sent(self) -> None:
+        exc = Exception("authentication failed: bad api key")
+        assert llm._is_effort_rejected_error(exc, self._SENT) is False
+
+    def test_the_default_effort_constant_matches_llm_selection(self) -> None:
+        """The literal is duplicated to avoid an import cycle; pin them equal."""
+        from spec4 import llm_selection
+
+        assert llm._DEFAULT_EFFORT == llm_selection.DEFAULT_EFFORT
+
+
+class TestEffortIsSentAndOmitted:
+    """`reasoning_effort` is the only mechanism, and "default" sends nothing."""
+
+    def _chunks(self) -> list[MagicMock]:
+        chunk = MagicMock()
+        chunk.choices[0].delta.content = "Hi"
+        chunk.choices[0].delta.tool_calls = None
+        chunk.choices[0].finish_reason = "stop"
+        return [chunk]
+
+    def _kwargs_for(self, cfg: dict[str, Any]) -> dict[str, Any]:
+        with patch(
+            "spec4.llm.litellm.completion", return_value=iter(self._chunks())
+        ) as mock_llm:
+            list(llm.stream_turn("sys", [], cfg, None))
+        sent: dict[str, Any] = mock_llm.call_args[1]
+        return sent
+
+    def test_a_chosen_effort_is_sent_with_drop_params(self) -> None:
+        sent = self._kwargs_for({"model": "m", "api_key": "k", "effort": "high"})
+        assert sent["reasoning_effort"] == "high"
+        assert sent["drop_params"] is True
+
+    def test_default_effort_sends_no_parameter_at_all(self) -> None:
+        """Not the string "default" — the key must be absent entirely."""
+        sent = self._kwargs_for({"model": "m", "api_key": "k", "effort": "default"})
+        assert "reasoning_effort" not in sent
+        assert "drop_params" not in sent
+
+    def test_an_absent_effort_field_sends_no_parameter(self) -> None:
+        sent = self._kwargs_for({"model": "m", "api_key": "k"})
+        assert "reasoning_effort" not in sent
+
+    def test_no_provider_specific_thinking_parameter_is_ever_built(self) -> None:
+        """The standing constraint: reasoning_effort, never a thinking dict."""
+        sent = self._kwargs_for({"model": "m", "api_key": "k", "effort": "max"})
+        for banned in ("thinking", "thinking_budget", "budget_tokens", "reasoning"):
+            assert banned not in sent
+
+    def test_effort_is_not_forwarded_under_its_stored_name(self) -> None:
+        sent = self._kwargs_for({"model": "m", "api_key": "k", "effort": "low"})
+        assert "effort" not in sent
+
+    def test_an_unsupported_parameter_is_a_silent_no_op(self) -> None:
+        """The first failure shape: drop_params means LiteLLM discards it."""
+        with patch(
+            "spec4.llm.litellm.completion", return_value=iter(self._chunks())
+        ) as mock_llm:
+            out = "".join(
+                llm.stream_turn(
+                    "sys", [], {"model": "no-reasoning", "effort": "high"}, None
+                )
+            )
+        assert out == "Hi"
+        assert mock_llm.call_args[1]["drop_params"] is True
+
+
+class TestEffortRejectionFallback:
+    """A refused level costs one retry without it, never the run."""
+
+    def _ok(self) -> list[MagicMock]:
+        chunk = MagicMock()
+        chunk.choices[0].delta.content = "Hi"
+        chunk.choices[0].delta.tool_calls = None
+        chunk.choices[0].finish_reason = "stop"
+        return [chunk]
+
+    def _refuse_once(self, calls: list[dict[str, Any]]) -> Any:
+        def fake_completion(**kwargs: Any) -> Any:
+            calls.append(dict(kwargs))
+            if len(calls) == 1:
+                raise LiteLLMBadRequestError(
+                    message="max only works on Opus 4.6",
+                    model="claude-sonnet-4-6",
+                    llm_provider="anthropic",
+                )
+            return iter(self._ok())
+
+        return fake_completion
+
+    def test_retries_exactly_once_without_the_effort(self) -> None:
+        calls: list[dict[str, Any]] = []
+        refuse = self._refuse_once(calls)
+        with patch("spec4.llm.litellm.completion", side_effect=refuse):
+            out = "".join(
+                llm.stream_turn(
+                    "sys", [], {"model": "m", "api_key": "k", "effort": "max"}, None
+                )
+            )
+        assert out == "Hi"
+        assert len(calls) == 2
+        assert calls[0]["reasoning_effort"] == "max"
+        assert "reasoning_effort" not in calls[1]
+
+    def test_the_retry_drops_drop_params_too(self) -> None:
+        """Without the effort there is nothing for drop_params to carry."""
+        calls: list[dict[str, Any]] = []
+        refuse = self._refuse_once(calls)
+        with patch("spec4.llm.litellm.completion", side_effect=refuse):
+            list(
+                llm.stream_turn(
+                    "sys", [], {"model": "m", "api_key": "k", "effort": "max"}, None
+                )
+            )
+        assert "drop_params" not in calls[1]
+
+    def test_the_usage_record_names_the_level_that_was_refused(self) -> None:
+        llm.drain_usage_records()
+        calls: list[dict[str, Any]] = []
+        refuse = self._refuse_once(calls)
+        with patch("spec4.llm.litellm.completion", side_effect=refuse):
+            list(
+                llm.stream_turn(
+                    "sys", [], {"model": "m", "api_key": "k", "effort": "max"}, None
+                )
+            )
+        records = llm.drain_usage_records()
+        assert len(records) == 1
+        assert records[0]["effort"] == "default (fallback from max)"
+
+    def test_an_unrelated_bad_request_still_raises(self) -> None:
+        def always_fail(**kwargs: Any) -> Any:
+            raise LiteLLMBadRequestError(
+                message="rate limit exceeded", model="m", llm_provider="openai"
+            )
+
+        with patch("spec4.llm.litellm.completion", side_effect=always_fail):
+            with pytest.raises(LiteLLMBadRequestError):
+                list(
+                    llm.stream_turn(
+                        "sys",
+                        [],
+                        {"model": "m", "api_key": "k", "effort": "high"},
+                        None,
+                    )
+                )
+
+    def test_a_tool_rejection_is_still_handled_as_a_tool_rejection(self) -> None:
+        """The two failure shapes must not collapse into one branch.
+
+        With an effort in play the effort predicate is consulted first, so a
+        tool-incompatibility error has to fall past it and reach the tool
+        retry — dropping tools, not the effort.
+        """
+        ok = self._ok()
+        calls: list[dict[str, Any]] = []
+
+        def fake_completion(**kwargs: Any) -> Any:
+            calls.append(dict(kwargs))
+            if len(calls) == 1:
+                raise LiteLLMBadRequestError(
+                    message=(
+                        "This model does not support auto tool, please use "
+                        "tool_choice."
+                    ),
+                    model="qwen",
+                    llm_provider="openai",
+                )
+            return iter(ok)
+
+        with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
+            out = "".join(
+                llm.stream_turn(
+                    "sys",
+                    [],
+                    {"model": "m", "api_key": "k", "effort": "high"},
+                    "tv-key",
+                )
+            )
+        assert "Web search disabled" in out
+        assert len(calls) == 2
+        assert "tools" in calls[0]
+        assert "tools" not in calls[1]
+        # The effort survived: it was the tool that was wrong, not the level.
+        assert calls[1]["reasoning_effort"] == "high"
+
+    def test_a_mid_stream_failure_is_not_retried_as_an_effort_rejection(self) -> None:
+        """Rule two: the predicate guards the opening call, not iteration."""
+        calls: list[dict[str, Any]] = []
+
+        def fail_mid_stream(**kwargs: Any) -> Any:
+            calls.append(dict(kwargs))
+
+            def gen() -> Iterator[Any]:
+                chunk = MagicMock()
+                chunk.choices[0].delta.content = "partial"
+                chunk.choices[0].delta.tool_calls = None
+                chunk.choices[0].finish_reason = None
+                yield chunk
+                raise LiteLLMBadRequestError(
+                    message="invalid reasoning_effort value",
+                    model="m",
+                    llm_provider="anthropic",
+                )
+
+            return gen()
+
+        with patch("spec4.llm.litellm.completion", side_effect=fail_mid_stream):
+            with pytest.raises(LiteLLMBadRequestError):
+                list(
+                    llm.stream_turn(
+                        "sys",
+                        [],
+                        {"model": "m", "api_key": "k", "effort": "max"},
+                        None,
+                    )
+                )
+        assert len(calls) == 1, "a mid-stream failure must not trigger the retry"
+
+
 class TestIsToolIncompatibleError:
     def test_detects_not_support_auto_tool(self) -> None:
         exc = Exception(

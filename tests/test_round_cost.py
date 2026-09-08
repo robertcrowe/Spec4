@@ -403,11 +403,18 @@ class TestUnknownIsNotZero:
 
 
 class TestPlacement:
-    def test_it_closes_the_project_view(self, tmp_path: pathlib.Path) -> None:
-        """Produced, then to do, then spent — the mock's order."""
+    def test_it_sits_between_the_rows_and_the_tree(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """To do, then spent, then produced — the mock's order (D-LR11).
+
+        The strip belongs beside the control that will spend again, not at the
+        foot of the page. ``tests/test_agent_rows.py`` asserts the whole stack;
+        this pins the strip's own place in it.
+        """
         ids = _ids(_agent_select_layout(_session(tmp_path)))
-        assert ids.index("round-tree") < ids.index("agent-rows")
         assert ids.index("agent-rows") < ids.index("round-cost")
+        assert ids.index("round-cost") < ids.index("round-tree")
 
     def test_all_three_lines_are_mounted_in_every_state(
         self, tmp_path: pathlib.Path

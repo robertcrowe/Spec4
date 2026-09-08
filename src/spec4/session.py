@@ -34,6 +34,11 @@ def _default_session() -> dict[str, Any]:
         "phase": PHASE_ROOT,
         "provider": None,
         "model": None,
+        # The project default's reasoning effort, stored beside its model. Not
+        # None like the rest: "default" is a real value meaning "send no
+        # reasoning_effort at all", and every agent without an override of its
+        # own inherits it (llm_selection.resolve).
+        "effort": llm_selection.DEFAULT_EFFORT,
         "api_key": None,
         "available_models": None,
         "search_provider": None,
@@ -163,6 +168,7 @@ _PRESERVED_SETUP_KEYS: tuple[str, ...] = (
     "provider",
     "api_key",
     "model",
+    "effort",
     "available_models",
     "llm_config",
     # Per-agent overrides are connection config too: a developer who switches

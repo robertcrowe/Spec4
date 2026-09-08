@@ -28,6 +28,7 @@ from spec4.agents.designer import (
     save_session,
 )
 from spec4.layouts.designer import (
+    DESIGNER_STEPPER_ID,
     _default_designer_session,
     _step1_content,
     _step2_content,
@@ -36,6 +37,8 @@ from spec4.layouts.designer import (
     _step5_content,
     _step6_content,
     _step7_content,
+    designer_step_row,
+    stepper_index,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +79,7 @@ def _llm_params(
     bool,
     str | None,
     dict[str, Any],
+    str,
 ]:
     """Extract LLM connection parameters from the main session dict.
 
@@ -88,6 +92,10 @@ def _llm_params(
     Image support is likewise per-agent: a Designer pinned to a text-only model
     must disable screenshot upload even though the default model is multimodal.
     The store-wide flag is the fallback, and an unknown still means capable.
+
+    Effort comes out of the same resolved config as the model, so a Designer on
+    an override draws at that override's effort and one on the default inherits
+    the default's — the same rule, not a second one.
     """
     llm_config: dict[str, Any] = llm_selection.resolve(session, "designer") or {}
     api_base: str | None = llm_config.get("api_base")
@@ -103,6 +111,7 @@ def _llm_params(
         bool(support) if support is not None else True,
         api_base,
         aws_kwargs,
+        str(llm_config.get("effort") or llm_selection.DEFAULT_EFFORT),
     )
 
 
@@ -232,6 +241,7 @@ def _start_gen(
     api_base: str | None = None,
     extra_kwargs: dict[str, Any] | None = None,
     session: dict[str, Any] | None = None,
+    effort: str = llm_selection.DEFAULT_EFFORT,
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
     """Launch generation in a background thread.
 
@@ -299,6 +309,7 @@ def _start_gen(
                 capture_mode=capture_mode,
                 api_base=api_base,
                 extra_kwargs=extra_kwargs,
+                effort=effort,
             ):
                 buf_entry["text"] += chunk
                 if _DEV_MODE and not chunk.startswith("__"):
@@ -415,7 +426,12 @@ def _start_gen(
 
 @callback(
     Output("designer-step-content", "children"),
-    Output("designer-stepper", "active"),
+    # The step row, re-rendered rather than re-indexed. This was
+    # `designer-stepper.active`, a `dmc.Stepper` property; the plain-text row
+    # that replaced the Stepper has no such property, so the Output moved to
+    # the row container's children in the same change (see
+    # `tests/test_designer_wizard_register.py`, which pins that it resolves).
+    Output(DESIGNER_STEPPER_ID, "children"),
     Input("designer-session-store", "data"),
     Input("mock-stream-buffer", "data"),
     State("image-support-store", "data"),
@@ -471,8 +487,7 @@ def render_designer_step(
             bool(store.get("_has_existing_ui", True)),
             bool(store.get("_is_revision", False)),
         )
-    stepper_active = max(0, min(step - 1, 5))
-    return content, stepper_active
+    return content, designer_step_row(stepper_index(step))
 
 
 @callback(
@@ -549,7 +564,7 @@ def on_designer_step2_choice(
         return cleared, no_update, no_update
     # "Modify existing" — capture the project's current look and feel
     sess = session or {}
-    model, api_key, search_cfg, wd, support, api_base, aws_kw = _llm_params(
+    model, api_key, search_cfg, wd, support, api_base, aws_kw, effort = _llm_params(
         sess, image_support
     )
     # D-DM7: this generation carries the manifest instruction (it is the only
@@ -563,6 +578,7 @@ def on_designer_step2_choice(
         capture_mode=True, api_base=api_base,
         extra_kwargs=aws_kw or None,
         session=sess,
+        effort=effort,
     )
     return new_store, buf, disabled
 
@@ -678,7 +694,7 @@ def on_designer_generate_mock(
             screenshots[i] = {**screenshots[i], "annotation": ann or ""}
     updated = {**store, "screenshots": screenshots}
     sess = session or {}
-    model, api_key, search_cfg, wd, support, api_base, aws_kw = _llm_params(
+    model, api_key, search_cfg, wd, support, api_base, aws_kw, effort = _llm_params(
         sess, image_support
     )
     _vision_s1 = sess.get("vision_statement")
@@ -700,6 +716,7 @@ def on_designer_generate_mock(
         api_base=api_base,
         extra_kwargs=aws_kw or None,
         session=sess,
+        effort=effort,
     )
     return new_store, buf, disabled
 
@@ -924,21 +941,23 @@ def on_designer_continue_stack(n: Any, session: Any) -> Any:
 
 
 @callback(
-    Output("session", "data", allow_duplicate=True),
-    Output("url", "pathname", allow_duplicate=True),
-    Input("btn-designer-back", "n_clicks"),
-    State("session", "data"),
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Input("btn-designer-step-back", "n_clicks"),
+    State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_back(n: Any, session: Any) -> Any:
-    """Return to the agents page, like the other agents' Back button."""
-    if not n:
-        return no_update, no_update
-    return {
-        **(session or {}),
-        "phase": "agent_select",
-        "_designer_failed_draw": None,
-    }, "/agents"
+def on_designer_step_back(n: Any, store: Any) -> Any:
+    """One step back inside the wizard — never out of it.
+
+    The button is rendered by the two steps that have somewhere to go back to
+    (Preferences and Screenshots) and by no others, so decrementing is the
+    whole rule; the floor is step 2, the wizard's first question in every flow
+    that does not open on the no-UI check. Leaving Designer is the status bar's
+    Project link, not a button in here.
+    """
+    if not n or not store:
+        return no_update
+    return {**store, "step": max(2, int(store.get("step", 2)) - 1)}
 
 
 @callback(
@@ -1108,7 +1127,7 @@ def on_designer_regenerate(
     existing_html: str | None = store.get("mock_html") or None
     updated = {**store, "preference_text": pref, "screenshots": screenshots}
     sess = session or {}
-    model, api_key, search_cfg, wd, support, api_base, aws_kw = _llm_params(
+    model, api_key, search_cfg, wd, support, api_base, aws_kw, effort = _llm_params(
         sess, image_support
     )
     _vision_s3 = sess.get("vision_statement")
@@ -1138,6 +1157,7 @@ def on_designer_regenerate(
         api_base=api_base,
         extra_kwargs=aws_kw or None,
         session=sess,
+        effort=effort,
     )
     return new_store, buf, disabled
 
@@ -1173,7 +1193,7 @@ def on_designer_revise_stale(
     if not n or not store:
         return no_update, no_update, no_update
     sess = session or {}
-    model, api_key, search_cfg, wd, support, api_base, aws_kw = _llm_params(
+    model, api_key, search_cfg, wd, support, api_base, aws_kw, effort = _llm_params(
         sess, image_support
     )
     _vision = sess.get("vision_statement")
@@ -1205,6 +1225,7 @@ def on_designer_revise_stale(
         regen_store, wd, model, api_key, search_cfg, support, planning_ctx,
         api_base=api_base, extra_kwargs=aws_kw or None,
         session=sess,
+        effort=effort,
     )
 
 
@@ -1256,7 +1277,7 @@ def _rerun_failed_draw(store: Any, session: Any, image_support: Any) -> Any:
     model has been chosen, so the two cannot reproduce the draw differently.
     """
     sess = session or {}
-    model, api_key, search_cfg, wd, support, api_base, aws_kw = _llm_params(
+    model, api_key, search_cfg, wd, support, api_base, aws_kw, effort = _llm_params(
         sess, image_support
     )
     existing_html: str | None = None
@@ -1285,6 +1306,7 @@ def _rerun_failed_draw(store: Any, session: Any, image_support: Any) -> Any:
         api_base=api_base,
         extra_kwargs=aws_kw or None,
         session=sess,
+        effort=effort,
     )
     # The snapshot existed only to carry this draw across the model picker's
     # page rebuild. Drawing spends it; left behind, a later render would

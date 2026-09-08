@@ -164,9 +164,15 @@ class TestBlocks:
         assert "color: #a0a0b0" in rule
         assert "font-size: 11px" in rule
 
-    def test_neither_block_is_filled(self) -> None:
-        rule = _rule(".chat-msg.chat-bubble-user")
+    def test_the_agent_block_is_not_filled(self) -> None:
+        rule = _rule(".chat-msg.chat-bubble-assistant")
         assert "background: none !important" in rule
+        assert "border: 0" in rule
+
+    def test_the_user_block_wears_the_composer_fill(self) -> None:
+        """The same dark grey as the textarea: `dark-6` is Mantine's input fill."""
+        rule = _rule(".chat-msg.chat-bubble-user")
+        assert "background: var(--mantine-color-dark-6) !important" in rule
         assert "border: 0" in rule
 
     def test_the_user_block_has_a_neutral_left_rule(self) -> None:

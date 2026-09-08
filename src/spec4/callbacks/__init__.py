@@ -29,7 +29,7 @@ from spec4.layouts._artifact_view import (
 )
 from spec4.layouts._chat import CHAT_ARTIFACTS, OPEN_BTN_PREFIX, open_button_id
 from spec4.layouts._llm_gate import is_open as _gate_is_open
-from spec4.layouts._setup import GATE_IDS, provider_key_hint
+from spec4.layouts._setup import GATE_IDS, SETUP_IDS, provider_key_hint
 from spec4.layouts._round_cost import round_cost_lines
 from spec4.layouts._round_tree import (
     LINE_TYPE,
@@ -125,18 +125,38 @@ def on_status_bar(session: Any, prefs: Any) -> Any:
     # provider *name*) and a lie before one does — that fallback is what printed
     # the previous session's model onto a bar whose session could not run a turn.
     connected = llm_selection.default_is_connected(session)
-    provider, model = llm_selection.default_provider_model(session, prefs)
+    # Which selection the bar is describing. On the two screens that are about
+    # one agent, it is that agent's — the bar says what the next turn will run
+    # on, and an agent with an override does not run on the default. Everywhere
+    # else the key is absent and `default_provider_model` reads the default by
+    # the same route it always has.
+    #
+    # `connected` above is deliberately *not* asked per agent: it answers
+    # whether this session ever made a connection, and a remembered override is
+    # not evidence of one. That is why it is read before this line rather than
+    # from it.
+    phase_now = session.get("phase")
+    if phase_now == "designer":
+        gate_agent = "designer"
+    elif phase_now == "chat":
+        gate_agent = str(session.get("active_agent") or "")
+    else:
+        gate_agent = ""
+    provider, model, effort = llm_selection.default_provider_model(
+        session, prefs, gate_agent
+    )
 
     # The current item is marked from the phase rather than the URL: Settings
     # is the setup wizard, Artifacts is the Artifact View, and every other
     # phase is somewhere inside Project. Project is what is left over rather
     # than a phase list of its own, so a screen added inside the project marks
     # Project without this callback having to hear about it.
-    phase = session.get("phase")
-    on_settings = phase == "setup"
-    on_artifacts = phase == "artifacts"
+    on_settings = phase_now == "setup"
+    on_artifacts = phase_now == "artifacts"
     return (
-        _status_context(working_dir, round_number, provider, model, connected),
+        _status_context(
+            working_dir, round_number, provider, model, connected, effort
+        ),
         _status_nav_class(not on_settings and not on_artifacts),
         _status_nav_class(on_artifacts),
         _status_nav_class(on_settings),
@@ -153,11 +173,15 @@ def on_status_bar(session: Any, prefs: Any) -> Any:
 def on_status_bar_dir(n: Any, session: Any) -> Any:
     """Reopen the directory picker from the bar's working-directory field.
 
-    The same move as ``on_setup_back_to_dir``, from the one place the developer
-    is already looking at the directory. It only *opens* the picker: the
-    working directory and the prefs are untouched here, so backing out of the
-    picker leaves the project exactly as it was, and a new directory is
-    committed by ``on_dir_select`` and nowhere else.
+    The one route back to the picker, and it is on every screen. The setup
+    wizard used to carry a second one of its own; it is gone, because the
+    control that names the directory is the obvious place to change it and a
+    wizard step is not.
+
+    It only *opens* the picker: the working directory and the prefs are
+    untouched here, so backing out of the picker leaves the project exactly as
+    it was, and a new directory is committed by ``on_dir_select`` and nowhere
+    else.
 
     ``browser_path`` is seeded from the open project so the picker opens where
     the developer already is rather than at home — changing project almost
@@ -567,24 +591,6 @@ def _needs_restoring(
     )
 
 
-@callback(
-    Output("session", "data", allow_duplicate=True),
-    Output("url", "pathname", allow_duplicate=True),
-    Input("btn-setup-back-to-dir", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def on_setup_back_to_dir(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update, no_update
-    return {
-        **session,
-        "phase": "working_dir",
-        "available_models": None,
-        "setup_error": None,
-    }, "/dir"
-
-
 # ---------------------------------------------------------------------------
 # Working directory
 # ---------------------------------------------------------------------------
@@ -691,16 +697,13 @@ def on_create_folder(n: Any, name: Any, session: Any) -> Any:
     prevent_initial_call=False,
 )
 def on_provider_hint(provider_label: Any) -> Any:
-    if providers.provider_key_for_label(provider_label or "") == "bedrock":
-        return dmc.Text(
-            "Bedrock API key: enter KEY:REGION (e.g. bdak_…:us-east-1). "
-            "IAM credentials: ACCESS_KEY_ID:SECRET_ACCESS_KEY:REGION[:SESSION_TOKEN]. "
-            "Leave blank to use ambient credentials "
-            "(env vars, ~/.aws/credentials, IAM role).",
-            size="xs",
-            c="dimmed",
-        )
-    return html.Div()
+    """Fill the wizard's hint slot — from the shared builder, not a copy.
+
+    The gate's own hint callback already went through
+    :func:`provider_key_hint`; this one had its own inline copy of the Bedrock
+    wording, which is exactly the drift the shared function exists to prevent.
+    """
+    return provider_key_hint(provider_label or "")
 
 
 @callback(
@@ -800,6 +803,38 @@ def on_setup_back_provider(n: Any, session: Any) -> Any:
 
 
 @callback(
+    Output(SETUP_IDS["effort"], "data"),
+    Output(SETUP_IDS["effort"], "value"),
+    Output(SETUP_IDS["effort"], "disabled"),
+    Input(SETUP_IDS["model"], "value"),
+    State(SETUP_IDS["effort"], "value"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_setup_effort_options(model: Any, effort: Any, session: Any) -> Any:
+    """Re-offer the effort levels whenever the resolved model changes.
+
+    The success criterion is that the offered values always match what the
+    resolved model supports, and the model can change without the page
+    re-rendering — the select's own value is what moves. So the list is
+    recomputed here from the *same* function the layout builds it with
+    (:func:`llm_selection.offered_efforts`), keyed on the session's provider
+    and the newly chosen model.
+
+    A chosen level that the new model does not offer falls back to
+    ``"default"`` rather than being left dangling: "send nothing" is always
+    valid, which is the whole reason it is a stored value rather than an
+    absence. A model that does not accept the parameter at all offers that one
+    value and the control is disabled.
+    """
+    offered = llm_selection.offered_efforts(
+        (session or {}).get("provider"), model or ""
+    )
+    value = effort if effort in offered else llm_selection.DEFAULT_EFFORT
+    return offered, value, len(offered) <= 1
+
+
+@callback(
     Output("session", "data", allow_duplicate=True),
     Output("prefs", "data", allow_duplicate=True),
     Output("image-support-store", "data", allow_duplicate=True),
@@ -807,24 +842,42 @@ def on_setup_back_provider(n: Any, session: Any) -> Any:
     Output("notifications-container", "children", allow_duplicate=True),
     Input("btn-setup-model-continue", "n_clicks"),
     State("setup-model", "value"),
+    State(SETUP_IDS["effort"], "value"),
     State("session", "data"),
     State("prefs", "data"),
     prevent_initial_call=True,
 )
-def on_setup_model_continue(n: Any, model: Any, session: Any, prefs: Any) -> Any:
+def on_setup_model_continue(
+    n: Any, model: Any, chosen_effort: Any, session: Any, prefs: Any
+) -> Any:
     if not n or not model:
         return no_update, no_update, no_update, no_update, no_update
     provider_key = session.get("provider") or ""
+    # The select's value is the project default's effort. It falls back to the
+    # remembered one rather than to "default" so that a step re-run with the
+    # control absent — an older layout, a test driving the callback directly —
+    # cannot silently discard a stored choice.
+    effort = (
+        chosen_effort
+        or session.get("effort")
+        or prefs.get("effort")
+        or llm_selection.DEFAULT_EFFORT
+    )
     llm_config = llm_selection.build_llm_config(
-        provider_key, model, session.get("api_key")
+        provider_key, model, session.get("api_key"), effort
     )
     new_session = {
         **session,
         "model": model,
+        "effort": effort,
         "llm_config": llm_config,
         "setup_error": None,
     }
-    new_prefs = {**prefs, "model": model} if prefs.get("save_prefs") else prefs
+    new_prefs = (
+        {**prefs, "model": model, "effort": effort}
+        if prefs.get("save_prefs")
+        else prefs
+    )
 
     # The config is committed above, before the probes run and whatever they
     # return: capability probing is advisory and must never cost the developer
@@ -876,8 +929,10 @@ def on_search_provider_hint(provider_label: Any) -> Any:
             ),
             ".",
         ],
-        size="xs",
-        c="dimmed",
+        # The wizard's one dimmed-line class, not a size and a colour of this
+        # slot's own — it sits directly under a field, exactly where the
+        # never-stored notice sits under the key.
+        className="dim-line",
     )
     return spec["key_label"], spec["placeholder"], hint
 
@@ -1175,6 +1230,38 @@ def on_gate_provider_change(provider_label: Any, session: Any, prefs: Any) -> An
 
 
 @callback(
+    Output(GATE_IDS["effort"], "data"),
+    Output(GATE_IDS["effort"], "value"),
+    Output(GATE_IDS["effort"], "disabled"),
+    Input(GATE_IDS["model"], "value"),
+    State(GATE_IDS["effort"], "value"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_gate_effort_options(model: Any, effort: Any, session: Any) -> Any:
+    """Re-offer the effort levels whenever the gate's chosen model changes.
+
+    The gate's twin of :func:`on_setup_effort_options`, and deliberately its
+    twin rather than a variant: the criterion is that the offered values always
+    match what the *resolved* model supports, and the two screens resolve the
+    same way. Both call :func:`llm_selection.offered_efforts` — the same
+    function the layout builds the control with — so the list cannot depend on
+    which of the two screens is asking.
+
+    The provider comes off the open draft, which is where Connect put it, and
+    only falls back to the session's when there is no draft provider yet: the
+    levels are keyed on the provider the *override* will use, not on the
+    default's (D-EF4).
+    """
+    session = session or {}
+    draft = session.get("agent_llm_draft") or {}
+    provider_key = draft.get("provider") or session.get("provider")
+    offered = llm_selection.offered_efforts(provider_key, model or "")
+    value = effort if effort in offered else llm_selection.DEFAULT_EFFORT
+    return offered, value, len(offered) <= 1
+
+
+@callback(
     Output("session", "data", allow_duplicate=True),
     Input("btn-agent-llm-default", "n_clicks"),
     State("session", "data"),
@@ -1399,10 +1486,11 @@ def on_gate_connect(
     Output("stream-poll-interval", "max_intervals", allow_duplicate=True),
     Input("btn-agent-llm-continue", "n_clicks"),
     State(GATE_IDS["model"], "value"),
+    State(GATE_IDS["effort"], "value"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_gate_continue(n: Any, model: Any, session: Any) -> Any:
+def on_gate_continue(n: Any, model: Any, chosen_effort: Any, session: Any) -> Any:
     """Commit the override and answer the gate — and, from a failed step, re-run it.
 
     The entry is normally written whatever the probes return, `None/None`
@@ -1427,8 +1515,20 @@ def on_gate_continue(n: Any, model: Any, session: Any) -> Any:
     draft = session.get("agent_llm_draft") or {}
     from_retry = bool(draft.get("retry"))
     provider_key = draft.get("provider") or ""
+    # The gate's own Effort select, written onto the same per-agent entry as
+    # the model and by this one callback — never a store key of its own. It
+    # falls back to whatever this agent already had rather than to "default",
+    # for the reason the setup wizard's does: a step re-run with the control
+    # absent (an older layout, a test driving the callback directly) must not
+    # silently discard a stored choice.
+    effort = (
+        chosen_effort
+        or draft.get("effort")
+        or (llm_selection.entry(session, agent) or {}).get("effort")
+        or llm_selection.DEFAULT_EFFORT
+    )
     llm_config = llm_selection.build_llm_config(
-        provider_key, model, draft.get("api_key")
+        provider_key, model, draft.get("api_key"), effort
     )
     image_support, tool_support = llm_selection.probe_capabilities(
         provider_key, llm_config
@@ -1447,6 +1547,7 @@ def on_gate_continue(n: Any, model: Any, session: Any) -> Any:
     entry = {
         "provider": provider_key,
         "model": model,
+        "effort": effort,
         "available_models": draft.get("available_models") or [],
         "llm_config": llm_config,
         "image_support": image_support,
@@ -1961,6 +2062,15 @@ def on_agent_pill_click(n_clicks_list: Any, session: Any) -> Any:
             **session,
             "phase": "designer",
             "agent_select_error": None,
+            # Entering Designer from the project view starts it clean. The
+            # snapshot exists to carry a failed draw across the model picker's
+            # page rebuild, which happens without ever leaving this route;
+            # left behind, it would resurrect an error the developer walked
+            # away from — and could re-arm the auto-retry with it. This is
+            # where the removed wizard Back button used to discard it, moved
+            # to the route in now that the way out is the status bar's
+            # Project link.
+            "_designer_failed_draw": None,
         }, "/design"
     return _switch_agent(
         session, target, extra={"phase": "chat", "agent_select_error": None}

@@ -10,7 +10,14 @@ from spec4 import project_manager
 from spec4.app_constants import PROJECT_MODE_NEW
 from spec4.layouts import _llm_gate
 from spec4.layouts._round_cost import run_cost_strip
-from spec4.layouts._shared import PROGRESS_CLASS_NAMES
+from spec4.layouts._shared import (
+    PROGRESS_CLASS_NAMES,
+    STEP_ACTIVE,
+    STEP_DONE,
+    STEP_UNREACHABLE,
+    StepEntry,
+    step_row,
+)
 from spec4.agents.designer import (
     detect_has_ui_source,
     detect_no_ui,
@@ -33,6 +40,90 @@ _PLACEHOLDER_HTML = (
 )
 
 
+# The six positions the wizard reports, in order. Seven steps, six labels:
+# refining (step 7) is the preview step seen with changes not yet drawn, so it
+# reuses Preview's label rather than adding a position the developer can never
+# be "before".
+DESIGNER_STEPS: tuple[str, ...] = (
+    "No-UI check",
+    "Start / Resume",
+    "Preferences",
+    "Screenshots",
+    "Generate",
+    "Preview",
+)
+
+# The classes `v3.css` draws the row with — the same rule the setup wizard's
+# row takes, restated at this wizard's names. Named here because
+# `_shared.step_row` is handed them and this screen's tests assert on them.
+DESIGNER_STEP_CLASS = "designer-step"
+DESIGNER_STEPS_CLASS = "designer-steps"
+
+# The container the row is rendered into, and the id `render_designer_step`
+# writes to. It was a `dmc.Stepper` whose `active` the callback set; the plain
+# text row has no such property, so the callback re-renders the row into this
+# container instead (its Output moved with it, in the same change).
+DESIGNER_STEPPER_ID = "designer-stepper"
+
+# The two facts the preview used to frame. Both are one dimmed line now: a box
+# around a sentence that is neither a warning nor an error is chrome, and the
+# yellow disclaimer was the loudest thing on the screen it was disclaiming.
+MOCK_DISCLAIMER = "Look-and-feel reference only; not the final UI."
+MOCK_APPROVED = "Mock approved and saved."
+
+
+def _dim(text: str, **kwargs: Any) -> Any:
+    """One dimmed line: an instruction, or a fact — never an alert.
+
+    The setup wizard's ``_dim`` says the same thing on its own screen. What
+    the two share is the ``dim-line`` class, which is where the styling
+    actually lives, so a reworded register moves both.
+    """
+    return dmc.Text(text, className="dim-line", **kwargs)
+
+
+def stepper_index(step: int) -> int:
+    """Which of the six labels a wizard step (1-7) stands at.
+
+    Steps 6 and 7 both stand at Preview. Clamped rather than trusted: the
+    store is memory-resident state a stale page can hand back out of range,
+    and an index off the end would raise inside the row builder.
+    """
+    return max(0, min(step - 1, len(DESIGNER_STEPS) - 1))
+
+
+def designer_step_row(active: int) -> html.Div:
+    """The wizard's position row, marked by the shared renderer (D-LR9).
+
+    ``active`` indexes :data:`DESIGNER_STEPS`. Steps behind it are done and
+    read at full weight; steps ahead cannot be entered yet, so they are dimmed
+    and disabled and carry the reason as their tooltip — the same marking the
+    chat frame's pipeline row and the setup wizard's indicator wear, from the
+    same function, because the active mark is the accent and a re-themed
+    accent has to move all three at once.
+
+    No entry carries an id: the row reports where the developer is, and every
+    move through the wizard is made by the controls under it.
+    """
+    entries: list[StepEntry] = []
+    for index, label in enumerate(DESIGNER_STEPS):
+        if index == active:
+            entries.append(StepEntry(label, STEP_ACTIVE))
+        elif index < active:
+            entries.append(StepEntry(label, STEP_DONE))
+        else:
+            entries.append(
+                StepEntry(
+                    label,
+                    STEP_UNREACHABLE,
+                    tooltip=f"Finish {DESIGNER_STEPS[active]} first",
+                )
+            )
+    return step_row(
+        entries, base_class=DESIGNER_STEP_CLASS, row_class=DESIGNER_STEPS_CLASS
+    )
+
+
 def _design_dir(working_dir: str | None, version: int) -> pathlib.Path:
     return pathlib.Path(working_dir or ".") / ".spec4" / f"v{version}" / "design"
 
@@ -47,61 +138,86 @@ def _default_designer_session(step: int = 2) -> dict[str, Any]:
     }
 
 
+# Every step's controls sit in one of these: the step's own action filled, and
+# everything beside it a neutral outline. Neutral is a bare `variant="outline"`
+# with no `color` — per D-AR1 that takes the theme primary and washes to
+# near-white in this dark scheme, which is the mock's `.btn-outline` — so the
+# one green thing in the row is reached by omitting `variant` entirely and no
+# button here names a colour that is not a semantic (D-LR2).
+def _button_row(*buttons: Any, **kwargs: Any) -> Any:
+    return dmc.Group(list(buttons), gap="xs", className="btn-row", **kwargs)
+
+
+def _primary(label: str, button_id: str) -> Any:
+    """The one filled action a step carries."""
+    return dmc.Button(label, id=button_id, size="compact-sm")
+
+
+def _neutral(label: str, button_id: str, **kwargs: Any) -> Any:
+    return dmc.Button(
+        label, id=button_id, variant="outline", size="compact-sm", **kwargs
+    )
+
+
+def _warn(label: str, button_id: str, **kwargs: Any) -> Any:
+    """A neutral outline in the warn tone, for the destructive choice.
+
+    The tone comes from `.btn-warn` in the stylesheet — the app's one warn,
+    already worn by the agent rows' Needs Update and the chat frame's Re-scan —
+    never from a `color` prop, so a re-themed warn moves it (D-LR2).
+    """
+    return _neutral(label, button_id, className="btn-warn", **kwargs)
+
+
+def _step_back() -> Any:
+    """Back, within the wizard: one step, never out of Designer.
+
+    One id for both steps that render it — only one step is ever on screen —
+    and the callback simply decrements. The button that *left* the wizard for
+    the project view is gone; the status bar's Project link is that route.
+    """
+    return _neutral("Back", "btn-designer-step-back")
+
+
 def _step1_content() -> Any:
     return dmc.Stack(
         [
-            dmc.Alert(
-                "This project does not appear to have a graphical user interface "
-                "(CLI / terminal / headless). Would you like to add a GUI?",
-                variant="light",
-                title="No UI Detected",
+            _dim(
+                "No user interface detected — this looks like a CLI, terminal "
+                "or headless project."
             ),
-            dmc.Group(
-                [
-                    dmc.Button("Add a GUI →", id="btn-designer-add-gui"),
-                    dmc.Button(
-                        "Skip Designer",
-                        id="btn-designer-skip-1",
-                        variant="outline",
-                        color="gray",
-                    ),
-                ]
+            _button_row(
+                _primary("Add a GUI", "btn-designer-add-gui"),
+                _neutral("Skip Designer", "btn-designer-skip-1"),
             ),
         ],
-        gap="sm",
+        gap="xs",
     )
 
 
 def _step2_content(has_existing_ui: bool = True, is_revision: bool = False) -> Any:
     if is_revision:
-        prompt = (
-            "This revision updates your project. Carry your existing design "
-            "forward and update it for these changes, or start over with a "
-            "brand-new design?"
-        )
+        prompt = "Carry this project's design forward and update it, or start over?"
     elif has_existing_ui:
-        prompt = (
-            "Would you like to modify an existing look and feel, "
-            "or create a brand-new design?"
-        )
+        prompt = "Modify the existing look and feel, or create a brand-new design?"
     else:
-        prompt = "Would you like to create a brand-new design for your application?"
+        prompt = "Create a brand-new design for your application?"
 
-    primary: Any
+    # The slot the two flows disagree about: a revision round opens with
+    # carry-forward, every other round with the option to capture the look and
+    # feel already in the project.
+    first: Any
     if is_revision:
-        primary = dmc.Button(
-            "Carry design forward & update",
-            id="btn-designer-carry-forward",
+        first = _primary(
+            "Carry design forward & update", "btn-designer-carry-forward"
         )
     else:
-        primary = dmc.Button(
+        first = _neutral(
             "Modify existing look and feel",
-            id="btn-designer-modify-existing",
-            variant="outline",
+            "btn-designer-modify-existing",
             style={"display": "none"} if not has_existing_ui else {},
         )
-    create_kwargs: dict[str, Any] = {"variant": "outline"} if is_revision else {}
-    controls: list[Any] = [primary]
+    controls: list[Any] = [first]
     if is_revision:
         # `on_designer_step2_choice` takes both this button and
         # btn-designer-create-new as Inputs, and Dash refuses to dispatch a
@@ -111,74 +227,69 @@ def _step2_content(has_existing_ui: bool = True, is_revision: bool = False) -> A
         # ("A nonexistent object was used in an Input") and does nothing. Same
         # mounted-but-hidden trick the no-existing-UI case above uses.
         controls.append(
-            dmc.Button(
+            _neutral(
                 "Modify existing look and feel",
-                id="btn-designer-modify-existing",
-                variant="outline",
+                "btn-designer-modify-existing",
                 style={"display": "none"},
             )
         )
+    # The filled action is whichever choice this branch is really offering: a
+    # revision round is here to carry its design forward, every other round to
+    # draw one. The other choice stays available beside it, as an outline.
     controls.append(
-        dmc.Button(
-            "Create new design",
-            id="btn-designer-create-new",
-            **create_kwargs,
-        )
+        _neutral("Create new design", "btn-designer-create-new")
+        if is_revision
+        else _primary("Create new design", "btn-designer-create-new")
     )
-    controls.append(
-        dmc.Button(
-            "Skip Designer",
-            id="btn-designer-skip-2",
-            variant="outline",
-            color="gray",
-        )
-    )
-    return dmc.Stack(
-        [
-            dmc.Text(prompt, c="dimmed"),
-            dmc.Group(controls),
-        ],
-        gap="sm",
-    )
+    controls.append(_neutral("Skip Designer", "btn-designer-skip-2"))
+    return dmc.Stack([_dim(prompt), _button_row(*controls)], gap="xs")
 
 
 def _step3_content() -> Any:
     return dmc.Stack(
         [
+            _dim(
+                "Describe the visual direction; the vision and feature specs "
+                "are already in context."
+            ),
             dmc.Textarea(
                 id="designer-preference-input",
-                label="Describe the look and feel you have in mind",
                 placeholder=(
-                    "e.g. Modern dark theme with a clean minimal layout, "
-                    "blueprint-style grid background..."
+                    "e.g. dark, dense, one accent colour, no gradients, "
+                    "1px rules instead of cards"
                 ),
                 minRows=4,
                 autosize=True,
             ),
-            dmc.Button("Next →", id="btn-designer-preferences-next"),
+            _button_row(
+                _step_back(),
+                _primary("Next", "btn-designer-preferences-next"),
+            ),
         ],
-        gap="sm",
+        gap="xs",
     )
 
 
 def _screenshot_card(idx: int, shot: dict[str, str]) -> Any:
+    """One uploaded screenshot: the image, its note, and Remove.
+
+    A bordered row rather than a card — no fill, no radius, no hover — and
+    Remove is a neutral outline like every other secondary control in the
+    wizard. What it removes is a file the developer just added and can add
+    again, so it is not the row's warn.
+    """
     return dmc.Paper(
         [
             dmc.Group(
                 [
                     html.Img(
                         src=shot["data"],
-                        style={
-                            "maxHeight": "120px",
-                            "maxWidth": "100%",
-                            "borderRadius": "4px",
-                        },
+                        style={"maxHeight": "120px", "maxWidth": "100%"},
                     ),
                     dmc.Button(
                         "Remove",
                         id={"type": "designer-screenshot-delete", "index": idx},
-                        color="red",
-                        variant="subtle",
+                        variant="outline",
                         size="compact-sm",
                     ),
                 ],
@@ -187,7 +298,7 @@ def _screenshot_card(idx: int, shot: dict[str, str]) -> Any:
             ),
             dmc.Textarea(
                 id={"type": "designer-screenshot-annotation", "index": idx},
-                label="What do you like or dislike about this?",
+                placeholder="What to take from this image, or avoid",
                 value=shot.get("annotation", ""),
                 minRows=2,
                 autosize=True,
@@ -195,9 +306,8 @@ def _screenshot_card(idx: int, shot: dict[str, str]) -> Any:
             ),
         ],
         withBorder=True,
-        p="sm",
-        mb="xs",
-        radius="sm",
+        p="xs",
+        radius=0,
     )
 
 
@@ -206,16 +316,15 @@ def _step4_content(
     image_support: bool | None,
 ) -> Any:
     screenshots: list[dict[str, str]] = store.get("screenshots", [])
-    children: list[Any] = []
+    children: list[Any] = [
+        _dim("Add reference images for style guidance, or generate without them.")
+    ]
 
     if image_support is False:
         children.append(
-            dmc.Alert(
-                "The selected model does not support image input — screenshot "
-                "upload is disabled. You can still proceed using your text "
-                "description.",
-                color="orange",
-                variant="light",
+            _dim(
+                "The selected model takes no image input, so upload is off — "
+                "your description still stands."
             )
         )
     else:
@@ -224,43 +333,29 @@ def _step4_content(
                 id="designer-screenshot-upload",
                 accept="image/*",
                 multiple=False,
-                children=dmc.Stack(
-                    [
-                        dmc.Text(
-                            "Drag & drop a screenshot, or click to upload",
-                            ta="center",
-                            c="dimmed",
-                        ),
-                        dmc.Text(
-                            "(Optional — add reference images for style guidance)",
-                            size="xs",
-                            ta="center",
-                            c="dimmed",
-                        ),
-                    ],
-                    gap="xs",
-                    align="center",
-                    py="md",
-                ),
+                children=_dim("Drag and drop a screenshot, or click to upload"),
                 className="designer-upload-zone",
             )
         )
 
     if len(screenshots) > 5:
         children.append(
-            dmc.Alert(
-                "You have supplied more than 5 screenshots — too many examples "
-                "may produce conflicting guidance.",
-                color="yellow",
-                variant="light",
+            _dim(
+                "More than 5 screenshots — too many examples can produce "
+                "conflicting guidance."
             )
         )
 
     for idx, shot in enumerate(screenshots):
         children.append(_screenshot_card(idx, shot))
 
-    children.append(dmc.Button("Generate Mock →", id="btn-designer-generate-mock"))
-    return dmc.Stack(children, gap="sm")
+    children.append(
+        _button_row(
+            _step_back(),
+            _primary("Generate", "btn-designer-generate-mock"),
+        )
+    )
+    return dmc.Stack(children, gap="xs")
 
 
 def _step5_content(
@@ -272,14 +367,12 @@ def _step5_content(
     tokens: int = bd.get("tokens", 0)
     progress_val: int = bd.get("progress", 0)
     children: list[Any] = [
+        # A failed draw is the one thing on this screen that is genuinely an
+        # alert, and it is the retry panel's frame — it stays. The line above
+        # a running draw was never a warning, so it is a line.
         dmc.Alert(error, color="red", variant="light", title="Generation Error")
         if error
-        else dmc.Alert(
-            "Generating your mock — this may take several minutes. "
-            "If you think it may have finished but did not display "
-            "your mock, try refreshing the page.",
-            variant="light",
-        ),
+        else _dim("Generating the mock — this can take several minutes."),
         dmc.Progress(
             value=progress_val,
             id="mock-progress",
@@ -301,11 +394,9 @@ def _step5_content(
         # back through step 4 to be told there.
         children.insert(
             0,
-            dmc.Alert(
-                "The selected model does not support image input — screenshot "
-                "examples are not being sent with this draw.",
-                color="orange",
-                variant="light",
+            _dim(
+                "The selected model takes no image input, so screenshot "
+                "examples are not going with this draw."
             ),
         )
     if error:
@@ -314,31 +405,14 @@ def _step5_content(
         # both doors. Picking a model does not draw by itself — it comes back
         # here, and Retry runs the same draw on the new model.
         children.append(
-            dmc.Group(
-                [
-                    dmc.Button(
-                        "↺ Retry", id="btn-designer-retry", variant="outline"
-                    ),
-                    dmc.Button(
-                        "↺ Try a different provider/model",
-                        id="btn-designer-retry-model",
-                        variant="outline",
-                    ),
-                ],
-                gap="sm",
+            _button_row(
+                _neutral("Retry", "btn-designer-retry"),
+                _neutral(
+                    "Try a different provider/model", "btn-designer-retry-model"
+                ),
             )
         )
-    return dmc.Stack(children, gap="sm")
-
-
-_MOCK_DISCLAIMER = dmc.Alert(
-    "This mock-up illustrates the intended look and feel only. "
-    "It is not intended to represent or match the final application UI.",
-    title="Design Mock-up — Look & Feel Reference Only",
-    color="yellow",
-    variant="filled",
-    styles={"title": {"color": "#212121"}, "message": {"color": "#212121"}},
-)
+    return dmc.Stack(children, gap="xs")
 
 
 def _fullscreen_row() -> Any:
@@ -372,6 +446,11 @@ def _stale_banner(stale: list[str]) -> Any:
         if len(stale) > 1
         else f"the project {stale[0]}"
     )
+    # Still an alert: this one is a warning, and the developer is about to
+    # approve a mock that no longer matches its inputs. Its action is a warn
+    # outline rather than a second filled button — regenerating discards the
+    # mock on screen, which is Start Over's kind of decision, and the step's
+    # one primary is Approve.
     return dmc.Alert(
         [
             dmc.Text(
@@ -380,11 +459,7 @@ def _stale_banner(stale: list[str]) -> Any:
                 "an entirely new one from the current vision and AI features.",
                 mb="sm",
             ),
-            dmc.Button(
-                "Regenerate mock",
-                id="btn-designer-revise-stale",
-                size="sm",
-            ),
+            _warn("Regenerate mock", "btn-designer-revise-stale"),
         ],
         title="Upstream changes detected",
         color="yellow",
@@ -402,7 +477,7 @@ def _step6_content(
     children.extend(
         [
             _fullscreen_row(),
-            _MOCK_DISCLAIMER,
+            _dim(MOCK_DISCLAIMER),
             html.Iframe(
                 id="mock-iframe",
                 srcDoc=store.get("mock_html", ""),
@@ -425,57 +500,25 @@ def _step6_content(
     if cost_strip is not None:
         children.append(cost_strip)
     if store.get("finalized"):
+        children.append(_dim(MOCK_APPROVED))
         children.append(
-            dmc.Alert(
-                "Mock approved and saved. You can now continue to Stack Advisor.",
-                variant="light",
-            )
-        )
-        children.append(
-            dmc.Group(
-                [
-                    dmc.Button(
-                        "Continue to Stack Advisor →",
-                        id="btn-designer-continue-stack",
-                    ),
-                    dmc.Button(
-                        "Refine",
-                        id="btn-designer-refine",
-                        variant="outline",
-                    ),
-                    dmc.Button(
-                        "↺ Start Over",
-                        id="btn-designer-start-over",
-                        variant="outline",
-                        color="red",
-                    ),
-                ],
-                gap="sm",
+            _button_row(
+                _primary(
+                    "Continue to Stack Advisor", "btn-designer-continue-stack"
+                ),
+                _neutral("Refine", "btn-designer-refine"),
+                _warn("Start Over", "btn-designer-start-over"),
             )
         )
     else:
         children.append(
-            dmc.Group(
-                [
-                    dmc.Button(
-                        "Approve",
-                        id="btn-designer-approve",
-                    ),
-                    dmc.Button(
-                        "Refine",
-                        id="btn-designer-refine",
-                    ),
-                    dmc.Button(
-                        "↺ Start Over",
-                        id="btn-designer-start-over",
-                        variant="outline",
-                        color="red",
-                    ),
-                ],
-                gap="sm",
+            _button_row(
+                _primary("Approve", "btn-designer-approve"),
+                _neutral("Refine", "btn-designer-refine"),
+                _warn("Start Over", "btn-designer-start-over"),
             )
         )
-    return dmc.Stack(children, gap="sm")
+    return dmc.Stack(children, gap="xs")
 
 
 def _refine_image_row(idx: int, img: dict[str, str]) -> Any:
@@ -492,8 +535,7 @@ def _refine_image_row(idx: int, img: dict[str, str]) -> Any:
                     dmc.Button(
                         "Remove",
                         id={"type": "designer-refine-image-delete", "index": idx},
-                        color="red",
-                        variant="subtle",
+                        variant="outline",
                         size="compact-sm",
                     ),
                 ],
@@ -511,7 +553,7 @@ def _refine_image_row(idx: int, img: dict[str, str]) -> Any:
         ],
         withBorder=True,
         p="xs",
-        radius="sm",
+        radius=0,
     )
 
 
@@ -519,7 +561,7 @@ def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> 
     refine_images: list[dict[str, str]] = store.get("refine_images", [])
     children: list[Any] = [
         _fullscreen_row(),
-        _MOCK_DISCLAIMER,
+        _dim(MOCK_DISCLAIMER),
         html.Iframe(
             id="mock-iframe",
             srcDoc=store.get("mock_html", ""),
@@ -531,11 +573,11 @@ def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> 
                 "borderRadius": "8px",
             },
         ),
+        _dim("Describe the changes you'd like."),
         dmc.Textarea(
             id="designer-refine-input",
-            label="Describe the changes you'd like",
             placeholder=(
-                "e.g. Make the hero section larger, use a warmer color palette..."
+                "e.g. a larger opening block, a warmer palette, tighter rows"
             ),
             minRows=3,
             autosize=True,
@@ -548,12 +590,7 @@ def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> 
                 id="designer-refine-upload",
                 accept="image/*",
                 multiple=True,
-                children=dmc.Text(
-                    "Drag & drop a reference image (optional)",
-                    ta="center",
-                    c="dimmed",
-                    py="sm",
-                ),
+                children=_dim("Drag and drop a reference image, or click to upload"),
                 className="designer-upload-zone",
             )
         )
@@ -572,22 +609,12 @@ def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> 
             )
         )
     children.append(
-        dmc.Group(
-            [
-                dmc.Button(
-                    "↺ Cancel",
-                    id="btn-designer-refine-cancel",
-                    variant="outline",
-                    color="gray",
-                ),
-                dmc.Button(
-                    "Regenerate Mock →",
-                    id="btn-designer-regenerate",
-                ),
-            ]
+        _button_row(
+            _neutral("Cancel", "btn-designer-refine-cancel"),
+            _primary("Regenerate", "btn-designer-regenerate"),
         )
     )
-    return dmc.Stack(children, gap="sm")
+    return dmc.Stack(children, gap="xs")
 
 
 def designer_layout(
@@ -602,12 +629,11 @@ def designer_layout(
     if _llm_gate.is_open(session, "designer") or (
         session.get("agent_llm_draft") or {}
     ).get("agent") == "designer":
-        return html.Div(
-            [
-                dmc.Title("Designer", order=3, mb="md"),
-                _llm_gate.gate_card(session, prefs, "designer"),
-            ]
-        )
+        # No heading above it. The gate's own first line reads "Model for
+        # Designer: …", so a title saying "Designer" over it named the agent
+        # twice on a screen whose whole content is one panel — and the status
+        # bar names the model this route is about as well.
+        return html.Div(_llm_gate.gate_card(session, prefs, "designer"))
     working_dir: str | None = session.get("working_dir")
     vision: dict[str, Any] = session.get("vision_statement") or {}
     code_review: dict[str, Any] = session.get("code_review") or {}
@@ -723,109 +749,17 @@ def designer_layout(
                 interval=250,
                 disabled=True,
             ),
-            dmc.Group(
-                [
-                    dmc.Title("Designer", order=3),
-                    dmc.Button(
-                        "← Back",
-                        id="btn-designer-back",
-                        variant="filled",
-                        size="xs",
-                    ),
-                ],
-                justify="space-between",
-                align="center",
-                mb="sm",
-            ),
-            dmc.Text(
-                [
-                    "Hello! I'm the ",
-                    html.Strong("Designer"),
-                    ". I'll generate a self-contained HTML mock-up of your "
-                    "application's starting screen — a visual design reference "
-                    "ready to hand off to your coding agent.",
-                ],
-                c="dimmed",
-                mb="md",
-            ),
-            dmc.Accordion(
-                dmc.AccordionItem(
-                    [
-                        dmc.AccordionControl(
-                            dmc.Text(
-                                "How to use Designer",
-                                fw=600,
-                            )
-                        ),
-                        dmc.AccordionPanel(
-                            dcc.Markdown(
-                                "Designer works in a few short steps:\n\n"
-                                "1. **Choose your starting point** — create a "
-                                "fresh design, or let Designer scan your existing "
-                                "project files and capture their current look "
-                                "and feel.\n"
-                                "2. **Describe the style** — enter your visual "
-                                "preferences: theme (light/dark), colors, layout "
-                                "style, mood, typography, or any other design "
-                                "direction you have in mind.\n"
-                                "3. **Add reference screenshots** *(optional)* — "
-                                "upload images of designs you like. For each one "
-                                "you can add a note describing what you want to "
-                                "take from it or avoid.\n"
-                                "4. **Review the mock** — Designer generates a "
-                                "complete, self-contained HTML file. You can "
-                                "**Approve** it to move on, **Refine** it with a "
-                                "description of changes (and optional reference "
-                                "images), or **Start Over** from scratch.\n\n"
-                                "The finished mock is saved to "
-                                "`.spec4/v{N}/design/mock.html` (the current "
-                                "round's version) in your project directory. "
-                                "Phaser will direct your coding agent "
-                                "to reference it during implementation.\n\n"
-                                "**Tips for better results:**\n"
-                                "- Be specific — *\"dark navy background, orange "
-                                "accent, card-based layout\"* produces better "
-                                "output than *\"modern\"*.\n"
-                                "- The mock covers the starting screen only, not "
-                                "every page.\n"
-                                "- Use the Refine step rather than Start Over "
-                                "when you just want to tweak details.",
-                                style={"color": "var(--mantine-color-dark-1)"},
-                            )
-                        ),
-                    ],
-                    value="how-to",
-                ),
-                variant="contained",
-                radius="md",
-                # D-LR2: this accordion drew its edge in Mantine's blue — the
-                # one per-view accent left in the app. It takes the theme
-                # primary like every other accented surface, so a re-themed
-                # accent lands here too.
-                styles={
-                    "item": {
-                        "border": "1px solid var(--mantine-primary-color-filled)"
-                    },
-                    "control": {
-                        "borderRadius": "var(--mantine-radius-md)",
-                        "borderLeft": "3px solid var(--mantine-primary-color-filled)",
-                    },
-                },
-                mb="lg",
-            ),
-            dmc.Stepper(
-                id="designer-stepper",
-                active=initial_step - 1,
-                size="sm",
-                mb="xl",
-                children=[
-                    dmc.StepperStep(label="No-UI Check"),
-                    dmc.StepperStep(label="Start / Resume"),
-                    dmc.StepperStep(label="Preferences"),
-                    dmc.StepperStep(label="Screenshots"),
-                    dmc.StepperStep(label="Generate"),
-                    dmc.StepperStep(label="Preview"),
-                ],
+            # No title, no introduction, no usage accordion. The step row says
+            # where the developer is, the step's own instruction line says what
+            # it wants, and the status bar names the route and the model — the
+            # paragraph that introduced the Designer said none of that twice
+            # over, and the accordion explained a wizard while standing in
+            # front of it. The route back is the status bar's Project link,
+            # which is mounted on every screen, so this one carries no Back of
+            # its own out of the wizard.
+            html.Div(
+                designer_step_row(stepper_index(initial_step)),
+                id=DESIGNER_STEPPER_ID,
             ),
             html.Div(id="designer-step-content"),
         ]

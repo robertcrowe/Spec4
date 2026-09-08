@@ -38,8 +38,18 @@ def _fmt_models(models: Any) -> str:
         if not isinstance(pair, dict):
             continue
         model = pair.get("model") or "?"
-        provider = pair.get("provider")
-        parts.append(f"{model} ({provider})" if provider else str(model))
+        # Effort is shown only when it is not "default", matching the rule the
+        # on-screen model names follow — and keeping a round recorded before
+        # the field existed rendering exactly as it did. The fallback string
+        # ("default (fallback from high)") is not "default", so it shows: a
+        # level that was asked for and refused is worth seeing.
+        effort = pair.get("effort") or "default"
+        shown = (pair.get("provider"), None if effort == "default" else effort)
+        qualifiers = [str(q) for q in shown if q]
+        if qualifiers:
+            parts.append(f"{model} ({', '.join(qualifiers)})")
+        else:
+            parts.append(str(model))
     return ", ".join(parts) or "-"
 
 

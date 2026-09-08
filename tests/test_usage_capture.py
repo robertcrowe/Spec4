@@ -27,6 +27,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from litellm.exceptions import BadRequestError as LiteLLMBadRequestError
 
 from spec4 import llm, project_manager, usage_report
 from spec4.agents.designer import generate_mock_streaming
@@ -124,7 +125,9 @@ class TestStreamCapture:
         with patch("spec4.llm.litellm.completion", return_value=iter(chunks)):
             raw = list(
                 llm.stream_completion(
-                    agent_name="designer", model="gpt-4o-mini", messages=[]
+                    agent_name="designer",
+                    llm_config={"model": "gpt-4o-mini"},
+                    messages=[],
                 )
             )
         assert len(raw) == 1
@@ -372,6 +375,128 @@ class TestDesignerCapture:
         assert rec["agent"] == "designer"
         assert rec["completion_tokens"] == 900
 
+    def _draw(self, effort: str | None = None, **patch_kw: Any) -> Any:
+        """One mock draw, returning the mock so its kwargs can be inspected."""
+        chunks = [_delta("<html></html>", "stop"), _usage_chunk(_usage(300, 900))]
+        session: Any = {
+            "step": 5,
+            "preference_text": "",
+            "screenshots": [],
+            "mock_html": "",
+            "finalized": False,
+        }
+        extra = {} if effort is None else {"effort": effort}
+        default_kw: dict[str, Any] = {"return_value": iter(chunks)}
+        with patch(
+            "spec4.llm.litellm.completion", **(patch_kw or default_kw)
+        ) as mock_llm:
+            list(
+                generate_mock_streaming(
+                    session, "gpt-4o-mini", "k", [], True, **extra
+                )
+            )
+        return mock_llm
+
+    def test_the_draw_sends_the_chosen_effort(self) -> None:
+        """The mock draw is the call effort matters most for."""
+        mock_llm = self._draw("high")
+        assert mock_llm.call_args[1]["reasoning_effort"] == "high"
+        assert mock_llm.call_args[1]["drop_params"] is True
+
+    def test_the_draw_omits_the_parameter_on_default(self) -> None:
+        assert "reasoning_effort" not in self._draw("default").call_args[1]
+
+    def test_the_draw_omits_the_parameter_when_no_effort_is_given(self) -> None:
+        assert "reasoning_effort" not in self._draw().call_args[1]
+
+    def test_the_draw_still_carries_model_key_and_stream_options(self) -> None:
+        """Converging on the shared builder must not drop what it already sent."""
+        sent = self._draw("low").call_args[1]
+        assert sent["model"] == "gpt-4o-mini"
+        assert sent["api_key"] == "k"
+        assert sent["stream"] is True
+        assert sent["stream_options"] == {"include_usage": True}
+
+    def test_a_refused_level_retries_the_draw_once_without_it(self) -> None:
+        chunks = [_delta("<html></html>", "stop"), _usage_chunk(_usage(300, 900))]
+        calls: list[dict[str, Any]] = []
+
+        def fake_completion(**kwargs: Any) -> Any:
+            calls.append(dict(kwargs))
+            if len(calls) == 1:
+                raise LiteLLMBadRequestError(
+                    message="max only works on Opus 4.6",
+                    model="gpt-4o-mini",
+                    llm_provider="anthropic",
+                )
+            return iter(chunks)
+
+        self._draw("max", side_effect=fake_completion)
+        assert len(calls) == 2
+        assert calls[0]["reasoning_effort"] == "max"
+        assert "reasoning_effort" not in calls[1]
+        assert _only_record()["effort"] == "default (fallback from max)"
+
+
+class TestAsyncEffortFallback:
+    """`acomplete` is where an *inherited* effort meets a sub-agent's model.
+
+    The Agentifier's spec_drafter and cross_cutting_analyst run here and take
+    their parent's whole llm_config, effort included, so a level the parent's
+    model accepts and theirs refuses has to fall back rather than fail the run.
+    """
+
+    def _response(self) -> Any:
+        return SimpleNamespace(
+            usage=_usage(9, 4), _hidden_params={}, choices=[_delta("a").choices[0]]
+        )
+
+    def test_a_refused_level_retries_once_without_it(self) -> None:
+        calls: list[dict[str, Any]] = []
+
+        async def _run() -> Any:
+            async def fake(**kwargs: Any) -> Any:
+                calls.append(dict(kwargs))
+                if len(calls) == 1:
+                    raise LiteLLMBadRequestError(
+                        message="Invalid value for reasoning_effort: 'xhigh'",
+                        model="gpt-5",
+                        llm_provider="openai",
+                    )
+                return self._response()
+
+            with patch("spec4.llm.litellm.acompletion", side_effect=fake):
+                return await llm.acomplete(
+                    llm_config={**_CFG, "effort": "xhigh"},
+                    messages=[],
+                    agent_name="spec_drafter",
+                )
+
+        asyncio.run(_run())
+        assert len(calls) == 2
+        assert calls[0]["reasoning_effort"] == "xhigh"
+        assert "reasoning_effort" not in calls[1]
+        assert _only_record()["effort"] == "default (fallback from xhigh)"
+
+    def test_a_default_effort_sends_no_parameter(self) -> None:
+        calls: list[dict[str, Any]] = []
+
+        async def _run() -> Any:
+            async def fake(**kwargs: Any) -> Any:
+                calls.append(dict(kwargs))
+                return self._response()
+
+            with patch("spec4.llm.litellm.acompletion", side_effect=fake):
+                return await llm.acomplete(
+                    llm_config={**_CFG, "effort": "default"},
+                    messages=[],
+                    agent_name="spec_drafter",
+                )
+
+        asyncio.run(_run())
+        assert "reasoning_effort" not in calls[0]
+        assert _only_record()["effort"] == "default"
+
 
 # ---------------------------------------------------------------------------
 # usage.json writer: schema, append, rollups, atomicity
@@ -388,12 +513,15 @@ def _call(
     cached: int | None = None,
     read: int | None = None,
     missing: bool = False,
+    *,
+    effort: str = "default",
 ) -> dict[str, Any]:
     return {
         "timestamp": "2026-09-02T00:00:00+00:00",
         "agent": agent,
         "model": model,
         "provider": provider,
+        "effort": effort,
         "streamed": True,
         "duration_s": 1.0,
         "prompt_tokens": prompt,
@@ -452,7 +580,9 @@ class TestSaveUsageSchema:
         assert agent["total_tokens"] == 120
         assert agent["cached_input_tokens"] is None
         assert agent["computed_cost_usd"] == 0.001
-        assert agent["models"] == [{"model": "gpt-4o-mini", "provider": "openai"}]
+        assert agent["models"] == [
+            {"model": "gpt-4o-mini", "provider": "openai", "effort": "default"}
+        ]
         assert agent["history"][0]["agent"] == "brainstormer"
         assert agent["calls_missing_cost"] == 0
         assert data["totals"] == {
@@ -513,8 +643,12 @@ class TestSaveUsageReadModifyWrite:
             "claude-sonnet-4-5-20250929",
         ]
         assert agent["models"] == [
-            {"model": "gpt-4o-mini", "provider": "openai"},
-            {"model": "claude-sonnet-4-5-20250929", "provider": "anthropic"},
+            {"model": "gpt-4o-mini", "provider": "openai", "effort": "default"},
+            {
+                "model": "claude-sonnet-4-5-20250929",
+                "provider": "anthropic",
+                "effort": "default",
+            },
         ]
         assert agent["calls"] == 2
         assert (agent["input_tokens"], agent["output_tokens"]) == (400, 70)
@@ -567,8 +701,12 @@ class TestSaveUsageReadModifyWrite:
         ]
         assert agent["history"][0] == prior_call
         assert agent["models"] == [
-            {"model": "gpt-4o-mini", "provider": "openai"},
-            {"model": "claude-sonnet-4-5-20250929", "provider": "anthropic"},
+            {"model": "gpt-4o-mini", "provider": "openai", "effort": "default"},
+            {
+                "model": "claude-sonnet-4-5-20250929",
+                "provider": "anthropic",
+                "effort": "default",
+            },
         ]
         assert agent["calls"] == 2
         assert (agent["input_tokens"], agent["output_tokens"]) == (400, 70)
@@ -876,6 +1014,87 @@ class TestUsageReport:
         assert total.split()[:5] == ["TOTAL", "3", "400", "70", "40"]
         assert total.split()[-1] == "0.0110"
         assert "1 call(s) returned no usage" in table
+
+    def test_a_non_default_effort_is_shown_beside_the_model(
+        self, tmp_path: Path
+    ) -> None:
+        project_manager.save_usage(
+            tmp_path, [_call("phaser", effort="high")], 0
+        )
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        assert "gpt-4o-mini (openai, high)" in usage_report.render_usage_table(data)
+
+    def test_a_default_effort_is_not_shown(self, tmp_path: Path) -> None:
+        """Same rule the on-screen model names follow: default is silent."""
+        project_manager.save_usage(tmp_path, [_call("phaser")], 0)
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        table = usage_report.render_usage_table(data)
+        assert "gpt-4o-mini (openai)" in table
+        assert "default" not in table
+
+    def test_the_fallback_string_is_rendered_as_recorded(
+        self, tmp_path: Path
+    ) -> None:
+        """A level asked for and refused is worth seeing in the report."""
+        project_manager.save_usage(
+            tmp_path, [_call("phaser", effort="default (fallback from max)")], 0
+        )
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        table = usage_report.render_usage_table(data)
+        assert "gpt-4o-mini (openai, default (fallback from max))" in table
+
+    def test_one_agent_at_two_efforts_lists_both(self, tmp_path: Path) -> None:
+        records = [_call("phaser", effort="high"), _call("phaser", effort="low")]
+        project_manager.save_usage(tmp_path, records, 0)
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        assert data["agents"]["phaser"]["models"] == [
+            {"model": "gpt-4o-mini", "provider": "openai", "effort": "high"},
+            {"model": "gpt-4o-mini", "provider": "openai", "effort": "low"},
+        ]
+
+    def test_a_round_recorded_before_the_field_existed_still_reports(
+        self, tmp_path: Path
+    ) -> None:
+        """An older usage.json has no effort on its calls; it must not raise."""
+        legacy = _call("phaser")
+        del legacy["effort"]
+        project_manager.save_usage(tmp_path, [legacy], 0)
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        assert data["agents"]["phaser"]["models"] == [
+            {"model": "gpt-4o-mini", "provider": "openai", "effort": "default"}
+        ]
+        table = usage_report.render_usage_table(data)
+        assert "gpt-4o-mini (openai)" in table
+
+    def test_a_hand_written_legacy_file_renders_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        """The pre-effort on-disk shape, read straight from JSON."""
+        version_dir = project_manager.ensure_version_dir(tmp_path, 0)
+        (version_dir / "usage.json").write_text(
+            json.dumps(
+                {
+                    "round": "v0",
+                    "agents": {
+                        "phaser": {
+                            "calls": 1,
+                            "input_tokens": 100,
+                            "output_tokens": 20,
+                            "models": [{"model": "gpt-4o", "provider": "openai"}],
+                            "computed_cost_usd": 0.001,
+                        }
+                    },
+                }
+            )
+        )
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        assert "gpt-4o (openai)" in usage_report.render_usage_table(data)
 
     def test_main_prints_latest_round_by_default(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

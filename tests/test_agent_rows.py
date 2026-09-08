@@ -762,13 +762,43 @@ class TestAMissingUsageEntry:
 # ---------------------------------------------------------------------------
 
 
-class TestItSitsBeneathTheRoundTree:
-    def test_the_rows_follow_the_tree_directly(
+class TestItLeadsTheProjectView:
+    """D-LR11: the controls precede the record.
+
+    The whole order is asserted here, in one place, rather than three files
+    each checking that their own surface is where they left it: the order is a
+    single decision, and a reorder that moved two of the three would otherwise
+    pass two of the three tests.
+    """
+
+    def test_the_rows_are_the_first_element(
         self, two_state_project: pathlib.Path
     ) -> None:
         view = _agent_select_layout(_session(two_state_project))
-        assert getattr(view.children[0], "id", None) == "round-tree"
-        assert getattr(view.children[1], "id", None) == "agent-rows"
+        assert getattr(view.children[0], "id", None) == "agent-rows"
+
+    def test_the_three_surfaces_are_in_order(
+        self, two_state_project: pathlib.Path
+    ) -> None:
+        """Rows, then cost, then tree — asserted against the rendered
+        children, so a block moved anywhere in the stack fails here."""
+        view = _agent_select_layout(_session(two_state_project))
+        top_level = [getattr(child, "id", None) for child in view.children]
+        found = [
+            node_id
+            for node_id in top_level
+            if node_id in {"agent-rows", "round-cost", "round-tree"}
+        ]
+        assert found == ["agent-rows", "round-cost", "round-tree"]
+
+    def test_the_seven_rows_survive_the_order(
+        self, two_state_project: pathlib.Path
+    ) -> None:
+        """The rows are still ``AGENT_KEYS``, in ``AGENT_KEYS`` order, as
+        rendered on the project view rather than in isolation."""
+        view = _agent_select_layout(_session(two_state_project))
+        ids = [getattr(row, "id", None) for row in _rows_of(view)]
+        assert ids == [agent_row_id(key) for key in AGENT_KEYS]
 
     def test_the_marketing_prose_is_gone(
         self, two_state_project: pathlib.Path
@@ -800,3 +830,140 @@ class TestItSitsBeneathTheRoundTree:
         project_manager.ensure_version_dir(tmp_path, 1)
         assert round_usage(tmp_path, 1)["brainstormer"] == USAGE_BLANK
         assert round_usage(tmp_path, 0)["brainstormer"].model == "gpt-5-mini"
+
+
+# ---------------------------------------------------------------------------
+# The last-model column carries the effort
+# ---------------------------------------------------------------------------
+
+
+def _effort_record(
+    agent: str, model: str, effort: str, tokens_in: int = 10, tokens_out: int = 1
+) -> dict:
+    """A call record that also says which effort it ran at.
+
+    `spec4.llm` writes this field on every call; `summarize_usage` folds it
+    into the same (model, provider, effort) entry the last-model rule already
+    reads, which is what keeps the shown effort tied to the shown model.
+    """
+    return {**_usage_record(agent, model, tokens_in, tokens_out), "effort": effort}
+
+
+def _model_cell(project: pathlib.Path, agent: str) -> str:
+    """The rendered text of one row's Last model cell."""
+    rendered = _agent_rows(project, 0, _session(project))
+    row = next(
+        node
+        for node in _walk(rendered)
+        if getattr(node, "id", None) == agent_row_id(agent)
+    )
+    cell = next(
+        child for child in row.children if "model" in (child.className or "").split()
+    )
+    return str(cell.children)
+
+
+class TestLastModelEffort:
+    """Instruction 11/19: `<model> · <effort>`, and only when it is a level."""
+
+    @pytest.fixture
+    def mixed_efforts(self, two_state_project: pathlib.Path) -> pathlib.Path:
+        project_manager.save_usage(
+            two_state_project,
+            [
+                _effort_record("code_scanner", "claude-sonnet-4-6", "high"),
+                _effort_record("brainstormer", "claude-sonnet-4-6", "default"),
+            ],
+            0,
+        )
+        return two_state_project
+
+    def test_a_non_default_effort_is_shown_after_the_model(
+        self, mixed_efforts: pathlib.Path
+    ) -> None:
+        assert _model_cell(mixed_efforts, "code_scanner") == (
+            "claude-sonnet-4-6 · high"
+        )
+
+    def test_a_default_effort_shows_the_model_alone(
+        self, mixed_efforts: pathlib.Path
+    ) -> None:
+        assert _model_cell(mixed_efforts, "brainstormer") == "claude-sonnet-4-6"
+
+    def test_an_agent_that_has_not_run_is_still_blank(
+        self, mixed_efforts: pathlib.Path
+    ) -> None:
+        """D-AR3: no model, and therefore no lone effort either."""
+        assert _model_cell(mixed_efforts, "agentifier") == ""
+        assert round_usage(mixed_efforts, 0)["agentifier"] == USAGE_BLANK
+
+    def test_a_record_written_before_the_field_existed_reads_as_default(
+        self, usage_missing_one: pathlib.Path
+    ) -> None:
+        """`_usage_record` has no effort key — exactly the old shape."""
+        assert round_usage(usage_missing_one, 0)["code_scanner"].effort == "default"
+        assert _model_cell(usage_missing_one, "code_scanner") == "claude-sonnet-4-6"
+
+    def test_the_effort_follows_the_model_it_ran_at(
+        self, two_state_project: pathlib.Path
+    ) -> None:
+        """Re-running an agent on a second model this round reports the second
+        model *and* the effort that second run used, not a mix of the two."""
+        project_manager.save_usage(
+            two_state_project,
+            [_effort_record("code_scanner", "gpt-5-mini", "low")],
+            0,
+        )
+        project_manager.save_usage(
+            two_state_project,
+            [_effort_record("code_scanner", "claude-sonnet-4-6", "high")],
+            0,
+        )
+        usage = round_usage(two_state_project, 0)["code_scanner"]
+        assert (usage.model, usage.effort) == ("claude-sonnet-4-6", "high")
+        assert _model_cell(two_state_project, "code_scanner") == (
+            "claude-sonnet-4-6 · high"
+        )
+
+    def test_the_recorded_model_stays_readable_on_its_own(
+        self, mixed_efforts: pathlib.Path
+    ) -> None:
+        """`RowUsage` keeps the two facts apart; only the row joins them.
+
+        A caller asking what an agent ran on gets the model, not a rendered
+        string it would have to take back apart.
+        """
+        usage = round_usage(mixed_efforts, 0)["code_scanner"]
+        assert usage.model == "claude-sonnet-4-6"
+        assert usage.effort == "high"
+
+    def test_the_column_uses_the_shared_display_helper(
+        self, mixed_efforts: pathlib.Path
+    ) -> None:
+        """The same string the status bar, chip and retry panel would print."""
+        from spec4 import llm_selection
+
+        usage = round_usage(mixed_efforts, 0)["code_scanner"]
+        assert _model_cell(mixed_efforts, "code_scanner") == (
+            llm_selection.model_effort_display(usage.model, usage.effort)
+        )
+
+    def test_a_recorded_fallback_effort_is_shown(
+        self, two_state_project: pathlib.Path
+    ) -> None:
+        """usage.json is the durable record of what actually ran, including a
+        level that was asked for and refused."""
+        project_manager.save_usage(
+            two_state_project,
+            [
+                _effort_record(
+                    "code_scanner",
+                    "claude-sonnet-4-6",
+                    "default (fallback from max)",
+                )
+            ],
+            0,
+        )
+        assert _model_cell(two_state_project, "code_scanner") == (
+            "claude-sonnet-4-6 · default (fallback from max)"
+        )
