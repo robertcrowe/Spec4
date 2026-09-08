@@ -75,12 +75,13 @@ _ROUND_COST_IDS = {
     "round-cost-note",
 }
 
-# The only plain id the retired agent cards carried. The cards themselves, the
+# The only plain id the retired agent cards carried, now retired itself: the
+# status bar's model slot and Settings item are the route to the wizard from
+# every screen, so the project view no longer mounts its own. The cards, the
 # per-agent rows inside them and their action buttons had no string ids — the
-# buttons used, and still use, the `agent-pill` pattern id — so this is the
-# whole of what had to survive the swap, and `_PROJECT_VIEW_IDS` below pins the
-# rest of the view to what replaced them.
-_AGENT_CARD_SURVIVING_IDS = {"btn-agent-change-provider"}
+# buttons used, and still use, the `agent-pill` pattern id — and
+# `_PROJECT_VIEW_IDS` below pins the view to what replaced them.
+_RETIRED_PROJECT_VIEW_IDS = {"btn-agent-change-provider"}
 
 # The Artifact View's ids. New ids throughout: nothing here renames or reuses
 # an id another screen already owns, which is what keeps the rest of this
@@ -130,11 +131,7 @@ _CHAT_OPEN_IDS = {f"btn-open-{key}" for key in CHAT_ARTIFACTS}
 # Everything the project view mounts, exactly. An id retired with the cards
 # that came back, or a new one added without a decision, fails here.
 _PROJECT_VIEW_IDS = (
-    _ROUND_TREE_IDS
-    | {"round-tree-legend"}
-    | _AGENT_ROW_IDS
-    | _ROUND_COST_IDS
-    | _AGENT_CARD_SURVIVING_IDS
+    _ROUND_TREE_IDS | {"round-tree-legend"} | _AGENT_ROW_IDS | _ROUND_COST_IDS
 )
 
 # ---------------------------------------------------------------------------
@@ -590,12 +587,29 @@ class TestProjectViewIds:
         session = _session(working_dir=str(tmp_path), phase="agent_select")
         assert _ROUND_TREE_IDS <= _page_ids(_render(session))
 
-    def test_the_project_view_keeps_its_existing_ids(
+    def test_the_retired_button_is_on_no_screen(
         self, tmp_path: pathlib.Path
     ) -> None:
-        """The tree was added to the view; nothing was displaced by it."""
-        session = _session(working_dir=str(tmp_path), phase="agent_select")
-        assert _AGENT_CARD_SURVIVING_IDS <= _page_ids(_render(session))
+        """The change-provider button left the project view for the bar.
+
+        Listed rather than merely deleted, for the reason the shell's removed
+        ids are: a component quietly reintroducing it fails here first.
+        """
+        offenders = [
+            label
+            for label, present in _phase_screens(tmp_path)
+            if _RETIRED_PROJECT_VIEW_IDS & present
+        ]
+        assert not offenders
+
+    def test_no_callback_still_references_the_retired_button(self) -> None:
+        """Its callback had to go in the same commit as the button."""
+        offenders = [
+            name
+            for name, _, every in _callback_refs()
+            if every & _RETIRED_PROJECT_VIEW_IDS
+        ]
+        assert not offenders
 
 
 class TestAgentRowIds:
@@ -886,6 +900,48 @@ class TestShellIds:
         ]
         assert len(matching) == 1, "exactly one callback owns the bar's directory"
         assert {"btn-status-bar-dir", "session", "url"} <= matching[0]
+        assert matching[0] <= shell
+
+    def test_the_model_button_is_part_of_the_shell(self) -> None:
+        """The bar's second control, present from the very first render.
+
+        Unlike the directory it has no plain-text empty state — "Not
+        connected" is the same button under the same id — so it is in
+        ``app.layout`` itself, not only in the filled context line.
+        """
+        assert "btn-status-bar-model" in _ids(app_module.app.layout)
+        assert "btn-status-bar-model" in _shell_ids()
+
+    def test_the_model_button_is_never_page_content(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """No screen may mount a second control answering to that id."""
+        offenders = [
+            label
+            for label, present in _phase_screens(tmp_path)
+            if "btn-status-bar-model" in present
+        ]
+        assert not offenders
+
+    def test_the_setup_callback_is_satisfied_on_every_screen(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """One callback serves the model slot and the Settings item, and every
+        id it touches — both buttons, the session store and the URL — is in the
+        shell, so it can fire from any screen the app can draw."""
+        shell = _shell_ids()
+        matching = [
+            every
+            for _, inputs, every in _callback_refs()
+            if "btn-status-bar-model" in inputs
+        ]
+        assert len(matching) == 1, "exactly one callback owns the bar's model slot"
+        assert {
+            "btn-status-bar-model",
+            "status-bar-nav-settings",
+            "session",
+            "url",
+        } <= matching[0]
         assert matching[0] <= shell
 
     def test_the_removed_shell_ids_are_gone(self) -> None:

@@ -776,9 +776,9 @@ class TestItClosesTheProjectView:
     ) -> None:
         """D-LR11: the record is read after the controls, not before them.
 
-        The tree is no longer the first element — the alerts and the
-        change-provider group still follow it — so what is asserted is its
-        place among the three surfaces, not an absolute index.
+        The tree is no longer the first element — the alerts still follow
+        it — so what is asserted is its place among the three surfaces, not
+        an absolute index.
         """
         session = {**_default_session(), "working_dir": str(round_dir)}
         view = _agent_select_layout(session)
@@ -804,9 +804,10 @@ class TestItClosesTheProjectView:
     ) -> None:
         session = {**_default_session(), "working_dir": str(round_dir)}
         view = _agent_select_layout(session)
-        assert "btn-agent-change-provider" in _ids(view)
-        # The seven action buttons carry pattern-matching ids, so they are
-        # collected by shape rather than by name.
+        # The change-provider button left with the status bar's model slot
+        # taking over; the seven action buttons carry pattern-matching ids,
+        # so they are collected by shape rather than by name.
+        assert "btn-agent-change-provider" not in _ids(view)
         assert _pill_agents(view) == set(AGENT_KEYS)
 
     def test_the_project_view_asks_for_the_link_form(

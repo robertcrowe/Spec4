@@ -437,19 +437,8 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
             )
         )
 
-    children.append(
-        dmc.Group(
-            [
-                dmc.Button(
-                    "Change model / provider",
-                    id="btn-agent-change-provider",
-                    variant="outline",
-                    color="gray",
-                    size="compact-sm",
-                ),
-            ],
-            mt="xs",
-        )
-    )
+    # The "Change model / provider" button that closed this view is gone: the
+    # status bar's model slot and Settings item are the same route, on every
+    # screen, so a page-level copy was one more control to keep in agreement.
 
     return html.Div(children)

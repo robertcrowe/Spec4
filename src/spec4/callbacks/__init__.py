@@ -197,6 +197,51 @@ def on_status_bar_dir(n: Any, session: Any) -> Any:
     }, "/dir"
 
 
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
+    Input("btn-status-bar-model", "n_clicks"),
+    Input("status-bar-nav-settings", "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_status_bar_setup(model_n: Any, settings_n: Any, session: Any) -> Any:
+    """Open the setup wizard at Provider, from the bar's model slot or Settings.
+
+    The bar's second control, on every screen alongside the directory, and
+    with the directory's contract: it only *opens*. ``model`` and
+    ``llm_config`` are left exactly as they are, so backing out through
+    Project leaves the session able to run a turn, and the bar keeps naming
+    the live model while the Provider step is on screen. The connection is
+    replaced in one place only — ``on_setup_connect``, when the wizard
+    advances to Model selection with a fresh list — and nowhere earlier.
+
+    ``available_models`` is the field ``_setup_layout`` branches on to show
+    Provider, so clearing it is what "open at step 1" means; it is the same
+    write the Model step's Back button makes (``on_setup_back_provider``),
+    with a phase and a URL added. The two error fields are cleared so a
+    stale message from an earlier visit is not the first thing drawn.
+
+    Settings shares the callback rather than owning a second one because the
+    two controls mean the same thing — the model slot says *what* will change,
+    the nav item says *where* — and two callbacks writing the same session
+    would be one more place for the two to drift.
+    """
+    fired = {
+        "btn-status-bar-model": model_n,
+        "status-bar-nav-settings": settings_n,
+    }.get(ctx.triggered_id)
+    if not fired:
+        return no_update, no_update
+    return {
+        **(session or {}),
+        "phase": "setup",
+        "available_models": None,
+        "setup_error": None,
+        "agent_select_error": None,
+    }, "/setup"
+
+
 # ---------------------------------------------------------------------------
 # Round tree
 # ---------------------------------------------------------------------------
@@ -618,8 +663,8 @@ def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
     new_session = _load_working_dir(path, session)
     # If the developer already has a working LLM connection from a previous
     # project, skip the setup screen and drop them straight into agent select.
-    # The "Change provider" button on the agents page is still there if they
-    # want to swap models or change their web search provider.
+    # The bar's model slot and its Settings item are there on every screen if
+    # they want to swap models or change their web search provider.
     if new_session.get("llm_config") and new_session.get("model"):
         new_session = {**new_session, "phase": "agent_select"}
         return new_session, "/agents", new_prefs
@@ -733,6 +778,15 @@ def on_setup_connect(
             "provider": provider_key,
             "api_key": (api_key or "").strip(),
             "available_models": models,
+            # This is where a previous connection ends, and the only place.
+            # The bar's model slot and Settings open the wizard *over* a live
+            # connection (`on_status_bar_setup`), and `_setup_layout` would
+            # skip straight to Search while `model` is still set; the list
+            # just fetched may also belong to a different provider than the
+            # model that was running. A failed Connect below changes neither
+            # field, so a mistyped key costs nothing.
+            "model": None,
+            "llm_config": None,
             "setup_error": None,
         }
         base = _prefs_keep_working_dir(prefs)
@@ -1027,25 +1081,10 @@ def on_setup_search_skip(n: Any, session: Any) -> Any:
 # `layouts/_chat.py`, at `_chat_action_buttons`.
 
 
-@callback(
-    Output("session", "data", allow_duplicate=True),
-    Output("url", "pathname", allow_duplicate=True),
-    Input("btn-agent-change-provider", "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def on_agent_change_provider(n: Any, session: Any) -> Any:
-    if not n:
-        return no_update, no_update
-    return {
-        **session,
-        "phase": "setup",
-        "available_models": None,
-        "model": None,
-        "llm_config": None,
-        "setup_error": None,
-        "agent_select_error": None,
-    }, "/setup"
+# `on_agent_change_provider` stood here, serving the agents page's "Change
+# model / provider" button. Both are gone: the status bar's model slot and its
+# Settings item are the same route from every screen (`on_status_bar_setup`),
+# mounted in the shell rather than in this layout — the D-LR8 walk again.
 
 
 # ---------------------------------------------------------------------------

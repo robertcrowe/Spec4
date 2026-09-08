@@ -808,16 +808,19 @@ class TestItLeadsTheProjectView:
         assert "Where Should We Begin?" not in text
         assert "Choose an agent:" not in text
 
-    def test_the_change_provider_button_survives(
+    def test_the_change_provider_button_is_gone(
         self, two_state_project: pathlib.Path
     ) -> None:
+        """The status bar's model slot and Settings item are the route now,
+        on every screen, so the view no longer carries its own copy."""
         view = _agent_select_layout(_session(two_state_project))
         ids = {
             node.id
             for node in _walk(view)
             if isinstance(getattr(node, "id", None), str)
         }
-        assert "btn-agent-change-provider" in ids
+        assert "btn-agent-change-provider" not in ids
+        assert "Change model / provider" not in _text(view)
 
     def test_the_rows_read_the_round_the_view_is_showing(
         self, tmp_path: pathlib.Path

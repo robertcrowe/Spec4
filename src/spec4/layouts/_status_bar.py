@@ -11,6 +11,14 @@ its own empty state; the callback in ``spec4.callbacks`` fills the context line
 from the two browser stores every time either one changes, which is what stops
 the bar showing a stale directory after the developer switches projects.
 
+Two of the values are controls. The working directory reopens the picker
+(``on_status_bar_dir``); the model — or the ``Not connected`` phrase in its
+place — opens the setup wizard at its first step (``on_status_bar_setup``),
+as the Settings nav item does. Neither commits anything: the picker leaves
+the project as it was, and the wizard leaves the connection in place until a
+new one is made. Both are drawn as the same text they were, with no chrome,
+so the bar still reads as a status line.
+
 The provider and model slots describe the project default on every screen
 *except* the two that are about one agent — chat and Designer — where they
 describe that agent's own resolution. The bar's job is to say what the next
@@ -44,6 +52,7 @@ __all__ = [
     "STATUS_BAR_HEIGHT",
     "STATUS_EMPTY",
     "_dir_field",
+    "_model_field",
     "_status_bar",
     "_status_context",
     "_status_nav_class",
@@ -145,6 +154,35 @@ def _dir_field(working_dir: str | None) -> Any:
     )
 
 
+def _model_field(text: str, slot_name: str) -> html.Button:
+    """The model slot — the second control on the line, and the same kind.
+
+    The model name, or the ``Not connected`` phrase standing in for it, is the
+    field a developer reads when a turn ran on the wrong model or could not
+    run at all, so it is where the route to /setup belongs — as the path is
+    the route to the picker. It wears ``.sb-dir`` for the same reason: no
+    button chrome, the bar's own font and colour, a pointer and a hover
+    underline as the whole affordance.
+
+    Unlike the directory there is no empty state that stays plain text: with
+    no connection there is *more* reason to open setup, not less, so the
+    control is there from the unfilled bar onward under one id, whichever
+    phrase it carries. Pressing it opens the wizard at Provider and nothing
+    more — the model it names keeps running until a new one is chosen.
+    ``slot_name`` is the layout class — ``SLOT_MODEL`` when
+    a model is named, ``SLOT_CONNECTION`` when the phrase replaces both the
+    provider and the model — so the D-LR10 slot tests still see the slot they
+    expect.
+    """
+    return html.Button(
+        text,
+        id="btn-status-bar-model",
+        n_clicks=0,
+        title="Change model / provider",
+        className=f"sb-dir {_slot(slot_name)}",
+    )
+
+
 def _status_context(
     working_dir: str | None,
     round_number: int | None,
@@ -192,15 +230,15 @@ def _status_context(
             html.Span(provider or STATUS_EMPTY, className=_slot(SLOT_PROVIDER))
         )
         fields.append(
-            html.Span(
+            _model_field(
                 llm_selection.model_effort_display(model, effort) or STATUS_EMPTY,
-                className=_slot(SLOT_MODEL),
+                SLOT_MODEL,
             )
         )
     else:
         # One slot, not two, for the same reason it is one phrase: with no
         # connection there is no provider and no model to hold apart.
-        fields.append(html.Span(NOT_CONNECTED, className=_slot(SLOT_CONNECTION)))
+        fields.append(_model_field(NOT_CONNECTED, SLOT_CONNECTION))
     children: list[Any] = []
     for index, field in enumerate(fields):
         if index:
@@ -218,10 +256,12 @@ def _status_bar() -> html.Div:
     """The application header: wordmark, context line, nav, version.
 
     Nav is exactly four items, in the order the Artifact Links specification
-    fixes: ``Project``, ``Artifacts``, ``Settings``, ``Docs``. The first three
+    fixes: ``Project``, ``Artifacts``, ``Settings``, ``Docs``. The first two
     are in-app routes and go through ``dcc.Link`` so they move the URL without
     a page reload, which is what ``on_browser_navigate`` turns into a phase
-    change; ``Docs`` is the one external link.
+    change. ``Settings`` is a button: it opens the setup wizard at its first
+    step, which is a session write and not a route (see the note beside it).
+    ``Docs`` is the one external link.
 
     ``Artifacts`` sits between ``Project`` and ``Settings`` because that is
     where the register puts it, not where it happened to be added: the
@@ -265,10 +305,17 @@ def _status_bar() -> html.Div:
                         id="status-bar-nav-artifacts",
                         className=_status_nav_class(False),
                     ),
-                    dcc.Link(
+                    # A button, not a link: Settings opens the wizard at its
+                    # first step, and the wizard branches on a session field
+                    # rather than on the URL, so getting there means clearing
+                    # that field — a `dcc.Link` to `/setup` would land on
+                    # whichever step the session happened to be on. The write
+                    # is `on_status_bar_setup`, shared with the model slot;
+                    # it leaves the connection itself alone.
+                    html.Button(
                         "Settings",
-                        href="/setup",
                         id="status-bar-nav-settings",
+                        n_clicks=0,
                         className=_status_nav_class(False),
                     ),
                     html.A(

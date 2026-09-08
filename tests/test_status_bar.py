@@ -100,11 +100,16 @@ def _nav(bar: Any) -> Any:
 
 
 def _nav_labels(bar: Any) -> list[str]:
-    """The nav's link labels, in render order."""
+    """The nav's entry labels, in render order.
+
+    Settings is a button rather than a link — it resets the session instead of
+    moving the URL — so the entry types are three, not two. The version span
+    is not an entry and is not counted.
+    """
     return [
         child.children
         for child in _nav(bar).children
-        if type(child).__name__ in ("Link", "A")
+        if type(child).__name__ in ("Link", "A", "Button")
     ]
 
 
@@ -174,6 +179,20 @@ class TestStatusBarLayout:
         docs = _nav(_status_bar()).children[3]
         assert docs.href.startswith("https://")
         assert docs.target == "_blank"
+
+    def test_settings_is_a_button_not_a_route(self) -> None:
+        """It restarts the wizard, which is a session reset and not a URL.
+
+        `_setup_layout` branches on session fields, so a `dcc.Link` to
+        `/setup` would open whichever step the session happened to be on.
+        The button carries the id `on_status_bar` marks active and the one
+        `on_status_bar_setup` fires from; it has no href to be followed.
+        """
+        settings = _nav(_status_bar()).children[2]
+        assert type(settings).__name__ == "Button"
+        assert settings.id == "status-bar-nav-settings"
+        assert settings.children == "Settings"
+        assert getattr(settings, "href", None) is None
 
     def test_no_nav_entry_names_a_colour(self) -> None:
         """D-LR2: the active accent is the theme primary, never a local prop."""
@@ -367,6 +386,24 @@ class TestTheStylesheetPinsWhatTheLayoutMarks:
     def test_the_line_no_longer_ellipsises_as_a_whole(self) -> None:
         """The bug itself: a single ellipsis on `.sb-ctx` cut the model."""
         assert "text-overflow" not in self._rule(".sb-ctx")
+
+    def test_a_nav_button_wears_no_button_chrome(self) -> None:
+        """Settings is a `<button>` among anchors and must not look like one.
+
+        The chrome is stripped in the shared nav rule, and `border: 0` must
+        precede the `border-bottom` that draws the active underline or it
+        would erase it.
+        """
+        rule = self._rule(".sb-nav-link")
+        assert "font: inherit" in rule
+        assert "background: none" in rule
+        assert "cursor: pointer" in rule
+        assert rule.index("border: 0") < rule.index("border-bottom:")
+
+    def test_both_bar_controls_get_the_focus_ring(self) -> None:
+        """The ring is drawn on every button in the bar, not the directory
+        alone — the model slot and Settings are buttons too."""
+        assert "#status-bar button:focus-visible" in self._css()
 
 
 class TestTheShellHasNoMarketingChrome:
@@ -696,3 +733,184 @@ class TestTheModelSlotCarriesTheEffort:
         a bare separator."""
         slot = self._slot(_status_context("/a/b", 1, "anthropic", None, True, "high"))
         assert slot.children == STATUS_EMPTY
+
+
+class _Ctx:
+    def __init__(self, triggered_id: str | None) -> None:
+        self.triggered_id = triggered_id
+
+
+class TestTheBarOpensSetup:
+    """The bar's second control: the model slot, and the Settings item with it.
+
+    The directory field is the route to the picker; the model — or the
+    ``Not connected`` phrase standing in for it — is the route to the wizard.
+    Both are the same kind of thing: the fact itself, drawn without chrome,
+    pressable, and with the same contract — pressing *opens* and commits
+    nothing. The wizard shows its Provider step over the live connection,
+    which keeps running until Connect fetches a fresh model list; that is
+    the one place the old connection ends, and it is pinned here too.
+    """
+
+    _ID = "btn-status-bar-model"
+
+    def _button(self, context: Any) -> Any:
+        """The control, from a context line (a list of top-level fields)."""
+        return next(node for node in context if getattr(node, "id", None) == self._ID)
+
+    def test_the_model_is_a_button(self, tmp_path: pathlib.Path) -> None:
+        session = {
+            **_default_session(),
+            "working_dir": str(tmp_path),
+            "llm_config": {"model": "claude-sonnet-5", "api_key": "k"},
+            "model": "claude-sonnet-5",
+            "provider": "anthropic",
+        }
+        context, *_ = on_status_bar(session, {})
+        button = self._button(context)
+        # It still reads as the same field it was — the model, not a label.
+        assert button.children == "claude-sonnet-5"
+        assert SLOT_MODEL in button.className.split()
+
+    def test_not_connected_is_the_same_button(self) -> None:
+        """No connection is *more* reason to open setup, so no empty state
+        stays plain text: one id, whichever phrase it carries."""
+        context, *_ = on_status_bar({**_default_session()}, {})
+        button = self._button(context)
+        assert button.children == NOT_CONNECTED
+        assert SLOT_CONNECTION in button.className.split()
+
+    def test_the_unfilled_bar_already_carries_it(self) -> None:
+        """Present from the first render, so it is in `app.layout` itself."""
+        assert self._ID in _ids(_status_bar())
+
+    def test_it_is_dressed_as_the_directory_is(self) -> None:
+        """D-LR2 and the bar's own rule: no chrome, no colour, the same font."""
+        button = self._button(_status_context("/a/b", 0, "anthropic", "m", True))
+        assert type(button).__name__ == "Button"
+        assert "sb-dir" in button.className.split()
+        assert getattr(button, "style", None) is None
+        assert button.title
+
+    def _press(self, monkeypatch: Any, which: str, session: dict[str, Any]) -> Any:
+        from spec4 import callbacks as cb
+
+        monkeypatch.setattr(cb, "ctx", _Ctx(which))
+        model_n = 1 if which == self._ID else 0
+        settings_n = 1 if which == "status-bar-nav-settings" else 0
+        return cb.on_status_bar_setup(model_n, settings_n, session)
+
+    def _connected(self, tmp_path: pathlib.Path) -> dict[str, Any]:
+        return {
+            **_default_session(),
+            "working_dir": str(tmp_path),
+            "available_models": ["claude-sonnet-5"],
+            "model": "claude-sonnet-5",
+            "llm_config": {"model": "claude-sonnet-5", "api_key": "k"},
+            "setup_error": "old",
+            "agent_select_error": "old",
+        }
+
+    def test_pressing_the_model_opens_the_wizard_at_provider(
+        self, monkeypatch: Any, tmp_path: pathlib.Path
+    ) -> None:
+        new_session, pathname = self._press(
+            monkeypatch, self._ID, self._connected(tmp_path)
+        )
+        assert pathname == "/setup"
+        assert new_session["phase"] == "setup"
+        # Step 1 is what `_setup_layout` shows when there is no model list.
+        assert new_session["available_models"] is None
+        assert new_session["setup_error"] is None
+        assert new_session["agent_select_error"] is None
+
+    def test_pressing_it_commits_nothing(
+        self, monkeypatch: Any, tmp_path: pathlib.Path
+    ) -> None:
+        """The directory's contract, kept: the connection is not dropped.
+
+        Backing out through Project must leave a session that can still run
+        a turn, so the model and its config survive the click untouched. Only
+        Connect, on the Provider step, replaces them.
+        """
+        before = self._connected(tmp_path)
+        new_session, _ = self._press(monkeypatch, self._ID, before)
+        assert new_session["model"] == before["model"]
+        assert new_session["llm_config"] == before["llm_config"]
+        assert new_session["working_dir"] == str(tmp_path)
+        assert llm_selection.default_is_connected(new_session)
+
+    def test_the_bar_still_names_the_model_on_the_provider_step(
+        self, monkeypatch: Any, tmp_path: pathlib.Path
+    ) -> None:
+        """What the developer sees after the click: the wizard's first step
+        under a bar that still says which model the next turn would run on."""
+        new_session, _ = self._press(monkeypatch, self._ID, self._connected(tmp_path))
+        context, *_ = on_status_bar(new_session, {})
+        assert self._button(context).children == "claude-sonnet-5"
+        assert NOT_CONNECTED not in _text(context)
+
+    def test_pressing_settings_does_exactly_the_same(
+        self, monkeypatch: Any, tmp_path: pathlib.Path
+    ) -> None:
+        via_model = self._press(monkeypatch, self._ID, self._connected(tmp_path))
+        via_settings = self._press(
+            monkeypatch, "status-bar-nav-settings", self._connected(tmp_path)
+        )
+        assert via_model == via_settings
+
+    def test_it_is_the_back_buttons_write_plus_a_route(
+        self, monkeypatch: Any, tmp_path: pathlib.Path
+    ) -> None:
+        """One definition of "show Provider": the Model step's Back button and
+        the bar agree on which fields that clears."""
+        from spec4 import callbacks as cb
+
+        via_bar, _ = self._press(monkeypatch, self._ID, self._connected(tmp_path))
+        via_back = cb.on_setup_back_provider(1, self._connected(tmp_path))
+        assert via_bar == {**via_back, "phase": "setup", "agent_select_error": None}
+
+    def test_connect_is_where_the_old_connection_ends(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """Advancing to Model selection replaces the connection — not before.
+
+        The Provider step is shown over a live `model`, and `_setup_layout`
+        would skip straight to Search if Connect left it set; the list just
+        fetched may also be another provider's. So a *successful* Connect
+        clears the model and its config, and a failed one clears nothing —
+        a mistyped key must not cost a working connection.
+        """
+        from unittest.mock import patch
+
+        from spec4 import callbacks as cb
+
+        opened = {**self._connected(tmp_path), "available_models": None}
+        with patch(
+            "spec4.callbacks.providers.list_models", return_value=(["gpt-5"], "")
+        ):
+            advanced, _ = cb.on_setup_connect(1, "OpenAI", "sk-new", False, opened, {})
+        assert advanced["available_models"] == ["gpt-5"]
+        assert advanced["model"] is None
+        assert advanced["llm_config"] is None
+
+        with patch(
+            "spec4.callbacks.providers.list_models", return_value=([], "nope")
+        ):
+            failed, _ = cb.on_setup_connect(1, "OpenAI", "sk-bad", False, opened, {})
+        assert failed["model"] == opened["model"]
+        assert failed["llm_config"] == opened["llm_config"]
+        assert failed["setup_error"]
+
+    def test_no_click_is_a_no_op(self, monkeypatch: Any) -> None:
+        from dash import no_update
+
+        assert self._press(monkeypatch, None, _default_session()) == (
+            no_update,
+            no_update,
+        )
+
+    def test_it_survives_an_empty_store(self, monkeypatch: Any) -> None:
+        new_session, pathname = self._press(monkeypatch, self._ID, None)  # type: ignore[arg-type]
+        assert new_session["phase"] == "setup"
+        assert pathname == "/setup"

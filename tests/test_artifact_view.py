@@ -271,11 +271,15 @@ def _nav(bar: Any) -> Any:
 
 
 def _nav_labels() -> list[str]:
-    """The nav's link labels, in render order."""
+    """The nav's entry labels, in render order.
+
+    Settings is a button (it resets the session rather than moving the URL),
+    so entries are anchors, links and buttons; the version span is not one.
+    """
     return [
         child.children
         for child in _nav(_status_bar()).children
-        if type(child).__name__ in ("Link", "A")
+        if type(child).__name__ in ("Link", "A", "Button")
     ]
 
 

@@ -173,7 +173,7 @@ header[class*="AppShell-header"] {
 }
 
 #status-bar a:focus-visible,
-#status-bar .sb-dir:focus-visible {
+#status-bar button:focus-visible {
   outline: 1px solid var(--mantine-primary-color-filled);
   outline-offset: 1px;
 }
@@ -260,13 +260,14 @@ header[class*="AppShell-header"] {
   padding: 0 6px;
 }
 
-/* The working directory is the control that reopens the picker, so it is a
-   real button — but it must read as the same fact it was before, not as an
-   action bolted onto the bar. It therefore inherits every text property from
-   `.sb-ctx.mono` (a button inherits none of them by default) and drops the
-   whole of a button's chrome: no border, no background, no padding, no
-   accent. The pointer, the hover underline and the focus ring above are the
-   entire affordance. */
+/* The working directory is the control that reopens the picker, and the model
+   slot — or the "Not connected" phrase in its place — is the control that
+   restarts setup, so both are real buttons — but each must read as the same
+   fact it was before, not as an action bolted onto the bar. They therefore
+   inherit every text property from `.sb-ctx.mono` (a button inherits none of
+   them by default) and drop the whole of a button's chrome: no border, no
+   background, no padding, no accent. The pointer, the hover underline and the
+   focus ring above are the entire affordance. */
 .sb-dir {
   font: inherit;
   color: inherit;
@@ -285,9 +286,17 @@ header[class*="AppShell-header"] {
   flex: none;
 }
 
+/* Three of the four entries are anchors; Settings is a button, because it
+   resets the session rather than moving the URL. The button-chrome lines here
+   are for it — `border: 0` has to come before the `border-bottom` that draws
+   the active underline, or it would erase it. */
 .sb-nav-link {
   color: #a0a0b0;
   text-decoration: none;
+  font: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
   line-height: 38px;
   border-bottom: 1px solid transparent;
   margin-bottom: -1px;
