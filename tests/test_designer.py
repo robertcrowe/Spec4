@@ -2285,6 +2285,32 @@ class TestDesignerAutoRetry:
         assert "designer-session-store" not in rendered
 
 
+class TestDesignerLayoutWithoutProject:
+    """The wizard renders when the session names no working directory.
+
+    Nothing on disk can be read without a project, and every disk read in the
+    layout already guards on ``working_dir`` — but the round lookup used to run
+    unguarded and reached ``Path(None)``.
+    """
+
+    def test_no_project_renders_the_wizard(self) -> None:
+        from spec4.layouts.designer import designer_layout
+        from spec4.session import _default_session
+
+        session = {
+            **_default_session(),
+            "working_dir": None,
+            "phase": "designer",
+            "provider": "anthropic",
+            "api_key": "k",
+            "llm_config": {"model": "claude-sonnet-4-6", "api_key": "k"},
+            "agent_llm_asked": {"designer": True},
+        }
+        layout = designer_layout(session, {})
+        interval = _component(layout, "designer-autoretry-interval")
+        assert interval.max_intervals == 0
+
+
 class TestStepFiveImageNotice:
     """A draw handed an image-less model says so where it is being watched.
 

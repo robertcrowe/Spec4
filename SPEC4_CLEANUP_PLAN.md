@@ -19,7 +19,7 @@ The seven symptom categories become acceptance criteria for the final audit rath
 3. **Behavior-preserving only.** If a real bug is found, append it to `CLEANUP_INVENTORY.md` under *Bugs found (not fixed)* and move on. Bug fixes are a separate commit with its own review.
 4. **Public surfaces are frozen:** component ids, `PATH_TO_PHASE` keys, `.spec4/` file names and JSON/frontmatter shapes, `spec4-usage` CLI output, session-store keys, and every string that ends up in an LLM prompt. Refactoring around them is fine; changing them is not.
 5. **`src/spec4/app.py` import ordering is load-bearing (D-LR1).** Do not reorder litellm-related imports, do not move `spec4.callbacks` imports above app construction, keep every `# noqa: E402`. Ruff's isort rule must remain suppressed there.
-6. **Gate at the end of every phase:** `uv run ruff check src/ tests/`, `uv run ruff format --check src/ tests/`, `uv run mypy src/` (strict), `uv run pytest --cov`. Coverage on non-UI modules may not drop below the Phase 0 baseline.
+6. **Gate at the end of every phase:** `uv run ruff check src/ tests/`, `uv run ruff format --check src/ tests/`, `uv run mypy src/` (strict), `uv run pytest --cov=spec4`. The `=spec4` matters: bare `--cov` also measures the test files and inflates the total. Coverage on non-UI modules may not drop below the Phase 0 baseline.
 7. **One concern per phase.** If a phase reveals work belonging to a later phase, note it in the inventory and leave it.
 8. **Each phase ends with a short written report**: files touched, what was removed/moved, anything deferred, and the four gate results.
 

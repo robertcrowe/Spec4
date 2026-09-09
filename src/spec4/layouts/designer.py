@@ -625,9 +625,11 @@ def designer_layout(
     working_dir: str | None = session.get("working_dir")
     vision: dict[str, Any] = session.get("vision_statement") or {}
     code_review: dict[str, Any] = session.get("code_review") or {}
-    design_dir = _design_dir(
-        working_dir, project_manager.active_version(working_dir, session)
-    )
+    # Without a project there is no round on disk to look up; the version only
+    # names a path, and every read of ``design_dir`` below guards on
+    # ``working_dir``.
+    version = project_manager.active_version(working_dir, session) if working_dir else 0
+    design_dir = _design_dir(working_dir, version)
     saved = load_session(design_dir) if working_dir else None
     # D-PM1: "Modify existing" only makes sense for a project the developer has
     # said is theirs. When they told us this is a new project, UI files in the
