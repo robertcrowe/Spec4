@@ -47,8 +47,8 @@ select = ["E", "F"]
 
 [tool.ruff.lint.per-file-ignores]
 # Long system-prompt strings in multi-line literals cannot use inline noqa
-"src/spec4/agents/*.py" = ["E501"]
-"src/spec4/agentifier/*.py" = ["E501"]
+"src/spec4/agents/**/*.py" = ["E501"]
+"src/spec4/agentifier/**/*.py" = ["E501"]
 "tests/agentifier/*.py" = ["E501"]
 "tests/integration/*.py" = ["E501"]
 "evals/*.py" = ["E501"]

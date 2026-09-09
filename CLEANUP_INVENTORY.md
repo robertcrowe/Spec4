@@ -2005,3 +2005,181 @@ façade's imports and `__all__`) and misses held at 893, so no per-module floor
 moved. Per-module: `_paths.py` 60/0/100%, `_artifacts.py` 252/17/93%,
 `_phase_markdown.py` 205/0/100%, `_usage.py` 158/4/97%, `project_manager.py`
 108/1/99% — against 759/22/97% for the pre-split file.
+
+## 18. Phase 4c — `agents/code_scanner.py` split into the package `agents/code_scanner/`
+
+Recorded 2026-09-08 on branch `look-rework`. One module became a four-file
+package; **no importer anywhere changed**, no test file was edited. The only
+config change is the one §15.4 decision 1 forced (two ruff glob patterns).
+Nothing was written under `.spec4/`, `.venv/` or `.git/`, and no git command
+that mutates the repo was run.
+
+This is the first sub-phase to use the **package** form. `code_scanner.py` was
+deleted and `code_scanner/` created in its place, so the import path
+`spec4.agents.code_scanner` — the string `session.py`'s dispatch, `test_agents.py`,
+`test_code_scanner_progress.py`, `test_renderer_goldens.py` and
+`test_stream_status.py` all use — is unchanged, and `from spec4.agents import
+code_scanner` still binds the same name to the same qualified module.
+
+### 18.1 Line counts of the four resulting files
+
+| File | Lines | Owns |
+|---|---:|---|
+| `agents/code_scanner/__init__.py` | 422 | façade + the agent turn loop: `run`, the two seeds, the extract/validate pair, the re-exports and `__all__` |
+| `agents/code_scanner/_prompt.py` | 655 | the frozen `SYSTEM_PROMPT` and nothing else |
+| `agents/code_scanner/_review_render.py` | 501 | `_format_review_as_text` + the seven section renderers + four coercion helpers |
+| `agents/code_scanner/_scan.py` | 321 | repo walk, project-context gathering, the size budgets |
+| **total** | **1899** | was **1741** in one file (+158: three docstrings, three import blocks, the façade's re-export block and `__all__`) |
+
+The largest file in the package is now the prompt, which is data. The largest
+*code* file is 501 lines, down from 1741 — and `_review_render.py` is exactly
+the file Phase 5 will decompose, now isolated from everything else.
+
+### 18.2 The names moved to each
+
+All 43 top-level names are accounted for: 38 moved, 5 stayed. Nothing was
+dropped, added, or renamed — **no name changed spelling in 4c**, as in 4b.
+§15.4's decision 2 (public names, underscore aliases in the façade) was
+4a-specific: the split has exactly **one cross-module private reference**
+(`_review_render` importing `_render_coding_style` from `spec4.agents._utils`),
+and that name is not one 4c created — it is a pre-existing `_utils` import that
+travelled with the renderer that uses it. The plan's "no cross-module private
+imports" rule is otherwise satisfied without a rename, because the four modules
+have no other reference to each other's privates that the façade does not make.
+
+**`_scan.py`** — repo walk, context gathering, budgets (24):
+`_SKIP_DIRS`, `_MANIFEST_FILES`, `_DEPLOY_SIGNAL_FILES`, `_README_NAMES`,
+`_CI_DIR_PARTS`, `_CI_FILE_BASENAMES`, `_TERRAFORM_DIRS`, `_MAX_TREE_FILES`,
+`_MAX_MANIFEST_CHARS`, `_MAX_MANIFEST_FILE_CHARS`, `_MAX_README_LINES`,
+`_MAX_PRIORITY_SOURCE_FILES`, `_MAX_SOURCE_SAMPLE_CHARS`,
+`_MAX_SOURCE_SAMPLE_LINES`, `_SOURCE_EXTENSIONS`, `_ENTRYPOINT_NAME_STEMS`,
+`_is_entrypoint_candidate`, `_read_text_safely`, `_collect_files`,
+`_gather_project_context`, `_format_readme_block`, `_format_ci_block`,
+`_format_deployment_signals`, `_approx_tokens`.
+
+`_approx_tokens` is here rather than beside `run` because §15.3 assigns
+"budgets" to `_scan`: it is display-only sizing (D-SC-P2) of the same evidence
+the `_MAX_*` constants bound. It is reached as `code_scanner._approx_tokens` by
+`test_code_scanner_progress.py:496,499,523,535` and resolves through the façade.
+
+**`_prompt.py`** — the frozen prompt (1): `SYSTEM_PROMPT`.
+
+**`_review_render.py`** — review → transcript text (13): `_as_str_list`,
+`_name_label`, `_style_value`, `_normalize_style_for_renderer`,
+`_format_empty_review`, `_format_review_as_text`, `_render_persistence`,
+`_render_env_vars`, `_render_deployment`, `_render_api_surface`, `_render_auth`,
+`_render_ai_capabilities`, `_render_typed_notes`.
+
+**`__init__.py`** — stayed (5): `_extract_review_json`,
+`_extract_and_validate_review`, `_build_fresh_scan_seed`,
+`_build_update_scan_seed`, `run`. The extract/validate pair stayed because it is
+the turn loop's own step — it is called twice from `run` and nowhere else, and it
+is the only code that touches `_code_review_schema`.
+
+### 18.3 The resulting import graph
+
+```
+_prompt   _scan   _review_render → spec4.agents._utils (_render_coding_style)
+     \      |      /
+      code_scanner/__init__  (façade + run)
+```
+
+Acyclic; `_prompt` and `_scan` import nothing from `spec4` at all (`_scan` needs
+only `pathlib`, `_prompt` nothing). Every edge stays inside `spec4.agents`, so
+§15.2's four rules hold — and unlike 4b, they hold *because they are enforced*:
+`spec4.agents.code_scanner._scan` and its siblings all match the
+`spec4.agents` prefix already in `_AGENT_SIDE`, which is exactly the
+package-conversion case §15.2 anticipated. `tests/test_import_layering.py` was
+not edited and all 7 tests pass.
+
+No module in the package imports `layouts`, `callbacks`, `app` or `session`.
+
+### 18.4 How "no logic changes" was verified
+
+- **AST equality per definition.** All 43 top-level definitions were re-parsed
+  from their new home and `ast.dump`-compared against the same definition in
+  `HEAD:src/spec4/agents/code_scanner.py`: **43 matched exactly, 0 missing,
+  0 added, 0 renamed.**
+- **`SYSTEM_PROMPT` byte-for-byte.** Compared as raw text (not AST), from
+  `SYSTEM_PROMPT = """\` through its closing `"""`, old file vs `_prompt.py`:
+  **identical**. It is the only string constant that moved, so rule 4's
+  "every string that ends up in an LLM prompt" is closed by that one comparison.
+- **Attribute surface.** Every `code_scanner.<name>` reference in `src/`,
+  `tests/`, `evals/` and `scripts/` was enumerated and resolved against the
+  imported package: **all resolve.** That includes `code_scanner.llm`, which
+  `test_code_scanner_progress.py` (11 sites) and `test_stream_status.py:289`
+  reach with `patch.object` — `llm` is still imported into `__init__.py`, where
+  `run` lives, so the patch reaches the same binding `run` reads.
+- **§15.5 invariants.** `dash._callback.GLOBAL_CALLBACK_MAP` still holds **92**
+  callbacks after a fresh `spec4.app` import; `tests/test_streaming_characterization.py`
+  and `tests/test_layout_contract.py` were not edited (no test file was).
+- **`tests/test_renderer_goldens.py` passes unmodified** — 22 passed. It imports
+  `_format_review_as_text` from `spec4.agents.code_scanner` by name, through the
+  re-export, and every golden byte matches.
+- **Coverage attribution, not coverage loss.** The four files together are
+  634 stmts / 21 miss / 97%, against 624 / 21 / 97% for the single pre-split
+  file. Same 21 missed lines; the +10 statements are the façade's imports and
+  `__all__`. Suite-wide misses unchanged at 893.
+
+### 18.5 The one config change, and why it was forced
+
+`pyproject.toml`, two lines, exactly as §15.4 decision 1 specified:
+
+```
+-"src/spec4/agents/*.py" = ["E501"]
+-"src/spec4/agentifier/*.py" = ["E501"]
++"src/spec4/agents/**/*.py" = ["E501"]
++"src/spec4/agentifier/**/*.py" = ["E501"]
+```
+
+Ruff's `*` does not cross a directory separator, so `_prompt.py` — which has
+**14 lines over 88 characters**, all inside the frozen prompt — would have lost
+the exemption and failed the ruff gate. Verified both directions:
+`uv run ruff check --select E501 src/spec4/agents/code_scanner/_prompt.py`
+passes under the project config, and the same file under
+`ruff check --isolated --select E501 --line-length 88` reports `Found 14 errors`.
+`**/*.py` still matches the flat siblings (`agents/_utils.py`,
+`agentifier/agentifier.py`), so no file lost its exemption. The `agentifier`
+pattern was widened at the same time per §15.4, ahead of 4i. No rule set
+changed; `select = ["E", "F"]` is untouched.
+
+### 18.6 Deferred / not acted on
+
+- **§17.5's `_AGENT_SIDE` gap is still open, and 4c does not widen it.** 4b's
+  four flat siblings (`spec4._paths`, `spec4._artifacts`, `spec4._phase_markdown`,
+  `spec4._usage`) are still outside the layering contract's agent-side prefix
+  set. 4c does not inherit the problem — a package under `spec4.agents` is
+  covered by the existing prefix — so nothing here forced the fix, and editing
+  the contract test is not this sub-phase's scope (rule 7). It remains a
+  four-string edit and should be closed in 4d or in 4j.
+- **`run` is 198 lines and `_format_review_as_text` is 168.** Both are Phase 5
+  decomposition targets (§5.1 lists `_format_review_as_text` at C901). 4c moved
+  them; it did not shrink them.
+- **4j** owns the importer cleanup for this package. There are no aliases to
+  retire. The candidates: no importer outside the package reaches `_scan`'s
+  16 constants or `_review_render`'s four coercion helpers by name, so those
+  20 entries in `__all__` exist only to preserve the pre-split attribute
+  surface and can be trimmed once 4j confirms it. `_format_empty_review`,
+  `_is_entrypoint_candidate`, `_read_text_safely`, `_format_readme_block`,
+  `_format_ci_block` and `_format_deployment_signals` are in the same position.
+  Logged as Phase 2-style candidates, not deleted — 4j moves imports, it does
+  not remove definitions.
+- Nothing new for *Bugs found (not fixed)*.
+
+### 18.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Layering | `uv run pytest tests/test_import_layering.py -q` | `7 passed in 0.36s` (exit 0) |
+| Goldens | `uv run pytest tests/test_renderer_goldens.py -q` | `22 passed in 0.08s` (exit 0) |
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `198 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 71 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 166.43s (0:02:46)` (exit 0) |
+| Coverage | same run | `TOTAL 11781 stmts, 893 miss, 92%` |
+
+Test count is unchanged at 4256 — 4c adds no test and removes none. `198 files
+already formatted` is §17.6's 195 plus four new modules minus the deleted one;
+`71 source files` is mypy's 68 by the same arithmetic. Statements rose
+11771 → 11781 (+10, the façade's imports and `__all__`) and misses held at 893,
+so no per-module floor moved.
