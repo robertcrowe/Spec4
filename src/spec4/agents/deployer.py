@@ -545,7 +545,7 @@ def build_readme_request(
     return "".join(parts)
 
 
-def run(
+def run(  # noqa: C901, PLR0912, PLR0915  # ten-yield generator; every remaining branch guards a yield or a generator return, so further extraction needs sub-generators (backlog)
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
@@ -566,38 +566,7 @@ def run(
     # history entirely. A clear answer records the choice and falls through to
     # the normal opening (user_input := None); an ambiguous reply re-asks.
     if user_input is not None and session.get("_deployer_pending_readme_optin"):
-        lowered = user_input.lower()
-        affirmative = any(
-            w in lowered
-            for w in (
-                "yes",
-                "yeah",
-                "yep",
-                "yup",
-                "sure",
-                "ok",
-                "okay",
-                "go ahead",
-                "proceed",
-                "please",
-                "create",
-                "do it",
-            )
-        )
-        negative = any(
-            w in lowered
-            for w in (
-                "no",
-                "nope",
-                "nah",
-                "don't",
-                "dont",
-                "skip",
-                "later",
-                "cancel",
-                "stop",
-            )
-        )
+        affirmative, negative = _deployer_readme_reply_intent(user_input)
         if affirmative and not negative:
             session["_deployer_pending_readme_optin"] = False
             session["_deployer_readme_requested"] = True
@@ -623,174 +592,25 @@ def run(
                 return
             # Resume summary injected — fall through to LLM call.
         else:
-            stack = session.get("stack_statement")
-            phases = session.get("phases") or []
-            version = session.get("phase_version", 0)
-            code_review = session.get("code_review") or {}
-            ai_features = session.get("ai_features")
-            vision = session.get("vision_statement")
-            feature_specs = session.get("feature_specs")
-            working_dir = session.get("working_dir")
-            ai_features_block = (
-                ai_features_for_deployer(ai_features, stack) + "\n"
-                if ai_features
-                else ""
-            )
-
-            # Revision mode: a prior version of this project has already been
-            # implemented and this round's vision carries a delta. A deployment
-            # plan describes the whole running system, so the revision update is
-            # whole-system-scoped: carry the prior plan forward as the baseline
-            # (when one exists — the prior round may have skipped Deployer) and
-            # scope the update to the delta rather than re-deriving the plan. The
-            # ai_features context stays whole (no introduced_in_version partition).
-            # The gate is an existence probe (implemented predecessor + delta), not
-            # gated on the prior plan loading.
-            delta = revision_delta(vision)
-            is_revision = (
-                delta is not None
-                and working_dir is not None
-                and project_manager.latest_implemented_version(working_dir) is not None
-            )
-
-            # Greenfield (no existing plan, not a revision): ask the standalone
-            # README opt-in as the very first turn, before any plan work, so the
-            # decision is prominent rather than buried at the end of the plan.
-            # The question is asked once; `_deployer_readme_optin_done` both
-            # guards against re-asking and, downstream, marks this run as a
-            # greenfield opt-in flow (so plan finalization auto-authors or skips
-            # instead of appending the trailing offer).
-            greenfield = not session.get("_deployer_plan_existed") and not is_revision
+            is_revision, greenfield = _deployer_seed_context(session)
             if greenfield and not session.get("_deployer_readme_optin_done"):
                 session["_deployer_readme_optin_done"] = True
                 session["_deployer_pending_readme_optin"] = True
                 yield _README_OPTIN_QUESTION
                 return
 
-            stack_block = stack_for_deployer(stack)
-
-            nfr_block = nfr_goals_for_deployer(stack, feature_specs)
-
-            phases_block = phases_for_deployer(phases, version)
-
-            existing_infra_block = _build_existing_infra_block(code_review)
-
-            if session.get("_deployer_plan_existed"):
-                existing_plan = (
-                    project_manager.load_deployment_plan(
-                        cast(str, session.get("working_dir"))
-                    )
-                    or ""
-                )
-                existing_plan_block = (
-                    "Here is the full contents of the existing deployment plan, "
-                    f"loaded from `.spec4/v{version}/deployment-plan.md`:\n\n"
-                    f"```markdown\n{existing_plan}\n```\n\n"
-                    if existing_plan
-                    else ""
-                )
-                seed = (
-                    f"{stack_block}{nfr_block}{phases_block}{existing_infra_block}{ai_features_block}"
-                    f"{existing_plan_block}"
-                    "The deployment plan above was saved in a previous session, but "
-                    "this is a fresh chat session with no record of how it was built. "
-                    "You already have its full contents above, so you can answer "
-                    "questions about it directly — do NOT ask the developer to paste "
-                    "the file.\n\n"
-                    "Please introduce yourself as Deployer, mention that an existing "
-                    "deployment plan was found on disk, and reassure the developer "
-                    "that you will NOT replace the existing file unless they ask for "
-                    "changes and explicitly approve the new plan. Then ask which of "
-                    "the following they would like to do, as a numbered list:\n\n"
-                    "1. Keep the existing plan as-is and ask follow-up questions about it.\n"
-                    "2. Refine or update specific parts of the plan.\n"
-                    "3. Start over and design a new deployment plan from scratch.\n\n"
-                    'End with "Please select an option (answer with number and/or '
-                    'optional comments)".'
-                )
-            elif is_revision:
-                # is_revision implies working_dir is not None (see its definition).
-                prior_plan = (
-                    project_manager.load_prior_deployment_plan(cast(str, working_dir))
-                    or ""
-                )
-                prior_plan_block = (
-                    "Here is the deployment plan from the previous implemented "
-                    "version, to carry forward as the established baseline:\n\n"
-                    f"```markdown\n{prior_plan}\n```\n\n"
-                    if prior_plan
-                    else ""
-                )
-                if prior_plan_block:
-                    intro_line = (
-                        "Please introduce yourself as Deployer and briefly confirm "
-                        "the established deployment you are carrying forward from the "
-                        "baseline above. "
-                    )
-                else:
-                    intro_line = (
-                        "Please introduce yourself as Deployer and note that this is "
-                        "a revision of an already-deployed project. "
-                    )
-                seed = (
-                    f"{stack_block}{nfr_block}{phases_block}{existing_infra_block}{ai_features_block}"
-                    f"{prior_plan_block}"
-                    "I am starting a REVISION round on an existing, already-implemented "
-                    "and already-deployed version of this project. Operate in REVISION "
-                    "mode.\n\n"
-                    f"{build_revision_note(cast(dict[str, Any], delta))}\n\n"
-                    f"{intro_line}"
-                    "Then begin by asking which AI coding agent the developer plans to "
-                    "use to implement this revision's phases. When you reach deployment "
-                    "planning, update the deployment only for what this revision changed "
-                    "— do not re-ask settled infrastructure decisions or re-derive the "
-                    "whole plan."
-                )
-            else:
-                seed = (
-                    f"{stack_block}{nfr_block}{phases_block}{existing_infra_block}{ai_features_block}"
-                    "You have already greeted the developer, so do not re-introduce "
-                    "yourself. Begin directly by asking which AI coding agent the "
-                    "developer plans to use to implement these phases."
-                )
-            messages.append({"role": "user", "content": seed})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": _deployer_seed_message(session, is_revision),
+                }
+            )
     else:
         messages.append({"role": "user", "content": user_input})
 
         if session.get("_deployer_pending_plan"):
             session["_deployer_pending_plan"] = False
-            lowered = user_input.lower()
-            affirmative = any(
-                w in lowered
-                for w in (
-                    "yes",
-                    "yeah",
-                    "yep",
-                    "yup",
-                    "sure",
-                    "ok",
-                    "okay",
-                    "go ahead",
-                    "proceed",
-                    "replace",
-                    "save",
-                    "confirm",
-                )
-            )
-            negative = any(
-                w in lowered
-                for w in (
-                    "no",
-                    "nope",
-                    "nah",
-                    "don't",
-                    "dont",
-                    "keep",
-                    "cancel",
-                    "discard",
-                    "stop",
-                )
-            )
+            affirmative, negative = _deployer_plan_reply_intent(user_input)
             if affirmative and not negative:
                 confirm_msg = (
                     "Your new deployment plan has been saved. "
@@ -818,38 +638,7 @@ def run(
 
         if session.get("_deployer_pending_readme"):
             session["_deployer_pending_readme"] = False
-            lowered = user_input.lower()
-            affirmative = any(
-                w in lowered
-                for w in (
-                    "yes",
-                    "yeah",
-                    "yep",
-                    "yup",
-                    "sure",
-                    "ok",
-                    "okay",
-                    "go ahead",
-                    "proceed",
-                    "please",
-                    "create",
-                    "do it",
-                )
-            )
-            negative = any(
-                w in lowered
-                for w in (
-                    "no",
-                    "nope",
-                    "nah",
-                    "don't",
-                    "dont",
-                    "skip",
-                    "later",
-                    "cancel",
-                    "stop",
-                )
-            )
+            affirmative, negative = _deployer_readme_optin_intent(user_input)
             if negative and not affirmative:
                 decline_msg = (
                     "No problem — I haven't created a README. Your deployment "
@@ -860,19 +649,7 @@ def run(
                 yield decline_msg
                 return
             if affirmative and not negative:
-                working_dir = session.get("working_dir")
-                existing = (
-                    project_manager.load_existing_readme(working_dir)
-                    if working_dir
-                    else None
-                )
-                delta = revision_delta(session.get("vision_statement"))
-                # Replace the bare confirmation with the authoring instruction so
-                # the LLM turn below produces the README. Mutating the just-
-                # appended user message (rather than appending a second user
-                # message) keeps role alternation valid.
-                messages[-1]["content"] = build_readme_request(existing, delta)
-                session["_deployer_generating_readme"] = True
+                _deployer_readme_accept(session, messages)
             # Ambiguous reply — fall through to a normal conversational turn.
 
     search_cfg = websearch.from_session(session)
@@ -904,15 +681,7 @@ def run(
     elif "## Deployment Steps" in last_text:
         session["_deployer_plan_markdown"] = last_text
         if session.get("_deployer_plan_existed"):
-            confirm_q = (
-                "\n\n---\n\n"
-                "**Heads up:** You already have a `deployment-plan.md` from a previous "
-                "session. **Would you like to replace it with this new plan?** "
-                "(yes/no — you're also welcome to ask questions or request changes)"
-            )
-            messages[-1]["content"] = last_text + confirm_q
-            session["_display_override"] = messages[-1]["content"]
-            session["_deployer_pending_plan"] = True
+            _deployer_plan_confirm(session, messages, last_text)
         else:
             session["deployer_state"] = STATE_DEPLOYER_COMPLETE
             session["deployer_stale_acknowledged"] = {}
@@ -959,3 +728,280 @@ def run(
                 messages[-1]["content"] = last_text + _README_OFFER
                 session["_display_override"] = messages[-1]["content"]
                 session["_deployer_pending_readme"] = True
+
+
+def _deployer_readme_reply_intent(user_input: str) -> tuple[bool, bool]:
+    """Affirmative / negative word match on a reply to the pending-README offer."""
+    lowered = user_input.lower()
+    affirmative = any(
+        w in lowered
+        for w in (
+            "yes",
+            "yeah",
+            "yep",
+            "yup",
+            "sure",
+            "ok",
+            "okay",
+            "go ahead",
+            "proceed",
+            "please",
+            "create",
+            "do it",
+        )
+    )
+    negative = any(
+        w in lowered
+        for w in (
+            "no",
+            "nope",
+            "nah",
+            "don't",
+            "dont",
+            "skip",
+            "later",
+            "cancel",
+            "stop",
+        )
+    )
+    return affirmative, negative
+
+
+def _deployer_seed_context(session: dict[str, Any]) -> tuple[bool, bool]:
+    """The revision gate and the greenfield gate for a fresh Deployer turn."""
+    vision = session.get("vision_statement")
+    working_dir = session.get("working_dir")
+
+    # Revision mode: a prior version of this project has already been
+    # implemented and this round's vision carries a delta. A deployment
+    # plan describes the whole running system, so the revision update is
+    # whole-system-scoped: carry the prior plan forward as the baseline
+    # (when one exists — the prior round may have skipped Deployer) and
+    # scope the update to the delta rather than re-deriving the plan. The
+    # ai_features context stays whole (no introduced_in_version partition).
+    # The gate is an existence probe (implemented predecessor + delta), not
+    # gated on the prior plan loading.
+    delta = revision_delta(vision)
+    is_revision = (
+        delta is not None
+        and working_dir is not None
+        and project_manager.latest_implemented_version(working_dir) is not None
+    )
+
+    # Greenfield (no existing plan, not a revision): ask the standalone
+    # README opt-in as the very first turn, before any plan work, so the
+    # decision is prominent rather than buried at the end of the plan.
+    # The question is asked once; `_deployer_readme_optin_done` both
+    # guards against re-asking and, downstream, marks this run as a
+    # greenfield opt-in flow (so plan finalization auto-authors or skips
+    # instead of appending the trailing offer).
+    greenfield = not session.get("_deployer_plan_existed") and not is_revision
+    return is_revision, greenfield
+
+
+def _deployer_seed_message(session: dict[str, Any], is_revision: bool) -> str:
+    """The whole seed message for a fresh Deployer turn."""
+    stack = session.get("stack_statement")
+    phases = session.get("phases") or []
+    version = session.get("phase_version", 0)
+    code_review = session.get("code_review") or {}
+    ai_features = session.get("ai_features")
+    vision = session.get("vision_statement")
+    feature_specs = session.get("feature_specs")
+    working_dir = session.get("working_dir")
+    ai_features_block = (
+        ai_features_for_deployer(ai_features, stack) + "\n" if ai_features else ""
+    )
+
+    delta = revision_delta(vision)
+
+    stack_block = stack_for_deployer(stack)
+
+    nfr_block = nfr_goals_for_deployer(stack, feature_specs)
+
+    phases_block = phases_for_deployer(phases, version)
+
+    existing_infra_block = _build_existing_infra_block(code_review)
+
+    if session.get("_deployer_plan_existed"):
+        existing_plan = (
+            project_manager.load_deployment_plan(cast(str, session.get("working_dir")))
+            or ""
+        )
+        existing_plan_block = (
+            "Here is the full contents of the existing deployment plan, "
+            f"loaded from `.spec4/v{version}/deployment-plan.md`:\n\n"
+            f"```markdown\n{existing_plan}\n```\n\n"
+            if existing_plan
+            else ""
+        )
+        seed = (
+            f"{stack_block}{nfr_block}{phases_block}{existing_infra_block}{ai_features_block}"
+            f"{existing_plan_block}"
+            "The deployment plan above was saved in a previous session, but "
+            "this is a fresh chat session with no record of how it was built. "
+            "You already have its full contents above, so you can answer "
+            "questions about it directly — do NOT ask the developer to paste "
+            "the file.\n\n"
+            "Please introduce yourself as Deployer, mention that an existing "
+            "deployment plan was found on disk, and reassure the developer "
+            "that you will NOT replace the existing file unless they ask for "
+            "changes and explicitly approve the new plan. Then ask which of "
+            "the following they would like to do, as a numbered list:\n\n"
+            "1. Keep the existing plan as-is and ask follow-up questions about it.\n"
+            "2. Refine or update specific parts of the plan.\n"
+            "3. Start over and design a new deployment plan from scratch.\n\n"
+            'End with "Please select an option (answer with number and/or '
+            'optional comments)".'
+        )
+    elif is_revision:
+        # is_revision implies working_dir is not None (see its definition).
+        prior_plan = (
+            project_manager.load_prior_deployment_plan(cast(str, working_dir)) or ""
+        )
+        prior_plan_block = (
+            "Here is the deployment plan from the previous implemented "
+            "version, to carry forward as the established baseline:\n\n"
+            f"```markdown\n{prior_plan}\n```\n\n"
+            if prior_plan
+            else ""
+        )
+        if prior_plan_block:
+            intro_line = (
+                "Please introduce yourself as Deployer and briefly confirm "
+                "the established deployment you are carrying forward from the "
+                "baseline above. "
+            )
+        else:
+            intro_line = (
+                "Please introduce yourself as Deployer and note that this is "
+                "a revision of an already-deployed project. "
+            )
+        seed = (
+            f"{stack_block}{nfr_block}{phases_block}{existing_infra_block}{ai_features_block}"
+            f"{prior_plan_block}"
+            "I am starting a REVISION round on an existing, already-implemented "
+            "and already-deployed version of this project. Operate in REVISION "
+            "mode.\n\n"
+            f"{build_revision_note(cast(dict[str, Any], delta))}\n\n"
+            f"{intro_line}"
+            "Then begin by asking which AI coding agent the developer plans to "
+            "use to implement this revision's phases. When you reach deployment "
+            "planning, update the deployment only for what this revision changed "
+            "— do not re-ask settled infrastructure decisions or re-derive the "
+            "whole plan."
+        )
+    else:
+        seed = (
+            f"{stack_block}{nfr_block}{phases_block}{existing_infra_block}{ai_features_block}"
+            "You have already greeted the developer, so do not re-introduce "
+            "yourself. Begin directly by asking which AI coding agent the "
+            "developer plans to use to implement these phases."
+        )
+    return seed
+
+
+def _deployer_plan_reply_intent(user_input: str) -> tuple[bool, bool]:
+    """Affirmative / negative word match on a reply to the plan-confirm question."""
+    lowered = user_input.lower()
+    affirmative = any(
+        w in lowered
+        for w in (
+            "yes",
+            "yeah",
+            "yep",
+            "yup",
+            "sure",
+            "ok",
+            "okay",
+            "go ahead",
+            "proceed",
+            "replace",
+            "save",
+            "confirm",
+        )
+    )
+    negative = any(
+        w in lowered
+        for w in (
+            "no",
+            "nope",
+            "nah",
+            "don't",
+            "dont",
+            "keep",
+            "cancel",
+            "discard",
+            "stop",
+        )
+    )
+    return affirmative, negative
+
+
+def _deployer_readme_optin_intent(user_input: str) -> tuple[bool, bool]:
+    """Affirmative / negative word match on a reply to the README opt-in."""
+    lowered = user_input.lower()
+    affirmative = any(
+        w in lowered
+        for w in (
+            "yes",
+            "yeah",
+            "yep",
+            "yup",
+            "sure",
+            "ok",
+            "okay",
+            "go ahead",
+            "proceed",
+            "please",
+            "create",
+            "do it",
+        )
+    )
+    negative = any(
+        w in lowered
+        for w in (
+            "no",
+            "nope",
+            "nah",
+            "don't",
+            "dont",
+            "skip",
+            "later",
+            "cancel",
+            "stop",
+        )
+    )
+    return affirmative, negative
+
+
+def _deployer_readme_accept(
+    session: dict[str, Any], messages: list[dict[str, Any]]
+) -> None:
+    """Turn the just-appended confirmation into the README authoring instruction."""
+    working_dir = session.get("working_dir")
+    existing = (
+        project_manager.load_existing_readme(working_dir) if working_dir else None
+    )
+    delta = revision_delta(session.get("vision_statement"))
+    # Replace the bare confirmation with the authoring instruction so
+    # the LLM turn below produces the README. Mutating the just-
+    # appended user message (rather than appending a second user
+    # message) keeps role alternation valid.
+    messages[-1]["content"] = build_readme_request(existing, delta)
+    session["_deployer_generating_readme"] = True
+
+
+def _deployer_plan_confirm(
+    session: dict[str, Any], messages: list[dict[str, Any]], last_text: str
+) -> None:
+    """Attach the confirm question, set the display override and the pending flag."""
+    confirm_q = (
+        "\n\n---\n\n"
+        "**Heads up:** You already have a `deployment-plan.md` from a previous "
+        "session. **Would you like to replace it with this new plan?** "
+        "(yes/no — you're also welcome to ask questions or request changes)"
+    )
+    messages[-1]["content"] = last_text + confirm_q
+    session["_display_override"] = messages[-1]["content"]
+    session["_deployer_pending_plan"] = True

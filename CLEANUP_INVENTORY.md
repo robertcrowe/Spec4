@@ -4307,6 +4307,25 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
     attempt -- it never reaches the gate. *Adopted during 5h, where it caught two
     indentation slips with nothing to revert; the three stops before it were all defects
     this would have held back.*
+12. **Yield-bound generators.** For a generator whose complexity is its branch
+    structure rather than its block bodies: extract every covered-path block the plan
+    lists. If the function is still over threshold, build a **maximal** version in
+    memory — every remaining non-yield body extracted as well — and measure it. Then:
+
+    - **If the maximal build reduces C901, land the maximal build.**
+    - **If it does not**, and every remaining branch guards a `yield` or a generator
+      `return`, then `# noqa: C901, PLR0912, PLR0915` is **pre-approved** with the
+      measured reason *"ten-yield generator; every remaining branch guards a yield or a
+      generator return, so further extraction needs sub-generators (backlog)"* (with the
+      yield count corrected per function). **Land the planned cuts, not the maximal
+      build**, and add the function to the shared backlog entry for the `yield from`
+      conversion.
+
+    **Report the measurement either way** — both builds' C901 / PLR0912 / PLR0915, in
+    the sub-phase report. This covers `deployer.run` (5i), and `brainstormer.run`,
+    `stack_advisor.run`, `code_scanner.run` (5j) and `_run_catalog_phase` (5k), which are
+    the same shape. *Added after 5i measured deployer's maximal build at C901 21 — the
+    same as the planned build — with statements falling 88 → 79.*
 
 ### 27.3 Per-function table
 
@@ -4684,6 +4703,7 @@ also golden-pinned — `tests/golden/README.md` and `phase_*.md` must not move.
 | `agentifier/requires_reconciler.py` | `_has_cycle` | C901 | single iterative-DFS cycle detection; the colour invariant spans the loop |
 | `agents/feature_speccer.py` | `_validate_dependencies` | C901 | single DFS back-edge pruning; the WHITE/GRAY/BLACK colour invariant spans the whole function, so any split leaves a helper callable at only one point in the traversal |
 | `project_manager.py` | `_artifact_button_state` | C901 | the branches are the documented artifact button state machine |
+| `agents/deployer.py` | `run` | C901, PLR0912, PLR0915 | ten-yield generator; every remaining branch guards a yield or a generator return, so further extraction needs sub-generators (backlog). **Sixth pre-approved noqa, added after the 5i measurement (37.5); granted under rule 12.** |
 
 Plus **12 `# noqa: PLR0913`** — arity cannot be reduced by extraction. Eight are
 arity-only (`_seed._call_scout` 7, `_reask.reask_for_artifact` 10,
@@ -4696,6 +4716,14 @@ arity-only (`_seed._call_scout` 7, `_reask.reask_for_artifact` 10,
 **Backlog item (not Phase 5):** the two 13-argument designer signatures and the
 10-argument reask signature want a params object. That changes call sites and is a design
 change, not cleanup — log under *Bugs found (not fixed)* / backlog.
+
+**Backlog item (not Phase 5): `yield from` sub-generator conversion.** Every agent turn
+that is a long generator carries its complexity in branches that each guard a `yield` or
+a generator `return`, so extraction cannot reduce it (rule 12). Converting those branches
+into sub-generators driven by `yield from` is the real fix and is a redesign of the turn
+loop, not cleanup. Functions on this entry: `deployer.run` (measured in 37.5), plus any
+of `brainstormer.run`, `stack_advisor.run`, `code_scanner.run` and
+`agentifier._run_catalog_phase` that rule 12 sends here in 5j and 5k.
 
 ### 27.5 — 5p, the cross-cutting sweep
 
@@ -5958,3 +5986,86 @@ under test, so **no 893 + N reporting is needed for this sub-phase**.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 170.98s` (exit 0) |
 | Coverage | same run | `TOTAL 12193 stmts, 893 miss, 93%` |
+
+## 38. Phase 5i (continued) — `deployer.run`: eight cuts landed, rule-12 noqa applied
+
+Follows the 37.5 measurement and the rule-12 decision. `src/spec4/agents/deployer.py`
+only.
+
+### 38.1 What landed
+
+The **eight cuts planned in 36.2**, not the maximal build — rule 12's disposition when
+the maximal build does not reduce C901:
+
+`_deployer_readme_reply_intent`, `_deployer_seed_context`, `_deployer_seed_message`,
+`_deployer_plan_reply_intent`, `_deployer_readme_optin_intent`,
+`_deployer_readme_accept`, `_deployer_plan_confirm` — seven helpers (36.2's D3 folded
+into `_deployer_seed_message`, which reads the four context blocks itself).
+
+`run` goes from **398 non-blank lines to 173**. Its C901 24 / PLR0912 30 / PLR0915 130
+are suppressed by the sixth pre-approved noqa (27.4), appended to the existing `def`
+line per rule 10:
+
+```
+def run(  # noqa: C901, PLR0912, PLR0915  # ten-yield generator; every remaining branch
+guards a yield or a generator return, so further extraction needs sub-generators (backlog)
+```
+
+`agents/**` carries the E501 per-file-ignore, so no `E501` was needed on the noqa.
+
+### 38.2 The measurement, restated for the record (rule 12)
+
+| Build | C901 | PLR0912 | PLR0915 | Disposition |
+|---|---:|---:|---:|---|
+| planned (36.2's eight cuts) | 21 | 25 | 88 | **landed**, then suppressed |
+| maximal (every remaining non-yield body, 11 helpers) | 21 | 25 | 79 | measured only, discarded |
+
+The maximal build's three extra helpers (`_deployer_plan_saved`, `_deployer_plan_kept`,
+`_deployer_trailing_readme_offer`) bought 9 statements and **zero** complexity. Landing
+them would have added three helpers to a function that stays suppressed either way.
+
+`deployer.run` is now on the backlog entry for the `yield from` sub-generator
+conversion (27.4).
+
+### 38.3 Duplication surfaced, not removed
+
+`_deployer_readme_reply_intent`, `_deployer_plan_reply_intent` and
+`_deployer_readme_optin_intent` are the **same ~30-line shape three times**, differing
+only in their word lists. Extracted separately here, per rule 7; unifying them is
+**5p(a)**. This is the clearest duplicate the phase has surfaced so far.
+
+### 38.4 Line accounting (rule 3)
+
+398 non-blank lines in the old `deployer.run`. **386 verbatim.** The 12:
+
+| # | Disposition |
+|---:|---|
+| 10 | `ruff format` re-wraps after the dedent — the `ai_features_for_deployer(...)` ternary, the two `load_deployment_plan` / `load_prior_deployment_plan` calls and the `load_existing_readme` ternary each collapsed onto one line; identical tokens, verified at deployer.py:813, 828 and 984 |
+| 1 | `def run(` — now carries the noqa (rule 10: appended, not rewritten) |
+| 1 | `messages.append({"role": "user", "content": seed})` — now the same append with `_deployer_seed_message(session, is_revision)` as the content expression |
+
+**No statement line is unaccounted for.**
+
+### 38.5 Statement counts and coverage (rule 4)
+
+Suite-wide **12193 → 12214, +21**: 7 new `def`s, 7 new call/assignment sites, 7 new
+`return`s. Misses held at **893** — every cut is on a covered path, so no `893 + N`
+reporting is needed.
+
+### 38.6 One failed attempt
+
+`_deployer_seed_context` was built from lines 631–633 when it needs only 631 and 633;
+line 632 (`feature_specs = session.get("feature_specs")`) is used by
+`_deployer_seed_message`, not by the context helper, and ruff caught it as F841. Reverted
+with `git checkout --` and rebuilt with the range split. Rule 10's four classes do not
+cover an unused-read, so this went through the ordinary revert-and-retry.
+
+### 38.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 175.31s` (exit 0) |
+| Coverage | same run | `TOTAL 12214 stmts, 893 miss, 93%` |
