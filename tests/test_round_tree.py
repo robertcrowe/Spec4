@@ -925,7 +925,7 @@ def _click(path: str | None, session: Any, n_clicks: Any = None) -> Any:
     so a test cannot pass against an id shape the tree does not actually write.
     """
     triggered = line_id(path) if path is not None else None
-    with patch("spec4.callbacks.ctx", _FakeCtx(triggered)):
+    with patch("spec4.callbacks._artifacts.ctx", _FakeCtx(triggered)):
         return on_round_tree_line(n_clicks if n_clicks is not None else [1], session)
 
 
@@ -1046,7 +1046,9 @@ class TestTheClickGuards:
         self, round_dir: pathlib.Path
     ) -> None:
         session = {**_default_session(), "working_dir": str(round_dir)}
-        with patch("spec4.callbacks.ctx", _FakeCtx({"type": LINE_TYPE, "index": ""})):
+        with patch(
+            "spec4.callbacks._artifacts.ctx", _FakeCtx({"type": LINE_TYPE, "index": ""})
+        ):
             assert on_round_tree_line([1], session) == (no_update, no_update)
 
     def test_the_guard_is_registered_on_the_callback_too(self) -> None:

@@ -49,8 +49,8 @@ class TestStreamPollMissingEntry:
         session = _session_with_stream()
 
         with (
-            patch("spec4.callbacks.streaming.get", return_value=None),
-            patch("spec4.callbacks.streaming.pop") as mock_pop,
+            patch("spec4.callbacks._chat.streaming.get", return_value=None),
+            patch("spec4.callbacks._chat.streaming.pop") as mock_pop,
         ):
             result = on_stream_poll(1, session)
 
@@ -64,7 +64,7 @@ class TestStreamPollMissingEntry:
     def test_missing_entry_does_not_return_session_dict(self) -> None:
         """Confirm the return value is not a dict (i.e. not a stale session rebuild)."""
         session = _session_with_stream()
-        with patch("spec4.callbacks.streaming.get", return_value=None):
+        with patch("spec4.callbacks._chat.streaming.get", return_value=None):
             result = on_stream_poll(1, session)
         assert not isinstance(result[0], dict), (
             "no_update sentinel must be returned, not a session dict"
@@ -74,7 +74,7 @@ class TestStreamPollMissingEntry:
         """Early-out when _stream_id is None/missing — existing behaviour."""
         session = _default_session()
         session["_stream_id"] = None
-        with patch("spec4.callbacks.streaming.get") as mock_get:
+        with patch("spec4.callbacks._chat.streaming.get") as mock_get:
             result = on_stream_poll(1, session)
         mock_get.assert_not_called()
         assert result[0] is no_update
@@ -101,8 +101,8 @@ class TestStreamPollNormalDone:
         done_entry = {"text": "final answer", "done": True, "session": agent_sess}
 
         with (
-            patch("spec4.callbacks.streaming.get", return_value=done_entry),
-            patch("spec4.callbacks._persist_artifacts", return_value=None),
+            patch("spec4.callbacks._chat.streaming.get", return_value=done_entry),
+            patch("spec4.callbacks._chat._persist_artifacts", return_value=None),
         ):
             result = on_stream_poll(1, session)
 
@@ -120,8 +120,8 @@ class TestStreamPollNormalDone:
         done_entry = {"text": "raw stream text", "done": True, "session": agent_sess}
 
         with (
-            patch("spec4.callbacks.streaming.get", return_value=done_entry),
-            patch("spec4.callbacks._persist_artifacts", return_value=None),
+            patch("spec4.callbacks._chat.streaming.get", return_value=done_entry),
+            patch("spec4.callbacks._chat._persist_artifacts", return_value=None),
         ):
             result = on_stream_poll(1, session)
 
@@ -143,9 +143,9 @@ class TestStreamPollDoneFinalisation:
         done_entry = _fake_stream_entry("result text", done=True)
 
         with (
-            patch("spec4.callbacks.streaming.get", return_value=done_entry),
-            patch("spec4.callbacks._persist_artifacts", return_value=None),
-            patch("spec4.callbacks.streaming.pop") as mock_pop,
+            patch("spec4.callbacks._chat.streaming.get", return_value=done_entry),
+            patch("spec4.callbacks._chat._persist_artifacts", return_value=None),
+            patch("spec4.callbacks._chat.streaming.pop") as mock_pop,
         ):
             result = on_stream_poll(1, session)
 
@@ -162,8 +162,8 @@ class TestStreamPollDoneFinalisation:
         done_entry = {"text": "final text", "done": True, "session": agent_sess}
 
         with (
-            patch("spec4.callbacks.streaming.get", return_value=done_entry),
-            patch("spec4.callbacks._persist_artifacts", return_value=None),
+            patch("spec4.callbacks._chat.streaming.get", return_value=done_entry),
+            patch("spec4.callbacks._chat._persist_artifacts", return_value=None),
         ):
             result_a = on_stream_poll(1, _session_with_stream())
             result_b = on_stream_poll(1, _session_with_stream())
@@ -184,9 +184,9 @@ class TestStreamPollDoneFinalisation:
         done_entry = _fake_stream_entry("text", done=True)
 
         with (
-            patch("spec4.callbacks.streaming.get", return_value=done_entry),
+            patch("spec4.callbacks._chat.streaming.get", return_value=done_entry),
             patch(
-                "spec4.callbacks._persist_artifacts",
+                "spec4.callbacks._chat._persist_artifacts",
                 side_effect=RuntimeError("boom"),
             ),
         ):
@@ -471,7 +471,7 @@ class TestStreamPollReceivedCounter:
         agent_sess["_stream_received_chars"] = 51234
         entry = {"text": "frozen", "done": False, "session": agent_sess}
 
-        with patch("spec4.callbacks.streaming.get", return_value=entry):
+        with patch("spec4.callbacks._chat.streaming.get", return_value=entry):
             result = on_stream_poll(1, session)
 
         assert result[0] is not no_update
@@ -488,7 +488,7 @@ class TestStreamPollReceivedCounter:
         agent_sess["_stream_received_chars"] = 50120
         entry = {"text": "frozen", "done": False, "session": agent_sess}
 
-        with patch("spec4.callbacks.streaming.get", return_value=entry):
+        with patch("spec4.callbacks._chat.streaming.get", return_value=entry):
             result = on_stream_poll(1, session)
 
         assert result[0] is not no_update
@@ -503,7 +503,7 @@ class TestStreamPollReceivedCounter:
         agent_sess["_stream_received_chars"] = 50000
         entry = {"text": "frozen", "done": False, "session": agent_sess}
 
-        with patch("spec4.callbacks.streaming.get", return_value=entry):
+        with patch("spec4.callbacks._chat.streaming.get", return_value=entry):
             result = on_stream_poll(1, session)
 
         assert result[0] is no_update
@@ -515,7 +515,7 @@ class TestStreamPollReceivedCounter:
         agent_sess["_stream_received_chars"] = 99999
         entry = {"text": "final", "done": True, "session": agent_sess}
 
-        with patch("spec4.callbacks.streaming.get", return_value=entry):
+        with patch("spec4.callbacks._chat.streaming.get", return_value=entry):
             result = on_stream_poll(1, session)
 
         assert result[0]["_stream_received_chars"] is None
@@ -532,7 +532,7 @@ class TestStreamPollStatusLine:
         agent_sess["_stream_status"] = "Scout is scanning your vision…"
         entry = {"text": "hello", "done": False, "session": agent_sess}
 
-        with patch("spec4.callbacks.streaming.get", return_value=entry):
+        with patch("spec4.callbacks._chat.streaming.get", return_value=entry):
             result = on_stream_poll(1, session)
 
         assert result[0] is not no_update
@@ -551,7 +551,7 @@ class TestStreamPollStatusLine:
         agent_sess["_stream_status"] = "Composer is grouping candidates…"
         entry = {"text": "frozen", "done": False, "session": agent_sess}
 
-        with patch("spec4.callbacks.streaming.get", return_value=entry):
+        with patch("spec4.callbacks._chat.streaming.get", return_value=entry):
             result = on_stream_poll(1, session)
 
         assert result[0] is not no_update
@@ -567,7 +567,7 @@ class TestStreamPollStatusLine:
         agent_sess["_stream_status"] = "Same status…"
         entry = {"text": "frozen", "done": False, "session": agent_sess}
 
-        with patch("spec4.callbacks.streaming.get", return_value=entry):
+        with patch("spec4.callbacks._chat.streaming.get", return_value=entry):
             result = on_stream_poll(1, session)
 
         assert result[0] is no_update
@@ -580,8 +580,8 @@ class TestStreamPollStatusLine:
         entry = {"text": "final", "done": True, "session": agent_sess}
 
         with (
-            patch("spec4.callbacks.streaming.get", return_value=entry),
-            patch("spec4.callbacks._persist_artifacts", return_value=None),
+            patch("spec4.callbacks._chat.streaming.get", return_value=entry),
+            patch("spec4.callbacks._chat._persist_artifacts", return_value=None),
         ):
             result = on_stream_poll(1, session)
 

@@ -448,7 +448,8 @@ class TestOverridesSurviveTheDefaultChanging:
         with (
             patch.object(providers, "list_models", return_value=(["gpt-5"], "")),
             patch(
-                "spec4.callbacks.providers.list_models", return_value=(["gpt-5"], "")
+                "spec4.callbacks._setup.providers.list_models",
+                return_value=(["gpt-5"], ""),
             ),
         ):
             connected, _ = on_setup_connect(
@@ -761,7 +762,7 @@ class TestGateFailureParity:
 class TestGateBlocksTheTurn:
     def test_init_turn_refuses_while_the_gate_is_open(self) -> None:
         session = _session(active_agent="phaser")
-        with patch("spec4.callbacks._get_agent_gen") as gen:
+        with patch("spec4.callbacks._chat._get_agent_gen") as gen:
             result = on_init_turn(1, session)
         gen.assert_not_called()
         assert result == (no_update, no_update)
@@ -771,7 +772,7 @@ class TestGateBlocksTheTurn:
             active_agent="stack_advisor",
             messages=[{"role": "assistant", "content": "Topic 1?"}],
         )
-        with patch("spec4.callbacks._get_agent_gen") as gen:
+        with patch("spec4.callbacks._chat._get_agent_gen") as gen:
             result = on_fast_forward(1, session)
         gen.assert_not_called()
         assert result == (no_update, no_update)
@@ -780,8 +781,10 @@ class TestGateBlocksTheTurn:
         session = _session(active_agent="phaser")
         answered = on_gate_use_default(1, session)
         with (
-            patch("spec4.callbacks._get_agent_gen", return_value=iter(["x"])) as gen,
-            patch("spec4.callbacks.streaming.start", return_value="sid"),
+            patch(
+                "spec4.callbacks._chat._get_agent_gen", return_value=iter(["x"])
+            ) as gen,
+            patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
             updated, _ = on_init_turn(1, answered)
         gen.assert_called_once()

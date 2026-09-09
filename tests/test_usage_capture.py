@@ -1383,7 +1383,7 @@ class TestFinalisationRunsOnce:
         from spec4.callbacks import on_stream_poll
 
         live, _ = self._finished_stream(tmp_path)
-        with patch("spec4.callbacks._persist_artifacts") as persist:
+        with patch("spec4.callbacks._chat._persist_artifacts") as persist:
             for n in (1, 2, 3):
                 on_stream_poll(n, live)
         assert persist.call_count == 1

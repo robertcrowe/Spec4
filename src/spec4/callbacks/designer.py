@@ -11,7 +11,7 @@ from typing import Any
 from dash import ALL, Input, Output, State, callback, ctx, no_update
 
 from spec4 import llm, llm_selection, project_manager, websearch
-from spec4.callbacks import _open_pick_fields
+from spec4.callbacks._shared import _open_pick_fields
 from spec4.agents._manifest import (
     enrich_manifest,
     extract_manifest,

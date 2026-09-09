@@ -65,7 +65,7 @@ class _FakeCtx:
 
 def _open(key: str, session: Any, n_clicks: Any = 1) -> Any:
     """Click ``btn-open-<key>``, the way Dash would deliver it."""
-    with patch("spec4.callbacks.ctx", _FakeCtx(open_button_id(key))):
+    with patch("spec4.callbacks._artifacts.ctx", _FakeCtx(open_button_id(key))):
         return OPEN_ARTIFACT_CALLBACKS[key](n_clicks, session)
 
 
@@ -222,7 +222,7 @@ class TestSelectionIsWrittenThroughOneHelper:
         _project(tmp_path)
         session = {**_default_session(), "working_dir": str(tmp_path)}
         with patch(
-            "spec4.callbacks.ctx",
+            "spec4.callbacks._artifacts.ctx",
             _FakeCtx({"type": "round-tree-line", "index": "stack.json"}),
         ):
             from_tree, tree_path = on_round_tree_line([1], session)
@@ -316,7 +316,9 @@ class TestClickingOpen:
         about a different button answers about that button."""
         _project(tmp_path)
         session = {**_default_session(), "working_dir": str(tmp_path)}
-        with patch("spec4.callbacks.ctx", _FakeCtx(open_button_id("vision"))):
+        with patch(
+            "spec4.callbacks._artifacts.ctx", _FakeCtx(open_button_id("vision"))
+        ):
             written, _ = OPEN_ARTIFACT_CALLBACKS["stack"](1, session)
         assert written["selected_file"] == "vision.json"
 
@@ -325,7 +327,7 @@ class TestClickingOpen:
     ) -> None:
         session = {**_default_session(), "working_dir": str(tmp_path)}
         for triggered in (None, "btn-open-nonesuch", {"type": "round-tree-line"}):
-            with patch("spec4.callbacks.ctx", _FakeCtx(triggered)):
+            with patch("spec4.callbacks._artifacts.ctx", _FakeCtx(triggered)):
                 assert OPEN_ARTIFACT_CALLBACKS["stack"](1, session) == (
                     no_update,
                     no_update,

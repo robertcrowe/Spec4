@@ -306,7 +306,7 @@ class TestCallback:
             )
             return "stream-1"
 
-        with patch("spec4.callbacks.streaming.start", fake_start):
+        with patch("spec4.callbacks._chat.streaming.start", fake_start):
             store, _ = on_breadth_try_again(1, session)
 
         assert seen["pool"] is None
@@ -429,7 +429,7 @@ class TestGuidedRedraw:
                 return_value=_ANALYSIS,
             ),
             mock_litellm_stream("Hello!"),
-            patch("spec4.callbacks.streaming.start", return_value="stream-1"),
+            patch("spec4.callbacks._chat.streaming.start", return_value="stream-1"),
         ):
             store, _ = on_breadth_try_again(1, session, "Fewer, simpler.")
             collect(agentifier.run(None, store, _LLM_CONFIG))
@@ -453,7 +453,7 @@ class TestGuidedRedraw:
                 return_value=_ANALYSIS,
             ),
             mock_litellm_stream("Hello!"),
-            patch("spec4.callbacks.streaming.start", return_value="stream-1"),
+            patch("spec4.callbacks._chat.streaming.start", return_value="stream-1"),
         ):
             store, _ = on_breadth_try_again(1, session, "")
             collect(agentifier.run(None, store, _LLM_CONFIG))
@@ -471,7 +471,7 @@ class TestGuidedRedraw:
                 return_value=_ANALYSIS,
             ),
             mock_litellm_stream("Hello!"),
-            patch("spec4.callbacks.streaming.start", return_value="stream-1"),
+            patch("spec4.callbacks._chat.streaming.start", return_value="stream-1"),
         ):
             store, _ = on_breadth_try_again(1, session, "Fewer, simpler.")
             out = collect(agentifier.run(None, store, _LLM_CONFIG))
@@ -489,7 +489,7 @@ class TestGuidedRedraw:
                 return_value=_ANALYSIS,
             ) as tier,
             mock_litellm_stream("Hello!"),
-            patch("spec4.callbacks.streaming.start", return_value="stream-1"),
+            patch("spec4.callbacks._chat.streaming.start", return_value="stream-1"),
         ):
             store, _ = on_breadth_try_again(1, session, "Keep it simple.")
             collect(agentifier.run(None, store, _LLM_CONFIG))
@@ -607,7 +607,7 @@ class TestDiscoveryGuidanceArtifact:
                 return_value=_ANALYSIS,
             ),
             mock_litellm_stream("Hello!"),
-            patch("spec4.callbacks.streaming.start", return_value="stream-1"),
+            patch("spec4.callbacks._chat.streaming.start", return_value="stream-1"),
         ):
             store, _ = on_breadth_try_again(1, session, "Far fewer.")
             collect(agentifier.run(None, store, _LLM_CONFIG))

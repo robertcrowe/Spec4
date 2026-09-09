@@ -1589,6 +1589,7 @@ re-exports every public name, changes no logic, and re-runs the layering test.
 | 4e | `agents/phaser.py` | 1378 | package `phaser/`: `_prompt`, `_phase_extract` (extraction, truncation and completeness checks), `_revision` (`revision_delta`, `build_revision_note`, design note) | Same shape again; `run` (493 lines) stays whole — shrinking it is Phase 5. |
 | 4f | `layouts/_chat.py` | 997 | `_chat_status` (the strip above the transcript), `_chat_actions` (`_chat_action_buttons` + open/download ids), `_chat_panels` (`_retry_panel`, `_breadth_panel`) | Under the 1,300 line, included because the plan's "resolve the `layouts` ↔ `layouts._chat` cycle in whichever sub-phase touches `layouts/`" otherwise has no home. |
 | 4g | `callbacks/__init__.py` | 2460 | `_shared` (the cross-module helpers, incl. `_open_pick_fields`), `_setup` (the three wizard steps), `_chat` (turn, gate, retry, breadth, stream poll, navigation), `_artifacts` (round tree, artifact view, cost, downloads, open-in-view) | Cleanly banner-grouped, but 78 decorator-registered callbacks must still register exactly once on `import spec4.callbacks`. Late, once the mechanical splits have proven the process. |
+| 4g2 | `callbacks/_chat.py` | 1182 | `_gate` (the per-agent model gate: hint, effort, use-default/keep/pick/chip/back, connect, continue), `_nav` (the agent pills, the inter-agent Continue buttons, and the Deployer pair) | Added by Robert during 4g. The four-way split leaves `_chat.py` the package's largest module by a wide margin; the gate (~340 lines, one self-contained flow with its own draft key) and the navigation buttons (~230) are the two blocks that come out of it cleanly, and neither is what "the chat frame" means. Its own run, after 4g. |
 | 4h | `callbacks/designer.py` | 1399 | package `designer/`: `_mock_gen` (`_start_gen`, the worker, `_MOCK_BUFFERS`), `_wizard` (steps 1–4 and approve/back/start-over), `_refine` (regenerate, refine, revise-stale, retry) | Same registration constraint, plus §12.2 pins `_MOCK_BUFFERS` by module-level name on `spec4.callbacks.designer`; the re-export must bind the same dict object. |
 | 4i | `agentifier/agentifier.py` | 3565 | `_seed` (sub-agent call wrappers, seed message, candidate/analysis (de)serialisation, registry), `_render` (every `_format_*`, `_build_ai_features`, priority parsing, revision snapshot), `_ff_review` (both fast-forward review halves) | Largest and least separable: one generator flow, every `_run_*_phase` yields UI updates and mutates the shared `session`. Only the leaf-pure edges come out; the phase drivers stay. Last of the splits, deliberately. |
 | 4j | *(no file)* | — | — | Importer cleanup: retire the compatibility layer the eight splits leave behind. |
@@ -2834,3 +2835,291 @@ edited lines are inside two existing tests. `207 files already formatted` is
 §20.7's 204 plus three new modules; `80 source files` is mypy's 77 by the same
 arithmetic. Statements rose 11804 → 11825 (+21, the façade's imports and
 `__all__`) and misses held at 893, so no per-module floor moved.
+
+## 22. Phase 4g — `callbacks/__init__.py` split into four modules
+
+Recorded 2026-09-08 on branch `look-rework`. Six files under
+`src/spec4/callbacks/` changed or added; **thirteen test files edited — patch
+targets and module aliases only, no assertion moved.** `pyproject.toml` is
+untouched. Nothing was written under `.spec4/`, `.venv/` or `.git/`, and no git
+command was run beyond `git show HEAD:…`, `git diff --stat` and `git status`, all
+read-only.
+
+Like 4f and unlike 4c–4e this is a **flat sibling split, not a package
+conversion** — `callbacks/` is already a package, there is no `_prompt.py`
+collision to dodge, and `_shared` / `_setup` / `_chat` / `_artifacts` are the
+names §15.3 proposed.
+
+### 22.1 Line counts
+
+| File | Lines | Was |
+|---|---:|---:|
+| `callbacks/__init__.py` (façade) | 573 | 2460 |
+| `callbacks/_shared.py` | 72 | — |
+| `callbacks/_setup.py` | 364 | — |
+| `callbacks/_chat.py` | 1182 | — |
+| `callbacks/_artifacts.py` | 542 | — |
+| **total** | **2733** | **2460** |
+
+The +273 is compatibility layer and prose: the façade's 83-name `__all__` and its
+four sibling import blocks, five module docstrings, and the import header each
+new module needs. No definition grew or shrank by a line — every one moved
+byte-for-byte (§22.4), and **no function body changed at all** in this
+sub-phase; unlike 4f there was not even a call-site edit.
+
+### 22.2 The names moved to each
+
+All 82 top-level definitions plus the re-exported `FF_PROMPT` are accounted for:
+70 moved, 13 stayed. Nothing was dropped, added, or renamed — **no name changed
+spelling in 4g**, as in 4b–4f. §15.4's decision 2 (public names plus underscore
+aliases) was 4a-specific and does not apply; the underscore names cross a module
+boundary only through `_shared`, which exists for exactly that.
+
+**`_shared.py`** — the helpers more than one module needs (3): `_HOME`,
+`_gate_agent`, `_open_pick_fields`. `_HOME` is here because the façade's
+directory-picker callbacks and `_chat`'s `on_deployer_new_project` both read it.
+`_gate_agent` is here because `_open_pick_fields` calls it: leaving it beside the
+gate callbacks in `_chat` would make `_shared` import `_chat` and invert the
+dependency the module exists to keep straight. It registers **no** callback.
+
+**`_setup.py`** — the wizard's three steps (11, 10 callbacks):
+`_prefs_keep_working_dir`, `on_provider_hint`, `on_setup_connect`,
+`on_setup_clear`, `on_setup_back_provider`, `on_setup_effort_options`,
+`on_setup_model_continue`, `on_setup_back_model`, `on_search_provider_hint`,
+`on_setup_search_connect`, `on_setup_search_skip`. `_prefs_keep_working_dir` is
+here because its only two callers are: Connect writes the remembered credential,
+Clear takes it away, and both must leave the working directory alone.
+
+**`_chat.py`** — turns, gate, retry, breadth, poll, navigation (36, 29
+callbacks): `_DEV_MODE`, `on_init_turn`, `on_chat_submit`, `on_fast_forward`,
+`_gate_answered`, `on_gate_provider_change`, `on_gate_effort_options`,
+`on_gate_use_default`, `on_gate_keep`, `on_gate_pick`, `on_gate_chip`,
+`on_chat_retry_model`, `on_gate_back`, `on_gate_connect`, `on_gate_continue`,
+`_start_retry_turn`, `on_chat_retry`, `on_ff_info`, `_breadth_summary`,
+`on_breadth_submit`, `on_breadth_try_again`, `on_breadth_change`,
+`_EMPTY_TURN_NOTICE`, `on_stream_poll`, `_switch_agent`, `on_agent_pill_click`,
+`on_project_mode_choice`, `on_rescan_project`, `on_review_to_brainstormer`,
+`on_brainstormer_to_designer`, `on_brainstormer_to_agentifier`,
+`on_agentifier_to_designer`, `on_stack_to_phaser`, `on_phaser_to_deployer`,
+`on_deployer_new_project`, and its own `from spec4.app_constants import
+FF_PROMPT  # noqa: E402` (kept mid-file with its comment, so `E402` still
+applies and the `noqa` stays live rather than becoming decorative). The "Agent
+select" banner — two D-LR8 comment blocks about removed callbacks, no code —
+moved here intact, ahead of "Chat — initial turn".
+
+**`_artifacts.py`** — the Artifact View and everything reaching it (20, 12
+callbacks + the 6 `_register_open_artifact` closures): `_ARTIFACTS_PHASE`,
+`on_round_tree`, `select_artifact`, `on_round_tree_line`, `on_artifact_round`,
+`session_round`, `on_artifact_pane`, `on_artifact_download`, `on_round_cost`,
+`_send_json`, `_build_phases_zip`, `dl_vision`, `dl_stack`, `dl_code_review`,
+`dl_features`, `dl_phases`, `dl_deployment`, `_open_target`,
+`_register_open_artifact`, `OPEN_ARTIFACT_CALLBACKS`.
+
+**Stayed in `__init__.py`** (13, 9 callbacks) — the app shell: the status bar
+that is on every screen (`on_status_bar`, `on_status_bar_dir`,
+`on_status_bar_setup`), the URL router behind it (`_cannot_open`,
+`_resolve_root`, `on_browser_navigate`, `_no_change`, `_needs_restoring`), and
+the directory picker they both lead to (`on_dir_select`, `on_dir_up`,
+`on_dir_path_enter`, `on_subdir_click`, `on_create_folder`). None belongs to a
+single agent or a single screen, which is the line the split was drawn on.
+
+**Two placements §15.3 did not spell out.** `dl_deployment` is in `_artifacts`
+with the other five `dl_*` rather than under the "Deployer navigation" banner it
+used to sit beside: §15.3 assigns downloads to `_artifacts`, it is a download,
+and six identical handlers are one concern. `_gate_agent` is in `_shared` rather
+than `_chat`, for the dependency reason above.
+
+**Dropped from the façade: 46 imported names, 0 definitions.** They are names
+the old module imported for code that moved, and each now lives on the module
+that uses it — `dcc`, `dmc`, `html`, `io`, `json`, `zipfile`, `os`, `datetime`,
+`timezone`, `streaming`, `providers`, `websearch`, `GATE_IDS`, `SETUP_IDS`,
+`provider_key_hint`, `_gate_is_open`, `_get_agent_gen`, `_persist_artifacts`,
+`_reset_for_new_project`, `_validate_agent_preconditions`, `close_selection`,
+`pool_from_dicts`, the eleven `_artifact_view` ids and helpers, the five
+`_round_tree` names, `round_cost_lines`, `ARTIFACTS_PATH`, `CHAT_ARTIFACTS`,
+`OPEN_BTN_PREFIX`, `open_button_id`, and the three `app_constants` values only
+`_chat` reads. 4c set the precedent for dropping a moved import from the façade,
+4e for dropping two, 4f for dropping twenty-two. **21 imported names are kept**,
+including `project_manager` (`tests/test_root_routing.py:350` asserts
+`cb.project_manager.directory_opens is directory_opens`) and `ctx` (two shell
+callbacks still read it). Five of the 46 were reached by name from outside —
+`streaming`, `providers`, `_get_agent_gen`, `_persist_artifacts` and `dcc` — and
+those, plus `ctx` which was *not* dropped, are the whole of the test edit (§22.5).
+
+`FF_PROMPT` is re-exported from `spec4.app_constants` on the façade rather than
+from `_chat`, which is the route the pre-split module used. Taking it off `_chat`
+would need an explicit `as`-alias re-export there — `[tool.mypy] strict` implies
+`no_implicit_reexport` — and the constant is `app_constants`' either way;
+`cb.FF_PROMPT is app_constants.FF_PROMPT` is asserted below.
+
+### 22.3 Rule 4, and the `designer.py` edit §15.2 scheduled
+
+`callbacks/designer.py:14` is now
+
+```python
+from spec4.callbacks._shared import _open_pick_fields
+```
+
+which retires the one `spec4.callbacks.designer -> spec4.callbacks` edge §15.2
+named, and it is the **only** change to `designer.py`. §15.2's rule 4 stops being
+vacuous here: four modules now match `spec4.callbacks._*`
+(`_artifacts`, `_chat`, `_setup`, `_shared`) and none of them has an edge to the
+`spec4.callbacks` package — sibling imports are spelled
+`from spec4.callbacks._shared import …`, which §15.1's walk resolves to
+`spec4.callbacks._shared` and not to its parent. The rule now enforces what it
+was written for rather than passing on an empty set.
+
+`tests/test_import_layering.py` passes **unedited** (7 tests). 4h's scheduled
+tightening — widening `_CALLBACKS_PRIVATE` from `spec4.callbacks._` to
+`spec4.callbacks.` once `designer` is a package — is still 4h's to make, and is
+still one underscore.
+
+Rebuilding the edge set: the four new modules add no cycle. `_shared` imports
+only `llm_selection`; `_setup` imports `llm_selection`, `providers`, `websearch`,
+`layouts._setup`; `_chat` imports `_shared`, `llm_selection`, `providers`,
+`streaming`, `session`, `app_constants`, `layouts._llm_gate`, `layouts._setup`,
+`agentifier.panel_closure` (plus the function-body
+`agentifier.agentifier` import `on_breadth_try_again` carries); `_artifacts`
+imports `project_manager`, `session`, `app_constants` and four `layouts` modules.
+Every edge points away from `spec4.callbacks`.
+
+### 22.4 Verification beyond the gate
+
+- **Byte-for-byte.** All 21 moved blocks were compared as raw text against the
+  `HEAD` blob at their original line ranges, **after** `ruff format` ran: 2363 of
+  the old file's 2460 lines matched exactly. The 97 not in a moved block are the
+  62-line import header the five new modules replace, and blank separators; the
+  same check confirms **no non-blank line from 63 onwards was left behind**.
+  The formatter reported "1 file reformatted, 5 files left unchanged"; the one
+  file is the façade, and only its own new import blocks moved.
+- **Statement counts add up.** `coverage`'s own parser on the `HEAD` blob: 681
+  statements. The five files now: 113 + 21 + 90 + 345 + 140 = **709**, +28. The
+  suite-wide total moved 11825 → 11853, also +28, so **no other module's
+  statement count changed** and the +28 is entirely the façade's imports and
+  `__all__`.
+- **Coverage attribution, not coverage loss.** The five files together are
+  709 stmts / 157 miss / 78%, against 681 / 157 for the single pre-split file —
+  the same 157 missed statements, redistributed. Suite-wide misses unchanged at
+  **893**, so no per-module floor moved.
+- **Attribute surface: 83 of 83 resolve.** Every one of the old module's 82
+  top-level definitions plus `FF_PROMPT` resolves on `spec4.callbacks`, checked
+  by importing it and `hasattr`-ing every name the old AST defined;
+  `set(__all__) == ` that set exactly. `cb.FF_PROMPT is app_constants.FF_PROMPT`.
+  The 46 dropped imports were grepped across `src/`, `tests/`, `evals/` and
+  `scripts/` as `spec4.callbacks.<name>`, `from spec4.callbacks import <name>`
+  and `cb.<name>` — **zero** hits after the §22.5 edits.
+- **Registration, counted per stage.** `_shared` + the package: **66**;
+  `designer`: 24; `app`: 2; **total 92**. Per module: shell 9, `_setup` 10,
+  `_chat` 29, `_artifacts` 12 + the 6 `_register_open_artifact` closures = 18.
+  9 + 10 + 29 + 18 = 66, so every callback registers exactly once and none twice.
+- **§15.5 invariants.** `dash._callback.GLOBAL_CALLBACK_MAP` holds **92** after a
+  fresh `spec4.app` import. `tests/test_streaming_characterization.py` and
+  `tests/test_layout_contract.py` were **not** edited — the first reaches only
+  `spec4.callbacks.designer`, the second reaches `callbacks` not at all — and
+  they pass unmodified alongside `tests/test_callback_co_presence.py` and
+  `tests/test_app_import_smoke.py`: 142 tests. `test_callback_co_presence.py`
+  is indifferent to the split by construction: `GLOBAL_CALLBACK_MAP` is keyed by
+  output string, not by defining module.
+
+### 22.5 The forced edits outside `src/`
+
+**§15 did not anticipate this one, and §15.4's decision-2 reasoning does not
+carry over.** 4a was safe because zero `patch("spec4.agents._utils.…")` string
+targets existed. For `callbacks` there are 71, and three kinds of them break when
+a callback changes module, because `patch` rebinds a name in *one* module's
+namespace and a moved function reads its own:
+
+| Target | Sites | Failure if left | Now |
+|---|---:|---|---|
+| `spec4.callbacks.streaming.*` | 37 | loud (`AttributeError`) | `spec4.callbacks._chat.streaming.*` |
+| `spec4.callbacks._get_agent_gen` | 14 | loud | `spec4.callbacks._chat._get_agent_gen` |
+| `spec4.callbacks._persist_artifacts` | 8 | loud | `spec4.callbacks._chat._persist_artifacts` |
+| `spec4.callbacks.providers.*` | 3 | loud | `spec4.callbacks._setup.providers.*` |
+| `spec4.callbacks.ctx` (string) | 9 | **silent** | `._chat.ctx` (4) / `._artifacts.ctx` (5) |
+| `setattr(cb, "ctx", …)` on the package | 3 | **silent** | 2 → `_chat`; 1 was already correct |
+| the `artifact_view_callbacks` module alias | 1 line, 6 uses | mixed | `import spec4.callbacks._artifacts as …` |
+
+`ctx` is the dangerous one and the reason each edited file was run on its own
+before the suite: it stays bound on the façade (two shell callbacks read it), so
+those patches would have kept succeeding and silently stopped taking effect.
+`patch("spec4.callbacks.streaming.start")` and its kind resolve to the
+`spec4.streaming` *module object* and patch it process-wide, so pointing them at
+any importer works; they are aimed at the module that owns the callback under
+test.
+
+Thirteen files, **85 insertions / 72 deletions** — the extra 13 are `ruff format`
+re-wrapping five lines the longer targets pushed past 88 columns. No assertion
+moved, no test was added or removed, no fixture changed. `tests/test_project_mode.py`
+is the file the first grep missed: it patches through a `from spec4 import
+callbacks as cb` alias rather than a dotted string, and it is why the suite is
+run, not just reasoned about.
+
+Checked and **not** forced: `pyproject.toml` (ruff selects only `E,F`;
+`callbacks/` has no per-file-ignore to widen and no new module needs one, and
+`RUF100` is off so the `FF_PROMPT` `noqa` is never flagged either way),
+`README.md:239` (names `callbacks/` as a directory, not its modules),
+`tests/README.md` (its `spec4/callbacks.py` row is stale from before the package
+existed — Phase 7's, flagged in §0), and `tests/test_setup_wizard_register.py` /
+`tests/test_agent_llm_selection.py`, both of which parse source with
+`rglob("*.py")` over a directory and so read the new modules without a change.
+No test reads `callbacks/__init__.py` off disk.
+
+### 22.6 Deferred / not acted on
+
+- **4g2 — split `_chat.py` into `_gate.py` and `_nav.py`.** Added to §15.3's
+  table by Robert during this run. At 1182 lines `_chat.py` is the largest of the
+  four new modules by more than double (only `designer.py`, 4h's subject, is
+  bigger in the package), and two blocks come out of it cleanly: the per-agent
+  model gate (lines 177-537, one flow with its own `agent_llm_draft` key and its
+  own surface) and the navigation buttons (957-1182, the agent pills plus the
+  inter-agent Continues and the Deployer pair). Its own run, after this one.
+  `_open_pick_fields` and `_gate_agent` are already in `_shared`, so the gate
+  comes out without a new cross-module private import.
+- **`vulture_whitelist.py`'s `# src/spec4/callbacks/__init__.py` section comment
+  is now imprecise** — the 60 names under it are unchanged and still whitelisted
+  (they are bare names, and no name moved spelling), but 51 of them now live in
+  the four siblings and 9 stayed. A comment-only edit, and it belongs with Phase 7's
+  regeneration or 4j. Logged, not fixed.
+- **§17.5's `_AGENT_SIDE` gap is still open** — 4b's four flat siblings remain
+  outside the layering contract's agent-side prefix set. Still a four-string edit
+  to `tests/test_import_layering.py` for **4j**.
+- **§21.6's fifth layering rule is still blocked** on `layouts/designer.py:11`.
+  4g adds nothing to it and removes nothing from it; the `callbacks` half of the
+  same idea is rule 4, which is now live.
+- **Import-linter, reconsidered as §6.3 and §15.5 require at this point, is still
+  not warranted.** The internal layering `callbacks/` gained is one rule with one
+  direction — siblings may not import the package — and it is already asserted by
+  the `ast` test, non-vacuously, with the offending `importer -> imported` pairs
+  named on failure. A declarative contract would restate it, add a dependency and
+  a gate command, and catch nothing the test does not.
+- **4j owns the importer cleanup for this façade.** There are no aliases to
+  retire. The 83 re-exports are all still read from outside except the internals
+  `_cannot_open`, `_no_change`, `_needs_restoring`, `_send_json`,
+  `_build_phases_zip`, `_open_target`, `_register_open_artifact`,
+  `_gate_answered`, `_breadth_summary`, `_switch_agent`, `_start_retry_turn`,
+  `_EMPTY_TURN_NOTICE`, `_DEV_MODE`, `_ARTIFACTS_PHASE` and
+  `_prefs_keep_working_dir`, whose `__all__` entries exist only to preserve the
+  pre-split attribute surface and can be trimmed once 4j confirms it. Logged as
+  Phase 2-style candidates, not deleted.
+- **`on_stream_poll` (132 lines), `on_gate_continue` (81) and
+  `on_breadth_try_again` (81) are the three large functions left in `_chat.py`.**
+  Phase 5 findings, logged not fixed — 4g moved them, it did not shrink them.
+  Nothing in the other three modules exceeds 63 lines.
+- Nothing new for *Bugs found (not fixed)*.
+
+### 22.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Layering | `uv run pytest tests/test_import_layering.py -q` | `7 passed` (exit 0) |
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `211 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 84 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 161.94s (0:02:41)` (exit 0) |
+| Coverage | same run | `TOTAL 11853 stmts, 893 miss, 92%` |
+
+Test count is unchanged at 4256 — 4g adds no test and removes none; every edited
+line is inside an existing test. `211 files already formatted` is §21.7's 207
+plus four new modules; `84 source files` is mypy's 80 by the same arithmetic.
+Statements rose 11825 → 11853 (+28, the façade's imports and `__all__`) and
+misses held at 893, so no per-module floor moved.

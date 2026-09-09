@@ -231,7 +231,7 @@ class _Ctx:
 
 class TestCallback:
     def _choose(self, monkeypatch, button: str | None, n: int = 1) -> Any:
-        from spec4 import callbacks as cb
+        from spec4.callbacks import _chat as cb
 
         monkeypatch.setattr(cb, "ctx", _Ctx(button))
         existing = n if button == "btn-project-mode-existing" else 0
@@ -247,7 +247,7 @@ class TestCallback:
         assert out["project_mode"] == PROJECT_MODE_NEW
 
     def test_clears_a_stale_precondition_error(self, monkeypatch) -> None:
-        from spec4 import callbacks as cb
+        from spec4.callbacks import _chat as cb
 
         monkeypatch.setattr(cb, "ctx", _Ctx("btn-project-mode-new"))
         out = cb.on_project_mode_choice(

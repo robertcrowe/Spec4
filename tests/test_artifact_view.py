@@ -41,7 +41,7 @@ import pytest
 from dash import no_update
 
 import spec4.app as app_module
-import spec4.callbacks as artifact_view_callbacks
+import spec4.callbacks._artifacts as artifact_view_callbacks
 import spec4.layouts._artifact_view as artifact_view
 from spec4 import project_manager
 from spec4.app_constants import AGENT_KEYS, PATH_TO_PHASE, PHASE_ROOT

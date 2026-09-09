@@ -110,7 +110,7 @@ class TestOnFastForward:
             patch(
                 "spec4.session.stack_advisor.run", return_value=iter(["ok"])
             ) as mock_run,
-            patch("spec4.callbacks.streaming.start", return_value="sid"),
+            patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
             new_session, _ = on_fast_forward(1, session)
         # Agent history and display transcript both receive the exact prompt.
@@ -123,7 +123,7 @@ class TestOnFastForward:
         session = self._session()
         with (
             patch("spec4.session.stack_advisor.run", return_value=iter(["ok"])),
-            patch("spec4.callbacks.streaming.start", return_value="sid"),
+            patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
             new_session, max_intervals = on_fast_forward(1, session)
         assert new_session["_stream_id"] == "sid"

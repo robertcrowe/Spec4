@@ -881,14 +881,16 @@ class TestTheBarOpensSetup:
 
         opened = {**self._connected(tmp_path), "available_models": None}
         with patch(
-            "spec4.callbacks.providers.list_models", return_value=(["gpt-5"], "")
+            "spec4.callbacks._setup.providers.list_models", return_value=(["gpt-5"], "")
         ):
             advanced, _ = cb.on_setup_connect(1, "OpenAI", "sk-new", False, opened, {})
         assert advanced["available_models"] == ["gpt-5"]
         assert advanced["model"] is None
         assert advanced["llm_config"] is None
 
-        with patch("spec4.callbacks.providers.list_models", return_value=([], "nope")):
+        with patch(
+            "spec4.callbacks._setup.providers.list_models", return_value=([], "nope")
+        ):
             failed, _ = cb.on_setup_connect(1, "OpenAI", "sk-bad", False, opened, {})
         assert failed["model"] == opened["model"]
         assert failed["llm_config"] == opened["llm_config"]
