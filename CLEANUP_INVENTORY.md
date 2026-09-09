@@ -6616,3 +6616,75 @@ structural exception was then granted and this build is the result.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 174.98s` (exit 0) |
 | Coverage | same run | `TOTAL 12363 stmts, 896 miss (893 + 3), 93%` |
+
+## 45. Phase 5n — `layouts/`: 9 helpers, 1 arity noqa
+
+Extract-only. All three 27.3 findings cleared. `src/spec4/layouts/**` is now clean for
+C90 / PLR0912 / PLR0913 / PLR0915.
+
+### 45.1 Before and after
+
+| File | Function | C901 | Br | St | Ar | → |
+|---|---|---:|---:|---:|---:|---|
+| `_chat_actions.py` | `_chat_action_buttons` | **19** | **24** | **54** | — | clear |
+| `__init__.py` | `_agent_select_layout` | **13** | — | — | — | clear |
+| `_status_bar.py` | `_status_context` | — | — | — | 6 | noqa |
+
+### 45.2 The 9 helpers
+
+**`_chat_action_buttons` (6)** — the function is a six-arm dispatch on `active_agent`,
+so it becomes one helper per arm: `_code_scanner_action_buttons`,
+`_brainstormer_action_buttons`, `_agentifier_action_buttons`,
+`_stack_advisor_action_buttons`, `_phaser_action_buttons`,
+`_deployer_action_buttons`. Each opens with `buttons: list[Any] = []` — the accumulator
+the arm inherited from the spine — and returns it. The spine keeps the `if/elif` chain,
+the elapsed readout, the counter-position search and the turn-token insert.
+
+**`_agent_select_layout` (3)** — `_agent_select_loaded_items`,
+`_append_new_round_children`, `_append_loaded_children`. The three `*_loaded` flags moved
+into the first helper, which is the only place they are read.
+
+### 45.3 Component ids are provably unchanged (rule 4 / rule 5)
+
+`_chat_action_buttons` emits 20 component ids and every one is frozen. Checked three
+ways:
+
+1. **Id-set equality:** the `id="..."` literals extracted from the file before and after
+   — **20 before, 20 after, symmetric difference empty**.
+2. **`tests/test_layout_contract.py` passes unmodified** — 74 tests, the Phase 1 id
+   snapshot, which walks every rendered layout and compares the id set to a checked-in
+   file.
+3. **`tests/test_callback_co_presence.py` (50) and `test_import_layering.py` (7) pass
+   unmodified** — the first walks the callback registry against every layout, so a
+   moved button that lost its id would fail there too.
+
+### 45.4 Line accounting (rule 3)
+
+**403 non-blank lines**; **396 verbatim**; 7 accounted:
+
+- **6** in `_chat_action_buttons` — four `dmc.Button(...)` calls that `ruff format`
+  collapsed onto one line when the arm bodies dedented from 8 to 4 spaces, plus the two
+  orphan `dmc.Button(` opener lines those collapses consumed. Identical tokens; the id
+  literals are among them and are covered by 45.3.
+- **1** — `_status_context`'s `def` line, now carrying the arity noqa.
+
+**No statement line is unaccounted for.**
+
+### 45.5 Statement counts and coverage (rule 4)
+
+Suite-wide **12363 → 12395, +32**. Misses **896 = 893 + 3**, unchanged.
+
+### 45.6 Deferred
+
+The two `ARG001` unused `session` parameters (`layouts/__init__.py:235`,
+`layouts/_setup.py:231`) are **5p(e)**, not 5n.
+
+### 45.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 175.05s` (exit 0) |
+| Coverage | same run | `TOTAL 12395 stmts, 896 miss (893 + 3), 93%` |

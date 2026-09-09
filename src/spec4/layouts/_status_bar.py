@@ -183,7 +183,7 @@ def _model_field(text: str, slot_name: str) -> html.Button:
     )
 
 
-def _status_context(
+def _status_context(  # noqa: PLR0913  # the status-bar field set, one parameter per field
     working_dir: str | None,
     round_number: int | None,
     provider: str | None,

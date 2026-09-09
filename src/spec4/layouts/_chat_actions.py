@@ -243,180 +243,17 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
     buttons = []
 
     if active == "code_scanner":
-        token_counter = dmc.Text(
-            _token_count_text(session),
-            id="chat-token-count",
-            className="mono",
-            size="sm",
-        )
-        if session.get("code_scanner_state") == STATE_REVIEW_COMPLETE:
-            buttons = [
-                token_counter,
-                _open_button("review"),
-                dmc.Button(
-                    "Download code_review.json",
-                    id="btn-dl-review",
-                    variant="outline",
-                ),
-                dmc.Button(
-                    "Re-scan Project",
-                    id="btn-rescan-project",
-                    variant="outline",
-                    # The warn tone the agent rows already define for Needs
-                    # Update, not a second warn of this row's own: same
-                    # `color="yellow"`, same `.btn-warn` weight in `v3.css`,
-                    # because Mantine's yellow outline washes out to the same
-                    # near-white as the neutral buttons beside it.
-                    color="yellow",
-                    className="btn-warn",
-                ),
-                dmc.Button(
-                    "Continue to Brainstormer →", id="btn-review-to-brainstormer"
-                ),
-            ]
-        elif _token_count_text(session):
-            # Mid-scan CodeScanner has no other controls, so the bar exists
-            # only to carry the counter — render it only once there is a count
-            # to show, otherwise the divider would sit above an empty row.
-            buttons = [token_counter]
-        else:
-            buttons = []
+        buttons = _code_scanner_action_buttons(session)
     elif active == "brainstormer":
-        token_counter = dmc.Text(
-            _token_count_text(session),
-            id="chat-token-count",
-            className="mono",
-            size="sm",
-        )
-        if session.get("brainstormer_state") == STATE_VISION_COMPLETE:
-            buttons = [
-                token_counter,
-                _open_button("vision"),
-                dmc.Button(
-                    "Download vision.json", id="btn-dl-vision", variant="outline"
-                ),
-                dmc.Button(
-                    # The skip, drawn as the same neutral outline as Download
-                    # beside it — the mock gives both `.btn-outline`, and the
-                    # filled one in this row is the continue below.
-                    "Continue to Designer →",
-                    id="btn-brainstormer-to-designer",
-                    variant="outline",
-                ),
-                dmc.Button(
-                    "Continue to Agentifier →", id="btn-brainstormer-to-agentifier"
-                ),
-            ]
-        elif _token_count_text(session):
-            # Like mid-scan CodeScanner, Brainstormer has no other controls
-            # before the vision lands, so the bar exists only to carry the
-            # counter — render it once there is a count, not before, or the
-            # divider would sit above an empty row.
-            buttons = [token_counter]
-        else:
-            buttons = []
+        buttons = _brainstormer_action_buttons(session)
     elif active == "agentifier":
-        token_counter = dmc.Text(
-            _token_count_text(session),
-            id="chat-token-count",
-            className="mono",
-            size="sm",
-        )
-        if session.get("agentifier_state") == STATE_AGENTIFIER_COMPLETE:
-            buttons = [
-                token_counter,
-                _open_button("features"),
-                dmc.Button(
-                    "Download ai_features.json",
-                    id="btn-dl-features",
-                    variant="outline",
-                ),
-                dmc.Button(
-                    "Continue to Designer →",
-                    id="btn-agentifier-to-designer",
-                ),
-            ]
-        elif session.get("agentifier_breadth_chosen") or session.get(
-            "agentifier_catalog_done"
-        ):
-            # Fast Forward only after the breadth panel has completed: the
-            # pre-panel catalog build has nothing to sweep, and the panel
-            # itself is a hard UI stop. catalog_done covers resumed sessions
-            # that load past the panel without replaying it.
-            buttons = [token_counter, *_ff_controls("Agentifier")]
-        elif session.get("_stream_id"):
-            # Any live Agentifier stream gets the counter. Two cases land here:
-            # the first post-panel turn (D-AT2 — agentifier_breadth_chosen is
-            # set by the generator, but mid-stream the poll merges only
-            # messages and the char total, so the flag does not reach the
-            # layout until the turn ends), and the pre-panel build or Try
-            # Again redraw (D-AT5, revised — the Scout banner points the
-            # developer at "the character counter below", and Scout, Linker
-            # and Composer all publish live totals through _session_counter,
-            # so the gate that kept this bare was the only missing piece).
-            # Counter only — the Fast Forward gate above is unchanged.
-            buttons = [token_counter]
-        else:
-            buttons = []
+        buttons = _agentifier_action_buttons(session)
     elif active == "stack_advisor":
-        token_counter = dmc.Text(
-            _token_count_text(session),
-            id="chat-token-count",
-            className="mono",
-            size="sm",
-        )
-        if session.get("stack_advisor_state") == STATE_STACK_COMPLETE:
-            buttons = [
-                token_counter,
-                _open_button("stack"),
-                dmc.Button("Download stack.json", id="btn-dl-stack", variant="outline"),
-                dmc.Button("Send to Phaser →", id="btn-stack-to-phaser"),
-            ]
-        else:
-            buttons = [token_counter, *_ff_controls("StackAdvisor")]
+        buttons = _stack_advisor_action_buttons(session)
     elif active == "phaser":
-        token_counter = dmc.Text(
-            _token_count_text(session),
-            id="chat-token-count",
-            className="mono",
-            size="sm",
-        )
-        if session.get("phases"):
-            buttons = [
-                token_counter,
-                _open_button("phases"),
-                dmc.Button(
-                    "Download phases.zip", id="btn-dl-phases", variant="outline"
-                ),
-                dmc.Button("Continue to Deployer →", id="btn-phaser-to-deployer"),
-            ]
-        else:
-            buttons = [token_counter, *_ff_controls("Phaser")]
+        buttons = _phaser_action_buttons(session)
     elif active == "deployer":
-        token_counter = dmc.Text(
-            _token_count_text(session),
-            id="chat-token-count",
-            className="mono",
-            size="sm",
-        )
-        if session.get("deployer_state") == STATE_DEPLOYER_COMPLETE:
-            buttons = [
-                token_counter,
-                _open_button("deployment"),
-                dmc.Button(
-                    "Download deployment plan (Markdown)",
-                    id="btn-dl-deployment",
-                    variant="outline",
-                ),
-                # The last row in the pipeline has no next agent, so Start New
-                # Project *is* its continue — the one filled button, reached
-                # by omitting `variant` like every other continue. It was a
-                # `light` chip, which left the terminal row the only completed
-                # row on the screen with nothing emphasised in it.
-                dmc.Button("Start New Project", id="btn-deployer-new-project"),
-            ]
-        else:
-            buttons = [token_counter, *_ff_controls("Deployer")]
+        buttons = _deployer_action_buttons(session)
 
     # D-SC-P2: the elapsed readout shares this row with the chars counter
     # instead of sitting under the progress bar. The two describe the same
@@ -453,3 +290,200 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
             dmc.Group(row, mb="md"),
         ]
     )
+
+
+def _code_scanner_action_buttons(session: dict[str, Any]) -> list[Any]:
+    """The chat action row for the code scanner agent."""
+    buttons: list[Any] = []
+    token_counter = dmc.Text(
+        _token_count_text(session),
+        id="chat-token-count",
+        className="mono",
+        size="sm",
+    )
+    if session.get("code_scanner_state") == STATE_REVIEW_COMPLETE:
+        buttons = [
+            token_counter,
+            _open_button("review"),
+            dmc.Button(
+                "Download code_review.json",
+                id="btn-dl-review",
+                variant="outline",
+            ),
+            dmc.Button(
+                "Re-scan Project",
+                id="btn-rescan-project",
+                variant="outline",
+                # The warn tone the agent rows already define for Needs
+                # Update, not a second warn of this row's own: same
+                # `color="yellow"`, same `.btn-warn` weight in `v3.css`,
+                # because Mantine's yellow outline washes out to the same
+                # near-white as the neutral buttons beside it.
+                color="yellow",
+                className="btn-warn",
+            ),
+            dmc.Button("Continue to Brainstormer →", id="btn-review-to-brainstormer"),
+        ]
+    elif _token_count_text(session):
+        # Mid-scan CodeScanner has no other controls, so the bar exists
+        # only to carry the counter — render it only once there is a count
+        # to show, otherwise the divider would sit above an empty row.
+        buttons = [token_counter]
+    else:
+        buttons = []
+    return buttons
+
+
+def _brainstormer_action_buttons(session: dict[str, Any]) -> list[Any]:
+    """The chat action row for the brainstormer agent."""
+    buttons: list[Any] = []
+    token_counter = dmc.Text(
+        _token_count_text(session),
+        id="chat-token-count",
+        className="mono",
+        size="sm",
+    )
+    if session.get("brainstormer_state") == STATE_VISION_COMPLETE:
+        buttons = [
+            token_counter,
+            _open_button("vision"),
+            dmc.Button("Download vision.json", id="btn-dl-vision", variant="outline"),
+            dmc.Button(
+                # The skip, drawn as the same neutral outline as Download
+                # beside it — the mock gives both `.btn-outline`, and the
+                # filled one in this row is the continue below.
+                "Continue to Designer →",
+                id="btn-brainstormer-to-designer",
+                variant="outline",
+            ),
+            dmc.Button("Continue to Agentifier →", id="btn-brainstormer-to-agentifier"),
+        ]
+    elif _token_count_text(session):
+        # Like mid-scan CodeScanner, Brainstormer has no other controls
+        # before the vision lands, so the bar exists only to carry the
+        # counter — render it once there is a count, not before, or the
+        # divider would sit above an empty row.
+        buttons = [token_counter]
+    else:
+        buttons = []
+    return buttons
+
+
+def _agentifier_action_buttons(session: dict[str, Any]) -> list[Any]:
+    """The chat action row for the agentifier agent."""
+    buttons: list[Any] = []
+    token_counter = dmc.Text(
+        _token_count_text(session),
+        id="chat-token-count",
+        className="mono",
+        size="sm",
+    )
+    if session.get("agentifier_state") == STATE_AGENTIFIER_COMPLETE:
+        buttons = [
+            token_counter,
+            _open_button("features"),
+            dmc.Button(
+                "Download ai_features.json",
+                id="btn-dl-features",
+                variant="outline",
+            ),
+            dmc.Button(
+                "Continue to Designer →",
+                id="btn-agentifier-to-designer",
+            ),
+        ]
+    elif session.get("agentifier_breadth_chosen") or session.get(
+        "agentifier_catalog_done"
+    ):
+        # Fast Forward only after the breadth panel has completed: the
+        # pre-panel catalog build has nothing to sweep, and the panel
+        # itself is a hard UI stop. catalog_done covers resumed sessions
+        # that load past the panel without replaying it.
+        buttons = [token_counter, *_ff_controls("Agentifier")]
+    elif session.get("_stream_id"):
+        # Any live Agentifier stream gets the counter. Two cases land here:
+        # the first post-panel turn (D-AT2 — agentifier_breadth_chosen is
+        # set by the generator, but mid-stream the poll merges only
+        # messages and the char total, so the flag does not reach the
+        # layout until the turn ends), and the pre-panel build or Try
+        # Again redraw (D-AT5, revised — the Scout banner points the
+        # developer at "the character counter below", and Scout, Linker
+        # and Composer all publish live totals through _session_counter,
+        # so the gate that kept this bare was the only missing piece).
+        # Counter only — the Fast Forward gate above is unchanged.
+        buttons = [token_counter]
+    else:
+        buttons = []
+    return buttons
+
+
+def _stack_advisor_action_buttons(session: dict[str, Any]) -> list[Any]:
+    """The chat action row for the stack advisor agent."""
+    buttons: list[Any] = []
+    token_counter = dmc.Text(
+        _token_count_text(session),
+        id="chat-token-count",
+        className="mono",
+        size="sm",
+    )
+    if session.get("stack_advisor_state") == STATE_STACK_COMPLETE:
+        buttons = [
+            token_counter,
+            _open_button("stack"),
+            dmc.Button("Download stack.json", id="btn-dl-stack", variant="outline"),
+            dmc.Button("Send to Phaser →", id="btn-stack-to-phaser"),
+        ]
+    else:
+        buttons = [token_counter, *_ff_controls("StackAdvisor")]
+    return buttons
+
+
+def _phaser_action_buttons(session: dict[str, Any]) -> list[Any]:
+    """The chat action row for the phaser agent."""
+    buttons: list[Any] = []
+    token_counter = dmc.Text(
+        _token_count_text(session),
+        id="chat-token-count",
+        className="mono",
+        size="sm",
+    )
+    if session.get("phases"):
+        buttons = [
+            token_counter,
+            _open_button("phases"),
+            dmc.Button("Download phases.zip", id="btn-dl-phases", variant="outline"),
+            dmc.Button("Continue to Deployer →", id="btn-phaser-to-deployer"),
+        ]
+    else:
+        buttons = [token_counter, *_ff_controls("Phaser")]
+    return buttons
+
+
+def _deployer_action_buttons(session: dict[str, Any]) -> list[Any]:
+    """The chat action row for the deployer agent."""
+    buttons: list[Any] = []
+    token_counter = dmc.Text(
+        _token_count_text(session),
+        id="chat-token-count",
+        className="mono",
+        size="sm",
+    )
+    if session.get("deployer_state") == STATE_DEPLOYER_COMPLETE:
+        buttons = [
+            token_counter,
+            _open_button("deployment"),
+            dmc.Button(
+                "Download deployment plan (Markdown)",
+                id="btn-dl-deployment",
+                variant="outline",
+            ),
+            # The last row in the pipeline has no next agent, so Start New
+            # Project *is* its continue — the one filled button, reached
+            # by omitting `variant` like every other continue. It was a
+            # `light` chip, which left the terminal row the only completed
+            # row on the screen with nothing emphasised in it.
+            dmc.Button("Start New Project", id="btn-deployer-new-project"),
+        ]
+    else:
+        buttons = [token_counter, *_ff_controls("Deployer")]
+    return buttons

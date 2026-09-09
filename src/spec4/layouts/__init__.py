@@ -302,9 +302,6 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
     if project_manager.needs_project_mode(session.get("working_dir"), session):
         return _project_mode_layout(session)
 
-    vision_loaded = session.get("vision_statement") is not None
-    stack_loaded = session.get("stack_statement") is not None
-    phases_loaded = bool(session.get("phases"))
     error = session.get("agent_select_error")
 
     working_dir = session.get("working_dir")
@@ -322,15 +319,7 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
 
     mock_loaded = bool(version_dir and (version_dir / "design" / "mock.html").exists())
 
-    loaded_items = []
-    if vision_loaded:
-        loaded_items.append("vision.json")
-    if stack_loaded:
-        loaded_items.append("stack.json")
-    if phases_loaded:
-        loaded_items.append(f"phases/ ({len(session['phases'])} phases)")
-    if mock_loaded:
-        loaded_items.append("design/mock.html")
+    loaded_items = _agent_select_loaded_items(session, mock_loaded)
 
     round_number = (
         project_manager.active_version(working_dir, session) if working_dir else None
@@ -374,6 +363,45 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
     if error:
         children.append(_error(error))
 
+    _append_new_round_children(
+        children, session, new_round, round_number, review_in_spec4
+    )
+
+    _append_loaded_children(children, loaded_items, new_round)
+
+    # The "Change model / provider" button that closed this view is gone: the
+    # status bar's model slot and Settings item are the same route, on every
+    # screen, so a page-level copy was one more control to keep in agreement.
+
+    return html.Div(children)
+
+
+def _agent_select_loaded_items(session: dict[str, Any], mock_loaded: bool) -> list[str]:
+    """The already-loaded artifact names, in pipeline order."""
+    vision_loaded = session.get("vision_statement") is not None
+    stack_loaded = session.get("stack_statement") is not None
+    phases_loaded = bool(session.get("phases"))
+    loaded_items = []
+    if vision_loaded:
+        loaded_items.append("vision.json")
+    if stack_loaded:
+        loaded_items.append("stack.json")
+    if phases_loaded:
+        loaded_items.append(f"phases/ ({len(session['phases'])} phases)")
+    if mock_loaded:
+        loaded_items.append("design/mock.html")
+    return loaded_items
+
+
+def _append_new_round_children(
+    children: list[Any],
+    session: dict[str, Any],
+    new_round: bool,
+    round_number: Any,
+    review_in_spec4: bool,
+) -> None:
+    """The new-round block: what a fresh round carries forward and what it rescans."""
+    working_dir = session.get("working_dir")
     if new_round:
         app_name = session.get("_prior_app_name")
         prior = (
@@ -429,6 +457,11 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
             )
         )
 
+
+def _append_loaded_children(
+    children: list[Any], loaded_items: list[str], new_round: bool
+) -> None:
+    """The already-loaded summary, shown only outside a new round."""
     if loaded_items and not new_round:
         children.append(
             dmc.Alert(
@@ -436,9 +469,3 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
                 mb="xs",
             )
         )
-
-    # The "Change model / provider" button that closed this view is gone: the
-    # status bar's model slot and Settings item are the same route, on every
-    # screen, so a page-level copy was one more control to keep in agreement.
-
-    return html.Div(children)
