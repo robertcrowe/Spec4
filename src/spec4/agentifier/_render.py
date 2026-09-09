@@ -112,53 +112,63 @@ def _format_spec_as_text(
         f"### Feature {index + 1}/{total}: `{name}` — tier: **{tier}**\n"
     ]
 
-    def _field(label: str, key: str) -> None:
-        val = spec.get(key)
-        if val is None:
-            return
-        if isinstance(val, list):
-            if not val:
-                return
-            lines.append(f"**{label}:**")
-            for item in val:
-                if isinstance(item, dict):
-                    lines.append("- " + ", ".join(f"{k}: {v}" for k, v in item.items()))
-                else:
-                    lines.append(f"- {item}")
-            lines.append("")
-        elif isinstance(val, dict):
-            if not val:
-                return
-            lines.append(f"**{label}:**")
-            for k, v in val.items():
-                if isinstance(v, list):
-                    if v:
-                        lines.append(f"- {k}: " + "; ".join(str(i) for i in v))
-                elif v:
-                    lines.append(f"- {k}: {v}")
-            lines.append("")
-        else:
-            lines.append(f"**{label}:** {val}\n")
-
-    _field("Purpose", "purpose")
-    _field("Invocation", "invocation")
-    _field("Inputs", "inputs")
-    _field("Outputs", "outputs")
-    _field("Decision authority", "decision_authority")
-    _field("Success criteria", "success_criteria")
-    _field("Failure modes", "failure_modes")
-    _field("Escalation", "escalation")
-    _field("Eval approach", "eval_approach")
-    _field("Budgets", "budgets")
-    _field("Privacy / safety", "privacy_safety")
+    _spec_field(spec, lines, "Purpose", "purpose")
+    _spec_field(spec, lines, "Invocation", "invocation")
+    _spec_field(spec, lines, "Inputs", "inputs")
+    _spec_field(spec, lines, "Outputs", "outputs")
+    _spec_field(spec, lines, "Decision authority", "decision_authority")
+    _spec_field(spec, lines, "Success criteria", "success_criteria")
+    _spec_field(spec, lines, "Failure modes", "failure_modes")
+    _spec_field(spec, lines, "Escalation", "escalation")
+    _spec_field(spec, lines, "Eval approach", "eval_approach")
+    _spec_field(spec, lines, "Budgets", "budgets")
+    _spec_field(spec, lines, "Privacy / safety", "privacy_safety")
     # Phase priority is deliberately absent: it is assigned by the Prioritizer
     # (D-PP2), which runs after spec review. Showing it here would display a
     # value nobody has set yet.
     # Tier-specific
-    _field("Knowledge sources", "knowledge_sources")
-    _field("Tool access", "tool_access")
-    _field("Topology", "topology")
-    # Mechanisms
+    _spec_field(spec, lines, "Knowledge sources", "knowledge_sources")
+    _spec_field(spec, lines, "Tool access", "tool_access")
+    _spec_field(spec, lines, "Topology", "topology")
+    _render_spec_mechanisms(spec, lines)
+    _render_spec_references(spec, lines)
+    return "\n".join(lines)
+
+
+def _spec_field(  # noqa: C901, PLR0912  # four-way dispatch on JSON value shape; each branch is that shape's rendering
+    spec: dict[str, Any], lines: list[str], label: str, key: str
+) -> None:
+    """Render one spec field under ``label``, per the shape of its value."""
+    val = spec.get(key)
+    if val is None:
+        return
+    if isinstance(val, list):
+        if not val:
+            return
+        lines.append(f"**{label}:**")
+        for item in val:
+            if isinstance(item, dict):
+                lines.append("- " + ", ".join(f"{k}: {v}" for k, v in item.items()))
+            else:
+                lines.append(f"- {item}")
+        lines.append("")
+    elif isinstance(val, dict):
+        if not val:
+            return
+        lines.append(f"**{label}:**")
+        for k, v in val.items():
+            if isinstance(v, list):
+                if v:
+                    lines.append(f"- {k}: " + "; ".join(str(i) for i in v))
+            elif v:
+                lines.append(f"- {k}: {v}")
+        lines.append("")
+    else:
+        lines.append(f"**{label}:** {val}\n")
+
+
+def _render_spec_mechanisms(spec: dict[str, Any], lines: list[str]) -> None:
+    """The ``mechanisms`` block."""
     mechanisms = spec.get("mechanisms") or []
     if mechanisms:
         lines.append("**Mechanisms:**")
@@ -170,14 +180,16 @@ def _format_spec_as_text(
             else:
                 lines.append(f"- {m}")
         lines.append("")
-    # References
+
+
+def _render_spec_references(spec: dict[str, Any], lines: list[str]) -> None:
+    """The ``references`` block."""
     references = spec.get("references") or []
     if references:
         lines.append("**References:**")
         for r in references:
             lines.append(f"- {r}")
         lines.append("")
-    return "\n".join(lines)
 
 
 def _build_ai_features(

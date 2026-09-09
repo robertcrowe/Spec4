@@ -4981,3 +4981,90 @@ held at **893**.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 169.51s` (exit 0) |
 | Coverage | same run | `TOTAL 11950 stmts, 893 miss, 93%` |
+
+## 31. Phase 5d — `agentifier/_render.py`: `_field` promoted, the spec tail extracted
+
+`src/spec4/agentifier/_render.py` only. Extract-only. Carries the first of the five
+pre-approved `# noqa`s (27.4). No other file changed.
+
+### 31.1 Before and after
+
+| | C901 | PLR0912 | PLR0915 | non-blank lines |
+|---|---:|---:|---:|---:|
+| `_format_spec_as_text` before | **18** | — | **55** | 77 |
+| `_format_spec_as_text` after | 1 | — | — | 32 |
+| `_field` before (nested) | **12** | **13** | — | 27 |
+| `_spec_field` after (module-level) | 12 `# noqa` | 13 `# noqa` | — | 28 |
+
+The file's C901/PLR0912/PLR0915 finding count goes **4 → 0** (2 suppressed on
+`_spec_field`, 2 removed). `_format_catalog_as_text`, the fifth golden-pinned renderer,
+was already under every threshold and is unchanged.
+
+### 31.2 What moved
+
+**`_field` promoted to module scope as `_spec_field(spec, lines, label, key)`.** The
+plan (27.3) proposed leaving it nested and suppressing it in place. That does not work:
+ruff counts a nested `def` toward its enclosing function, so with `_field` still inside,
+`_format_spec_as_text` stays at C901 ~13 even after its tail is extracted — and a second
+`# noqa`, on the outer function, is not pre-approved. Promoting the closure is the only
+route that keeps the suppression to the one function 27.4 sanctions. The captured
+`spec` and `lines` become the first two parameters; the body is unchanged.
+
+**Consequence for 27.4's wording.** The approved reason for this noqa reads "four-way
+dispatch on JSON value shape, sharing a captured accumulator". The accumulator is now a
+parameter, so the inline reason is narrowed to the half that is still true: *"four-way
+dispatch on JSON value shape; each branch is that shape's rendering"*. Same function,
+same two rules (C901, PLR0912), same argument — a `list` / `dict` / `None` / scalar
+dispatch where each arm is that shape's rendering, so splitting it produces four helpers
+that each take and return the same list.
+
+**Tail extracted:** `_render_spec_mechanisms(spec, lines)` and
+`_render_spec_references(spec, lines)`.
+
+### 31.3 Line accounting (rule 3)
+
+77 non-blank lines in the old `_format_spec_as_text`. **60 appear verbatim.** The 17
+others are accounted for:
+
+- **1** — `def _field(label: str, key: str) -> None:` became the module-level
+  `def _spec_field(spec, lines, label, key) -> None:` carrying the noqa.
+- **14** — the `_field("Label", "key")` calls became
+  `_spec_field(spec, lines, "Label", "key")`. The 14 `(label, key)` pairs were extracted
+  from both files and compared: **identical, and in the same order**. The D-PP2 comment
+  about phase priority and the `# Tier-specific` marker sit between the same calls they
+  sat between.
+- **2** — the `# Mechanisms` and `# References` section comments folded into the two new
+  helper docstrings, which is the disposition rule 3 names.
+
+**No statement line is unaccounted for.**
+
+### 31.4 Statement counts add up (rule 4)
+
+Suite-wide statements **11950 → 11954, +4**: 2 new `def` lines + 2 new calls. The
+promotion is statement-neutral — one `def` moved out, fourteen calls stayed fourteen
+calls. Misses held at **893**.
+
+### 31.5 Verification beyond the gate
+
+- **`tests/test_renderer_goldens.py` passes unmodified** — `TestSpecRenderer` (2 tests,
+  `render_spec.md` and `render_spec_tier_fallback.md`) and `TestCatalogRenderer` (3
+  tests, `render_catalog.md` and `render_catalog_empty.md`).
+- `_format_spec_as_text` keeps its name, its four-parameter signature and its position
+  in `agentifier.py`'s import list (`agentifier.py:113`), so the caller at
+  `agentifier.py:669` is untouched. `__all__` is unchanged; `_spec_field` is new and
+  private and is not exported.
+- No test file was edited (rule 2). Neither layouts nor callbacks are touched.
+
+### 31.6 Deferred / not acted on
+
+- Nothing else in this file is over threshold.
+
+### 31.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 171.00s` (exit 0) |
+| Coverage | same run | `TOTAL 11954 stmts, 893 miss, 93%` |
