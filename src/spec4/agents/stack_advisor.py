@@ -1029,11 +1029,13 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
             _render_library_entries(libraries, lines)
         elif isinstance(libraries, dict):
             for category, libs in libraries.items():
+                if not libs:
+                    continue
                 lines.append(f"\n*{_label(category)}:*")
                 if isinstance(libs, list):
                     _render_library_entries(libs, lines)
                 else:
-                    _render_any(_label(category), libs, lines)
+                    _render_library_entries([libs], lines)
         lines.append("")
 
     persistence: Any = ss.get("persistence") or {}

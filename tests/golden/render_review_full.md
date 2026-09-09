@@ -33,7 +33,7 @@
 
 **Directory Map:**
 - `src/spec4` — package
-- {'role': 'no path'}
+- no path
 - docs/
 
 **Persistence:** databases: SQLite (cache), Postgres · ORM: SQLAlchemy · migrations: alembic · migrations path: `migrations/`

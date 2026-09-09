@@ -1202,7 +1202,10 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
             if isinstance(entry, dict):
                 path = entry.get("path", "")
                 role = entry.get("role", "")
-                lines.append(f"- `{path}` — {role}" if path else f"- {entry}")
+                if path:
+                    lines.append(f"- `{path}` — {role}")
+                elif role:
+                    lines.append(f"- {role}")
             else:
                 lines.append(f"- {entry}")
         lines.append("")

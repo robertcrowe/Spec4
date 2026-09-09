@@ -94,15 +94,9 @@ Serves product feature(s): `thread_summarization` (specified above).
 
 Summarize threads with AI.
 
-**Inputs**
-
-
 **Success criteria**
 
 - summary matches thread
-
-**Failure modes**
-
 
 **Cross-cutting decisions (project-wide):**
 

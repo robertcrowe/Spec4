@@ -46,9 +46,7 @@ A policy Q&A service with retrieval over an internal library.
 - httpx
 
 *Frontend:*
-- Frontend: React (pinned by the design)
-
-*Deferred:*
+- React (pinned by the design)
 
 **Data & persistence:**
 - primary_store — PostgreSQL 16

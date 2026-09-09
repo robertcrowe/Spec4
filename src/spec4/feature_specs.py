@@ -210,7 +210,7 @@ def _render_inputs(value: Any) -> list[str]:
             head += f" — {desc}"
         lines.append(head)
     lines.append("")
-    return lines if len(lines) > 2 else []
+    return lines if len(lines) > 3 else []
 
 
 def _render_outputs(value: Any) -> list[str]:
@@ -276,7 +276,7 @@ def _render_failure_modes(value: Any) -> list[str]:
             head += f" — mitigation: {mitigation}"
         lines.append(head)
     lines.append("")
-    return lines if len(lines) > 2 else []
+    return lines if len(lines) > 3 else []
 
 
 def _render_eval_approach(value: Any) -> list[str]:
