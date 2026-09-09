@@ -94,6 +94,25 @@ def project_feature_for_stack(
     infer the capability→product mapping from name similarity — which is exactly
     how a catalog node id reaches ``serves_features`` in place of a product id.
     """
+    _stack_feature_header(f, current_version, lines)
+
+    mode = (f.get("invocation") or {}).get("mode")
+    if mode:
+        lines.append(f"    - invocation: {mode}")
+
+    fmt = (f.get("outputs") or {}).get("format")
+    if fmt:
+        lines.append(f"    - output format: {fmt}")
+    _stack_knowledge_source_lines(f, lines)
+    _stack_tool_access_lines(f, lines)
+    _stack_mechanism_lines(f, lines)
+    _stack_quality_lines(f, lines)
+
+
+def _stack_feature_header(
+    f: dict[str, Any], current_version: int | None, lines: list[str]
+) -> None:
+    """The feature's header line and its serves-relation line."""
     name = f.get("name") or f.get("id") or "unnamed"
     tier = f.get("tier", "single_call")
     scope = f.get("scope")
@@ -107,14 +126,9 @@ def project_feature_for_stack(
     if served:
         lines.append(f"    - serves product feature(s): {', '.join(served)}")
 
-    mode = (f.get("invocation") or {}).get("mode")
-    if mode:
-        lines.append(f"    - invocation: {mode}")
 
-    fmt = (f.get("outputs") or {}).get("format")
-    if fmt:
-        lines.append(f"    - output format: {fmt}")
-
+def _stack_knowledge_source_lines(f: dict[str, Any], lines: list[str]) -> None:
+    """One line per declared knowledge source."""
     for ks in f.get("knowledge_sources") or []:
         if not isinstance(ks, dict):
             continue
@@ -126,6 +140,9 @@ def project_feature_for_stack(
             line += f" — {desc[:100]}"
         lines.append(line)
 
+
+def _stack_tool_access_lines(f: dict[str, Any], lines: list[str]) -> None:
+    """One line per needed tool-access capability."""
     for cap in (f.get("tool_access") or {}).get("capabilities_needed") or []:
         if not isinstance(cap, dict):
             continue
@@ -137,6 +154,9 @@ def project_feature_for_stack(
             detail += f", server={cap['mcp_server']}"
         lines.append(f"    - tool access: {purpose[:80]} [{detail}]")
 
+
+def _stack_mechanism_lines(f: dict[str, Any], lines: list[str]) -> None:
+    """The mechanisms line."""
     raw_mechs = [
         (m.get("name") if isinstance(m, dict) else str(m))
         for m in (f.get("mechanisms") or [])
@@ -145,6 +165,9 @@ def project_feature_for_stack(
     if mechs:
         lines.append(f"    - mechanisms: {', '.join(mechs)}")
 
+
+def _stack_quality_lines(f: dict[str, Any], lines: list[str]) -> None:
+    """Privacy/safety, online eval signal and references."""
     privacy = [
         str(p).strip() for p in (f.get("privacy_safety") or []) if str(p).strip()
     ]
@@ -216,36 +239,8 @@ def ai_features_for_stack(
             "requiring stack support, not pre-existing capability."
         )
 
-    if infra:
-        lines.append(
-            "\n**Required infrastructure (tier-derived — each needs a concrete "
-            "library or service choice in the stack):**"
-        )
-        for node in infra:
-            comp = node.get("name") or node.get("id") or "unnamed"
-            consumers = [
-                (c.get("name") or c.get("id") or "unnamed")
-                for c in features
-                if comp in (c.get("requires") or [])
-            ]
-            if consumers:
-                lines.append(f"- {comp} — required by: {', '.join(consumers)}")
-            else:
-                lines.append(f"- {comp}")
-
-    # Cross-cutting strategies the analyst produced for stack selection. Provider
-    # strategy is ratified into the providers block; tool-protocol strategy informs
-    # tool/MCP library selection; prompt versioning is recorded as a convention.
-    # (observability / eval are owned by StackAdvisor and Deployer natively.)
-    if cross.get("provider_strategy", {}).get("recommendation"):
-        rec = cross["provider_strategy"]["recommendation"][:120]
-        lines.append(f"\n- Provider strategy: {rec}")
-    if (cross.get("tool_protocol_strategy") or {}).get("recommendation"):
-        rec = cross["tool_protocol_strategy"]["recommendation"][:200]
-        lines.append(f"- Tool protocol strategy (MCP vs direct, build vs reuse): {rec}")
-    if (cross.get("prompt_versioning") or {}).get("recommendation"):
-        rec = cross["prompt_versioning"]["recommendation"][:200]
-        lines.append(f"- Prompt versioning: {rec}")
+    _stack_infra_lines(infra, features, lines)
+    _stack_cross_cutting_lines(cross, lines)
 
     # D-SC55a. StackAdvisor could not see the rejection list, and Phaser always
     # could (`ai_features_for_phaser` calls the same helper) -- the asymmetry ran
@@ -268,6 +263,45 @@ def ai_features_for_stack(
 
     lines.append("")
     return "\n".join(lines)
+
+
+def _stack_infra_lines(
+    infra: list[dict[str, Any]], features: list[dict[str, Any]], lines: list[str]
+) -> None:
+    """Required-infrastructure section (D-SA2), reverse-mapped to consumers."""
+    if infra:
+        lines.append(
+            "\n**Required infrastructure (tier-derived — each needs a concrete "
+            "library or service choice in the stack):**"
+        )
+        for node in infra:
+            comp = node.get("name") or node.get("id") or "unnamed"
+            consumers = [
+                (c.get("name") or c.get("id") or "unnamed")
+                for c in features
+                if comp in (c.get("requires") or [])
+            ]
+            if consumers:
+                lines.append(f"- {comp} — required by: {', '.join(consumers)}")
+            else:
+                lines.append(f"- {comp}")
+
+
+def _stack_cross_cutting_lines(cross: dict[str, Any], lines: list[str]) -> None:
+    """Cross-cutting strategies the analyst produced for stack selection."""
+    # Cross-cutting strategies the analyst produced for stack selection. Provider
+    # strategy is ratified into the providers block; tool-protocol strategy informs
+    # tool/MCP library selection; prompt versioning is recorded as a convention.
+    # (observability / eval are owned by StackAdvisor and Deployer natively.)
+    if cross.get("provider_strategy", {}).get("recommendation"):
+        rec = cross["provider_strategy"]["recommendation"][:120]
+        lines.append(f"\n- Provider strategy: {rec}")
+    if (cross.get("tool_protocol_strategy") or {}).get("recommendation"):
+        rec = cross["tool_protocol_strategy"]["recommendation"][:200]
+        lines.append(f"- Tool protocol strategy (MCP vs direct, build vs reuse): {rec}")
+    if (cross.get("prompt_versioning") or {}).get("recommendation"):
+        rec = cross["prompt_versioning"]["recommendation"][:200]
+        lines.append(f"- Prompt versioning: {rec}")
 
 
 def feature_relationship_lines(features: list[dict[str, Any]]) -> list[str]:
@@ -386,6 +420,39 @@ def ai_features_for_phaser(
     # graph-contract edges render completely regardless of the partition.
     all_feats = list(features)
 
+    features, established = _phaser_revision_partition(features, revision_version)
+
+    lines: list[str] = []
+    _phaser_established_lines(established, lines)
+
+    if not features:
+        # Revision round whose delta touched no AI features: established context
+        # only, nothing new to phase.
+        return "\n".join(lines)
+
+    _phaser_index_table(features, revision_version, lines)
+    _phaser_priority_guidance(features, lines)
+    _phaser_shape_guidance(features, lines)
+    lines.append("")
+    lines.extend(feature_relationship_lines(all_feats))
+
+    # Full spec bodies — the artifact the phase files attach verbatim.
+    lines.append("**Full implementation specs (from Agentifier's Spec Drafter):**\n")
+    for f in features:
+        name = f.get("name", "")
+        fid = f.get("id", "")
+        lines.append(f"### {name} (`{fid}`)\n")
+        lines.extend(render_feature_block(f))
+    lines.extend(render_cross_cutting(ai_features.get("cross_cutting")))
+    lines.extend(explicitly_rejected_lines(ai_features))
+    _phaser_catalog_notes(ai_features, lines)
+    return "\n".join(lines)
+
+
+def _phaser_revision_partition(
+    features: list[dict[str, Any]], revision_version: int | None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split by ``introduced_in_version``: to-phase now, already established."""
     established: list[dict[str, Any]] = []
     if revision_version is not None:
         to_phase: list[dict[str, Any]] = []
@@ -396,8 +463,13 @@ def ai_features_for_phaser(
             else:
                 established.append(f)
         features = to_phase
+    return features, established
 
-    lines: list[str] = []
+
+def _phaser_established_lines(
+    established: list[dict[str, Any]], lines: list[str]
+) -> None:
+    """The do-NOT-re-phase note for features from earlier rounds."""
     if established:
         names = ", ".join(f.get("name", "") for f in established)
         lines.append(
@@ -405,11 +477,11 @@ def ai_features_for_phaser(
             f"for these:** {names}\n"
         )
 
-    if not features:
-        # Revision round whose delta touched no AI features: established context
-        # only, nothing new to phase.
-        return "\n".join(lines)
 
+def _phaser_index_table(
+    features: list[dict[str, Any]], revision_version: int | None, lines: list[str]
+) -> None:
+    """The feature index table and the exact-id instruction."""
     header = (
         "**New/changed AI features for this revision — plan phases for these:**\n"
         if revision_version is not None
@@ -435,6 +507,9 @@ def ai_features_for_phaser(
         "The `id` column is the exact key to use in each phase's `features` array."
     )
 
+
+def _phaser_priority_guidance(features: list[dict[str, Any]], lines: list[str]) -> None:
+    """Phasing guidance by ``phase_priority``: steel_thread, mvp, v2/future."""
     lines.append("\nPhasing guidance:")
     steel = [
         f.get("name", "") for f in features if f.get("phase_priority") == "steel_thread"
@@ -457,6 +532,10 @@ def ai_features_for_phaser(
         lines.append(
             f"- **v2/future** features may be deferred post-MVP: {', '.join(v2)}"
         )
+
+
+def _phaser_shape_guidance(features: list[dict[str, Any]], lines: list[str]) -> None:
+    """Phasing guidance by node shape: infrastructure and cross_feature."""
     infra = [f.get("name", "") for f in features if f.get("kind") == INFRA_KIND]
     if infra:
         lines.append(
@@ -473,19 +552,10 @@ def ai_features_for_phaser(
             "them as shared surface — sequence them where every consumer can reach "
             f"them, not inside one consumer's phase: {', '.join(cross_feat)}"
         )
-    lines.append("")
-    lines.extend(feature_relationship_lines(all_feats))
 
-    # Full spec bodies — the artifact the phase files attach verbatim.
-    lines.append("**Full implementation specs (from Agentifier's Spec Drafter):**\n")
-    for f in features:
-        name = f.get("name", "")
-        fid = f.get("id", "")
-        lines.append(f"### {name} (`{fid}`)\n")
-        lines.extend(render_feature_block(f))
-    lines.extend(render_cross_cutting(ai_features.get("cross_cutting")))
-    lines.extend(explicitly_rejected_lines(ai_features))
 
+def _phaser_catalog_notes(ai_features: dict[str, Any], lines: list[str]) -> None:
+    """Consolidation notes and catalog references."""
     consolidation = ai_features.get("consolidation") or []
     if consolidation:
         lines.append("**Consolidation notes:**\n")
@@ -496,7 +566,6 @@ def ai_features_for_phaser(
         lines.append("**Catalog references:**\n")
         lines.extend(f"- {r}" for r in references if r)
         lines.append("")
-    return "\n".join(lines)
 
 
 def ai_features_for_deployer(
@@ -541,6 +610,17 @@ def ai_features_for_deployer(
 
     lines = ["**AI features spec — deployment context:**\n"]
 
+    _deployer_provider_lines(stack, lines)
+    _deployer_tier_lines(features, lines)
+    _deployer_budget_lines(features, lines)
+    _deployer_eval_lines(features, lines)
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _deployer_provider_lines(stack: dict[str, Any] | None, lines: list[str]) -> None:
+    """Providers to configure access to, from the ratified stack (D-PH6 A')."""
     inner = (stack or {}).get("stack_spec") if isinstance(stack, dict) else None
     spec = inner if isinstance(inner, dict) else (stack or {})
     providers = spec.get("providers") if isinstance(spec, dict) else None
@@ -550,34 +630,48 @@ def ai_features_for_deployer(
             "family is the decision — do not pin a specific model id in the plan:"
         )
         for name, prov in providers.items():
-            if not isinstance(prov, dict):
-                continue
-            family = str(prov.get("model_family") or "").strip()
-            caps = [c for c in (prov.get("capabilities") or []) if isinstance(c, dict)]
-            roles = sorted({str(c.get("role")) for c in caps if c.get("role")})
-            tiers = sorted({str(c.get("tier")) for c in caps if c.get("tier")})
-            head = f"- {name}"
-            if family:
-                head += f" — model family: {family}"
-            if roles:
-                head += f" ({', '.join(roles)})"
-            lines.append(head)
-            if tiers:
-                lines.append(f"  - serves tiers: {', '.join(tiers)}")
-            creds = str(prov.get("credentials_env") or "").strip()
-            if creds:
-                lines.append(f"  - credentials (environment): {creds}")
-            endpoint = str(prov.get("endpoint_env") or "").strip()
-            if endpoint:
-                lines.append(
-                    f"  - self-hosted: reachable at `{endpoint}` — this is a model "
-                    f"host to run and size, not a third-party key to hold"
-                )
-            fallback = str(prov.get("fallback") or "").strip()
-            if fallback:
-                lines.append(f"  - fallback: {fallback}")
+            _deployer_provider_entry(name, prov, lines)
         lines.append("")
 
+
+def _deployer_provider_entry(name: str, prov: Any, lines: list[str]) -> None:
+    """One provider: model family, roles, tiers, credentials, endpoint, fallback."""
+    if not isinstance(prov, dict):
+        return
+    family = str(prov.get("model_family") or "").strip()
+    roles, tiers = _provider_roles_and_tiers(prov)
+    head = f"- {name}"
+    if family:
+        head += f" — model family: {family}"
+    if roles:
+        head += f" ({', '.join(roles)})"
+    lines.append(head)
+    if tiers:
+        lines.append(f"  - serves tiers: {', '.join(tiers)}")
+    creds = str(prov.get("credentials_env") or "").strip()
+    if creds:
+        lines.append(f"  - credentials (environment): {creds}")
+    endpoint = str(prov.get("endpoint_env") or "").strip()
+    if endpoint:
+        lines.append(
+            f"  - self-hosted: reachable at `{endpoint}` — this is a model "
+            f"host to run and size, not a third-party key to hold"
+        )
+    fallback = str(prov.get("fallback") or "").strip()
+    if fallback:
+        lines.append(f"  - fallback: {fallback}")
+
+
+def _provider_roles_and_tiers(prov: Any) -> tuple[list[str], list[str]]:
+    """The sorted role and tier sets a provider's capabilities declare."""
+    caps = [c for c in (prov.get("capabilities") or []) if isinstance(c, dict)]
+    roles = sorted({str(c.get("role")) for c in caps if c.get("role")})
+    tiers = sorted({str(c.get("tier")) for c in caps if c.get("tier")})
+    return roles, tiers
+
+
+def _deployer_tier_lines(features: list[dict[str, Any]], lines: list[str]) -> None:
+    """AI feature tiers in use, and the tool-calling key requirement."""
     tiers_in_use = sorted({str(f.get("tier")) for f in features if f.get("tier")})
     if tiers_in_use:
         lines.append(f"- AI feature tiers in use: {', '.join(tiers_in_use)}")
@@ -588,6 +682,9 @@ def ai_features_for_deployer(
             "- Tool-calling features require LLM API keys in environment configuration"
         )
 
+
+def _deployer_budget_lines(features: list[dict[str, Any]], lines: list[str]) -> None:
+    """Per-feature ``p95_latency`` / ``cost_per_call`` targets."""
     budget_lines: list[str] = []
     for f in features:
         budgets = f.get("budgets")
@@ -610,6 +707,9 @@ def ai_features_for_deployer(
         )
         lines.extend(budget_lines)
 
+
+def _deployer_eval_lines(features: list[dict[str, Any]], lines: list[str]) -> None:
+    """Eval and safety counts (counts only, by design)."""
     n_eval = sum(1 for f in features if f.get("eval_approach"))
     n_safety = sum(1 for f in features if f.get("privacy_safety"))
     if n_eval or n_safety:
@@ -620,9 +720,6 @@ def ai_features_for_deployer(
             f"needs an eval cadence and a place where guardrails are enforced; the "
             f"approaches and constraints themselves are the coding agent's to build."
         )
-
-    lines.append("")
-    return "\n".join(lines)
 
 
 def designer_affordance_hints(mode: str, authority: str, tier_order: int) -> list[str]:
@@ -675,29 +772,13 @@ def ai_features_for_designer(ai_features: dict[str, Any]) -> str:
     if not features:
         return ""
 
-    def _is_infra(f: dict[str, Any]) -> bool:
-        return f.get("tier") == "infrastructure" or f.get("kind") == "infrastructure"
-
-    surfaces = [f for f in features if f.get("scope") == "feature" and not _is_infra(f)]
+    surfaces = [
+        f for f in features if f.get("scope") == "feature" and not _designer_is_infra(f)
+    ]
     if not surfaces:
         return ""
 
-    members_by_parent: dict[str, list[dict[str, Any]]] = {}
-    for f in features:
-        if f.get("scope") == "sub_feature" and not _is_infra(f):
-            parent = f.get("composed_under") or ""
-            if parent:
-                members_by_parent.setdefault(parent, []).append(f)
-
-    def _edge_state(f: dict[str, Any]) -> str:
-        """The user-visible failure condition to design an empty/error state for."""
-        fails = f.get("failure_modes")
-        if isinstance(fails, list) and fails and isinstance(fails[0], dict):
-            mode = fails[0].get("mode")
-            if isinstance(mode, str) and mode.strip():
-                return mode
-        esc = f.get("escalation")
-        return esc if isinstance(esc, str) else ""
+    members_by_parent = _designer_members_by_parent(features)
 
     lines: list[str] = [
         "**User-facing AI surfaces** — each entry below is a real interaction the "
@@ -708,76 +789,122 @@ def ai_features_for_designer(ai_features: dict[str, Any]) -> str:
     ]
 
     for f in surfaces:
-        name = f.get("name", "")
-        tier = f.get("tier", "")
-        tier_order = TIER_ORDER_FOR_SUMMARY.get(tier, 0)
-        inv = f.get("invocation") or {}
-        mode = inv.get("mode", "synchronous")
-        trigger = inv.get("trigger", "")
-        authority = f.get("decision_authority", "autonomous")
-        served = f.get("linked_vision_features") or []
-
-        header = f"### `{name}` (tier: {tier}, {mode})"
-        if served:
-            header += " — serves vision feature(s): " + ", ".join(served)
-        lines.append(header)
-
-        purpose = f.get("purpose", "")
-        if purpose:
-            lines.append(f"- Purpose: {short_text(purpose)}")
-        if trigger:
-            lines.append(f"- Triggered when: {short_text(trigger, 160)}")
-
-        inputs = f.get("inputs")
-        if isinstance(inputs, list) and inputs:
-            rendered: list[str] = []
-            for i in inputs:
-                if not isinstance(i, dict):
-                    continue
-                iname = i.get("name", "")
-                idesc = short_text(i.get("description", ""), 90)
-                req = "" if i.get("required", True) else " (optional)"
-                rendered.append(f"{iname}{req}: {idesc}" if idesc else f"{iname}{req}")
-            if rendered:
-                lines.append("- User provides: " + "; ".join(rendered))
-
-        outputs = f.get("outputs")
-        primary_out = outputs.get("primary", "") if isinstance(outputs, dict) else ""
-        if primary_out:
-            lines.append(f"- Result to show: {short_text(primary_out)}")
-
-        hints = designer_affordance_hints(mode, authority, tier_order)
-        if hints:
-            lines.append("- Affordance: " + "; ".join(hints))
-
-        edge = _edge_state(f)
-        if edge:
-            lines.append(f"- Edge state to design for: {short_text(edge, 160)}")
-
-        members = members_by_parent.get(name) or []
-        if members:
-            lines.append(
-                "- Within this surface, also design the user-visible output of its "
-                "component steps — only those producing something the user sees "
-                "(citations, confidence, routing, related items):"
-            )
-            for m in members:
-                mname = m.get("name", "")
-                mtier = m.get("tier", "")
-                m_out = m.get("outputs")
-                m_primary = m_out.get("primary", "") if isinstance(m_out, dict) else ""
-                detail = short_text(m_primary or m.get("purpose", ""), 130)
-                mauth = m.get("decision_authority", "autonomous")
-                aff = (
-                    " [suggestion]"
-                    if mauth == "suggest"
-                    else (" [confirm]" if mauth == "confirm" else "")
-                )
-                lines.append(f"    - `{mname}` ({mtier}){aff}: {detail}")
-
-        lines.append("")
+        _designer_surface_lines(f, members_by_parent, lines)
 
     return "\n".join(lines)
+
+
+def _designer_is_infra(f: dict[str, Any]) -> bool:
+    """Infrastructure by tier or kind -- never a user-facing surface."""
+    return f.get("tier") == "infrastructure" or f.get("kind") == "infrastructure"
+
+
+def _designer_edge_state(f: dict[str, Any]) -> str:
+    """The user-visible failure condition to design an empty/error state for."""
+    fails = f.get("failure_modes")
+    if isinstance(fails, list) and fails and isinstance(fails[0], dict):
+        mode = fails[0].get("mode")
+        if isinstance(mode, str) and mode.strip():
+            return mode
+    esc = f.get("escalation")
+    return esc if isinstance(esc, str) else ""
+
+
+def _designer_members_by_parent(
+    features: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """``composed_under`` members grouped by parent surface name."""
+    members_by_parent: dict[str, list[dict[str, Any]]] = {}
+    for f in features:
+        if f.get("scope") == "sub_feature" and not _designer_is_infra(f):
+            parent = f.get("composed_under") or ""
+            if parent:
+                members_by_parent.setdefault(parent, []).append(f)
+    return members_by_parent
+
+
+def _designer_surface_lines(
+    f: dict[str, Any],
+    members_by_parent: dict[str, list[dict[str, Any]]],
+    lines: list[str],
+) -> None:
+    """One user-facing surface: header, purpose, inputs, result, affordance."""
+    name = f.get("name", "")
+    tier = f.get("tier", "")
+    tier_order = TIER_ORDER_FOR_SUMMARY.get(tier, 0)
+    inv = f.get("invocation") or {}
+    mode = inv.get("mode", "synchronous")
+    trigger = inv.get("trigger", "")
+    authority = f.get("decision_authority", "autonomous")
+    served = f.get("linked_vision_features") or []
+
+    header = f"### `{name}` (tier: {tier}, {mode})"
+    if served:
+        header += " — serves vision feature(s): " + ", ".join(served)
+    lines.append(header)
+
+    purpose = f.get("purpose", "")
+    if purpose:
+        lines.append(f"- Purpose: {short_text(purpose)}")
+    if trigger:
+        lines.append(f"- Triggered when: {short_text(trigger, 160)}")
+
+    _designer_input_line(f, lines)
+    outputs = f.get("outputs")
+    primary_out = outputs.get("primary", "") if isinstance(outputs, dict) else ""
+    if primary_out:
+        lines.append(f"- Result to show: {short_text(primary_out)}")
+
+    hints = designer_affordance_hints(mode, authority, tier_order)
+    if hints:
+        lines.append("- Affordance: " + "; ".join(hints))
+
+    edge = _designer_edge_state(f)
+    if edge:
+        lines.append(f"- Edge state to design for: {short_text(edge, 160)}")
+
+    members = members_by_parent.get(name) or []
+    if members:
+        _designer_member_lines(members, lines)
+    lines.append("")
+
+
+def _designer_input_line(f: dict[str, Any], lines: list[str]) -> None:
+    """The ``User provides:`` line for one surface."""
+    inputs = f.get("inputs")
+    if isinstance(inputs, list) and inputs:
+        rendered: list[str] = []
+        for i in inputs:
+            if not isinstance(i, dict):
+                continue
+            iname = i.get("name", "")
+            idesc = short_text(i.get("description", ""), 90)
+            req = "" if i.get("required", True) else " (optional)"
+            rendered.append(f"{iname}{req}: {idesc}" if idesc else f"{iname}{req}")
+        if rendered:
+            lines.append("- User provides: " + "; ".join(rendered))
+
+
+def _designer_member_lines(members: list[dict[str, Any]], lines: list[str]) -> None:
+    """In-surface affordances nested under a surface."""
+    lines.append(
+        "- Within this surface, also design the user-visible output of its "
+        "component steps — only those producing something the user sees "
+        "(citations, confidence, routing, related items):"
+    )
+    for m in members:
+        mname = m.get("name", "")
+        mtier = m.get("tier", "")
+        m_out = m.get("outputs")
+        m_primary = m_out.get("primary", "") if isinstance(m_out, dict) else ""
+        detail = short_text(m_primary or m.get("purpose", ""), 130)
+        mauth = m.get("decision_authority", "autonomous")
+        aff = (
+            " [suggestion]"
+            if mauth == "suggest"
+            else (" [confirm]" if mauth == "confirm" else "")
+        )
+        lines.append(f"    - `{mname}` ({mtier}){aff}: {detail}")
 
 
 # Framing fields kept in Designer's vision block (DR2). The per-feature substance
@@ -917,20 +1044,7 @@ def feature_specs_for_stack(
     if not feats:
         return ""
 
-    # Product-feature ids that some AI node serves. The serves relation lives in
-    # ``vision_grounding.served_features`` (an AI node serves a product feature —
-    # never shares its id), so this is the only sound "is this feature AI-backed"
-    # signal available without the manifest (D-SC5).
-    ai_served: set[str] = set()
-    for node in (ai_features or {}).get("ai_features") or []:
-        if not isinstance(node, dict) or node.get("kind") == INFRA_KIND:
-            continue
-        grounding = node.get("vision_grounding") or {}
-        for sf in grounding.get("served_features") or []:
-            if isinstance(sf, dict):
-                for key in ("id", "name"):
-                    if sf.get(key):
-                        ai_served.add(str(sf[key]))
+    ai_served = _stack_ai_served_ids(ai_features)
 
     lines: list[str] = [
         "**Feature specifications (from Brainstormer) — the authoritative "
@@ -947,27 +1061,59 @@ def feature_specs_for_stack(
     for f in feats:
         if not isinstance(f, dict):
             continue
-        fid = str(f.get("id") or "")
-        name = f.get("name") or fid or "unnamed"
-        tag = " (AI)" if (fid and fid in ai_served) or name in ai_served else ""
-        header = f"### `{name}`"
-        if fid:
-            # The linkage rules instruct the model to tag entries with these ids
-            # (D-SC3); rendering only the name left it to infer them (D-SC14).
-            header += f" — id: `{fid}`"
-        lines.append(f"{header}{tag}")
-        lines.extend(
-            render_feature_block(f, fields=STACK_SPEC_FIELDS, include_graph=False)
-        )
-        deps = [str(d).strip() for d in (f.get("dependencies") or []) if str(d).strip()]
-        if deps:
-            lines.append(f"- depends on: {', '.join(deps)}")
-        lines.append("")
+        _stack_feature_spec_lines(f, ai_served, lines)
         for ent in f.get("entities") or []:
             if isinstance(ent, str) and ent not in seen:
                 seen.add(ent)
                 entities.append(ent)
 
+    _stack_entity_vocabulary(entities, lines)
+    _stack_nfr_lines(feature_specs, lines)
+
+    return "\n".join(lines)
+
+
+def _stack_ai_served_ids(ai_features: dict[str, Any] | None) -> set[str]:
+    """Product-feature ids some AI node serves, read from ``vision_grounding``."""
+    # Product-feature ids that some AI node serves. The serves relation lives in
+    # ``vision_grounding.served_features`` (an AI node serves a product feature —
+    # never shares its id), so this is the only sound "is this feature AI-backed"
+    # signal available without the manifest (D-SC5).
+    ai_served: set[str] = set()
+    for node in (ai_features or {}).get("ai_features") or []:
+        if not isinstance(node, dict) or node.get("kind") == INFRA_KIND:
+            continue
+        grounding = node.get("vision_grounding") or {}
+        for sf in grounding.get("served_features") or []:
+            if isinstance(sf, dict):
+                for key in ("id", "name"):
+                    if sf.get(key):
+                        ai_served.add(str(sf[key]))
+    return ai_served
+
+
+def _stack_feature_spec_lines(
+    f: dict[str, Any], ai_served: set[str], lines: list[str]
+) -> None:
+    """One product feature's spine block for StackAdvisor, tagged (AI)."""
+    fid = str(f.get("id") or "")
+    name = f.get("name") or fid or "unnamed"
+    tag = " (AI)" if (fid and fid in ai_served) or name in ai_served else ""
+    header = f"### `{name}`"
+    if fid:
+        # The linkage rules instruct the model to tag entries with these ids
+        # (D-SC3); rendering only the name left it to infer them (D-SC14).
+        header += f" — id: `{fid}`"
+    lines.append(f"{header}{tag}")
+    lines.extend(render_feature_block(f, fields=STACK_SPEC_FIELDS, include_graph=False))
+    deps = [str(d).strip() for d in (f.get("dependencies") or []) if str(d).strip()]
+    if deps:
+        lines.append(f"- depends on: {', '.join(deps)}")
+    lines.append("")
+
+
+def _stack_entity_vocabulary(entities: list[str], lines: list[str]) -> None:
+    """The advisory domain-vocabulary note (D-SC6)."""
     if entities:
         lines.append(
             "**Domain vocabulary** — the data model these features operate on: "
@@ -979,6 +1125,9 @@ def feature_specs_for_stack(
         )
         lines.append("")
 
+
+def _stack_nfr_lines(feature_specs: dict[str, Any] | None, lines: list[str]) -> None:
+    """Project-wide ``nfr_goals`` keyed by ``nfr_<slug>`` (D-SC2)."""
     nfr_lines = [
         f"- `nfr_{slug(g.strip())}`: {g.strip()}"
         for g in ((feature_specs or {}).get("nfr_goals") or [])
@@ -995,8 +1144,6 @@ def feature_specs_for_stack(
         )
         lines.extend(nfr_lines)
         lines.append("")
-
-    return "\n".join(lines)
 
 
 def ai_served_feature_ids(ai_features: dict[str, Any] | None) -> set[str]:
@@ -1123,37 +1270,50 @@ def feature_specs_for_phaser(
     for f in feats:
         if not isinstance(f, dict):
             continue
-        fid = str(f.get("id") or "")
-        name = f.get("name") or fid or "unnamed"
-        served = (fid and fid in ai_served) or name in ai_served
-        if fid in excluded:
-            tag = (
-                " (excluded — AI implementation rejected at the Agentifier "
-                "panel; to include it, revisit the Agentifier selection)"
-            )
-        else:
-            tag = " (AI)" if served else ""
-        header = f"### `{name}`"
-        if fid:
-            header += f" — id: `{fid}`"
-        lines.append(f"{header}{tag}")
-        lines.extend(
-            render_feature_block(
-                f, fields=PHASER_PRODUCT_SPEC_FIELDS, include_graph=False
-            )
-        )
-        deps = [str(d).strip() for d in (f.get("dependencies") or []) if str(d).strip()]
-        if deps:
-            lines.append(
-                f"- depends on: {', '.join(deps)} (build these no later than "
-                f"`{fid or name}`)"
-            )
-        lines.append("")
+        _phaser_feature_spec_lines(f, ai_served, excluded, lines)
         for ent in f.get("entities") or []:
             if isinstance(ent, str) and ent not in seen:
                 seen.add(ent)
                 entities.append(ent)
 
+    _phaser_entity_vocabulary(entities, lines)
+    _phaser_nfr_lines(feature_specs, lines)
+
+    return "\n".join(lines)
+
+
+def _phaser_feature_spec_lines(
+    f: dict[str, Any], ai_served: set[str], excluded: set[str], lines: list[str]
+) -> None:
+    """One product feature's spine block for Phaser, tagged (AI) or (excluded)."""
+    fid = str(f.get("id") or "")
+    name = f.get("name") or fid or "unnamed"
+    served = (fid and fid in ai_served) or name in ai_served
+    if fid in excluded:
+        tag = (
+            " (excluded — AI implementation rejected at the Agentifier "
+            "panel; to include it, revisit the Agentifier selection)"
+        )
+    else:
+        tag = " (AI)" if served else ""
+    header = f"### `{name}`"
+    if fid:
+        header += f" — id: `{fid}`"
+    lines.append(f"{header}{tag}")
+    lines.extend(
+        render_feature_block(f, fields=PHASER_PRODUCT_SPEC_FIELDS, include_graph=False)
+    )
+    deps = [str(d).strip() for d in (f.get("dependencies") or []) if str(d).strip()]
+    if deps:
+        lines.append(
+            f"- depends on: {', '.join(deps)} (build these no later than "
+            f"`{fid or name}`)"
+        )
+    lines.append("")
+
+
+def _phaser_entity_vocabulary(entities: list[str], lines: list[str]) -> None:
+    """The shared domain-vocabulary note."""
     if entities:
         lines.append(
             "**Domain vocabulary** — the data model these features operate on: "
@@ -1164,6 +1324,9 @@ def feature_specs_for_phaser(
         )
         lines.append("")
 
+
+def _phaser_nfr_lines(feature_specs: dict[str, Any] | None, lines: list[str]) -> None:
+    """Project-wide ``nfr_goals`` with the D-PH1c citation rule."""
     nfr_lines = [
         f"- `nfr_{slug(g.strip())}`: {g.strip()}"
         for g in ((feature_specs or {}).get("nfr_goals") or [])
@@ -1182,5 +1345,3 @@ def feature_specs_for_phaser(
         )
         lines.extend(nfr_lines)
         lines.append("")
-
-    return "\n".join(lines)

@@ -4230,6 +4230,26 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
    clean, **mypy 0 errors**, 4256 passed / 1 skipped, coverage ≥ 92%. (`.coverage` is
    untracked and gitignored since Phase 2 — nothing to restore. The Phase 0 note in
    §1 is superseded.)
+8. **Nested closures are promoted, never suppressed in place.** Ruff counts a nested
+   `def` toward its enclosing function, so a closure inside a flagged function cannot be
+   left where it is: it becomes a module-level private helper, with everything it
+   captured passed as explicit parameters **in the same order the closure read them**.
+   A closure that captures and mutates an accumulator is promoted the same way, taking
+   the accumulator as a parameter. *Added after 5d, which hit this: leaving `_field`
+   nested kept `_format_spec_as_text` at C901 ~13 no matter how much of its tail was
+   extracted, and the only alternative was a second, unapproved noqa. The `_field` row
+   in 27.4 is superseded by what 5d did (31.2). The other four noqas are unaffected —
+   none of those functions contains a closure.*
+9. **Loop-body extraction.** A helper extracted from a loop *body* is dedented to module
+   level like any other. A `continue` that ended the iteration becomes `return` (or
+   `return None`) at the same point; **that is the one permitted statement rewrite**, and
+   the sub-phase report names each site where it was applied. A loop body containing a
+   `break`, or a `return` that exits the enclosing function, is **not** extracted as a
+   unit: extract the blocks before and after it instead, leave the `break`/`return` in
+   the caller's loop, and if the function is still over threshold after that, **stop and
+   report** — do not add a noqa and do not introduce a sentinel return value to simulate
+   the jump. *Added before 5f, the first sub-phase whose blocks are loop bodies rather
+   than top-level sections.*
 
 ### 27.3 Per-function table
 
@@ -4602,7 +4622,7 @@ also golden-pinned — `tests/golden/README.md` and `phase_*.md` must not move.
 
 | File | Function | Rule(s) | Reason |
 |---|---|---|---|
-| `agentifier/_render.py` | `_field` | C901, PLR0912 | four-way dispatch on JSON value shape, sharing a captured accumulator |
+| `agentifier/_render.py` | `_spec_field` | C901, PLR0912 | four-way dispatch on JSON value shape; each branch is that shape's rendering. **Superseded in place by 5d** (31.2): promoted out of `_format_spec_as_text` per rule 8, so the accumulator is a parameter and the reason no longer cites capture. |
 | `agentifier/pattern_loader.py` | `_validate_frontmatter` | C901, PLR0912 | flat per-field schema validation; one branch per field |
 | `agentifier/requires_reconciler.py` | `_has_cycle` | C901 | single iterative-DFS cycle detection; the colour invariant spans the loop |
 | `agents/feature_speccer.py` | `_validate_dependencies` | C901 | single DFS back-edge pruning; the WHITE/GRAY/BLACK colour invariant spans the whole function, so any split leaves a helper callable at only one point in the traversal |
@@ -5180,3 +5200,168 @@ Misses held at **893**.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 169.22s` (exit 0) |
 | Coverage | same run | `TOTAL 11979 stmts, 893 miss, 93%` |
+
+## 33. Phase 5f — `agents/_feature_context.py`: seven consumer projections decomposed
+
+`src/spec4/agents/_feature_context.py` only. Extract-only. First sub-phase to apply
+rules 8 and 9, both of which were added to 27.2 because of what this file contains.
+
+### 33.1 Before and after
+
+| Function | C901 | Br | St | lines | → C901 | → lines |
+|---|---:|---:|---:|---:|---:|---:|
+| `project_feature_for_stack` | **16** | **15** | — | 71 | 3 | 27 |
+| `ai_features_for_stack` | **11** | — | — | 97 | 6 | 70 |
+| `ai_features_for_phaser` | **16** | **16** | **64** | 140 | 4 | 58 |
+| `ai_features_for_deployer` | **20** | **19** | **61** | 112 | 2 | 40 |
+| `ai_features_for_designer` | **23** | **18** | **69** | 106 | 6 | 33 |
+| `feature_specs_for_stack` | **16** | **15** | — | 107 | 7 | 55 |
+| `feature_specs_for_phaser` | **11** | — | — | 110 | 7 | 60 |
+
+The file's C901/PLR0912/PLR0915 finding count goes **15 → 0**. Module-level functions
+17 → 49; no nested `def` remains anywhere in the file.
+
+### 33.2 The 32 new module-level functions
+
+**From `project_feature_for_stack` (5):** `_stack_feature_header`,
+`_stack_knowledge_source_lines`, `_stack_tool_access_lines`, `_stack_mechanism_lines`,
+`_stack_quality_lines`.
+
+**From `ai_features_for_stack` (2):** `_stack_infra_lines`, `_stack_cross_cutting_lines`.
+
+**From `ai_features_for_phaser` (6):** `_phaser_revision_partition`,
+`_phaser_established_lines`, `_phaser_index_table`, `_phaser_priority_guidance`,
+`_phaser_shape_guidance`, `_phaser_catalog_notes`. The phasing-guidance block splits in
+two — priority buckets (`steel_thread` / `mvp` / `v2`) and node shape
+(`infrastructure` / `cross_feature`) — because all five buckets in one helper is C901 11.
+
+**From `ai_features_for_deployer` (6):** `_deployer_provider_lines`,
+`_deployer_provider_entry`, `_provider_roles_and_tiers`, `_deployer_tier_lines`,
+`_deployer_budget_lines`, `_deployer_eval_lines`.
+
+**From `ai_features_for_designer` (6):** `_designer_is_infra` and `_designer_edge_state`
+(**promoted closures**, rule 8), `_designer_members_by_parent`,
+`_designer_surface_lines`, `_designer_input_line`, `_designer_member_lines`.
+
+**From `feature_specs_for_stack` (4):** `_stack_ai_served_ids`,
+`_stack_feature_spec_lines`, `_stack_entity_vocabulary`, `_stack_nfr_lines`.
+
+**From `feature_specs_for_phaser` (3):** `_phaser_feature_spec_lines`,
+`_phaser_entity_vocabulary`, `_phaser_nfr_lines`.
+
+### 33.3 Rule 8 applied — two closures promoted
+
+`_is_infra` and `_edge_state` were nested in `ai_features_for_designer`. Both are
+promoted to module level as `_designer_is_infra` and `_designer_edge_state`; both read
+only their single `f` parameter, so nothing had to be threaded and no signature changed.
+They are **renamed** on promotion because `_is_infra` / `_edge_state` are too generic at
+module scope in a file that serves six different consumers. Three call sites move with
+them (two for `_designer_is_infra`, one for `_designer_edge_state`), listed in 33.5.
+
+### 33.4 Rule 9 applied — one `continue` → `return`
+
+**Exactly one site.** Every loop in all seven functions was checked first with `ast`:
+**no `break` anywhere, and no `return` inside any loop**, so rule 9's stop clause never
+fires in this file. Of the seven `continue` statements, six sit in loops that move into a
+helper *whole* (the loop header goes too), where `continue` stays valid and unmodified.
+The seventh —
+
+```
+for name, prov in providers.items():
+    if not isinstance(prov, dict):
+        continue          # <- old ai_features_for_deployer:554
+```
+
+— is a loop-*body* guard, and the body became `_deployer_provider_entry`. It is now:
+
+```
+def _deployer_provider_entry(name: str, prov: Any, lines: list[str]) -> None:
+    if not isinstance(prov, dict):
+        return
+```
+
+Same position, same condition, same effect: skip this provider, continue with the next.
+This is the one permitted statement rewrite; the file has no other.
+
+### 33.5 Line accounting (rule 3)
+
+**743 non-blank lines** across the seven functions. **735 appear verbatim.** The 8
+others:
+
+| # | Line | Disposition |
+|---:|---|---|
+| 2 | `def _is_infra(...)`, `def _edge_state(...)` | rule 8 promotions, renamed (33.3) |
+| 3 | the `surfaces = [...]` comprehension, the `sub_feature` guard, `edge = _edge_state(f)` | the same rename at the three call sites |
+| 3 | two `render_feature_block(...)` calls | `ruff format` re-wraps after the 4-space dedent; identical tokens |
+
+The `continue` → `return` does not appear here: `continue` still occurs elsewhere in the
+file, so the counter matches it. It is verified separately and quoted in full in 33.4.
+
+**No statement line is unaccounted for.**
+
+### 33.6 Statement counts add up (rule 4)
+
+The file's own statements **533 → 597, +64**, and the suite-wide total moved
+**11979 → 12043, +64** — so **no other module's statement count changed**. By kind:
+
+| Kind | Δ | Why |
+|---|---:|---|
+| `def` | +30 | 32 new module-level functions, less the 2 closures that stopped being nested defs |
+| call statement | +26 | the new spine calls |
+| `return` | +5 | `_stack_ai_served_ids`, `_designer_members_by_parent`, `_phaser_revision_partition`, `_provider_roles_and_tiers`, and the rule-9 rewrite |
+| assignment | +4 | the spine bindings that replaced inlined blocks |
+| `continue` | −1 | the rule-9 rewrite |
+
+Misses held at **893**.
+
+### 33.7 Verification beyond the gate
+
+- The seven public names, their signatures and their defaults are unchanged; every
+  importer (`stack_advisor`, `phaser`, `deployer`, `designer`, `_stack_context`) is
+  untouched and `__all__` is unchanged. All 32 new names are private and unexported.
+- No test file was edited (rule 2). `tests/test_deployer_phases_context.py`,
+  `test_phaser_feature_specs_context.py`, `test_deployer_ai_channel.py`,
+  `test_deployer_nfr_channel.py`, `test_feature_specs_pass.py`,
+  `test_deployer_stack_digest.py` and the greenfield pipeline integration test all pass
+  unmodified in the full run.
+- Every prompt-bound string — the StackAdvisor base-input header, the Phaser
+  spine header and its `features`/`capabilities` declaration instruction, the
+  `(AI)` and `(excluded)` tags, the D-PH1c citation rule — moved verbatim (rule 5).
+
+### 33.8 Two failed attempts before this one
+
+Recorded because the rules exist because of them.
+
+1. **Syntax.** Helper bodies lifted out of `for` loops kept their 8-space nesting.
+   Reverted with `git checkout --`.
+2. **Ruff.** The dedent was right, but `continue` landed in a helper with no loop
+   around it, and the two promoted closures were still called by their old names at
+   three sites. Reverted; reported as a stop under the original run's retry budget.
+
+Rules 8 and 9 were then added to 27.2 and this attempt applied them. Both defects are
+now covered by a rule rather than by care.
+
+### 33.9 Deferred / not acted on
+
+- **`_stack_ai_served_ids` duplicates `ai_served_feature_ids`** (line 1002 of the old
+  file), which `feature_specs_for_phaser` already calls. `feature_specs_for_stack` had
+  the same logic inline; extracting it made the duplication explicit rather than
+  removing it. Collapsing the two is **5p(a)**.
+- The entity-collection loop (`for ent in f.get("entities") ...`) is identical in
+  `feature_specs_for_stack` and `feature_specs_for_phaser` and is deliberately **left
+  inline in both spines** — lifting it is duplicate-removal, **5p(a)**, not 5f's call
+  (rule 7). Both spines stay under threshold with it inline.
+- The seven per-consumer `_*_feature_spec_lines` / `_*_lines` helpers are now directly
+  comparable for the first time. That comparison is **5p(a)**, per 27.3's instruction to
+  extract all seven first and compare afterwards.
+- No `# noqa` was needed.
+
+### 33.10 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 175.34s` (exit 0) |
+| Coverage | same run | `TOTAL 12043 stmts, 893 miss, 93%` |
