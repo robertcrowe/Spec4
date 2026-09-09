@@ -1652,3 +1652,149 @@ a declarative contract.
 4249 → 4256 tests (+7, all in the new file). `187 files already formatted` is
 §14.8's 186 plus the new test. Coverage is byte-for-byte §14.8's — the file adds
 no statements under `src/`, so no per-module floor can have moved.
+
+## 16. Phase 4a — `agents/_utils.py` split into four modules
+
+Recorded 2026-09-08 on branch `look-rework`. Five files under `src/spec4/agents/`
+changed or added; **no importer anywhere changed**, no test file was edited,
+`pyproject.toml` is untouched. Nothing was written under `.spec4/`, `.venv/` or
+`.git/`, and no git command was run beyond `git show HEAD:…` and `git status`,
+both read-only.
+
+### 16.1 Line counts of the five resulting files
+
+| File | Lines | Was |
+|---|---:|---:|
+| `agents/_utils.py` (façade) | 238 | 2528 |
+| `agents/_turn_flow.py` | 290 | — |
+| `agents/_reask.py` | 345 | — |
+| `agents/_feature_context.py` | 1185 | — |
+| `agents/_stack_context.py` | 781 | — |
+| **total** | **2839** | **2528** |
+
+The +311 is entirely compatibility layer and prose: the façade's 49 alias
+assignments and 100-name `__all__`, four module docstrings, and the import
+headers each new module needs. No definition grew by a line.
+
+### 16.2 The names moved to each
+
+All 51 top-level names moved; none was dropped, added, or renamed away. Per
+§15.4 decision 2 the new modules use **public** names — applied uniformly,
+constants included (`_TIER_ORDER_FOR_SUMMARY` → `TIER_ORDER_FOR_SUMMARY`,
+`_DEV_MODE` → `DEV_MODE`, `_AGENT_DELIVERABLE` → `AGENT_DELIVERABLE`,
+`_STYLE_LEAF_KEYS` → `STYLE_LEAF_KEYS`, `_VISION_FRAMING_FIELDS` →
+`VISION_FRAMING_FIELDS`). `slug` and `excluded_feature_ids` were already public
+and gain no alias.
+
+**`_turn_flow.py`** — conversation-history surgery for the shared turn loop (10):
+`AGENT_DELIVERABLE`, `extract_json_block`, `replay_last_assistant`,
+`last_assistant_text`, `stale_phrase`, `build_revision_context`,
+`maybe_inject_staleness_question`, `maybe_inject_resume_summary`,
+`drop_orphan_trailing_user`, `drop_orphan_or_route_to_fresh_start`.
+
+**`_reask.py`** — the artifact re-ask protocol and the stream wrappers (11):
+`DEV_MODE`, `suppressed_as_artifact`, `artifact_reask_prompt`,
+`artifact_reask_status`, `artifact_fallback`, `reask_for_artifact`,
+`abandon_reask`, `set_status`, `stream_suppressing_json`, `stream_counting`,
+`drain_stream`. `reask_for_artifact`'s function-body `from spec4 import llm`
+(§6.2's lazy edge) moved with it unchanged.
+
+**`_feature_context.py`** — feature / AI-feature seed blocks per consumer (19):
+`slug`, `TIER_ORDER_FOR_SUMMARY`, `served_product_feature_ids`,
+`project_feature_for_stack`, `ai_features_for_stack`,
+`feature_relationship_lines`, `explicitly_rejected_lines`,
+`ai_features_for_phaser`, `ai_features_for_deployer`,
+`designer_affordance_hints`, `short_text`, `ai_features_for_designer`,
+`VISION_FRAMING_FIELDS`, `slim_vision_framing`, `feature_specs_for_designer`,
+`feature_specs_for_stack`, `ai_served_feature_ids`, `excluded_feature_ids`,
+`feature_specs_for_phaser`. Both banner comments in this range (old lines
+698–700, 1763–1768) moved with their blocks.
+
+**`_stack_context.py`** — stack / phase / NFR / manifest digests and the style
+renderers (11): `render_references`, `STYLE_LEAF_KEYS`, `render_one_style`,
+`render_coding_style`, `phases_for_deployer`, `stack_for_deployer`,
+`nfr_goals_for_deployer`, `load_design_manifest`, `design_manifest_for_stack`,
+`stack_digest_for_phaser`, `manifest_for_phaser`.
+
+`slug` went to `_feature_context` because it is the feature-id derivation the
+spine/catalog join is built on; `_stack_context` imports it for
+`stack_digest_for_phaser`.
+
+### 16.3 The resulting import graph, and why `__all__` is load-bearing
+
+```
+_feature_context  ←  _stack_context  ←  _turn_flow  ←  _reask
+                  all four  ←  _utils (façade, defines nothing)
+```
+
+Acyclic, and every edge is inside `spec4.agents`, so §15.2's four rules are
+untouched. Only three cross-module edges exist: `_stack_context` → `slug`,
+`_turn_flow` → `load_design_manifest`/`design_manifest_for_stack` (
+`build_revision_context` reads the design manifest), `_reask` →
+`AGENT_DELIVERABLE`.
+
+`_utils.py` re-exports each name under both spellings. The underscore aliases are
+plain assignments, which bind real module attributes; the public names arrive by
+import, and `[tool.mypy] strict` implies `no_implicit_reexport`, so without
+`__all__` the six `src/` modules doing `from spec4.agents._utils import slug`
+would not type-check. `__all__` also keeps ruff F401 quiet on the façade. It is
+already the convention here (`feature_specs.py`, `llm.py`, `stack_routing.py`,
+`design_manifest.py`).
+
+### 16.4 How "no logic changes" was verified
+
+- **AST equality per definition.** Each of the 51 definitions was re-parsed from
+  its new module, its identifiers and string constants mapped back through the
+  inverse rename, and `ast.dump`-compared against the same definition in
+  `HEAD:src/spec4/agents/_utils.py`. All 51 matched exactly.
+- **The rename touched no prompt text.** Every renamed identifier's occurrences
+  were enumerated by token; the only occurrences outside code are in docstrings
+  and `#` comments (8 of them, e.g. ``:func:`_abandon_reask` `` at old line 374).
+  Zero occur in a non-docstring string literal, so no string that reaches an LLM
+  changed — rule 4 holds.
+- **Export superset.** Every name bound at module level in the pre-split file is
+  still reachable as an attribute of `spec4.agents._utils`; all 100 `__all__`
+  entries resolve.
+- **Coverage attribution, not coverage loss.** §5's baseline for the file was
+  1092 stmts / 71 miss / 93%. The five files together are 1159 / 71 / 94% — the
+  same 71 missed lines, plus 67 always-executed façade statements. Suite-wide
+  misses are unchanged at 893.
+
+### 16.5 Deferred (noted, not done)
+
+- **4j** owns retiring the compatibility layer: moving the 39 externally-imported
+  underscore names onto their public spellings across `src/`, `tests/`, `evals/`
+  and `scripts/`, then deleting the 49 aliases and trimming `__all__`.
+- **Phase 5** owns every long function that moved intact: `stack_for_deployer`
+  (186 lines, C901 29 — the file's worst), `ai_features_for_phaser` (151),
+  `stack_digest_for_phaser` (155), `ai_features_for_deployer` (124),
+  `ai_features_for_designer` (123), `feature_specs_for_stack` (115). 4a moved
+  them; it did not touch them. §9's per-function complexity rows for
+  `agents/_utils.py` now point at the new owning modules.
+- **`_feature_context.py` is 1185 lines** — under the 1,300 threshold, but the
+  largest of the four. If Phase 5's decomposition does not bring it down, a
+  further split (the `ai_features_for_*` renderers vs. the `feature_specs_for_*`
+  ones) is a candidate for a later round. Not opened here: §15.3 agreed four
+  modules, and one file per sub-phase is the rule.
+- **`tests/README.md`** still lists `spec4/agents/_utils.py | 100%` (a stale row
+  Phase 0 already flagged; the real figure was 93%) and does not know about the
+  four new modules. Phase 7's docs pass, per §11.
+- **`vulture_whitelist.py`** needed no change — none of its entries is in this
+  file.
+
+### 16.6 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Layering | `uv run pytest tests/test_import_layering.py -q` | `7 passed in 0.35s` (exit 0) |
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `191 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 64 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 166.19s (0:02:46)` (exit 0) |
+| Coverage | same run | `TOTAL 11747 stmts, 893 miss, 92%` |
+
+Test count is unchanged at 4256 — 4a adds no test and removes none. `191 files
+already formatted` is §15.6's 187 plus the four new modules; `64 source files` is
+mypy's 60 plus the same four. Statements rose 11680 → 11747 (+67, the façade) and
+misses held at 893, so no per-module floor moved. `.coverage` was restored after
+the run.
