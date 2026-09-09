@@ -4177,3 +4177,534 @@ files it edits keep every test they had. `219 files already formatted` is §25.1
 217 plus `_gate.py` and `_nav.py`; `92 source files` is mypy's 90 by the same
 arithmetic. Statements rose 11865 → 11878 (+13, §26.4) and misses held at **893**,
 so no per-module floor moved. `.coverage` was restored after the run.
+
+## 27. Phase 5 pre-work — fresh complexity inventory and sub-phase order
+
+*Measured 2026-09-09 on `look-rework` at `8ff006d` ("Phases 4j and 4g2"), after Phase 4
+completed. Every Phase 0 line reference (§4) is superseded by this section.*
+
+Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --statistics src/`
+
+### 27.1 Headline counts
+
+| Rule | Phase 0 | 2026-09-09 |
+|---|---:|---:|
+| C901 | 61 | 61 |
+| PLR0912 | 40 | 40 |
+| PLR0915 | 25 | 25 |
+| PLR0913 | 12 | 12 |
+| ARG001 | 9 | 8 |
+| B905 / SIM105 / B904 / SIM117 / B007 / SIM905 | — | 4 / 3 / 2 / 2 / 1 / 1 |
+| **Total `src/`** | | **159** |
+
+138 complexity findings over **71 distinct functions**. `tests/`: 236 findings
+(ARG 173, SIM117 37, PLR0913 9, B905 8, SIM300 8, SIM105 1).
+
+### 27.2 Rules for every Phase 5 sub-phase
+
+1. **Extract-only.** Named helpers, same call order, same strings. No rewriting, no
+   reordering, no changed conditionals, no new behaviour. A helper is a cut, not a
+   redesign.
+2. **Proof is the existing tests, unmodified.** The golden and characterization files
+   listed per sub-phase must pass without a single edit. If a test needs editing, the
+   extraction was not behaviour-preserving — revert it.
+   **One exception, 5p only:** 5p(f) may make *lint-only* edits under `tests/` — yoda
+   comparisons (SIM300) and `strict=False` on `zip` (B905). Nothing else under `tests/`
+   is touched in any sub-phase, 5p included: no assertion, fixture, name or import
+   changes.
+3. **Line accounting (the 4g2 standard, §26.4).** After each extraction, compare the
+   function's pre-edit text against the new code and account for **every non-blank old
+   line**: present verbatim in a helper, or named in the report with its reason (a `def`
+   line replaced by a call, a comment folded into a helper docstring). "No statement line
+   is unaccounted for" is the pass condition.
+4. **Statement counts add up.** `coverage`'s parser on the `HEAD` blob vs. the new file;
+   the delta must equal the added `def`/`return` lines, and suite-wide misses must hold
+   at 893.
+5. **Rule 4 (frozen surfaces) still binds.** Prompt text, artifact strings, component
+   ids and `.spec4/` shapes move verbatim into helpers or stay put. Never re-flow a
+   string to fit a new indent — helpers take the indent the string already has.
+6. **A `# noqa` carries its reason on the same line**, in the form
+   `# noqa: C901  # <why splitting would not help>`. Five are pre-approved in 27.4;
+   any new one is a finding for review, not a shortcut.
+7. Gate at the end of each sub-phase (Rule 6, current ratchet): ruff clean, format
+   clean, **mypy 0 errors**, 4256 passed / 1 skipped, coverage ≥ 92%. (`.coverage` is
+   untracked and gitignored since Phase 2 — nothing to restore. The Phase 0 note in
+   §1 is superseded.)
+
+### 27.3 Per-function table
+
+`C` = C901, `Br` = PLR0912 branches, `St` = PLR0915 statements, `Ar` = PLR0913 arguments,
+`L` = non-blank lines. `—` = not flagged by that rule. **D** = decompose,
+**N** = justified `# noqa`.
+
+**The 16 sub-phases, in order.** Each is its own run and its own commit.
+
+| # | Scope | Fns | Non-blank lines |
+|---|---|---:|---:|
+| 5a | `agents/stack_advisor/_render.py` — `_format_stack_as_text` | 1 | 224 |
+| 5b | `agents/code_scanner/_review_render.py` — 4 renderers | 4 | 287 |
+| 5c | `agents/brainstormer.py` — `_format_vision_as_text` | 1 | 61 |
+| 5d | `agentifier/_render.py` — `_format_spec_as_text` + `_field` | 2 | 77 |
+| 5e | `_phase_markdown.py` — `_phase_spec_preamble`, `render_phase_markdown` | 2 | 261 |
+| 5f | `agents/_feature_context.py` | 7 | 743 |
+| 5g | `agents/_stack_context.py` | 4 | 483 |
+| 5h | `agents/` shared helpers (8 modules) | 10 | 659 |
+| 5i | `agents/` orchestrators I — `phaser.run`, `deployer.run` | 2 | 870 |
+| 5j | `agents/` orchestrators II — brainstormer, stack_advisor, code_scanner, designer | 5 | 856 |
+| 5k | `agentifier/agentifier.py` — the three phase runners | 3 | 857 |
+| 5l | `agentifier/` siblings (7 modules) | 10 | 622 |
+| 5m | `callbacks/` | 5 | 553 |
+| 5n | `layouts/` | 3 | 403 |
+| 5o | root modules (8) | 12 | 923 |
+| 5p | Cross-cutting sweep + promote the rule sets (27.5) | — | — |
+
+Deviation from the plan's "one sub-phase per source directory": `agents/` holds 34 of
+the 71 functions and 4,230 lines — one run cannot hold it and still verify line-for-line
+(rule 3). It splits into 5f–5j: two by module, one helper batch, two by orchestrator.
+`agentifier/` splits into 5k (the 621-line `_run_catalog_phase` and its two neighbours)
+and 5l (the siblings). `callbacks/`, `layouts/` and the root modules stay one run each.
+The five golden-pinned renderers lead, `_format_stack_as_text` first, as the plan sets.
+Modes per sub-phase are in 27.6.
+
+#### 5a — `agents/stack_advisor/_render.py` (golden-pinned)
+
+| Function | Line | C | Br | St | Ar | L | V |
+|---|---:|---:|---:|---:|---:|---:|:-:|
+| `_format_stack_as_text` | 147 | 62 | 68 | 181 | — | 224 | D |
+
+The worst function in the repo and the plan's named starting point. It is a flat
+sequence of independent block renderers (providers, infrastructure, persistence,
+libraries, integrations, project_structure, ai_conventions, additional_decisions…),
+each appending to one `lines` list. One `_render_<block>(ss, lines)` per block, called
+in the existing order.
+
+**Proof:** `tests/test_renderer_goldens.py::TestStackRenderer` (5 tests) against
+`tests/golden/render_stack_full.md`, `render_stack_minimal.md`,
+`render_stack_string_blocks.md`.
+
+#### 5b — `agents/code_scanner/_review_render.py` (golden-pinned)
+
+| Function | Line | C | Br | St | Ar | L | V |
+|---|---:|---:|---:|---:|---:|---:|:-:|
+| `_format_review_as_text` | 100 | 41 | 44 | 128 | — | 149 | D |
+| `_render_typed_notes` | 435 | 21 | 23 | 57 | — | 62 | D |
+| `_render_persistence` | 268 | 12 | — | — | — | 29 | D |
+| `_render_deployment` | 324 | 11 | — | — | — | 47 | D |
+
+The file already uses the `_render_x(value, lines)` shape; `_format_review_as_text` is
+the remaining unsplit spine. `_render_persistence` extracts its database loop
+(`_database_parts`); `_render_deployment` extracts its four independent blocks
+(container / orchestration / paas / iac); `_render_typed_notes` extracts one helper per
+note type.
+
+**Proof:** `TestReviewRenderer` (7 tests, incl. a 4-way parametrize) against
+`render_review_full.md`, `render_review_strings.md`, `render_review_empty*.md` (4),
+`render_review_no_tests.md`, `render_review_skeleton.md`.
+
+#### 5c — `agents/brainstormer.py` (golden-pinned)
+
+| Function | Line | C | Br | St | Ar | L | V |
+|---|---:|---:|---:|---:|---:|---:|:-:|
+| `_format_vision_as_text` | 506 | 16 | 15 | — | — | 61 | D |
+
+Section-per-vision-key; one helper per section.
+**Proof:** `TestVisionRenderer` (4 tests) against `render_vision_full.md`,
+`render_vision_strings.md`, `render_vision_no_name.md`, `render_vision_review_footer.md`.
+
+#### 5d — `agentifier/_render.py` (golden-pinned)
+
+| Function | Line | C | Br | St | Ar | L | V |
+|---|---:|---:|---:|---:|---:|---:|:-:|
+| `_format_spec_as_text` | 102 | 18 | — | 55 | — | 77 | D |
+| `_field` (nested) | 115 | 12 | 13 | — | — | 27 | **N** |
+
+`_format_spec_as_text` is `_field(...)` calls plus tail sections; the tail extracts.
+`_field` is a closure whose four branches *are* the four JSON value shapes (`None`,
+`list`, `dict`, scalar), each 3–6 lines appending to the captured `lines`. Splitting it
+yields four helpers that each take and return the accumulator — strictly worse.
+→ `# noqa: C901, PLR0912  # four-way dispatch on JSON value shape; each branch is the
+shape's rendering and shares the captured accumulator`.
+
+`_format_catalog_as_text` (line 78, 17 lines) is the fifth golden-pinned renderer and is
+**already under every threshold** — no work, but its goldens must stay green here.
+
+**Proof:** `TestSpecRenderer` (2) + `TestCatalogRenderer` (3) against `render_spec.md`,
+`render_spec_tier_fallback.md`, `render_catalog.md`, `render_catalog_empty.md`.
+
+#### 5e — `_phase_markdown.py` (golden-pinned via `project_manager`)
+
+| Function | Line | C | Br | St | Ar | L | V |
+|---|---:|---:|---:|---:|---:|---:|:-:|
+| `_phase_spec_preamble` | 47 | 20 | 17 | 65 | — | 176 | D |
+| `render_phase_markdown` | 336 | — | — | 58 | — | 85 | D |
+
+The fifth golden-pinned surface. `_phase_spec_preamble` is the largest preamble builder
+in the repo: one helper per preamble section (stack routing, NFR threading, feature
+context, seams). `render_phase_markdown` splits frontmatter assembly from body assembly.
+Frontmatter JSON shape and the attribution footer are frozen (Rule 4).
+
+**Proof:** `tests/test_project_manager_golden.py` (18 tests) against `phase_full.md`,
+`phase_full_no_context.md`, `phase_minimal.md`, `phase_final.md`, `README.md`,
+`README_moved_footer.md`. Note this file was listed by the original brief as
+`project_manager/_phase_markdown.py`; after 4j it is a **root sibling**,
+`src/spec4/_phase_markdown.py`, imported by `project_manager.py:75` and `_artifacts.py:26`.
+
+#### 5f — `agents/_feature_context.py`
+
+| Function | Line | C | Br | St | Ar | L | V |
+|---|---:|---:|---:|---:|---:|---:|:-:|
+| `ai_features_for_designer` | 658 | 23 | 18 | 69 | — | 106 | D |
+| `ai_features_for_deployer` | 502 | 20 | 19 | 61 | — | 112 | D |
+| `ai_features_for_phaser` | 349 | 16 | 16 | 64 | — | 140 | D |
+| `project_feature_for_stack` | 79 | 16 | 15 | — | — | 71 | D |
+| `feature_specs_for_stack` | 885 | 16 | 15 | — | — | 107 | D |
+| `ai_features_for_stack` | 163 | 11 | — | — | — | 97 | D |
+| `feature_specs_for_phaser` | 1069 | 11 | — | — | — | 110 | D |
+
+Seven consumer-shaped renderings of the same two artifacts. Each is a per-feature loop
+emitting an optional-field block. Extract `_<consumer>_feature_lines(feature)` per
+function first; **only after all seven are extracted** compare the helpers and note
+genuine duplicates for 5p — do not lift across consumers inside this sub-phase (Rule 7,
+one concern per phase). Prompt text is never lifted.
+
+**Proof:** `tests/test_deployer_phases_context.py`, `test_phaser_feature_specs_context.py`,
+`test_deployer_ai_channel.py`, `test_deployer_nfr_channel.py`, `test_feature_specs_pass.py`.
+
+#### 5g — `agents/_stack_context.py`
+
+| Function | Line | C | Br | St | Ar | L | V |
+|---|---:|---:|---:|---:|---:|---:|:-:|
+| `stack_for_deployer` | 171 | 29 | 28 | 81 | — | 170 | D |
+| `stack_digest_for_phaser` | 538 | 24 | 21 | 66 | — | 144 | D |
+| `design_manifest_for_stack` | 440 | 17 | 17 | — | — | 88 | D |
+| `manifest_for_phaser` | 695 | 11 | — | — | — | 81 | D |
+
+Same shape as 5f, over the stack spec and design manifest. One `_<block>_lines(ss)`
+helper per stack block, in the existing emission order.
+
+**Proof:** `tests/test_deployer_stack_digest.py`, `test_phaser_manifest_context.py`,
+`test_design_manifest.py`, `test_deployer_env_and_semantics.py`.
+
+#### 5h — `agents/` shared helpers
+
+| File | Function | Line | C | Br | St | Ar | L | V |
+|---|---|---:|---:|---:|---:|---:|---:|:-:|
+| `_phase_coverage.py` | `check_phase_coverage` | 180 | 26 | 26 | 69 | — | 170 | D |
+| `_manifest.py` | `validate_manifest` | 145 | 17 | 17 | — | — | 82 | D |
+| `_turn_flow.py` | `build_revision_context` | 74 | 17 | 16 | — | — | 69 | D |
+| `_reask.py` | `stream_suppressing_json` | 169 | 15 | 16 | — | — | 96 | D |
+| `code_scanner/_scan.py` | `_gather_project_context` | 165 | 15 | 13 | — | — | 62 | D |
+| `feature_speccer.py` | `_reconcile_dependencies` | 410 | 12 | — | — | — | 43 | D |
+| `_seam_check.py` | `_check_table_provenance` | 208 | 11 | — | — | — | 50 | D |
+| `stack_advisor/_stack_shape.py` | `_normalise_stack_shape` | 106 | 11 | — | — | — | 51 | D |
+| `feature_speccer.py` | `_validate_dependencies` | 368 | 11 | — | — | — | 35 | **N** |
+| `_reask.py` | `reask_for_artifact` | 75 | — | — | — | 10 | 48 | **N** |
+
+- `validate_manifest` — five separately-commented advisory checks, each appending to
+  `warnings`; one `_warn_<check>(...)` per comment block. The light-repair pass at the
+  end is its own helper.
+- `_check_table_provenance` — three sequential passes (build `creators`, check reads,
+  report unread); one helper each.
+- `_normalise_stack_shape` — four independent block coercions (`libraries` fold,
+  keyed-to-list, list-to-keyed, `ai_conventions`); one helper each, same order.
+- `_reconcile_dependencies` — two phases: build `implied`, then apply. Extract
+  `_implied_producers(features)`.
+- `_validate_dependencies` — **N**: one DFS with a recursive inner `dfs` maintaining the
+  WHITE/GRAY/BLACK invariant across the whole function; cutting it breaks the invariant.
+  → `# noqa: C901  # single DFS back-edge pruning; the WHITE/GRAY/BLACK colour invariant
+  spans the whole function, so any split leaves a helper that can only be called at one
+  point in the traversal`.
+- `reask_for_artifact` — **N**, arity only: 10 parameters are the reask contract
+  (agent, artifact, schema, model, callbacks…), all threaded through. A params object is
+  a design change, not extract-only. → `# noqa: PLR0913`.
+
+**Proof:** `tests/test_phase_coverage.py`, `test_manifest.py`, `test_seam_check*.py`,
+`test_dependency_reconciliation.py`, `test_feature_ids.py`, `test_reask*.py`.
+
+#### 5i — `agents/` orchestrators I
+
+| File | Function | Line | C | Br | St | L | V |
+|---|---|---:|---:|---:|---:|---:|:-:|
+| `phaser/__init__.py` | `run` | 84 | 33 | 37 | 148 | 472 | D |
+| `deployer.py` | `run` | 548 | 24 | 30 | 130 | 398 | D |
+
+The two largest agent turns. Both are linear: load context → build prompt → stream →
+parse → validate/reconcile → persist → render. Cut on those seams into
+`_load_<agent>_context`, `_build_<agent>_prompt`, `_persist_<agent>_output`. The stream
+loop stays whole — it is the characterization surface. Two functions, one run, because
+each is a single unbroken sequence that must be accounted for line-for-line.
+
+**Proof:** `tests/test_streaming_characterization.py`, `test_deployer_invariants.py`,
+`test_deployer_reentry.py`, `test_deployer_nfr_guidance.py`, `test_fast_forward.py`,
+plus `tests/integration/test_pipeline_greenfield.py`.
+
+#### 5j — `agents/` orchestrators II
+
+| File | Function | Line | C | Br | St | Ar | L | V |
+|---|---|---:|---:|---:|---:|---:|---:|:-:|
+| `brainstormer.py` | `run` | 630 | 20 | 22 | 79 | — | 227 | D |
+| `stack_advisor/__init__.py` | `run` | 74 | 12 | 14 | 59 | — | 208 | D |
+| `code_scanner/__init__.py` | `run` | 160 | 14 | 16 | 71 | — | 186 | D |
+| `designer.py` | `generate_mock_streaming` | 545 | 22 | 21 | 65 | 13 | 139 | D + **N**(Ar) |
+| `designer.py` | `build_mock_prompt` | 398 | 16 | 16 | — | 6 | 96 | D + **N**(Ar) |
+
+Same seams as 5i. The two `designer.py` signatures are decomposed for complexity and
+carry `# noqa: PLR0913` for arity: 13 and 6 parameters are the mock-generation contract
+shared with `callbacks/designer/_mock_gen.py` (5m), and collapsing them into a params
+object would change both call sites — a design change, logged for the backlog.
+
+**Proof:** `tests/test_agents.py`, `test_designer.py`, `test_code_scanner_progress.py`,
+`test_brainstormer_chars_counter.py`, `test_streaming_characterization.py`.
+
+#### 5k — `agentifier/agentifier.py`
+
+| Function | Line | C | Br | St | L | V |
+|---|---:|---:|---:|---:|---:|:-:|
+| `_run_catalog_phase` | 1654 | 38 | 41 | 230 | **621** | D |
+| `_run_cross_cutting_phase` | 1258 | 13 | 14 | 83 | 145 | D |
+| `_handle_cc_ff_review` | 951 | — | — | 54 | 91 | D |
+
+`_run_catalog_phase` is the single largest function in the repo — 621 non-blank lines,
+C901 38. It is the Agentifier's multi-step catalog turn (scout → compose → link →
+reconcile → prioritize → tier → panel → close), each step already separated by a banner
+comment. One `_catalog_step_<n>_<name>` per banner, called in order, threading the same
+locals between them. **This sub-phase does nothing else** — expect the line-accounting
+pass alone to be substantial.
+
+**How the locals are threaded.** An explicit tuple is the default. A private dataclass
+is acceptable as extract-only *only* under all three conditions: module-private
+(underscore-prefixed, absent from `__all__`), never persisted, yielded, or returned past
+`_run_catalog_phase`, and existing solely so the helpers can share locals that already
+exist. Its fields are exactly the locals crossing a banner boundary — nothing added,
+nothing renamed. **If the run finds itself designing those fields, it has drifted into
+redesign: fall back to the tuple.** Choosing the dataclass requires a justification in
+the sub-phase report naming which locals cross which boundaries and why a tuple was
+unworkable.
+
+**Proof:** `tests/agentifier/` (whole directory, incl. `test_streaming_e2e.py`),
+`tests/test_cross_cutting_relocation.py`, `tests/test_agentifier_chars_counter.py`,
+golden `render_catalog.md`.
+
+#### 5l — `agentifier/` siblings
+
+| File | Function | Line | C | Br | St | Ar | L | V |
+|---|---|---:|---:|---:|---:|---:|---:|:-:|
+| `pattern_loader.py` | `_validate_frontmatter` | 233 | 17 | 17 | — | — | 74 | **N** |
+| `composer.py` | `run` | 198 | 15 | 15 | — | — | 95 | D |
+| `grounding.py` | `render_grounding_for_prompt` | 102 | 14 | 13 | — | — | 57 | D |
+| `_seed.py` | `_build_seed_message` | 333 | 13 | 14 | — | — | 85 | D |
+| `linker.py` | `_normalize_edges` | 209 | 13 | — | — | — | 63 | D |
+| `requires_reconciler.py` | `directional_signals` | 258 | 13 | 14 | — | — | 46 | D |
+| `panel_closure.py` | `close_selection` | 65 | 12 | — | — | — | 60 | D |
+| `requires_reconciler.py` | `reconcile_requires` | 421 | 11 | — | — | — | 100 | D |
+| `requires_reconciler.py` | `_has_cycle` | 376 | 11 | — | — | — | 40 | **N** |
+| `_seed.py` | `_call_scout` | 145 | — | — | — | 7 | 26 | **N**(Ar) |
+
+- `_normalize_edges` — its docstring already lists four contract passes (self-edges,
+  dangler degrade, requires cleanup, scope normalisation); one helper per bullet.
+- `close_selection` — a fixpoint loop over two named rules; extract
+  `_apply_requires_closure(...) -> bool` and `_apply_coordinator_toggle(...) -> bool`,
+  both returning `changed`. The `while changed` loop stays.
+- `directional_signals` — three documented signals S1/S1b/S2; one helper each.
+- `render_grounding_for_prompt` — one `_served_feature_lines(feat)` for the eight
+  optional field renderings inside the loop.
+- `_validate_frontmatter` — **N**: a flat schema validator, one `if` per frontmatter
+  field, each 2–3 lines appending an error. This is the case the plan text names
+  ("a schema validator"); helpers here would be a rename, not a decomposition.
+  → `# noqa: C901, PLR0912  # flat per-field schema validation; one branch per field`.
+- `_has_cycle` — **N**: iterative DFS with an explicit colour stack; the invariant spans
+  the loop. → `# noqa: C901  # single iterative-DFS cycle detection`.
+- `_call_scout` — **N**, arity only, 7 threaded parameters. → `# noqa: PLR0913`.
+
+**Proof:** `tests/agentifier/`, `tests/test_dependency_reconciliation.py`.
+
+#### 5m — `callbacks/`
+
+| File | Function | Line | C | Br | St | Ar | L | V |
+|---|---|---:|---:|---:|---:|---:|---:|:-:|
+| `designer/_mock_gen.py` | `_start_gen` | 226 | 20 | — | 64 | 13 | 190 | D + **N**(Ar) |
+| `_chat.py` | `on_stream_poll` | 457 | 16 | 15 | — | — | 128 | D |
+| `designer/_mock_gen.py` | `_run` | 291 | 15 | 16 | — | — | 107 | D |
+| `designer/_refine.py` | `on_designer_regenerate` | 116 | — | — | — | 6 | 66 | **N**(Ar) |
+| `_setup.py` | `on_setup_connect` | 60 | — | — | — | 6 | 62 | **N**(Ar) |
+
+`on_stream_poll` is the plan's named target: a poll tick with distinct
+running / finished / errored / cancelled arms. One `_poll_<state>(...)` per arm; the
+`Output` tuple shape and every component id are frozen (Rule 4). `_start_gen` / `_run`
+are the mock-generation launcher and its thread body; cut on the same seams as
+`designer.generate_mock_streaming` (5j) but **do not** unify them here — that is 5p.
+
+The three arity-only `# noqa: PLR0913` are Dash callback signatures: the parameter list
+is the `Input`/`State` list, so it cannot be shortened without changing the callback
+registration. → `# noqa: PLR0913  # parameters are the callback's Input/State list`.
+
+**Proof:** `tests/test_callback_co_presence.py` (walks the registry against every
+layout), `test_callbacks_stream_poll.py`, `test_drain_stream.py`,
+`test_designer_wizard_register.py`, `test_streaming_characterization.py`. Callback
+registry must still count **92** (§15.5) — check by importing `spec4.app` in a
+subprocess and counting `GLOBAL_CALLBACK_MAP`.
+
+#### 5n — `layouts/`
+
+| File | Function | Line | C | Br | St | Ar | L | V |
+|---|---|---:|---:|---:|---:|---:|---:|:-:|
+| `_chat_actions.py` | `_chat_action_buttons` | 241 | 19 | 24 | 54 | — | 213 | D |
+| `__init__.py` | `_agent_select_layout` | 301 | 13 | — | — | — | 133 | D |
+| `_status_bar.py` | `_status_context` | 186 | — | — | — | 6 | 57 | **N**(Ar) |
+
+Both decompositions are per-button / per-row builders returning a component; the parent
+assembles the list in the same order. **Component ids are frozen** — every extracted
+builder keeps the id literal it already emits, and
+`tests/test_layout_contract.py` (74 tests, the Phase 1 id snapshot) is the proof.
+
+**Proof:** `tests/test_layout_contract.py`, `test_chat_action_row_emphasis.py`,
+`test_agent_select_layout.py`, `test_agent_rows.py`, `test_chat_pill_bar.py`,
+`test_entry_screens.py`. Also re-run `tests/test_import_layering.py` — 5n must add no
+edge out of `layouts`.
+
+#### 5o — root modules
+
+| File | Function | Line | C | Br | St | Ar | L | V |
+|---|---|---:|---:|---:|---:|---:|---:|:-:|
+| `llm.py` | `stream_turn` | 811 | 25 | 27 | 68 | 7 | 167 | D + **N**(Ar) |
+| `_artifacts.py` | `merge_library_additions` | 111 | 14 | 14 | — | — | 78 | D |
+| `session.py` | `_persist_artifacts` | 559 | 14 | 13 | — | — | 96 | D |
+| `providers.py` | `_fetch_models` | 111 | 13 | — | — | — | 99 | D |
+| `feature_specs.py` | `_render_graph_lines` | 474 | 13 | 13 | — | — | 44 | D |
+| `feature_specs.py` | `_render_topology` | 419 | 12 | — | — | — | 33 | D |
+| `session.py` | `_load_working_dir` | 225 | 12 | — | 51 | — | 114 | D |
+| `usage_report.py` | `render_usage_table` | 91 | 12 | — | — | — | 43 | D |
+| `project_manager.py` | `_artifact_button_state` | 431 | 13 | — | — | — | 42 | **N** |
+| `llm.py` | `_record_usage` | 414 | — | — | — | 9 | 60 | **N**(Ar) |
+| `llm.py` | `_iter_with_usage` | 498 | — | — | — | 6 | 46 | **N**(Ar) |
+| `llm.py` | `_aiter_with_usage` | 547 | — | — | — | 6 | 41 | **N**(Ar) |
+
+- `stream_turn` — the LLM turn spine; cut into request assembly, the chunk loop, and
+  usage/finish handling. The chunk loop stays whole.
+- `merge_library_additions` — extract `_libraries_map(merged)` (the wrapped/bare shape
+  locate) and `_library_entry(entry)` (the per-addition build incl. the D-PH7d join keys).
+- `render_usage_table` — extract the missing/unpriced/notes tail as `_usage_footnotes(data)`.
+- `_render_topology` / `_render_graph_lines` — extract the sub-agent loop and the
+  `tier_analysis` block respectively.
+- `_artifact_button_state` — **N**: the branches *are* the documented state machine
+  above the function, each returning a distinct `AGENT_BTN_*` constant. Splitting it
+  scatters the machine across helpers and makes the transitions unreadable.
+  → `# noqa: C901  # the branches are the documented artifact button state machine`.
+- The three arity-only `llm.py` noqas thread the LLM call parameters (model, messages,
+  tools, temperature, callbacks…) unchanged; a params object is a design change.
+
+**Proof:** `tests/test_llm.py`, `test_session.py`, `test_project_manager_golden.py`,
+`test_agent_button_state.py`, `test_feature_specs.py`, `test_usage*.py`,
+`test_cost_summary.py`, `test_streaming_characterization.py`. `project_manager.py` is
+also golden-pinned — `tests/golden/README.md` and `phase_*.md` must not move.
+
+### 27.4 The five complexity `# noqa`s, in one place
+
+| File | Function | Rule(s) | Reason |
+|---|---|---|---|
+| `agentifier/_render.py` | `_field` | C901, PLR0912 | four-way dispatch on JSON value shape, sharing a captured accumulator |
+| `agentifier/pattern_loader.py` | `_validate_frontmatter` | C901, PLR0912 | flat per-field schema validation; one branch per field |
+| `agentifier/requires_reconciler.py` | `_has_cycle` | C901 | single iterative-DFS cycle detection; the colour invariant spans the loop |
+| `agents/feature_speccer.py` | `_validate_dependencies` | C901 | single DFS back-edge pruning; the WHITE/GRAY/BLACK colour invariant spans the whole function, so any split leaves a helper callable at only one point in the traversal |
+| `project_manager.py` | `_artifact_button_state` | C901 | the branches are the documented artifact button state machine |
+
+Plus **12 `# noqa: PLR0913`** — arity cannot be reduced by extraction. Eight are
+arity-only (`_seed._call_scout` 7, `_reask.reask_for_artifact` 10,
+`callbacks/_setup.on_setup_connect` 6, `callbacks/designer/_refine.on_designer_regenerate` 6,
+`layouts/_status_bar._status_context` 6, `llm._record_usage` 9, `llm._iter_with_usage` 6,
+`llm._aiter_with_usage` 6); four sit on functions also decomposed for complexity
+(`designer.build_mock_prompt` 6, `designer.generate_mock_streaming` 13,
+`callbacks/designer/_mock_gen._start_gen` 13, `llm.stream_turn` 7).
+
+**Backlog item (not Phase 5):** the two 13-argument designer signatures and the
+10-argument reask signature want a params object. That changes call sites and is a design
+change, not cleanup — log under *Bugs found (not fixed)* / backlog.
+
+### 27.5 — 5p, the cross-cutting sweep
+
+Runs last, after every long function is settled.
+
+**a. Cross-agent duplication.** Phase 4 already lifted reask / turn-flow / stream
+helpers into `agents/_reask.py`, `_turn_flow.py`, `_seam_check.py`, so the plan's
+premise is partly spent. Measure before lifting: compare the per-consumer helpers 5f and
+5g produced, and the mock-generation seams shared between `agents/designer.py` (5j) and
+`callbacks/designer/_mock_gen.py` (5m). Lift only exact-shape matches of 10+ lines
+differing solely in constants, with the constants as parameters. **Prompt text is never
+lifted** — it stays in each agent.
+
+**b. Magic strings.** Artifact file names, session keys, state constants and component
+ids appearing as literals in more than one place become constants in
+`app_constants.py` (or a sibling). **String values stay byte-identical** — the id
+snapshot in `test_layout_contract.py` and the goldens are the check.
+
+**c. Error handling.** 3 × SIM105 (`_artifacts.py:65`, `_usage.py:357`,
+`callbacks/designer/_refine.py:316`) → `contextlib.suppress`. 2 × B904
+(`agentifier/subagents.py:181,251`) → `raise ... from err`. 1 × B007
+(`agents/designer.py:199`) → rename `root` to `_root`. 2 × SIM117
+(`websearch.py:180,189`) → merged `with`. 1 × SIM905
+(`requires_reconciler.py:84`) → list literal. Any remaining bare `except:` or
+`except Exception: pass` gets a specific exception plus a log line, or a comment saying
+why swallowing is correct.
+
+**d. `B905` — 4 sites** (`agentifier/_seed.py:380`, `agentifier/pattern_loader.py:160`,
+`callbacks/designer/_refine.py:73`, `project_manager.py:468`). Use **`strict=False`**,
+which is byte-identical to today's silent truncation. `strict=True` would raise on
+unequal lengths — a behaviour change, out of scope. Log each site as a candidate for
+`strict=True` in a separate review.
+
+**e. `ARG` — 8 in `src/`.** `agentifier/agentifier.py:1508` (`llm_config`), `:2401`
+(`user_input`); `callbacks/_chat.py:106` (`n_clicks`, `n_submit`), `:457` (`n`);
+`callbacks/designer/__init__.py:182` (`n`); `layouts/__init__.py:235` (`session`);
+`layouts/_setup.py:231` (`session`). Dash binds callback arguments positionally, so
+underscore-prefix them; where a name is part of a called-by-keyword contract (check each
+call site first), use `# noqa: ARG001` instead.
+
+**f. `tests/` per-file ignores.** 236 findings. Add to `[tool.ruff.lint.per-file-ignores]`:
+`"tests/**/*.py" = ["ARG", "SIM117", "PLR0913"]` — 173 ARG are fixture/stub parameters,
+37 SIM117 are `pytest.raises` + `patch` stacks whose nesting is deliberate, 9 PLR0913 are
+fixture-heavy signatures. Fix mechanically instead of ignoring: 8 SIM300 (yoda), 8 B905
+(`strict=False`), 1 SIM105.
+
+**g. Promote the rule sets.** With a–f done, change `pyproject.toml`
+`[tool.ruff.lint] select = ["E", "F"]` to `["E", "F", "C90", "PLR", "SIM", "B", "ARG"]`,
+carrying the per-file-ignores from (f) and keeping the existing `E501`/`E402` entries —
+in particular `"src/spec4/app.py" = ["E501", "E402"]`, which Rule 5 (D-LR1) freezes.
+From here on `ruff check src/ tests/` with the full set is the gate. Verify
+`uv run ruff check src/ tests/` returns `All checks passed!` before the sub-phase ends.
+
+**h. Type hygiene.** Replace `Any` where the actual type is known from usage. Do **not**
+introduce `TypedDict`s for the session dict — that is a design change (plan, Phase 5).
+
+### 27.6 Model and mode per sub-phase
+
+| Sub-phase | Mode | Why |
+|---|---|---|
+| 5a, 5b | Opus 5, **plan**, high | The first two renderer decompositions set the extract-only discipline for the other fourteen; the pattern they establish is reused verbatim. |
+| 5c, 5d, 5e | Opus 5, auto, high | The check that the discipline holds on smaller, fully golden-pinned surfaces before the `agents/` block opens. |
+| 5f, 5g, 5h, 5j | Opus 5, auto, high | Many functions, one shape each; mechanical once 5a–5e have set the pattern. |
+| 5i | Opus 5, **plan**, high | `phaser.run` (472) and `deployer.run` (398) — the first of the two big linear spines; the cut points need agreeing before the edit. |
+| 5k | Opus 5, **plan**, high | `_run_catalog_phase` at 621 lines, plus the tuple-vs-dataclass call above. |
+| 5l, 5m, 5n, 5o | Opus 5, auto, high | Bounded per-file work with a named test proof each. |
+| 5p | Opus 5, **plan**, high | Promoting the rule sets edits `pyproject.toml` and changes the gate itself, and it is the one sub-phase permitted to touch `tests/`. |
+
+### 27.7 Noted for Phase 7, not Phase 5
+
+**Root modules vs. packages — a 4b leftover.** Phase 4b left `_paths.py`, `_artifacts.py`,
+`_phase_markdown.py` and `_usage.py` as siblings at `src/spec4/` root, while 4c–4e gave
+the agents real packages. The visible cost is that `src/spec4/_artifacts.py` now sits
+next to `src/spec4/callbacks/_artifacts.py`, two unrelated modules one import line apart.
+Converting `project_manager` to a package the way 4c–4e did would resolve it. **This is a
+Phase 7 audit finding for a later round, not Phase 5 work** — it is a move, and Phase 5
+is extract-only. Record it; do not act on it in any sub-phase.
+
+### 27.8 What Phase 5 explicitly does not do
+
+- No rewriting. Every sub-phase is extract-only; a helper that needs a changed
+  conditional is a finding, not an edit.
+- No prompt-text changes, no artifact-format changes, no component-id changes.
+- No signature changes to reduce `PLR0913` — logged for the backlog instead.
+- No test edits in 5a–5o. A sub-phase that needs one has broken behaviour. 5p's
+  lint-only exception under `tests/` (27.2 rule 2) is the sole carve-out.
+- No module moves or renames — including the root-vs-package inconsistency in 27.7.
+- No `ruff format` run beyond what the gate already requires (the tree is format-clean
+  since 0.5a and has stayed clean through 4j).
