@@ -7,9 +7,11 @@ contract's rule 4 pins (CLEANUP_INVENTORY.md 15.2), and the reason
 ``callbacks/designer.py`` now reaches ``_open_pick_fields`` here rather than
 through the package that imports ``designer`` for registration.
 
-``_gate_agent`` is here rather than beside the gate callbacks in
-:mod:`spec4.callbacks._chat` because ``_open_pick_fields`` calls it: leaving it
-there would make this module import ``_chat`` and invert the dependency.
+``_gate_agent`` is here rather than beside the gate callbacks -- in
+:mod:`spec4.callbacks._chat` when 4g wrote this, in
+:mod:`spec4.callbacks._gate` since 4g2 -- because ``_open_pick_fields`` calls
+it: leaving it there would make this module import a sibling and invert the
+dependency.
 """
 
 from __future__ import annotations

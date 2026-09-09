@@ -32,7 +32,7 @@ class _FakeCtx:
 
 
 def _click(agent: str, session: dict[str, Any]) -> Any:
-    with patch("spec4.callbacks._chat.ctx", _FakeCtx(agent)):
+    with patch("spec4.callbacks._nav.ctx", _FakeCtx(agent)):
         return on_agent_pill_click([1], session)
 
 
@@ -134,7 +134,7 @@ class TestBlockedClickSurfacesError:
     def test_no_click_is_still_a_no_op(self, tmp_path: Any) -> None:
         """Callback fires on layout mount with n_clicks 0 — must not set an
         error before the user has clicked anything."""
-        with patch("spec4.callbacks._chat.ctx", _FakeCtx("phaser")):
+        with patch("spec4.callbacks._nav.ctx", _FakeCtx("phaser")):
             result = on_agent_pill_click([0], _session(str(tmp_path)))
 
         assert result == (no_update, no_update)

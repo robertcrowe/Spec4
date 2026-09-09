@@ -9,8 +9,9 @@ it, ``stream_counting`` is its pass-through counterpart for agents that only
 need the token count, and ``drain_stream`` consumes a generator for its return
 value alone.
 
-Split out of ``_utils.py`` in Phase 4a. ``_utils`` re-exports every name below
-under both this spelling and its original underscore alias.
+Split out of ``_utils.py`` in Phase 4a; Phase 4j moved every importer here and
+retired the ``_utils`` facade, so this module is now the one place these names
+are imported from.
 """
 
 from __future__ import annotations
@@ -96,7 +97,7 @@ def reask_for_artifact(
     total onto ``session`` keeps the chars counter climbing through the drain
     (D-PH9 / D-SC-P1) instead of freezing for its duration.
     """
-    # Imported here rather than at module scope: `_utils` is the shared leaf that
+    # Imported here rather than at module scope: `_reask` is a shared leaf that
     # every agent imports, and pulling the litellm/mcp stack in at its import time
     # would make that cost unconditional for callers that never re-ask.
     from spec4 import llm

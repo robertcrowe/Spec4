@@ -21,7 +21,7 @@ from typing import Any
 
 import dash_mantine_components as dmc
 
-from spec4.agents._utils import _stream_suppressing_json
+from spec4.agents._reask import stream_suppressing_json
 from spec4.app_constants import STATE_AGENTIFIER_COMPLETE
 from spec4.layouts._chat import (
     _TOKEN_COUNTER_AGENTS,
@@ -98,7 +98,7 @@ class TestSeed:
                 seen.append(session.get("_stream_received_chars", -1))
                 yield part
 
-        list(_stream_suppressing_json(watched(), session, seed=300))
+        list(stream_suppressing_json(watched(), session, seed=300))
         assert seen == [300, 303]
         assert session["_stream_received_chars"] == 307
 
@@ -111,17 +111,17 @@ class TestSeed:
         }
         before = len(displayed)
 
-        list(_stream_suppressing_json(_chunks("```json\n", "{}"), session, seed=before))
+        list(stream_suppressing_json(_chunks("```json\n", "{}"), session, seed=before))
 
         assert session["_stream_received_chars"] >= before
 
     def test_unseeded_behaviour_is_unchanged(self) -> None:
         session: dict[str, Any] = {"_stream_received_chars": 99999}
-        assert list(_stream_suppressing_json(_chunks(), session)) == []
+        assert list(stream_suppressing_json(_chunks(), session)) == []
         assert session["_stream_received_chars"] == 0
 
     def test_seed_does_not_leak_without_a_session(self) -> None:
-        out = list(_stream_suppressing_json(_chunks("Hi"), None, seed=500))
+        out = list(stream_suppressing_json(_chunks("Hi"), None, seed=500))
         assert "".join(out) == "Hi"
 
 

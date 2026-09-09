@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._utils import _extract_json_block
+from spec4.agents._turn_flow import extract_json_block
 
 
 def revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -164,7 +164,7 @@ def _normalise_stack_shape(spec: dict[str, Any]) -> dict[str, Any]:
 
 def _extract_stack_json(text: str) -> dict[str, Any] | None:
     """Extract a JSON stack spec from a fenced code block in the LLM response."""
-    data = _extract_json_block(text)
+    data = extract_json_block(text)
     if data is None:
         return None
     if "stack" not in data and "stack_spec" not in data:

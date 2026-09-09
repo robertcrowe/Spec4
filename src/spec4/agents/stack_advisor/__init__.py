@@ -12,15 +12,13 @@ self-contained concerns into siblings, one module each:
 * :mod:`spec4.agents.stack_advisor._render` -- ``_format_stack_as_text`` and
   the helpers it renders through.
 
-The import path ``spec4.agents.stack_advisor`` is unchanged, and every name the
-split moved is re-exported below, so no importer changed when the code moved --
-import from here or from the owning module, both resolve to the same object.
-``__all__`` is load-bearing rather than decorative: ``[tool.mypy] strict``
-implies ``no_implicit_reexport``, so without it a re-exported name could not be
-imported from this module at all. ``_extract_json_block`` and
-``_render_references`` are listed there for the same reason: they were
-attributes of the pre-split module, they are now used only by the siblings that
-took the code needing them, and the re-export keeps the attribute surface whole.
+The import path ``spec4.agents.stack_advisor`` is unchanged. Phase 4j then
+moved every importer onto the owning module and dropped the re-exports
+nothing reached through here, so what is listed below is exactly the set some
+importer outside the owning module still needs. ``__all__`` is
+load-bearing rather than decorative: ``[tool.mypy] strict`` implies
+``no_implicit_reexport``, so without it a re-exported name could not be
+imported from this module at all.
 """
 
 from __future__ import annotations
@@ -30,73 +28,46 @@ from collections.abc import Generator
 from typing import Any
 
 from spec4 import project_manager, llm, websearch
-from spec4.agents._utils import (
-    _abandon_reask,
-    _ai_features_for_stack,
-    _artifact_fallback,
-    _artifact_reask_prompt,
-    _artifact_reask_status,
-    _drop_orphan_or_route_to_fresh_start,
-    _extract_json_block,
-    _design_manifest_for_stack,
-    _feature_specs_for_stack,
-    _load_design_manifest,
-    _last_assistant_text,
-    _maybe_inject_resume_summary,
-    _maybe_inject_staleness_question,
-    _reask_for_artifact,
-    _render_references,
-    _replay_last_assistant,
-    _stream_suppressing_json,
-    _suppressed_as_artifact,
+from spec4.agents._feature_context import ai_features_for_stack, feature_specs_for_stack
+from spec4.agents._reask import (
+    abandon_reask,
+    artifact_fallback,
+    artifact_reask_prompt,
+    artifact_reask_status,
+    reask_for_artifact,
+    stream_suppressing_json,
+    suppressed_as_artifact,
+)
+from spec4.agents._stack_context import (
+    design_manifest_for_stack,
+    load_design_manifest,
+)
+from spec4.agents._turn_flow import (
+    drop_orphan_or_route_to_fresh_start,
+    last_assistant_text,
+    maybe_inject_resume_summary,
+    maybe_inject_staleness_question,
+    replay_last_assistant,
 )
 from spec4.app_constants import STATE_STACK_COMPLETE
 
 from spec4.agents.stack_advisor._prompt import SYSTEM_PROMPT
-from spec4.agents.stack_advisor._render import (
-    _as_ids,
-    _as_list,
-    _format_stack_as_text,
-    _ID_KEYS,
-    _ID_LABELS,
-    _label,
-    _render_any,
-    _render_entry_links,
-    _render_library_entries,
-    _render_rest,
-    _scalar_text,
-    _TOP_LEVEL_HANDLED,
-)
+from spec4.agents.stack_advisor._render import _format_stack_as_text
 from spec4.agents.stack_advisor._stack_shape import (
     _extract_stack_json,
-    _keyed_from_list,
     _normalise_stack_shape,
     build_revision_note,
     revision_delta,
 )
 
 __all__ = [
-    "_as_ids",
-    "_as_list",
     "build_revision_note",
-    "_extract_json_block",
     "_extract_stack_json",
     "_format_stack_as_text",
-    "_ID_KEYS",
-    "_ID_LABELS",
-    "_keyed_from_list",
-    "_label",
     "_normalise_stack_shape",
-    "_render_any",
-    "_render_entry_links",
-    "_render_library_entries",
-    "_render_references",
-    "_render_rest",
     "revision_delta",
     "run",
-    "_scalar_text",
     "SYSTEM_PROMPT",
-    "_TOP_LEVEL_HANDLED",
 ]
 
 
@@ -114,20 +85,20 @@ def run(
         session["stack_advisor_messages"] = []
 
     messages = session["stack_advisor_messages"]
-    user_input = _drop_orphan_or_route_to_fresh_start(messages, user_input)
+    user_input = drop_orphan_or_route_to_fresh_start(messages, user_input)
 
     if user_input is None:
         if messages:
-            stale_q = _maybe_inject_staleness_question(
+            stale_q = maybe_inject_staleness_question(
                 session, "stack_advisor", messages
             )
             if stale_q is not None:
                 yield stale_q
                 return
-            if not _maybe_inject_resume_summary(
+            if not maybe_inject_resume_summary(
                 session, "stack_advisor", messages, STATE_STACK_COMPLETE
             ):
-                yield from _replay_last_assistant(messages)
+                yield from replay_last_assistant(messages)
                 return
             # Resume summary injected — fall through to LLM call.
         else:
@@ -143,13 +114,13 @@ def run(
                 else None
             )
             ai_features_block = (
-                _ai_features_for_stack(ai_features, current_version) + "\n"
+                ai_features_for_stack(ai_features, current_version) + "\n"
                 if ai_features
                 else ""
             )
             feature_specs = session.get("feature_specs")
             spine_block = (
-                _feature_specs_for_stack(feature_specs, ai_features) + "\n\n"
+                feature_specs_for_stack(feature_specs, ai_features) + "\n\n"
                 if feature_specs
                 else ""
             )
@@ -159,7 +130,7 @@ def run(
                 if working_dir and current_version is not None
                 else None
             )
-            design_ctx = _design_manifest_for_stack(_load_design_manifest(design_dir))
+            design_ctx = design_manifest_for_stack(load_design_manifest(design_dir))
             design_block = f"{design_ctx}\n\n" if design_ctx else ""
 
             vision_block = (
@@ -259,7 +230,7 @@ def run(
     search_cfg = websearch.from_session(session)
     system = llm.build_system_prompt(SYSTEM_PROMPT, search_cfg)
 
-    yield from _stream_suppressing_json(
+    yield from stream_suppressing_json(
         llm.stream_turn(
             system,
             messages,
@@ -275,9 +246,9 @@ def run(
         ),
     )
 
-    raw_reply = _last_assistant_text(messages)
+    raw_reply = last_assistant_text(messages)
     stack_spec = _extract_stack_json(raw_reply)
-    if stack_spec is None and _suppressed_as_artifact(raw_reply):
+    if stack_spec is None and suppressed_as_artifact(raw_reply):
         # D-SA-P3 (the D-SC-P3 fix, applied here): `_extract_stack_json` returns
         # None both for "no JSON here, still conversing" and for "the artifact
         # block came back unreadable". The two look identical from here but are
@@ -285,24 +256,24 @@ def run(
         # screen, so the unreadable case ends the turn with an empty bubble, no
         # STACK_COMPLETE, and no stack.json — the developer sees the finalize
         # step do nothing at all. Re-ask once, and if that fails too, say so.
-        correction = _artifact_reask_prompt("stack specification")
-        yield from _reask_for_artifact(
+        correction = artifact_reask_prompt("stack specification")
+        yield from reask_for_artifact(
             system=system,
             msgs=messages,
             llm_config=llm_config,
             search_config=search_cfg,
             agent_name="stack_advisor",
             correction=correction,
-            status_line=_artifact_reask_status("stack specification"),
+            status_line=artifact_reask_status("stack specification"),
             session=session,
             seed=len(raw_reply),
         )
-        stack_spec = _extract_stack_json(_last_assistant_text(messages))
+        stack_spec = _extract_stack_json(last_assistant_text(messages))
         if stack_spec is None:
-            _abandon_reask(
+            abandon_reask(
                 messages,
                 correction,
-                _artifact_fallback("stack recommendation"),
+                artifact_fallback("stack recommendation"),
                 session,
             )
     if stack_spec:

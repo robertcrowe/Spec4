@@ -13,11 +13,12 @@ self-contained concerns into siblings, one module each:
 * :mod:`spec4.agents.code_scanner._review_render` --
   ``_format_review_as_text`` and the seven section renderers.
 
-The import path ``spec4.agents.code_scanner`` is unchanged, and every name the
-split moved is re-exported below, so no importer changed when the code moved --
-import from here or from the owning module, both resolve to the same object.
-``__all__`` is load-bearing rather than decorative: ``[tool.mypy] strict``
-implies ``no_implicit_reexport``, so without it a re-exported name could not be
+The import path ``spec4.agents.code_scanner`` is unchanged. Phase 4j then
+moved every importer onto the owning module and dropped the re-exports
+nothing reached through here, so what is listed below is exactly the set some
+importer outside the owning module still needs. ``__all__`` is
+load-bearing rather than decorative: ``[tool.mypy] strict`` implies
+``no_implicit_reexport``, so without it a re-exported name could not be
 imported from this module at all.
 """
 
@@ -33,111 +34,45 @@ from spec4.agents._code_review_schema import (
     format_validation_errors_for_retry,
     validate_code_review,
 )
-from spec4.agents._utils import (
-    _drop_orphan_or_route_to_fresh_start,
-    _extract_json_block,
-    _last_assistant_text,
-    _maybe_inject_resume_summary,
-    _abandon_reask,
-    _reask_for_artifact,
-    _replay_last_assistant,
-    _stream_suppressing_json,
-    _suppressed_as_artifact,
+from spec4.agents._reask import (
+    abandon_reask,
+    reask_for_artifact,
+    stream_suppressing_json,
+    suppressed_as_artifact,
+)
+from spec4.agents._turn_flow import (
+    drop_orphan_or_route_to_fresh_start,
+    extract_json_block,
+    last_assistant_text,
+    maybe_inject_resume_summary,
+    replay_last_assistant,
 )
 from spec4.app_constants import STATE_REVIEW_COMPLETE
 
 from spec4.agents.code_scanner._prompt import SYSTEM_PROMPT
-from spec4.agents.code_scanner._review_render import (
-    _as_str_list,
-    _format_empty_review,
-    _format_review_as_text,
-    _name_label,
-    _normalize_style_for_renderer,
-    _render_ai_capabilities,
-    _render_api_surface,
-    _render_auth,
-    _render_deployment,
-    _render_env_vars,
-    _render_persistence,
-    _render_typed_notes,
-    _style_value,
-)
+from spec4.agents.code_scanner._review_render import _format_review_as_text
 from spec4.agents.code_scanner._scan import (
     _approx_tokens,
-    _CI_DIR_PARTS,
-    _CI_FILE_BASENAMES,
     _collect_files,
-    _DEPLOY_SIGNAL_FILES,
-    _ENTRYPOINT_NAME_STEMS,
-    _format_ci_block,
-    _format_deployment_signals,
-    _format_readme_block,
     _gather_project_context,
-    _is_entrypoint_candidate,
-    _MANIFEST_FILES,
-    _MAX_MANIFEST_CHARS,
-    _MAX_MANIFEST_FILE_CHARS,
-    _MAX_PRIORITY_SOURCE_FILES,
-    _MAX_README_LINES,
-    _MAX_SOURCE_SAMPLE_CHARS,
-    _MAX_SOURCE_SAMPLE_LINES,
-    _MAX_TREE_FILES,
-    _read_text_safely,
-    _README_NAMES,
-    _SKIP_DIRS,
-    _SOURCE_EXTENSIONS,
-    _TERRAFORM_DIRS,
 )
 
 __all__ = [
     "_approx_tokens",
-    "_as_str_list",
     "_build_fresh_scan_seed",
     "_build_update_scan_seed",
-    "_CI_DIR_PARTS",
-    "_CI_FILE_BASENAMES",
     "_collect_files",
-    "_DEPLOY_SIGNAL_FILES",
-    "_ENTRYPOINT_NAME_STEMS",
     "_extract_and_validate_review",
     "_extract_review_json",
-    "_format_ci_block",
-    "_format_deployment_signals",
-    "_format_empty_review",
-    "_format_readme_block",
     "_format_review_as_text",
     "_gather_project_context",
-    "_is_entrypoint_candidate",
-    "_MANIFEST_FILES",
-    "_MAX_MANIFEST_CHARS",
-    "_MAX_MANIFEST_FILE_CHARS",
-    "_MAX_PRIORITY_SOURCE_FILES",
-    "_MAX_README_LINES",
-    "_MAX_SOURCE_SAMPLE_CHARS",
-    "_MAX_SOURCE_SAMPLE_LINES",
-    "_MAX_TREE_FILES",
-    "_name_label",
-    "_normalize_style_for_renderer",
-    "_read_text_safely",
-    "_README_NAMES",
-    "_render_ai_capabilities",
-    "_render_api_surface",
-    "_render_auth",
-    "_render_deployment",
-    "_render_env_vars",
-    "_render_persistence",
-    "_render_typed_notes",
     "run",
-    "_SKIP_DIRS",
-    "_SOURCE_EXTENSIONS",
-    "_style_value",
     "SYSTEM_PROMPT",
-    "_TERRAFORM_DIRS",
 ]
 
 
 def _extract_review_json(text: str) -> dict[str, Any] | None:
-    data = _extract_json_block(text)
+    data = extract_json_block(text)
     return data if data is not None and "code_review" in data else None
 
 
@@ -159,7 +94,7 @@ def _extract_and_validate_review(
     - `(None, [])`       — no JSON found at all; the agent is still in
                           conversation, no retry needed.
     """
-    data = _extract_json_block(text)
+    data = extract_json_block(text)
     if data is None:
         stripped = text.strip()
         if stripped.startswith("{"):
@@ -236,7 +171,7 @@ def run(
         session["code_scanner_messages"] = []
 
     msgs = session["code_scanner_messages"]
-    user_input = _drop_orphan_or_route_to_fresh_start(msgs, user_input)
+    user_input = drop_orphan_or_route_to_fresh_start(msgs, user_input)
     # D-SC-P1: characters yielded as scan-progress text before the LLM stream
     # opens. Seeded into the chars counter below so it stays monotonic across
     # the scan-to-analysis handover instead of resetting to zero.
@@ -259,10 +194,10 @@ def run(
                 session["_display_override"] = display
                 yield display
                 return
-            if not _maybe_inject_resume_summary(
+            if not maybe_inject_resume_summary(
                 session, "code_scanner", msgs, STATE_REVIEW_COMPLETE
             ):
-                yield from _replay_last_assistant(msgs)
+                yield from replay_last_assistant(msgs)
                 return
         else:
             existing_review = session.get("code_review")
@@ -337,7 +272,7 @@ def run(
     else:
         msgs.append({"role": "user", "content": user_input})
 
-    yield from _stream_suppressing_json(
+    yield from stream_suppressing_json(
         llm.stream_turn(
             system,
             msgs,
@@ -352,9 +287,9 @@ def run(
         artifact_status=("Drafting the code review — this can take a few minutes…"),
     )
 
-    raw_reply = _last_assistant_text(msgs)
+    raw_reply = last_assistant_text(msgs)
     review, errors = _extract_and_validate_review(raw_reply)
-    if review is None and not errors and _suppressed_as_artifact(raw_reply):
+    if review is None and not errors and suppressed_as_artifact(raw_reply):
         # D-SC-P3: `(None, [])` normally means "no JSON here, still conversing"
         # — and that is a legitimate turn, because the reply was shown to the
         # developer. It means something else entirely when the reply opened with
@@ -381,7 +316,7 @@ def run(
         # The re-ask drains silently — its body is raw or fenced JSON the user
         # should never see — while publishing the running char total so the
         # counter does not freeze for its duration (D-SC-P1 / D-PH9).
-        yield from _reask_for_artifact(
+        yield from reask_for_artifact(
             system=system,
             msgs=msgs,
             llm_config=llm_config,
@@ -393,15 +328,15 @@ def run(
             ),
             response_format=response_format,
             session=session,
-            seed=pre_stream_chars + len(_last_assistant_text(msgs)),
+            seed=pre_stream_chars + len(last_assistant_text(msgs)),
         )
-        review, _ = _extract_and_validate_review(_last_assistant_text(msgs))
+        review, _ = _extract_and_validate_review(last_assistant_text(msgs))
         if review is None:
             # Retry failed too. Drop the synthesized correction exchange so the
             # chat history does not carry a dead-end user turn, surface a brief
             # recoverable message in place of the bad JSON, and leave
             # code_scanner_state untouched so the user can re-engage by chatting.
-            _abandon_reask(
+            abandon_reask(
                 msgs,
                 retry_user_msg,
                 "I tried to emit the structured review but it didn't pass "

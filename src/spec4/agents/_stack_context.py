@@ -7,8 +7,9 @@ derived NFR goals, and the design manifest a Designer round produced. The
 ``render_*_style`` helpers are here because the coding-style block is part of
 the stack digest rather than a surface of its own.
 
-Split out of ``_utils.py`` in Phase 4a. ``_utils`` re-exports every name below
-under both this spelling and its original underscore alias.
+Split out of ``_utils.py`` in Phase 4a; Phase 4j moved every importer here and
+retired the ``_utils`` facade, so this module is now the one place these names
+are imported from.
 """
 
 from __future__ import annotations

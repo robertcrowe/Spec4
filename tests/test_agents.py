@@ -5,7 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from spec4.agents import brainstormer, code_scanner, deployer, phaser, stack_advisor
-from spec4.agents._utils import _ai_features_for_phaser, _suppressed_as_artifact
+from spec4.agents._feature_context import ai_features_for_phaser
+from spec4.agents._reask import suppressed_as_artifact
 from spec4.app_constants import (
     STATE_DEPLOYER_COMPLETE,
     STATE_IN_PROGRESS,
@@ -2278,30 +2279,30 @@ class TestLoadDesignManifest:
     """StackAdvisor reads Designer's manifest, never the visual mock (D-SC5c)."""
 
     def test_returns_none_when_absent(self, tmp_path: Any) -> None:
-        from spec4.agents._utils import _load_design_manifest
+        from spec4.agents._stack_context import load_design_manifest
 
-        assert _load_design_manifest(tmp_path) is None
-        assert _load_design_manifest(None) is None
+        assert load_design_manifest(tmp_path) is None
+        assert load_design_manifest(None) is None
 
     def test_returns_none_when_malformed(self, tmp_path: Any) -> None:
-        from spec4.agents._utils import _load_design_manifest
+        from spec4.agents._stack_context import load_design_manifest
 
         (tmp_path / "manifest.json").write_text("{not json")
-        assert _load_design_manifest(tmp_path) is None
+        assert load_design_manifest(tmp_path) is None
 
     def test_reads_manifest(self, tmp_path: Any) -> None:
-        from spec4.agents._utils import _load_design_manifest
+        from spec4.agents._stack_context import load_design_manifest
 
         (tmp_path / "manifest.json").write_text('{"name": "X"}')
-        assert _load_design_manifest(tmp_path) == {"name": "X"}
+        assert load_design_manifest(tmp_path) == {"name": "X"}
 
     def test_mock_is_never_read(self, tmp_path: Any) -> None:
         # the mock is the coding agent's reference, handed on by path; a stack
         # choice must not depend on its markup, and must not pull it into context
-        from spec4.agents._utils import _load_design_manifest
+        from spec4.agents._stack_context import load_design_manifest
 
         (tmp_path / "mock.html").write_text("<html>marker-should-not-appear</html>")
-        assert _load_design_manifest(tmp_path) is None
+        assert load_design_manifest(tmp_path) is None
 
 
 # ---------------------------------------------------------------------------
@@ -3389,20 +3390,20 @@ class TestSuppressedAsArtifact:
     """The shared predicate behind both the suppression and the D-SC-P3 guard."""
 
     def test_fence_at_the_start(self) -> None:
-        assert _suppressed_as_artifact("```json\n{}") is True
+        assert suppressed_as_artifact("```json\n{}") is True
 
     def test_leading_whitespace_is_ignored(self) -> None:
-        assert _suppressed_as_artifact("\n\n  ```json\n{}") is True
+        assert suppressed_as_artifact("\n\n  ```json\n{}") is True
 
     def test_bare_fence_counts(self) -> None:
         """Suppression does not check the language tag, so neither does this."""
-        assert _suppressed_as_artifact("```\n{}") is True
+        assert suppressed_as_artifact("```\n{}") is True
 
     def test_prose_does_not_count(self) -> None:
-        assert _suppressed_as_artifact("Here is the review:\n```json\n{}") is False
+        assert suppressed_as_artifact("Here is the review:\n```json\n{}") is False
 
     def test_empty_does_not_count(self) -> None:
-        assert _suppressed_as_artifact("") is False
+        assert suppressed_as_artifact("") is False
 
 
 def _reply_sequence(*replies: str) -> tuple[Any, list[dict[str, Any]]]:
@@ -4312,16 +4313,16 @@ class TestAiFeaturesForPhaserRevision:
         }
 
     def test_none_version_is_unchanged_greenfield_output(self) -> None:
-        out = _ai_features_for_phaser(self._features())
+        out = ai_features_for_phaser(self._features())
         assert "AI features spec (from Agentifier)" in out
         assert "search" in out and "summarize" in out
         assert "Already-implemented AI features" not in out
 
     def test_empty_features_returns_empty(self) -> None:
-        assert _ai_features_for_phaser({"ai_features": []}, revision_version=1) == ""
+        assert ai_features_for_phaser({"ai_features": []}, revision_version=1) == ""
 
     def test_revision_partitions_by_introduced_in_version(self) -> None:
-        out = _ai_features_for_phaser(self._features(), revision_version=1)
+        out = ai_features_for_phaser(self._features(), revision_version=1)
         # New feature is in the to-phase table; old feature is established context.
         assert "New/changed AI features for this revision" in out
         assert "Already-implemented AI features" in out
@@ -4344,7 +4345,7 @@ class TestAiFeaturesForPhaserRevision:
                 {"name": "search", "tier": "rag", "introduced_in_version": 0},
             ]
         }
-        out = _ai_features_for_phaser(feats, revision_version=1)
+        out = ai_features_for_phaser(feats, revision_version=1)
         assert "Already-implemented AI features" in out
         assert "New/changed AI features for this revision" not in out
         assert "| Feature | Tier |" not in out
@@ -4352,7 +4353,7 @@ class TestAiFeaturesForPhaserRevision:
     def test_missing_introduced_in_version_treated_as_established(self) -> None:
         # Defensive: a feature without the stamp is not re-phased.
         feats = {"ai_features": [{"name": "legacy", "tier": "rag"}]}
-        out = _ai_features_for_phaser(feats, revision_version=1)
+        out = ai_features_for_phaser(feats, revision_version=1)
         assert "Already-implemented AI features" in out
         assert "New/changed AI features for this revision" not in out
 
@@ -5025,43 +5026,43 @@ class TestAiFeaturesForPhaserFullSurface:
         catalog = self._catalog()
         long_purpose = "P" * 200
         catalog["ai_features"][1]["purpose"] = long_purpose
-        out = _ai_features_for_phaser(catalog)
+        out = ai_features_for_phaser(catalog)
         assert long_purpose in out
 
     def test_spec_body_reaches_phaser(self) -> None:
-        out = _ai_features_for_phaser(self._catalog())
+        out = ai_features_for_phaser(self._catalog())
         assert "user asks" in out
         assert "`question`" in out
         assert "cites a source" in out
         assert "no hits" in out
 
     def test_tier_analysis_reaches_phaser(self) -> None:
-        out = _ai_features_for_phaser(self._catalog())
+        out = ai_features_for_phaser(self._catalog())
         assert "needs private corpus grounding" in out
         assert "single_call hallucinates" in out
 
     def test_ids_are_surfaced_as_the_join_key(self) -> None:
-        out = _ai_features_for_phaser(self._catalog())
+        out = ai_features_for_phaser(self._catalog())
         assert "`rag_answerer`" in out
         assert "exact key to use in each phase's `features` array" in out
 
     def test_infrastructure_guidance_is_present(self) -> None:
-        out = _ai_features_for_phaser(self._catalog())
+        out = ai_features_for_phaser(self._catalog())
         assert "infrastructure" in out
         assert "same phase as its first consumer or earlier" in out
 
     def test_cross_feature_guidance_is_present(self) -> None:
-        out = _ai_features_for_phaser(self._catalog())
+        out = ai_features_for_phaser(self._catalog())
         assert "shared surface" in out
 
     def test_cross_cutting_reaches_phaser_including_provider_strategy(self) -> None:
         # Phaser sees provider_strategy; the phase files deliberately do not.
-        out = _ai_features_for_phaser(self._catalog())
+        out = ai_features_for_phaser(self._catalog())
         assert "a strong general model" in out
         assert "pin prompts per release" in out
 
     def test_rejected_candidates_are_named(self) -> None:
-        out = _ai_features_for_phaser(self._catalog())
+        out = ai_features_for_phaser(self._catalog())
         assert "Voice mode" in out
         assert "do NOT plan phases for these" in out
 

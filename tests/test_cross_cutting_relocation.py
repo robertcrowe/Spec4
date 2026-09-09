@@ -12,7 +12,10 @@ the stack's ratified ``providers`` block is authoritative (D-PH6 A'), and render
 the catalog recommendation alongside it would give one decision two owners.
 """
 
-from spec4.agents._utils import _ai_features_for_deployer, _ai_features_for_stack
+from spec4.agents._feature_context import (
+    ai_features_for_deployer,
+    ai_features_for_stack,
+)
 from spec4.agents.deployer import SYSTEM_PROMPT as DEPLOYER_PROMPT
 from spec4.agents.stack_advisor import SYSTEM_PROMPT as STACK_PROMPT
 
@@ -56,12 +59,12 @@ _RELOCATED_LEAKS = ("OBS_LEAK", "EVAL_LEAK", "SAFETY_LEAK", "FEEDBACK_LEAK")
 
 class TestStackContextDropsRelocatedKeys:
     def test_provider_strategy_kept(self) -> None:
-        out = _ai_features_for_stack(_AI_FEATURES)
+        out = ai_features_for_stack(_AI_FEATURES)
         assert "Provider strategy" in out
         assert "frontier capability tier" in out
 
     def test_relocated_keys_not_surfaced(self) -> None:
-        out = _ai_features_for_stack(_AI_FEATURES)
+        out = ai_features_for_stack(_AI_FEATURES)
         for leak in _RELOCATED_LEAKS:
             assert leak not in out
 
@@ -69,12 +72,12 @@ class TestStackContextDropsRelocatedKeys:
 class TestDeployerContextDropsRelocatedKeys:
     def test_catalog_provider_recommendation_not_surfaced(self) -> None:
         """Superseded by the stack's ratified providers (D-DE7a)."""
-        out = _ai_features_for_deployer(_AI_FEATURES)
+        out = ai_features_for_deployer(_AI_FEATURES)
         assert "Provider strategy" not in out
         assert "frontier capability tier" not in out
 
     def test_relocated_keys_not_surfaced(self) -> None:
-        out = _ai_features_for_deployer(_AI_FEATURES)
+        out = ai_features_for_deployer(_AI_FEATURES)
         for leak in _RELOCATED_LEAKS:
             assert leak not in out
 

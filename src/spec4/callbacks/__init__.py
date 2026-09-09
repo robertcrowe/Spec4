@@ -1,14 +1,19 @@
 """The app's Dash callbacks -- and, by importing them, their registration.
 
 Cleanup Phase 4g split this module four ways along the banner comments it
-already carried. Importing ``spec4.callbacks`` still registers every one of
-them, because the four imports below are what run the ``@callback``
-decorators; that is the whole contract ``src/spec4/app.py`` relies on.
+already carried, and 4g2 split the largest of those four again. Importing
+``spec4.callbacks`` still registers every one of them, because the six imports
+below are what run the ``@callback`` decorators; that is the whole contract
+``src/spec4/app.py`` relies on.
 
-* :mod:`spec4.callbacks._shared` -- the helpers more than one of the four needs.
+* :mod:`spec4.callbacks._shared` -- the helpers more than one of the rest needs.
 * :mod:`spec4.callbacks._setup` -- the setup wizard's three steps.
-* :mod:`spec4.callbacks._chat` -- turns, the per-agent model gate, retries, the
-  Agentifier breadth panel, the streaming poll, and navigation between agents.
+* :mod:`spec4.callbacks._chat` -- the turn, the Agentifier breadth panel, and
+  the streaming poll.
+* :mod:`spec4.callbacks._gate` -- the per-agent model gate, and the picker the
+  retry path opens.
+* :mod:`spec4.callbacks._nav` -- the pipeline pills and the Continue buttons
+  between agents.
 * :mod:`spec4.callbacks._artifacts` -- the round tree, the Artifact View, the
   round cost strip, the Downloads and the Open buttons beside them.
 
@@ -16,13 +21,15 @@ What stays here is the app shell: the status bar that is on every screen, the
 URL router behind it, and the directory picker they both lead to. None of the
 three belongs to a single agent or a single screen.
 
-Every name the split moved is re-exported below, so no importer changed when
-the code moved -- import from here or from the owning module, both resolve to
-the same object. ``__all__`` is load-bearing rather than decorative:
-``[tool.mypy] strict`` implies ``no_implicit_reexport``, so without it a
-re-exported name could not be imported from this module at all.
+Phase 4j then moved every importer onto the owning module and dropped the
+re-exports nothing reached through here, so what is listed below is exactly
+the set some importer outside the owning module still needs. ``__all__`` is
+load-bearing rather than decorative: ``[tool.mypy] strict`` implies
+``no_implicit_reexport``, so without it a re-exported name could not be
+imported from this module at all. Registration does not depend on that list: it
+is the six imports themselves, not the names they carry, that run the decorators.
 
-The four sub-modules never import this package back. That direction is pinned
+The six sub-modules never import this package back. That direction is pinned
 by rule 4 of the layering contract (CLEANUP_INVENTORY.md 15.2, asserted in
 ``tests/test_import_layering.py``), and it is why shared helpers live in
 ``_shared`` rather than here.
@@ -45,18 +52,10 @@ from spec4.app_constants import (
     PHASE_ROOT,
 )
 from spec4.session import _default_session, _load_working_dir
-from spec4.callbacks._shared import (
-    _HOME,
-    _gate_agent,
-    _open_pick_fields,
-)
+from spec4.callbacks._shared import _HOME
 from spec4.callbacks._setup import (
-    _prefs_keep_working_dir,
-    on_provider_hint,
     on_search_provider_hint,
-    on_setup_back_model,
     on_setup_back_provider,
-    on_setup_clear,
     on_setup_connect,
     on_setup_effort_options,
     on_setup_model_continue,
@@ -64,24 +63,16 @@ from spec4.callbacks._setup import (
     on_setup_search_skip,
 )
 from spec4.callbacks._chat import (
-    _breadth_summary,
-    _DEV_MODE,
-    _EMPTY_TURN_NOTICE,
-    _gate_answered,
-    on_agent_pill_click,
-    on_agentifier_to_designer,
-    on_brainstormer_to_agentifier,
-    on_brainstormer_to_designer,
-    on_breadth_change,
-    on_breadth_submit,
     on_breadth_try_again,
     on_chat_retry,
-    on_chat_retry_model,
     on_chat_submit,
-    on_deployer_new_project,
     on_fast_forward,
     on_ff_info,
-    on_gate_back,
+    on_init_turn,
+    on_stream_poll,
+)
+from spec4.callbacks._gate import (
+    on_chat_retry_model,
     on_gate_chip,
     on_gate_connect,
     on_gate_continue,
@@ -90,25 +81,12 @@ from spec4.callbacks._chat import (
     on_gate_pick,
     on_gate_provider_change,
     on_gate_use_default,
-    on_init_turn,
-    on_phaser_to_deployer,
-    on_project_mode_choice,
-    on_rescan_project,
-    on_review_to_brainstormer,
-    on_stack_to_phaser,
-    on_stream_poll,
-    _start_retry_turn,
+)
+from spec4.callbacks._nav import (
+    on_agent_pill_click,
     _switch_agent,
 )
 from spec4.callbacks._artifacts import (
-    _ARTIFACTS_PHASE,
-    _build_phases_zip,
-    dl_code_review,
-    dl_deployment,
-    dl_features,
-    dl_phases,
-    dl_stack,
-    dl_vision,
     on_artifact_download,
     on_artifact_pane,
     on_artifact_round,
@@ -117,53 +95,30 @@ from spec4.callbacks._artifacts import (
     on_round_tree_line,
     OPEN_ARTIFACT_CALLBACKS,
     _open_target,
-    _register_open_artifact,
     select_artifact,
-    _send_json,
-    session_round,
 )
 
 __all__ = [
-    "_ARTIFACTS_PHASE",
-    "_breadth_summary",
-    "_build_phases_zip",
     "_cannot_open",
-    "_DEV_MODE",
-    "dl_code_review",
-    "dl_deployment",
-    "dl_features",
-    "dl_phases",
-    "dl_stack",
-    "dl_vision",
-    "_EMPTY_TURN_NOTICE",
     "FF_PROMPT",
-    "_gate_agent",
-    "_gate_answered",
     "_HOME",
     "_needs_restoring",
     "_no_change",
     "on_agent_pill_click",
-    "on_agentifier_to_designer",
     "on_artifact_download",
     "on_artifact_pane",
     "on_artifact_round",
-    "on_brainstormer_to_agentifier",
-    "on_brainstormer_to_designer",
-    "on_breadth_change",
-    "on_breadth_submit",
     "on_breadth_try_again",
     "on_browser_navigate",
     "on_chat_retry",
     "on_chat_retry_model",
     "on_chat_submit",
     "on_create_folder",
-    "on_deployer_new_project",
     "on_dir_path_enter",
     "on_dir_select",
     "on_dir_up",
     "on_fast_forward",
     "on_ff_info",
-    "on_gate_back",
     "on_gate_chip",
     "on_gate_connect",
     "on_gate_continue",
@@ -173,39 +128,25 @@ __all__ = [
     "on_gate_provider_change",
     "on_gate_use_default",
     "on_init_turn",
-    "on_phaser_to_deployer",
-    "on_project_mode_choice",
-    "on_provider_hint",
-    "on_rescan_project",
-    "on_review_to_brainstormer",
     "on_round_cost",
     "on_round_tree",
     "on_round_tree_line",
     "on_search_provider_hint",
-    "on_setup_back_model",
     "on_setup_back_provider",
-    "on_setup_clear",
     "on_setup_connect",
     "on_setup_effort_options",
     "on_setup_model_continue",
     "on_setup_search_connect",
     "on_setup_search_skip",
-    "on_stack_to_phaser",
     "on_status_bar",
     "on_status_bar_dir",
     "on_status_bar_setup",
     "on_stream_poll",
     "on_subdir_click",
     "OPEN_ARTIFACT_CALLBACKS",
-    "_open_pick_fields",
     "_open_target",
-    "_prefs_keep_working_dir",
-    "_register_open_artifact",
     "_resolve_root",
     "select_artifact",
-    "_send_json",
-    "session_round",
-    "_start_retry_turn",
     "_switch_agent",
 ]
 

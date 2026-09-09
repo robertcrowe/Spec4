@@ -419,9 +419,9 @@ def build_mock_prompt(
             }
         )
     if planning_context and planning_context.get("vision_statement"):
-        from spec4.agents._utils import _slim_vision_framing
+        from spec4.agents._feature_context import slim_vision_framing
 
-        framing = _slim_vision_framing(planning_context["vision_statement"])
+        framing = slim_vision_framing(planning_context["vision_statement"])
         if framing:
             parts.append(
                 {
@@ -436,9 +436,9 @@ def build_mock_prompt(
                 }
             )
     if planning_context and planning_context.get("feature_specs"):
-        from spec4.agents._utils import _feature_specs_for_designer
+        from spec4.agents._feature_context import feature_specs_for_designer
 
-        specs_note = _feature_specs_for_designer(planning_context["feature_specs"])
+        specs_note = feature_specs_for_designer(planning_context["feature_specs"])
         if specs_note:
             parts.append(
                 {
@@ -447,9 +447,9 @@ def build_mock_prompt(
                 }
             )
     if planning_context and planning_context.get("ai_features"):
-        from spec4.agents._utils import _ai_features_for_designer
+        from spec4.agents._feature_context import ai_features_for_designer
 
-        ai_note = _ai_features_for_designer(planning_context["ai_features"])
+        ai_note = ai_features_for_designer(planning_context["ai_features"])
         if ai_note:
             parts.append(
                 {

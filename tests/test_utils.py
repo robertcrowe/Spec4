@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._utils import (
-    _ai_features_for_designer,
-    _drop_orphan_trailing_user,
-    _feature_specs_for_designer,
-    _slim_vision_framing,
+from spec4.agents._feature_context import (
+    ai_features_for_designer,
+    feature_specs_for_designer,
+    slim_vision_framing,
 )
+from spec4.agents._turn_flow import drop_orphan_trailing_user
 
 
 class TestDropOrphanTrailingUser:
     def test_empty_list_no_op(self) -> None:
         msgs: list[dict[str, Any]] = []
-        assert _drop_orphan_trailing_user(msgs) == 0
+        assert drop_orphan_trailing_user(msgs) == 0
         assert msgs == []
 
     def test_well_formed_history_unchanged(self) -> None:
@@ -24,7 +24,7 @@ class TestDropOrphanTrailingUser:
             {"role": "assistant", "content": "a2"},
         ]
         original = list(msgs)
-        assert _drop_orphan_trailing_user(msgs) == 0
+        assert drop_orphan_trailing_user(msgs) == 0
         assert msgs == original
 
     def test_drops_single_orphan_user(self) -> None:
@@ -33,7 +33,7 @@ class TestDropOrphanTrailingUser:
             {"role": "assistant", "content": "a1"},
             {"role": "user", "content": "q2 (failed before reply)"},
         ]
-        assert _drop_orphan_trailing_user(msgs) == 1
+        assert drop_orphan_trailing_user(msgs) == 1
         assert msgs == [
             {"role": "user", "content": "q1"},
             {"role": "assistant", "content": "a1"},
@@ -41,7 +41,7 @@ class TestDropOrphanTrailingUser:
 
     def test_drops_user_only_history(self) -> None:
         msgs = [{"role": "user", "content": "first try, failed"}]
-        assert _drop_orphan_trailing_user(msgs) == 1
+        assert drop_orphan_trailing_user(msgs) == 1
         assert msgs == []
 
     def test_drops_trailing_tool_and_user_chain(self) -> None:
@@ -55,7 +55,7 @@ class TestDropOrphanTrailingUser:
             {"role": "user", "content": "q2"},
             {"role": "tool", "tool_call_id": "x", "content": "tool result"},
         ]
-        assert _drop_orphan_trailing_user(msgs) == 2
+        assert drop_orphan_trailing_user(msgs) == 2
         assert msgs == [
             {"role": "user", "content": "q1"},
             {"role": "assistant", "content": "a1"},
@@ -67,7 +67,7 @@ class TestDropOrphanTrailingUser:
             {"role": "user", "content": "q1"},
             {"role": "assistant", "content": ""},
         ]
-        assert _drop_orphan_trailing_user(msgs) == 0
+        assert drop_orphan_trailing_user(msgs) == 0
         assert msgs[-1]["role"] == "assistant"
 
 
@@ -109,8 +109,8 @@ def _surface(
 
 class TestAiFeaturesForDesigner:
     def test_empty_returns_empty_string(self) -> None:
-        assert _ai_features_for_designer({}) == ""
-        assert _ai_features_for_designer({"ai_features": []}) == ""
+        assert ai_features_for_designer({}) == ""
+        assert ai_features_for_designer({"ai_features": []}) == ""
 
     def test_only_infra_and_subfeatures_returns_empty(self) -> None:
         cat = {
@@ -119,11 +119,11 @@ class TestAiFeaturesForDesigner:
                 _surface("orphan_step", scope="sub_feature", composed_under=""),
             ]
         }
-        assert _ai_features_for_designer(cat) == ""
+        assert ai_features_for_designer(cat) == ""
 
     def test_top_level_feature_becomes_surface(self) -> None:
         cat = {"ai_features": [_surface("qa", served=["answers"])]}
-        out = _ai_features_for_designer(cat)
+        out = ai_features_for_designer(cat)
         assert "### `qa`" in out
         assert "serves vision feature(s): answers" in out
 
@@ -132,7 +132,7 @@ class TestAiFeaturesForDesigner:
         # features below single_call. A scope=feature embeddings surface must
         # now appear.
         cat = {"ai_features": [_surface("repeat_detect", tier="embeddings")]}
-        assert "### `repeat_detect`" in _ai_features_for_designer(cat)
+        assert "### `repeat_detect`" in ai_features_for_designer(cat)
 
     def test_infrastructure_excluded_by_tier_or_kind(self) -> None:
         cat = {
@@ -142,7 +142,7 @@ class TestAiFeaturesForDesigner:
                 _surface("infra_b", tier="single_call", kind="infrastructure"),
             ]
         }
-        out = _ai_features_for_designer(cat)
+        out = ai_features_for_designer(cat)
         assert "`real`" in out
         assert "infra_a" not in out
         assert "infra_b" not in out
@@ -159,7 +159,7 @@ class TestAiFeaturesForDesigner:
                 ),
             ]
         }
-        out = _ai_features_for_designer(cat)
+        out = ai_features_for_designer(cat)
         # parent is a surface header; member is nested (indented), not a header
         assert "### `pipeline`" in out
         assert "### `citations`" not in out
@@ -178,14 +178,14 @@ class TestAiFeaturesForDesigner:
                 )
             ]
         }
-        out = _ai_features_for_designer(cat)
+        out = ai_features_for_designer(cat)
         assert "Purpose: purpose of qa" in out
         assert "User provides: question: the q" in out
         assert "ctx (optional)" in out
         assert "Result to show: a grounded answer" in out
 
     def test_affordance_hints_by_mode_and_authority(self) -> None:
-        stream = _ai_features_for_designer(
+        stream = ai_features_for_designer(
             {"ai_features": [_surface("s", mode="streaming", authority="autonomous")]}
         )
         assert "stream the output" in stream
@@ -193,26 +193,26 @@ class TestAiFeaturesForDesigner:
         async_cat = {
             "ai_features": [_surface("s", mode="asynchronous", authority="autonomous")]
         }
-        async_ = _ai_features_for_designer(async_cat)
+        async_ = ai_features_for_designer(async_cat)
         assert "background" in async_
 
-        confirm = _ai_features_for_designer(
+        confirm = ai_features_for_designer(
             {"ai_features": [_surface("s", authority="confirm")]}
         )
         assert "confirmation" in confirm
 
-        suggest = _ai_features_for_designer(
+        suggest = ai_features_for_designer(
             {"ai_features": [_surface("s", authority="suggest")]}
         )
         assert "suggestion the user can accept or dismiss" in suggest
 
-        multistep = _ai_features_for_designer(
+        multistep = ai_features_for_designer(
             {"ai_features": [_surface("s", tier="chained_calls")]}
         )
         assert "multi-step progress" in multistep
 
     def test_edge_state_prefers_failure_mode_then_escalation(self) -> None:
-        with_fm = _ai_features_for_designer(
+        with_fm = ai_features_for_designer(
             {
                 "ai_features": [
                     _surface(
@@ -225,7 +225,7 @@ class TestAiFeaturesForDesigner:
         )
         assert "Edge state to design for: out of scope" in with_fm
 
-        esc_only = _ai_features_for_designer(
+        esc_only = ai_features_for_designer(
             {"ai_features": [_surface("s", escalation="route to human")]}
         )
         assert "Edge state to design for: route to human" in esc_only
@@ -247,7 +247,7 @@ class TestSlimVisionFraming:
                 },
             }
         }
-        out = _slim_vision_framing(vision)
+        out = slim_vision_framing(vision)
         assert out["name"] == "App"
         assert out["purpose"] == "do things"
         assert out["ui_surface"] == "Web app"
@@ -258,18 +258,18 @@ class TestSlimVisionFraming:
         assert "references" not in out
 
     def test_flat_inner_shape(self) -> None:
-        assert _slim_vision_framing({"name": "X"}) == {"name": "X"}
+        assert slim_vision_framing({"name": "X"}) == {"name": "X"}
 
     def test_none_and_empty(self) -> None:
-        assert _slim_vision_framing(None) == {}
-        assert _slim_vision_framing({}) == {}
+        assert slim_vision_framing(None) == {}
+        assert slim_vision_framing({}) == {}
 
 
 class TestFeatureSpecsForDesigner:
     def test_empty_returns_blank(self) -> None:
-        assert _feature_specs_for_designer({}) == ""
-        assert _feature_specs_for_designer({"features": []}) == ""
-        assert _feature_specs_for_designer(None) == ""
+        assert feature_specs_for_designer({}) == ""
+        assert feature_specs_for_designer({"features": []}) == ""
+        assert feature_specs_for_designer(None) == ""
 
     def test_renders_blocks_nfr_and_vocabulary(self) -> None:
         fs = {
@@ -290,7 +290,7 @@ class TestFeatureSpecsForDesigner:
             ],
             "nfr_goals": ["sub-minute generation"],
         }
-        out = _feature_specs_for_designer(fs)
+        out = feature_specs_for_designer(fs)
         assert "### `Deck_Build`" in out
         assert "build decks" in out
         assert "a complete deck" in out
@@ -306,5 +306,5 @@ class TestFeatureSpecsForDesigner:
         # A stray catalog-only field must not surface graph lines in the
         # Designer block (include_graph=False).
         fs = {"features": [{"id": "f", "name": "F", "purpose": "p", "tier": "rag"}]}
-        out = _feature_specs_for_designer(fs)
+        out = feature_specs_for_designer(fs)
         assert "Tier:" not in out

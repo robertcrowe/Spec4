@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from spec4.agents import brainstormer
 from spec4.agents._phase_coverage import _slug as coverage_slug
-from spec4.agents._utils import slug
+from spec4.agents._feature_context import slug
 from spec4.app_constants import STATE_IN_PROGRESS, STATE_VISION_COMPLETE
 
 

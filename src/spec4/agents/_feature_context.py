@@ -8,8 +8,9 @@ per-consumer projections; ``slug`` is the id derivation that lets the two
 artifacts join at all, and ``excluded_feature_ids`` is the shared read of which
 spine features the developer's Agentifier selection took out of scope.
 
-Split out of ``_utils.py`` in Phase 4a. ``_utils`` re-exports every name below
-under both this spelling and its original underscore alias.
+Split out of ``_utils.py`` in Phase 4a; Phase 4j moved every importer here and
+retired the ``_utils`` facade, so this module is now the one place these names
+are imported from.
 """
 
 from __future__ import annotations

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from spec4 import project_manager as pm
-from spec4.agents import _utils
+from spec4.agents._turn_flow import build_revision_context
 
 
 def _make_project(tmp_path: Path) -> str:
@@ -38,7 +38,7 @@ def test_revision_context_includes_ai_features(tmp_path):
             ]
         },
     }
-    ctx = _utils._build_revision_context(session, ["AI features"])
+    ctx = build_revision_context(session, ["AI features"])
     assert "Updated AI features spec" in ctx
     assert "shopping_list_generation" in ctx
 
@@ -48,7 +48,7 @@ def test_revision_context_skips_ai_features_when_not_stale(tmp_path):
         "working_dir": str(tmp_path),
         "ai_features": {"ai_features": [{"name": "x"}]},
     }
-    ctx = _utils._build_revision_context(session, ["vision"])
+    ctx = build_revision_context(session, ["vision"])
     assert "Updated AI features spec" not in ctx
 
 

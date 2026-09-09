@@ -16,7 +16,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from spec4 import llm
-from spec4.agents._utils import _stream_suppressing_json
+from spec4.agents._reask import stream_suppressing_json
 
 _SEED = "Agent is thinking…"
 
@@ -32,7 +32,7 @@ class TestSuppressingWrapperStatus:
     def test_artifact_draw_publishes_artifact_status(self) -> None:
         session = self._session()
         out = list(
-            _stream_suppressing_json(
+            stream_suppressing_json(
                 _chunks("```json\n", '{"a": 1}\n', "```"),
                 session,
                 reply_status="replying",
@@ -45,7 +45,7 @@ class TestSuppressingWrapperStatus:
     def test_visible_reply_publishes_reply_status(self) -> None:
         session = self._session()
         out = "".join(
-            _stream_suppressing_json(
+            stream_suppressing_json(
                 _chunks("Hello", " there"),
                 session,
                 reply_status="replying",
@@ -59,7 +59,7 @@ class TestSuppressingWrapperStatus:
         # A first chunk shorter than the fence leaves the turn unclassified;
         # the generic seed must stand rather than a premature guess.
         session = self._session()
-        gen = _stream_suppressing_json(
+        gen = stream_suppressing_json(
             _chunks("`", "``json\n{}"),
             session,
             reply_status="replying",
@@ -85,12 +85,12 @@ class TestSuppressingWrapperStatus:
             session["_stream_status"] = "Searching the web: x…"
             yield '{"a": 1}```'
 
-        list(_stream_suppressing_json(chunks(), session, artifact_status="drafting"))
+        list(stream_suppressing_json(chunks(), session, artifact_status="drafting"))
         assert session["_stream_status"] == "drafting"
 
     def test_no_status_kwargs_is_a_no_op(self) -> None:
         session = self._session()
-        list(_stream_suppressing_json(_chunks("Hello there"), session))
+        list(stream_suppressing_json(_chunks("Hello there"), session))
         assert session["_stream_status"] == _SEED
 
 

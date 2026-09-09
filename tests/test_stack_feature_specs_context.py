@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._utils import _feature_specs_for_stack, slug
+from spec4.agents._feature_context import feature_specs_for_stack, slug
 
 _HEAD = "Feature specifications (from Brainstormer)"
 _VOCAB = "Domain vocabulary"
@@ -58,15 +58,15 @@ def _feature(fid: str, **extra: Any) -> dict[str, Any]:
 
 
 def test_no_specs_returns_empty() -> None:
-    assert _feature_specs_for_stack(None) == ""
-    assert _feature_specs_for_stack({"features": []}) == ""
+    assert feature_specs_for_stack(None) == ""
+    assert feature_specs_for_stack({"features": []}) == ""
 
 
 # --- every feature is rendered (AI and non-AI) -----------------------------
 
 
 def test_both_ai_and_non_ai_features_rendered() -> None:
-    out = _feature_specs_for_stack(
+    out = feature_specs_for_stack(
         _specs(_feature("semantic_search"), _feature("saved_items")),
         _catalog("semantic_search"),
     )
@@ -80,7 +80,7 @@ def test_both_ai_and_non_ai_features_rendered() -> None:
 
 
 def test_ai_feature_tagged_non_ai_untagged() -> None:
-    out = _feature_specs_for_stack(
+    out = feature_specs_for_stack(
         _specs(_feature("semantic_search"), _feature("saved_items")),
         _catalog("semantic_search"),
     )
@@ -98,12 +98,12 @@ def test_identity_without_serves_relation_does_not_tag() -> None:
             {"id": "saved_items", "name": "saved_items", "tier": "single_call"}
         ]
     }
-    out = _feature_specs_for_stack(_specs(_feature("saved_items")), catalog)
+    out = feature_specs_for_stack(_specs(_feature("saved_items")), catalog)
     assert "`saved_items` (AI)" not in out
 
 
 def test_no_catalog_tags_nothing() -> None:
-    out = _feature_specs_for_stack(_specs(_feature("saved_items")), None)
+    out = feature_specs_for_stack(_specs(_feature("saved_items")), None)
     # the header explains the (AI) tag, so assert on the feature heading itself
     assert "`saved_items` (AI)" not in out
 
@@ -120,7 +120,7 @@ def test_infra_catalog_nodes_never_tag() -> None:
             }
         ]
     }
-    out = _feature_specs_for_stack(_specs(_feature("saved_items")), catalog)
+    out = feature_specs_for_stack(_specs(_feature("saved_items")), catalog)
     assert "`saved_items` (AI)" not in out
 
 
@@ -128,7 +128,7 @@ def test_infra_catalog_nodes_never_tag() -> None:
 
 
 def test_dependencies_rendered() -> None:
-    out = _feature_specs_for_stack(
+    out = feature_specs_for_stack(
         _specs(_feature("report", dependencies=["orders", "customers"])),
         None,
     )
@@ -136,7 +136,7 @@ def test_dependencies_rendered() -> None:
 
 
 def test_no_dependencies_line_when_absent() -> None:
-    out = _feature_specs_for_stack(_specs(_feature("saved_items")), None)
+    out = feature_specs_for_stack(_specs(_feature("saved_items")), None)
     assert "depends on:" not in out
 
 
@@ -144,7 +144,7 @@ def test_no_dependencies_line_when_absent() -> None:
 
 
 def test_entities_surface_as_domain_vocabulary() -> None:
-    out = _feature_specs_for_stack(
+    out = feature_specs_for_stack(
         _specs(
             _feature("saved_items", entities=["SavedItem", "Tag"]),
             _feature("export", entities=["SavedItem", "Report"]),
@@ -159,7 +159,7 @@ def test_entities_surface_as_domain_vocabulary() -> None:
 
 
 def test_no_vocabulary_block_without_entities() -> None:
-    out = _feature_specs_for_stack(_specs(_feature("saved_items")), None)
+    out = feature_specs_for_stack(_specs(_feature("saved_items")), None)
     assert _VOCAB not in out
 
 
@@ -167,7 +167,7 @@ def test_no_vocabulary_block_without_entities() -> None:
 
 
 def test_behavioural_fields_rendered() -> None:
-    out = _feature_specs_for_stack(
+    out = feature_specs_for_stack(
         _specs(
             _feature(
                 "saved_items",
@@ -192,7 +192,7 @@ def test_nfr_goals_rendered_with_slug_keys() -> None:
         "Saved data persists reliably across app sessions and device restarts.",
         "Fare lookups complete quickly.",
     ]
-    out = _feature_specs_for_stack(_specs(_feature("saved_items"), nfr=goals), None)
+    out = feature_specs_for_stack(_specs(_feature("saved_items"), nfr=goals), None)
     assert _NFR_HEAD in out
     for g in goals:
         key = f"nfr_{slug(g.strip())}"
@@ -202,18 +202,18 @@ def test_nfr_goals_rendered_with_slug_keys() -> None:
 
 def test_nfr_key_uses_shared_slug_derivation() -> None:
     goal = "Results return in sub-second time, every time!"
-    out = _feature_specs_for_stack(_specs(_feature("x"), nfr=[goal]), None)
+    out = feature_specs_for_stack(_specs(_feature("x"), nfr=[goal]), None)
     assert f"`nfr_{slug(goal)}`" in out
 
 
 def test_no_nfr_block_when_absent() -> None:
-    out = _feature_specs_for_stack(_specs(_feature("saved_items")), None)
+    out = feature_specs_for_stack(_specs(_feature("saved_items")), None)
     assert _NFR_HEAD not in out
 
 
 def test_nfr_block_present_even_with_no_ai() -> None:
     # no-AI path: nfr goals still render (they drive non-AI stacks too)
-    out = _feature_specs_for_stack(
+    out = feature_specs_for_stack(
         _specs(_feature("fare_lookup"), nfr=["The fare table is accurate."]),
         {"ai_features": []},
     )
@@ -225,14 +225,14 @@ def test_nfr_block_present_even_with_no_ai() -> None:
 
 
 def test_product_feature_id_is_rendered_in_header() -> None:
-    out = _feature_specs_for_stack(
+    out = feature_specs_for_stack(
         _specs({"id": "adaptive_investigation", "name": "Adaptive_Investigation"}), {}
     )
     assert "id: `adaptive_investigation`" in out
 
 
 def test_id_rendered_alongside_ai_tag() -> None:
-    out = _feature_specs_for_stack(
+    out = feature_specs_for_stack(
         _specs({"id": "findings_write_up", "name": "Findings_Write_Up"}),
         _catalog("findings_write_up"),
     )
@@ -240,7 +240,7 @@ def test_id_rendered_alongside_ai_tag() -> None:
 
 
 def test_id_rendered_for_non_ai_feature() -> None:
-    out = _feature_specs_for_stack(
+    out = feature_specs_for_stack(
         _specs({"id": "fare_lookup", "name": "Fare_Lookup"}), {}
     )
     assert "### `Fare_Lookup` — id: `fare_lookup`" in out
@@ -249,7 +249,7 @@ def test_id_rendered_for_non_ai_feature() -> None:
 
 
 def test_missing_id_renders_name_only_without_dangling_label() -> None:
-    out = _feature_specs_for_stack(_specs({"name": "Nameless"}), {})
+    out = feature_specs_for_stack(_specs({"name": "Nameless"}), {})
     assert "### `Nameless`" in out
     assert "id: ``" not in out
     assert "— id:" not in out

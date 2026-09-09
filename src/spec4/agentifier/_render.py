@@ -20,7 +20,7 @@ from spec4.agentifier.composer import Composition
 from spec4.agentifier.cross_cutting_analyst import SKIPPABLE_TOPICS
 from spec4.agentifier.grounding import build_grounding
 from spec4.agentifier.prioritizer import PRIORITIES
-from spec4.agents._utils import slug
+from spec4.agents._feature_context import slug
 
 __all__ = [
     "PriorityEdits",

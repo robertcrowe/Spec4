@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._utils import _render_coding_style
+from spec4.agents._stack_context import render_coding_style
 
 
 def _as_str_list(value: Any) -> list[str]:
@@ -242,7 +242,7 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
                 f"**UI:** {' · '.join(bits)}\n" if bits else "**UI:** present\n"
             )
 
-    _render_coding_style(
+    render_coding_style(
         _normalize_style_for_renderer(cr.get("coding_style", {})), lines
     )
 

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from spec4 import project_manager
 from spec4.agents import brainstormer, feature_speccer
-from spec4.agents._utils import slug
+from spec4.agents._feature_context import slug
 from spec4.app_constants import STATE_IN_PROGRESS, STATE_VISION_COMPLETE
 from spec4.session import _default_session, _load_working_dir
 

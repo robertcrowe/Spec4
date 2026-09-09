@@ -16,11 +16,12 @@ Staleness detection and agent-select button state stay here: both are decided
 from artifact mtimes across the whole pipeline rather than from any one
 concern, so they read the other four rather than belonging to one of them.
 
-Every name the split moved is re-exported below, so no importer changed when
-the code moved -- import from here or from the owning module, both resolve to
-the same object. ``__all__`` is load-bearing rather than decorative:
-``[tool.mypy] strict`` implies ``no_implicit_reexport``, so without it a
-re-exported name could not be imported from this module at all.
+Phase 4j then moved every importer onto the owning module and dropped the
+re-exports nothing reached through here, so what is listed below is exactly
+the set some importer outside the owning module still needs. ``__all__`` is
+load-bearing rather than decorative: ``[tool.mypy] strict`` implies
+``no_implicit_reexport``, so without it a re-exported name could not be
+imported from this module at all.
 """
 
 from __future__ import annotations
@@ -67,43 +68,25 @@ from spec4._paths import (
     get_version_dir,
     latest_implemented_version,
     latest_phase_version,
-    _phase_version_dirs,
-    _PHASE_VERSION_RE,
     resolve_phase_version,
     rounds_on_disk,
-    RoundsOnDisk,
     session_is_brownfield,
 )
 from spec4._phase_markdown import (
-    _declared_ids,
     parse_phase_markdown,
-    _PHASE_FRONTMATTER_RE,
-    _phase_nfr_lines,
     _phase_spec_preamble,
-    _phase_stack_lines,
     render_phase_markdown,
 )
 from spec4._usage import (
-    _call_is_unpriced,
-    _cost_block,
     cost_summary,
-    _COST_SUMMARY_EMPTY,
     load_usage,
     round_cost,
     save_usage,
     summarize_usage,
     unpriced_calls,
-    _USAGE_COST_SOURCE,
     USAGE_FILENAME,
-    _usage_float,
-    _usage_int,
-    _USAGE_LOCK,
-    usage_rollup_name,
     _USAGE_ROLLUP_PARENT,
-    USAGE_SCHEMA_VERSION,
     usage_totals,
-    _usage_versions,
-    _write_atomic,
 )
 
 __all__ = [
@@ -117,11 +100,7 @@ __all__ = [
     "agent_button_state",
     "_artifact_button_state",
     "brownfield_new_round_pending",
-    "_call_is_unpriced",
-    "_cost_block",
     "cost_summary",
-    "_COST_SUMMARY_EMPTY",
-    "_declared_ids",
     "detect_stale_inputs",
     "directory_has_content",
     "directory_opens",
@@ -151,19 +130,13 @@ __all__ = [
     "_NON_ARTIFACT_FILES",
     "parse_phase_markdown",
     "_path_mtime",
-    "_PHASE_FRONTMATTER_RE",
-    "_phase_nfr_lines",
     "_phase_spec_preamble",
-    "_phase_stack_lines",
-    "_phase_version_dirs",
-    "_PHASE_VERSION_RE",
     "_PIPELINE_ARTIFACT_ORDER",
     "render_phase_markdown",
     "_REQUIRED_INPUTS",
     "resolve_phase_version",
     "round_cost",
     "rounds_on_disk",
-    "RoundsOnDisk",
     "save_ai_catalog",
     "save_ai_features",
     "save_code_review",
@@ -179,18 +152,10 @@ __all__ = [
     "_STALE_DEPENDENCIES",
     "summarize_usage",
     "unpriced_calls",
-    "_USAGE_COST_SOURCE",
     "USAGE_FILENAME",
-    "_usage_float",
-    "_usage_int",
-    "_USAGE_LOCK",
-    "usage_rollup_name",
     "_USAGE_ROLLUP_PARENT",
-    "USAGE_SCHEMA_VERSION",
     "usage_totals",
-    "_usage_versions",
     "_with_readme_attribution",
-    "_write_atomic",
     "_write_text_if_changed",
 ]
 

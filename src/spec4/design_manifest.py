@@ -2,7 +2,7 @@
 per-phase attach (D-PH5b).
 
 Leaf module: imports nothing from ``spec4.agents`` so ``project_manager`` can
-attach at render time without an import cycle (``agents._utils`` imports
+attach at render time without an import cycle (``agents._turn_flow`` imports
 ``project_manager``; both import from here — the ``stack_routing`` pattern).
 
 Designer's ``manifest.json`` carries surfaces with two deterministic join keys

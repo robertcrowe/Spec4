@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._utils import _ai_features_for_stack
+from spec4.agents._feature_context import ai_features_for_stack
 
 _PHANTOM = "provider/client library"
 _NEW_TAG = "NEW this revision"
@@ -40,7 +40,7 @@ def _infra(name: str) -> dict[str, Any]:
 
 
 def test_embeddings_with_infra_omits_phantom_llm_line() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(
             {"name": "emb", "tier": "embeddings", "requires": ["vector_index"]},
             _infra("vector_index"),
@@ -50,7 +50,7 @@ def test_embeddings_with_infra_omits_phantom_llm_line() -> None:
 
 
 def test_deterministic_only_omits_phantom_llm_line() -> None:
-    out = _ai_features_for_stack(_spec({"name": "clf", "tier": "deterministic"}))
+    out = ai_features_for_stack(_spec({"name": "clf", "tier": "deterministic"}))
     assert _PHANTOM not in out
 
 
@@ -58,7 +58,7 @@ def test_deterministic_only_omits_phantom_llm_line() -> None:
 
 
 def test_deterministic_feature_surfaces_knowledge_source() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(
             {
                 "name": "digest",
@@ -73,7 +73,7 @@ def test_deterministic_feature_surfaces_knowledge_source() -> None:
 
 
 def test_feature_surfaces_tool_access_detail() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(
             {
                 "name": "agent",
@@ -97,7 +97,7 @@ def test_feature_surfaces_tool_access_detail() -> None:
 
 
 def test_feature_surfaces_mechanisms() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(
             {
                 "name": "search",
@@ -113,7 +113,7 @@ def test_feature_surfaces_mechanisms() -> None:
 
 
 def test_infra_section_surfaces_vector_substrate() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(
             {
                 "name": "emb",
@@ -130,7 +130,7 @@ def test_infra_section_surfaces_vector_substrate() -> None:
 
 
 def test_infra_section_maps_consumers() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(
             {"name": "emb", "tier": "embeddings", "requires": ["vector_index"]},
             _infra("vector_index"),
@@ -140,7 +140,7 @@ def test_infra_section_maps_consumers() -> None:
 
 
 def test_no_infra_section_when_no_infra_nodes() -> None:
-    out = _ai_features_for_stack(_spec({"name": "gen", "tier": "single_call"}))
+    out = ai_features_for_stack(_spec({"name": "gen", "tier": "single_call"}))
     assert _INFRA_HEAD not in out
 
 
@@ -148,7 +148,7 @@ def test_no_infra_section_when_no_infra_nodes() -> None:
 
 
 def test_newly_introduced_tagged_in_revision() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(
             {"name": "talk", "tier": "single_call", "introduced_in_version": 1},
             {"name": "sig", "tier": "deterministic", "introduced_in_version": 1},
@@ -161,7 +161,7 @@ def test_newly_introduced_tagged_in_revision() -> None:
 
 
 def test_carried_forward_feature_not_tagged_new() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec({"name": "old", "tier": "single_call", "introduced_in_version": 0}),
         current_version=1,
     )
@@ -169,7 +169,7 @@ def test_carried_forward_feature_not_tagged_new() -> None:
 
 
 def test_only_current_version_features_tagged() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(
             {"name": "old", "tier": "single_call", "introduced_in_version": 0},
             {"name": "new", "tier": "single_call", "introduced_in_version": 1},
@@ -181,7 +181,7 @@ def test_only_current_version_features_tagged() -> None:
 
 
 def test_greenfield_version_zero_tags_nothing_new() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec({"name": "gen", "tier": "single_call", "introduced_in_version": 0}),
         current_version=0,
     )
@@ -189,7 +189,7 @@ def test_greenfield_version_zero_tags_nothing_new() -> None:
 
 
 def test_no_version_tags_nothing_new() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec({"name": "gen", "tier": "single_call", "introduced_in_version": 1})
     )
     assert _NEW_TAG not in out
@@ -203,13 +203,13 @@ def test_provider_strategy_still_surfaced() -> None:
     spec["cross_cutting"] = {
         "provider_strategy": {"recommendation": "frontier capability tier"}
     }
-    out = _ai_features_for_stack(spec)
+    out = ai_features_for_stack(spec)
     assert "Provider strategy" in out
     assert "frontier capability tier" in out
 
 
 def test_empty_features_returns_empty_string() -> None:
-    assert _ai_features_for_stack(_spec(), current_version=1) == ""
+    assert ai_features_for_stack(_spec(), current_version=1) == ""
 
 
 # --- cross-cutting strategy surfacing (prompt_versioning, tool_protocol) -----
@@ -220,7 +220,7 @@ def test_tool_protocol_strategy_surfaced() -> None:
     spec["cross_cutting"] = {
         "tool_protocol_strategy": {"recommendation": "MCP for lookup, direct for X"}
     }
-    out = _ai_features_for_stack(spec)
+    out = ai_features_for_stack(spec)
     assert "Tool protocol strategy" in out
     assert "MCP for lookup" in out
 
@@ -230,13 +230,13 @@ def test_prompt_versioning_surfaced() -> None:
     spec["cross_cutting"] = {
         "prompt_versioning": {"recommendation": "semver per-feature prompts"}
     }
-    out = _ai_features_for_stack(spec)
+    out = ai_features_for_stack(spec)
     assert "Prompt versioning" in out
     assert "semver per-feature prompts" in out
 
 
 def test_cross_cutting_strategies_absent_when_not_provided() -> None:
-    out = _ai_features_for_stack(_spec({"name": "f", "tier": "single_call"}))
+    out = ai_features_for_stack(_spec({"name": "f", "tier": "single_call"}))
     assert "Tool protocol strategy" not in out
     assert "Prompt versioning" not in out
 
@@ -261,27 +261,27 @@ def _grounded(node_id: str, *served: str, **extra: Any) -> dict[str, Any]:
 
 
 def test_scope_is_rendered_on_the_node() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec({"name": "cap", "tier": "rag", "scope": "cross_feature"})
     )
     assert "scope: cross_feature" in out
 
 
 def test_scope_omitted_when_absent() -> None:
-    out = _ai_features_for_stack(_spec({"name": "cap", "tier": "rag"}))
+    out = ai_features_for_stack(_spec({"name": "cap", "tier": "rag"}))
     assert "(rag)" in out
     assert "scope:" not in out
 
 
 def test_sub_feature_scope_rendered() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec({"name": "cap", "tier": "embeddings", "scope": "sub_feature"})
     )
     assert "scope: sub_feature" in out
 
 
 def test_served_product_feature_is_rendered() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(
             _grounded("adaptive_investigation_orchestration", "adaptive_investigation")
         )
@@ -291,7 +291,7 @@ def test_served_product_feature_is_rendered() -> None:
 
 def test_capability_id_never_stands_in_for_the_served_product_id() -> None:
     """The node id and the id it serves are different id spaces — both render."""
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(_grounded("findings_narrative_synthesis", "findings_write_up"))
     )
     assert "**findings_narrative_synthesis**" in out
@@ -299,7 +299,7 @@ def test_capability_id_never_stands_in_for_the_served_product_id() -> None:
 
 
 def test_multiple_served_features_all_rendered() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(_grounded("cap", "deck_build", "targeted_revision"))
     )
     assert "serves product feature(s): deck_build, targeted_revision" in out
@@ -308,18 +308,18 @@ def test_multiple_served_features_all_rendered() -> None:
 def test_served_ids_deduped_preserving_order() -> None:
     node = _grounded("cap", "b", "a")
     node["vision_grounding"]["served_features"].append({"id": "b", "name": "b"})
-    out = _ai_features_for_stack(_spec(node))
+    out = ai_features_for_stack(_spec(node))
     assert "serves product feature(s): b, a" in out
 
 
 def test_ungrounded_node_renders_no_serves_line() -> None:
     """Cross-cutting nodes ground nothing — absence must stay silent, not empty."""
-    out = _ai_features_for_stack(_spec({"name": "cap", "tier": "single_call"}))
+    out = ai_features_for_stack(_spec({"name": "cap", "tier": "single_call"}))
     assert "serves product feature(s)" not in out
 
 
 def test_infra_node_renders_no_serves_line() -> None:
-    out = _ai_features_for_stack(_spec(_infra("vector_index")))
+    out = ai_features_for_stack(_spec(_infra("vector_index")))
     assert "serves product feature(s)" not in out
 
 
@@ -332,12 +332,12 @@ def test_malformed_served_entries_are_skipped() -> None:
             "served_features": ["not_a_dict", {"name": "no_id"}, {"id": "ok"}]
         },
     }
-    out = _ai_features_for_stack(_spec(node))
+    out = ai_features_for_stack(_spec(node))
     assert "serves product feature(s): ok" in out
 
 
 def test_scope_and_new_revision_tag_coexist() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(
             {
                 "name": "cap",
@@ -379,7 +379,7 @@ def _rejected(*names: str) -> dict[str, Any]:
 
 
 def test_rejected_candidates_reach_stackadvisor() -> None:
-    out = _ai_features_for_stack(_rejected("Suggested_Replies_in_Three_Tones"))
+    out = ai_features_for_stack(_rejected("Suggested_Replies_in_Three_Tones"))
     assert "Suggested_Replies_in_Three_Tones" in out
     assert "Explicitly rejected by the developer" in out
 
@@ -391,7 +391,7 @@ def test_rejected_block_forbids_provisioning_a_mechanism() -> None:
     selection, which is why the shared helper is parametrised rather than reused
     verbatim.
     """
-    out = _ai_features_for_stack(_rejected("Policy_Gap_Identification"))
+    out = ai_features_for_stack(_rejected("Policy_Gap_Identification"))
     assert "provider capability" in out
     assert "infrastructure entry" in out
     assert "plan phases" not in out
@@ -404,13 +404,13 @@ def test_rejected_block_preserves_the_spine_features_ordinary_stack() -> None:
     correctly carries stores, an API and a UI and no provider. A rejected AI
     feature whose name IS an MVP spine feature must land the same way.
     """
-    out = _ai_features_for_stack(_rejected("Suggested_Replies_in_Three_Tones"))
+    out = ai_features_for_stack(_rejected("Suggested_Replies_in_Three_Tones"))
     assert "ordinary stack" in out
     assert "not built with" in out
 
 
 def test_no_rejected_block_when_nothing_was_deselected() -> None:
-    out = _ai_features_for_stack(
+    out = ai_features_for_stack(
         _spec(
             {
                 "name": "Thread_Summarization",
@@ -425,8 +425,8 @@ def test_no_rejected_block_when_nothing_was_deselected() -> None:
 
 def test_phaser_wording_is_unchanged_by_the_stack_variant() -> None:
     """The default consumer must still be Phaser's, untouched."""
-    from spec4.agents._utils import _explicitly_rejected_lines
+    from spec4.agents._feature_context import explicitly_rejected_lines
 
-    lines = _explicitly_rejected_lines(_rejected("Reply_Tone_Matching"))
+    lines = explicitly_rejected_lines(_rejected("Reply_Tone_Matching"))
     assert any("do NOT plan phases for these" in ln for ln in lines)
     assert not any("provider capability" in ln for ln in lines)

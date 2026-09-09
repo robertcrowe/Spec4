@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._utils import slug
+from spec4.agents._feature_context import slug
 
 
 def spec_by_id(feature_specs: dict[str, Any] | None) -> dict[str, dict[str, Any]]:

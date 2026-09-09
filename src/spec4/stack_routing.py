@@ -1,7 +1,7 @@
 """Deterministic stack→phase and NFR→phase joins (D-PH3 / D-PH4).
 
 Leaf module: imports nothing from ``spec4.agents`` so ``project_manager`` can
-join at render time without an import cycle (``agents._utils`` imports
+join at render time without an import cycle (``agents._turn_flow`` imports
 ``project_manager``; both import from here).
 
 Phases declare what they build in two id spaces (``features[]`` — product ids,
@@ -76,7 +76,7 @@ _STACK_SIGNAL_FIELDS = (
 
 
 def _slug(name: str) -> str:
-    """Mirror ``spec4.agents._utils.slug`` (kept local: leaf module)."""
+    """Mirror ``spec4.agents._feature_context.slug`` (kept local: leaf module)."""
     return re.sub(r"[^a-z0-9_]", "_", name.lower()) if name else ""
 
 

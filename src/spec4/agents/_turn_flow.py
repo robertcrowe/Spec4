@@ -7,8 +7,9 @@ cancelled turn leaves behind. Those edits are pure functions over
 ``msgs``/``session`` and live here; the prompts that surround them stay in each
 agent (`SPEC4_CLEANUP_PLAN.md`, Phase 5: "Prompt text is never lifted").
 
-Split out of ``_utils.py`` in Phase 4a. ``_utils`` re-exports every name below
-under both this spelling and its original underscore alias.
+Split out of ``_utils.py`` in Phase 4a; Phase 4j moved every importer here and
+retired the ``_utils`` facade, so this module is now the one place these names
+are imported from.
 """
 
 from __future__ import annotations

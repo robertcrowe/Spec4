@@ -52,7 +52,7 @@ import re
 from typing import Any
 
 from spec4.agentifier.infra_expander import INFRA_KIND
-from spec4.agents._utils import excluded_feature_ids
+from spec4.agents._feature_context import excluded_feature_ids
 
 __all__ = ["ENFORCED_PRIORITIES", "check_phase_coverage"]
 

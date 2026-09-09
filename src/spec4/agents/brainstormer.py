@@ -8,22 +8,24 @@ from typing import Any
 
 from spec4 import project_manager, llm, websearch
 from spec4.agents import feature_speccer
-from spec4.agents._utils import (
-    _abandon_reask,
-    _artifact_fallback,
-    _artifact_reask_prompt,
-    _artifact_reask_status,
-    _drop_orphan_or_route_to_fresh_start,
-    _extract_json_block,
-    _last_assistant_text,
-    _maybe_inject_resume_summary,
-    _maybe_inject_staleness_question,
-    _reask_for_artifact,
-    _render_references,
-    _replay_last_assistant,
-    _stream_suppressing_json,
-    _suppressed_as_artifact,
-    slug,
+from spec4.agents._feature_context import slug
+from spec4.agents._reask import (
+    abandon_reask,
+    artifact_fallback,
+    artifact_reask_prompt,
+    artifact_reask_status,
+    reask_for_artifact,
+    stream_suppressing_json,
+    suppressed_as_artifact,
+)
+from spec4.agents._stack_context import render_references
+from spec4.agents._turn_flow import (
+    drop_orphan_or_route_to_fresh_start,
+    extract_json_block,
+    last_assistant_text,
+    maybe_inject_resume_summary,
+    maybe_inject_staleness_question,
+    replay_last_assistant,
 )
 from spec4.app_constants import STATE_IN_PROGRESS, STATE_VISION_COMPLETE
 
@@ -238,7 +240,7 @@ Each name in `changes` MUST exactly match the name/key you use for that entry in
 
 def _extract_vision_json(text: str) -> dict[str, Any] | None:
     """Extract a JSON vision statement from a fenced code block in the LLM response."""
-    data = _extract_json_block(text)
+    data = extract_json_block(text)
     return data if data is not None and "vision_statement" in data else None
 
 
@@ -472,7 +474,7 @@ def _is_review_request(
         return False
     if (user_input or "").strip().lower() not in {"yes", "y"}:
         return False
-    return _REVIEW_OFFER_MARKER in _last_assistant_text(msgs)
+    return _REVIEW_OFFER_MARKER in last_assistant_text(msgs)
 
 
 def _render_feature_item(feat: Any, lines: list[str]) -> None:
@@ -568,7 +570,7 @@ def _format_vision_as_text(
             lines.append(f"- Future: {opt}")
         lines.append("")
 
-    _render_references(v.get("references", []), lines)
+    render_references(v.get("references", []), lines)
 
     lines.append(footer)
     return "\n".join(lines)
@@ -639,19 +641,19 @@ def run(
         session["brainstormer_messages"] = []
 
     msgs = session["brainstormer_messages"]
-    user_input = _drop_orphan_or_route_to_fresh_start(msgs, user_input)
+    user_input = drop_orphan_or_route_to_fresh_start(msgs, user_input)
     _rehydrate_vision_from_disk(session)
 
     if user_input is None:
         if msgs:
-            stale_q = _maybe_inject_staleness_question(session, "brainstormer", msgs)
+            stale_q = maybe_inject_staleness_question(session, "brainstormer", msgs)
             if stale_q is not None:
                 yield stale_q
                 return
-            if not _maybe_inject_resume_summary(
+            if not maybe_inject_resume_summary(
                 session, "brainstormer", msgs, STATE_VISION_COMPLETE
             ):
-                yield from _replay_last_assistant(msgs)
+                yield from replay_last_assistant(msgs)
                 return
             # Resume summary injected — fall through to LLM call.
         else:
@@ -772,7 +774,7 @@ def run(
     # than displayed text: the vision-finalize turn is suppressed on its way to
     # the screen (see below), so without this the counter reads 0 for the whole
     # multi-minute draw — the D-SC60 failure, which applies here identically.
-    yield from _stream_suppressing_json(
+    yield from stream_suppressing_json(
         llm.stream_turn(
             system,
             msgs,
@@ -788,30 +790,30 @@ def run(
         ),
     )
 
-    raw_reply = _last_assistant_text(msgs)
+    raw_reply = last_assistant_text(msgs)
     vision = _extract_vision_json(raw_reply)
-    if vision is None and _suppressed_as_artifact(raw_reply):
+    if vision is None and suppressed_as_artifact(raw_reply):
         # D-BR-P3 (the D-SC-P3 fix, applied here): a reply that opened with a
         # fence was suppressed on its way to the screen, so an unreadable vision
         # block ends the turn with an empty bubble, no VISION_COMPLETE, and no
         # vision.json — indistinguishable to the developer from the app hanging.
         # Re-ask once, then explain rather than finishing silently.
-        correction = _artifact_reask_prompt("vision statement")
-        yield from _reask_for_artifact(
+        correction = artifact_reask_prompt("vision statement")
+        yield from reask_for_artifact(
             system=system,
             msgs=msgs,
             llm_config=llm_config,
             search_config=search_cfg,
             agent_name="brainstormer",
             correction=correction,
-            status_line=_artifact_reask_status("vision statement"),
+            status_line=artifact_reask_status("vision statement"),
             session=session,
             seed=len(raw_reply),
         )
-        vision = _extract_vision_json(_last_assistant_text(msgs))
+        vision = _extract_vision_json(last_assistant_text(msgs))
         if vision is None:
-            _abandon_reask(
-                msgs, correction, _artifact_fallback("vision statement"), session
+            abandon_reask(
+                msgs, correction, artifact_fallback("vision statement"), session
             )
     if vision:
         working_dir = session.get("working_dir")

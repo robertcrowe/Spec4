@@ -18,11 +18,14 @@ names, and ``on_mock_stream_poll`` feeds it while a draw runs and delivers the
 finished mock in-band.
 
 The import path ``spec4.callbacks.designer`` is unchanged -- ``app.py`` imports
-it to register these callbacks -- and every name the split moved is re-exported
-below, so no importer changed when the code moved. ``__all__`` is load-bearing
-rather than decorative: ``[tool.mypy] strict`` implies ``no_implicit_reexport``,
-so without it a re-exported name could not be imported from here at all, and it
-is what keeps ``F401`` off the sibling imports that exist to register.
+it to register these callbacks. Phase 4j then moved every importer onto the
+owning module and dropped the re-exports nothing reached through here, so what
+is listed below is exactly the set some importer outside the owning module
+still needs. ``__all__`` is
+load-bearing rather than decorative: ``[tool.mypy] strict`` implies
+``no_implicit_reexport``, so without it a re-exported name could not be
+imported from this module at all. It is also what keeps ``F401``
+off the sibling imports that exist to register.
 
 ``_MOCK_BUFFERS`` below is the same dict object as ``_mock_gen.MOCK_BUFFERS``.
 ``project_manager`` and ``threading`` stay bound here because they are reached
@@ -44,39 +47,21 @@ from spec4.callbacks.designer._mock_gen import (
     _DEFAULT_EXPECTED_CHARS,
     _DEV_MODE,
     _MAX_DELIVERY_TICKS,
-    _MAX_HTML_BYTES,
     _expected_stream_chars,
     _extract_html,
-    _llm_params,
     _persist_manifest,
-    _planning_ctx,
     _start_gen,
-    logger,
 )
 from spec4.callbacks.designer._refine import (
-    _rerun_failed_draw,
     on_designer_auto_retry,
-    on_designer_refine,
-    on_designer_refine_cancel,
     on_designer_refine_image_delete,
     on_designer_refine_upload,
     on_designer_regenerate,
     on_designer_retry,
     on_designer_retry_model,
-    on_designer_revise_stale,
 )
 from spec4.callbacks.designer._wizard import (
-    _skip_to_stack_advisor,
-    on_designer_add_gui,
-    on_designer_approve,
     on_designer_carry_forward,
-    on_designer_continue_stack,
-    on_designer_generate_mock,
-    on_designer_preferences_next,
-    on_designer_screenshot_delete,
-    on_designer_screenshot_upload,
-    on_designer_skip_1,
-    on_designer_skip_2,
     on_designer_start_over,
     on_designer_step_back,
     on_designer_step2_choice,
@@ -98,36 +83,18 @@ __all__ = [
     "_DEFAULT_EXPECTED_CHARS",
     "_DEV_MODE",
     "_MAX_DELIVERY_TICKS",
-    "_MAX_HTML_BYTES",
     "_MOCK_BUFFERS",
     "_expected_stream_chars",
     "_extract_html",
-    "_llm_params",
     "_persist_manifest",
-    "_planning_ctx",
-    "_rerun_failed_draw",
-    "_skip_to_stack_advisor",
     "_start_gen",
-    "logger",
-    "on_designer_add_gui",
-    "on_designer_approve",
     "on_designer_auto_retry",
     "on_designer_carry_forward",
-    "on_designer_continue_stack",
-    "on_designer_generate_mock",
-    "on_designer_preferences_next",
-    "on_designer_refine",
-    "on_designer_refine_cancel",
     "on_designer_refine_image_delete",
     "on_designer_refine_upload",
     "on_designer_regenerate",
     "on_designer_retry",
     "on_designer_retry_model",
-    "on_designer_revise_stale",
-    "on_designer_screenshot_delete",
-    "on_designer_screenshot_upload",
-    "on_designer_skip_1",
-    "on_designer_skip_2",
     "on_designer_start_over",
     "on_designer_step2_choice",
     "on_designer_step_back",

@@ -79,7 +79,7 @@ from spec4.agentifier.spec_drafter import (  # noqa: E402
     SpecDrafterAgent,
     SpecDrafterInput,
 )
-from spec4.agents._utils import _extract_json_block  # noqa: E402
+from spec4.agents._turn_flow import extract_json_block  # noqa: E402
 
 from mechanism_scoring import (  # noqa: E402  (evals/ is a script dir)
     aggregate,
@@ -151,7 +151,7 @@ def _draft_spec(
 
     for attempt in (1, 2):  # mirrors D-AF6 in _draft_spec
         text = asyncio.run(_collect())
-        spec = _extract_json_block(text)
+        spec = extract_json_block(text)
         if not spec:
             try:
                 spec = json.loads(text.strip())

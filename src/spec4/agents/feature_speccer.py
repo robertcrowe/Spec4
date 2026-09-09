@@ -22,7 +22,9 @@ import re
 from typing import Any
 
 from spec4 import llm
-from spec4.agents._utils import _drain_stream, _extract_json_block, _set_status, slug
+from spec4.agents._feature_context import slug
+from spec4.agents._reask import drain_stream, set_status
+from spec4.agents._turn_flow import extract_json_block
 
 FEATURE_SPECS_VERSION = 1
 
@@ -245,8 +247,8 @@ def _generate(
     mid-turn, after the finalize stream published this turn's count (D-BS10).
     """
     seed = (session or {}).get("_stream_received_chars") or 0
-    _set_status(session, "Drafting behavioral specs for your features…")
-    text, _ = _drain_stream(
+    set_status(session, "Drafting behavioral specs for your features…")
+    text, _ = drain_stream(
         llm.complete_stream(
             llm_config=llm_config,
             messages=[
@@ -258,7 +260,7 @@ def _generate(
         session=session,
         seed=seed,
     )
-    return _extract_json_block(text)
+    return extract_json_block(text)
 
 
 # ---------------------------------------------------------------------------

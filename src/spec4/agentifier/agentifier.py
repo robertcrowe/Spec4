@@ -19,14 +19,19 @@ concern each, leaving the orchestrator's generator flow -- the four
 * :mod:`spec4.agentifier._ff_review` -- the Fast Forward review prompts, the
   shared ``name: instruction`` router, and the two review presenters.
 
-The import path ``spec4.agentifier.agentifier`` is unchanged, and every name the
-split moved is re-exported below with its spelling intact, so no importer
-changed when the code moved -- import from here or from the owning module, both
-resolve to the same object. ``_registry`` in particular is the same object as
-``_seed._registry``, so ``patch("spec4.agentifier.agentifier._registry.stream")``
-still reaches the live registry. ``__all__`` is load-bearing rather than
-decorative: ``[tool.mypy] strict`` implies ``no_implicit_reexport``, so without
-it a re-exported name could not be imported from this module at all.
+The import path ``spec4.agentifier.agentifier`` is unchanged, and every name
+kept below keeps the spelling it had before the split. ``_registry`` in
+particular is the same object as ``_seed._registry``, so
+``patch("spec4.agentifier.agentifier._registry.stream")`` still reaches the live
+registry, and ``_stream_suppressing_json`` is imported under its pre-4j
+underscore spelling because ``tests/agentifier/test_chars_counter_seed.py``
+patches it on this module by name. Phase 4j then moved every importer onto the
+owning module and dropped the re-exports nothing reached through here, so what
+is listed below is exactly the set some importer outside the owning module
+still needs. ``__all__`` is
+load-bearing rather than decorative: ``[tool.mypy] strict`` implies
+``no_implicit_reexport``, so without it a re-exported name could not be
+imported from this module at all.
 """
 
 from __future__ import annotations
@@ -73,37 +78,31 @@ from spec4.agentifier.tier_analyst import (
     TierAnalystOutput,
     _existing_ai_context,
 )
-from spec4.agents._utils import (
-    _abandon_reask,
-    _artifact_fallback,
-    _artifact_reask_prompt,
-    _artifact_reask_status,
-    _drain_stream,
-    _drop_orphan_or_route_to_fresh_start,
-    _extract_json_block,
-    _last_assistant_text,
-    _reask_for_artifact,
-    _replay_last_assistant,
-    _set_status,
-    _stream_suppressing_json,
-    _suppressed_as_artifact,
+from spec4.agents._reask import (
+    abandon_reask,
+    artifact_fallback,
+    artifact_reask_prompt,
+    artifact_reask_status,
+    drain_stream,
+    reask_for_artifact,
+    set_status,
+    stream_suppressing_json as _stream_suppressing_json,
+    suppressed_as_artifact,
+)
+from spec4.agents._turn_flow import (
+    drop_orphan_or_route_to_fresh_start,
+    extract_json_block,
+    last_assistant_text,
+    replay_last_assistant,
 )
 from spec4.app_constants import FF_PROMPT, STATE_AGENTIFIER_COMPLETE, STATE_IN_PROGRESS
 from spec4.agentifier._ff_review import (
-    _FF_REVISION_RE,
-    _cc_ff_review_prompt,
     _ff_sweep_cross_cutting,
     _present_cc_ff_review,
     _present_spec_ff_review,
     _route_ff_revision_lines,
-    _spec_ff_review_prompt,
 )
 from spec4.agentifier._render import (
-    PriorityEdits,
-    _CATALOG_SPEC_PROMPT,
-    _FEATURES_COMPLETE_TRANSITION,
-    _PRIORITY_EDIT_RE,
-    _VALID_PRIORITIES,
     _build_ai_features,
     _format_ai_features_complete,
     _format_catalog_as_text,
@@ -120,7 +119,6 @@ from spec4.agentifier._render import (
 from spec4.agentifier._seed import (
     _analyses_from_session,
     _analyses_to_dicts,
-    _build_registry,
     _build_seed_message,
     _call_composer,
     _call_linker,
@@ -130,11 +128,9 @@ from spec4.agentifier._seed import (
     _candidates_from_dicts,
     _candidates_from_session,
     _candidates_to_dicts,
-    _graph_placement_lines,
     _iter_async_gen,
     _registry,
     _vision_mvp_feature_names,
-    _vision_purpose,
 )
 
 #: Every name Phase 4i moved into ``_seed`` / ``_render`` / ``_ff_review``,
@@ -145,7 +141,6 @@ __all__ = [
     "_analyses_from_session",
     "_analyses_to_dicts",
     "_build_ai_features",
-    "_build_registry",
     "_build_seed_message",
     "_call_composer",
     "_call_linker",
@@ -155,10 +150,6 @@ __all__ = [
     "_candidates_from_dicts",
     "_candidates_from_session",
     "_candidates_to_dicts",
-    "_CATALOG_SPEC_PROMPT",
-    "_cc_ff_review_prompt",
-    "_FEATURES_COMPLETE_TRANSITION",
-    "_FF_REVISION_RE",
     "_ff_sweep_cross_cutting",
     "_format_ai_features_complete",
     "_format_catalog_as_text",
@@ -167,23 +158,17 @@ __all__ = [
     "_format_priority_repairs",
     "_format_priority_table",
     "_format_spec_as_text",
-    "_graph_placement_lines",
     "_iter_async_gen",
     "_merge_revision_snapshot",
     "_parse_priority_edits",
     "_present_cc_ff_review",
     "_present_spec_ff_review",
-    "_PRIORITY_EDIT_RE",
     "_registry",
     "_removed_feature_heads_up",
     "_revision_delta",
     "_route_ff_revision_lines",
-    "_spec_ff_review_prompt",
-    "_VALID_PRIORITIES",
     "_vision_mvp_feature_names",
-    "_vision_purpose",
     "ORCHESTRATOR_SYSTEM_PROMPT",
-    "PriorityEdits",
     "reset_agentifier_flow",
     "run",
 ]
@@ -399,7 +384,7 @@ def _log_composition(
 
 def _extract_catalog_json(text: str) -> dict[str, Any] | None:
     """Extract the ai_catalog JSON block from the LLM response, or None."""
-    data = _extract_json_block(text)
+    data = extract_json_block(text)
     return data if data is not None and "ai_catalog" in data else None
 
 
@@ -580,7 +565,7 @@ def _draft_spec(
 
     header = f"\n\n{action} spec for **`{feature_name}`** ({spec_index + 1}/{n})…\n\n"
     yield header
-    _set_status(session, f"{action} spec for {feature_name} ({spec_index + 1}/{n})…")
+    set_status(session, f"{action} spec for {feature_name} ({spec_index + 1}/{n})…")
 
     tiers, mechanisms = load_patterns()
     candidates_data = session.get("agentifier_candidates") or []
@@ -607,7 +592,7 @@ def _draft_spec(
             # D-PH9: drain with a live receipt counter; attempt 2 seeds from
             # the total attempt 1 left, so the count is cumulative across the
             # retry boundary (same convention as Phaser's validation retry).
-            spec_text, _ = _drain_stream(
+            spec_text, _ = drain_stream(
                 _iter_async_gen(_registry.stream("spec_drafter", spec_input)),
                 session=session,
                 seed=session.get("_stream_received_chars") or 0,
@@ -621,7 +606,7 @@ def _draft_spec(
             yield error
             return
 
-        spec = _extract_json_block(spec_text)
+        spec = extract_json_block(spec_text)
         if not spec:
             # If the LLM output raw JSON without fences, try parsing directly
             import json as _json
@@ -635,7 +620,7 @@ def _draft_spec(
         _dump_subagent_failure(session, "spec_drafter", feature_name, spec_text)
         if attempt == 1:
             yield f"Draft output for `{feature_name}` was unreadable — retrying…\n\n"
-            _set_status(session, f"Re-drafting spec for {feature_name} (retry)…")
+            set_status(session, f"Re-drafting spec for {feature_name} (retry)…")
 
     if not spec:
         error = (
@@ -751,7 +736,7 @@ def _finalize_specs(
     session["agentifier_spec_done"] = True
 
     yield "\n\nAll feature specs complete! Analysing cross-cutting system concerns…\n\n"
-    _set_status(session, "Analysing cross-cutting system concerns…")
+    set_status(session, "Analysing cross-cutting system concerns…")
 
     topics = warranted_topics(features)
     if not topics:
@@ -771,7 +756,7 @@ def _finalize_specs(
         code_review=session.get("code_review"),
     )
     try:
-        raw, _ = _drain_stream(
+        raw, _ = drain_stream(
             _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
             session=session,
             seed=session.get("_stream_received_chars") or 0,
@@ -945,7 +930,7 @@ def _extract_cross_cutting_analysis(text: str) -> dict[str, Any] | None:
     """Extract cross-cutting JSON. Handles full-analysis and single-topic formats."""
     import json as _json
 
-    data = _extract_json_block(text)
+    data = extract_json_block(text)
     if data is None:
         try:
             data = _json.loads(text.strip())
@@ -1036,9 +1021,9 @@ def _handle_cc_ff_review(
             code_review=session.get("code_review"),
         )
         yield f"\n\nRevising **{topic}**…\n\n"
-        _set_status(session, f"Revising cross-cutting topic: {topic}…")
+        set_status(session, f"Revising cross-cutting topic: {topic}…")
         try:
-            raw, _ = _drain_stream(
+            raw, _ = drain_stream(
                 _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
                 session=session,
                 seed=session.get("_stream_received_chars") or 0,
@@ -1083,7 +1068,7 @@ def _run_spec_phase(
 
     if user_input is None:
         if msgs:
-            yield from _replay_last_assistant(msgs)
+            yield from replay_last_assistant(msgs)
         else:
             # Reload with ai_catalog but no message history — start fresh
             names = ", ".join(e.get("name", "") for e in catalog_entries)
@@ -1281,7 +1266,7 @@ def _run_cross_cutting_phase(
 
     if user_input is None:
         if analysis is not None:
-            yield from _replay_last_assistant(msgs)
+            yield from replay_last_assistant(msgs)
         else:
             intro = (
                 "All feature specs are locked. "
@@ -1296,7 +1281,7 @@ def _run_cross_cutting_phase(
     # If no analysis yet (e.g. page reload lost it), re-run analyst
     if analysis is None:
         yield "\n\nRunning cross-cutting analysis…\n\n"
-        _set_status(session, "Analysing cross-cutting system concerns…")
+        set_status(session, "Analysing cross-cutting system concerns…")
         _, mechanisms = load_patterns()
         features = (session.get("ai_features") or {}).get("ai_features") or []
         topics: list[str] = session.get(
@@ -1316,7 +1301,7 @@ def _run_cross_cutting_phase(
             code_review=session.get("code_review"),
         )
         try:
-            raw, _ = _drain_stream(
+            raw, _ = drain_stream(
                 _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
                 session=session,
                 seed=session.get("_stream_received_chars") or 0,
@@ -1399,9 +1384,9 @@ def _run_cross_cutting_phase(
             code_review=session.get("code_review"),
         )
         yield f"\n\nRevising **{current_topic}**…\n\n"
-        _set_status(session, f"Revising cross-cutting topic: {current_topic}…")
+        set_status(session, f"Revising cross-cutting topic: {current_topic}…")
         try:
-            raw, _ = _drain_stream(
+            raw, _ = drain_stream(
                 _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
                 session=session,
                 seed=session.get("_stream_received_chars") or 0,
@@ -1456,7 +1441,7 @@ def _begin_priority_phase(
         "Working out what belongs in the steel thread, and what can wait…\n\n"
         "_This usually takes a few seconds._\n\n"
     )
-    _set_status(session, "Prioritizer is deciding what belongs in the steel thread…")
+    set_status(session, "Prioritizer is deciding what belongs in the steel thread…")
     if _DEV_MODE:
         print("[agentifier] calling Prioritizer…", flush=True)
 
@@ -1535,7 +1520,7 @@ def _run_priority_phase(
     )
 
     if user_input is None:
-        yield from _replay_last_assistant(msgs)
+        yield from replay_last_assistant(msgs)
         return
 
     msgs.append({"role": "user", "content": user_input})
@@ -1692,7 +1677,7 @@ def _run_catalog_phase(
 
     if user_input is None:
         if msgs:
-            yield from _replay_last_assistant(msgs)
+            yield from replay_last_assistant(msgs)
             return
 
         # Breadth selection pending (Scout already ran, awaiting developer's selection)
@@ -1803,7 +1788,7 @@ def _run_catalog_phase(
             )
             pre_stream_chars += len(_scout_banner)
             yield _scout_banner
-            _set_status(session, "Scout is scanning your vision for AI opportunities…")
+            set_status(session, "Scout is scanning your vision for AI opportunities…")
 
             if _DEV_MODE:
                 print("[agentifier] calling Scout…", flush=True)
@@ -1925,7 +1910,7 @@ def _run_catalog_phase(
                 )
                 pre_stream_chars += len(_linker_banner)
                 yield _linker_banner
-                _set_status(session, "Linker is mapping dependencies between features…")
+                set_status(session, "Linker is mapping dependencies between features…")
                 if _DEV_MODE:
                     print("[agentifier] calling Linker…", flush=True)
                 # D-AT3: seed turn-locally from the text this turn has yielded
@@ -1991,7 +1976,7 @@ def _run_catalog_phase(
             )
             pre_stream_chars += len(_composer_banner)
             yield _composer_banner
-            _set_status(session, "Composer is grouping coordinated candidates…")
+            set_status(session, "Composer is grouping coordinated candidates…")
             _input_candidates = list(candidates)  # snapshot for diagnostics
             if _DEV_MODE:
                 print("[agentifier] calling Composer…", flush=True)
@@ -2201,7 +2186,7 @@ def _run_catalog_phase(
                 _progress_line = f"- Analysing **`{_cand.name}`** ({_i}/{n_s})…\n"
                 pre_stream_chars += len(_progress_line)
                 yield _progress_line
-                _set_status(
+                set_status(
                     session,
                     f"Tier Analyst is sizing {_cand.name} ({_i}/{n_s})…",
                 )
@@ -2235,7 +2220,7 @@ def _run_catalog_phase(
         )
         pre_stream_chars += len(_done_line)
         yield _done_line
-        _set_status(session, "Preparing your feature briefing…")
+        set_status(session, "Preparing your feature briefing…")
 
         session["agentifier_candidates"] = _candidates_to_dicts(to_analyze)
         session["agentifier_analyses"] = _analyses_to_dicts(
@@ -2279,31 +2264,31 @@ def _run_catalog_phase(
         ),
     )
 
-    raw_reply = _last_assistant_text(msgs)
+    raw_reply = last_assistant_text(msgs)
     catalog = _extract_catalog_json(raw_reply)
-    if catalog is None and _suppressed_as_artifact(raw_reply):
+    if catalog is None and suppressed_as_artifact(raw_reply):
         # D-AT-P3 (the D-SC-P3 fix, applied here). The symptom differs from the
         # other agents': the catch-all override below would set the display to
         # the raw assistant text, so an unreadable catalog block lands in the
         # chat as a wall of broken JSON rather than a blank bubble — with
         # agentifier_catalog_done still False and no way forward. Re-ask once,
         # and if that fails say so instead of showing the developer the wreckage.
-        correction = _artifact_reask_prompt("AI feature catalog")
-        yield from _reask_for_artifact(
+        correction = artifact_reask_prompt("AI feature catalog")
+        yield from reask_for_artifact(
             system=system,
             msgs=msgs,
             llm_config=llm_config,
             search_config=search_cfg,
             agent_name="agentifier",
             correction=correction,
-            status_line=_artifact_reask_status("catalog"),
+            status_line=artifact_reask_status("catalog"),
             session=session,
             seed=pre_stream_chars + len(raw_reply),
         )
-        catalog = _extract_catalog_json(_last_assistant_text(msgs))
+        catalog = _extract_catalog_json(last_assistant_text(msgs))
         if catalog is None:
-            _abandon_reask(
-                msgs, correction, _artifact_fallback("AI feature catalog"), session
+            abandon_reask(
+                msgs, correction, artifact_fallback("AI feature catalog"), session
             )
     if catalog:
         session["ai_catalog"] = catalog
@@ -2317,7 +2302,7 @@ def _run_catalog_phase(
     # Always clear progress messages from the window — show only the LLM's response.
     # (The catalog case above already sets _display_override; this covers greeting turns.)
     if not session.get("_display_override"):
-        _assistant_text = _last_assistant_text(msgs)
+        _assistant_text = last_assistant_text(msgs)
         if _assistant_text:
             session["_display_override"] = _assistant_text
 
@@ -2464,7 +2449,7 @@ def _handle_reentry(
     pool = _reselection_pool_from_features(ai_features)
     if not pool:
         # Nothing to re-select (shouldn't happen for a complete project).
-        yield from _replay_last_assistant(session["agentifier_messages"])
+        yield from replay_last_assistant(session["agentifier_messages"])
         return
 
     selected = [f for f in (ai_features.get("ai_features") or []) if f.get("name")]
@@ -2524,7 +2509,7 @@ def run(
         session["agentifier_messages"] = []
 
     msgs = session["agentifier_messages"]
-    user_input = _drop_orphan_or_route_to_fresh_start(msgs, user_input)
+    user_input = drop_orphan_or_route_to_fresh_start(msgs, user_input)
 
     if not session.get("agentifier_catalog_done"):
         yield from _run_catalog_phase(user_input, session, llm_config)

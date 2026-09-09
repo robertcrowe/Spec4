@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._utils import _design_manifest_for_stack
+from spec4.agents._stack_context import design_manifest_for_stack
 
 
 def _manifest(**over: Any) -> dict[str, Any]:
@@ -51,30 +51,30 @@ def _manifest(**over: Any) -> dict[str, Any]:
 
 
 def test_no_manifest_returns_empty() -> None:
-    assert _design_manifest_for_stack(None) == ""
-    assert _design_manifest_for_stack({}) == ""
-    assert _design_manifest_for_stack({"name": "X"}) == ""
+    assert design_manifest_for_stack(None) == ""
+    assert design_manifest_for_stack({}) == ""
+    assert design_manifest_for_stack({"name": "X"}) == ""
 
 
 # --- data model: entities WITH fields (the spine has only names) ------------
 
 
 def test_entities_rendered_with_fields() -> None:
-    out = _design_manifest_for_stack(_manifest())
+    out = design_manifest_for_stack(_manifest())
     assert "Data model" in out
     assert "`Zone`: id, name" in out
     assert "`SavedTrip`: originZone, label" in out
 
 
 def test_entity_without_fields_still_named() -> None:
-    out = _design_manifest_for_stack(
+    out = design_manifest_for_stack(
         _manifest(entities=[{"name": "Bare"}], surfaces=[], screens=[])
     )
     assert "`Bare`" in out
 
 
 def test_data_model_framed_as_advisory_not_a_schema() -> None:
-    out = _design_manifest_for_stack(_manifest())
+    out = design_manifest_for_stack(_manifest())
     assert "not as a schema to adopt verbatim" in out
 
 
@@ -82,7 +82,7 @@ def test_data_model_framed_as_advisory_not_a_schema() -> None:
 
 
 def test_written_vs_read_only_split() -> None:
-    out = _design_manifest_for_stack(_manifest())
+    out = design_manifest_for_stack(_manifest())
     assert "- written: SavedTrip" in out
     assert "- read-only: Zone" in out
 
@@ -94,7 +94,7 @@ def test_entity_written_anywhere_is_not_read_only() -> None:
             {"name": "b", "reads": [], "writes": ["Trip"]},
         ]
     )
-    out = _design_manifest_for_stack(man)
+    out = design_manifest_for_stack(man)
     assert "- written: Trip" in out
     assert "read-only: Trip" not in out
 
@@ -103,7 +103,7 @@ def test_entity_written_anywhere_is_not_read_only() -> None:
 
 
 def test_screens_and_nav_rendered() -> None:
-    out = _design_manifest_for_stack(_manifest())
+    out = design_manifest_for_stack(_manifest())
     assert "2 screen(s)" in out
     assert "`tab_bar` navigation" in out
     assert "`commuter_main`" in out
@@ -111,14 +111,14 @@ def test_screens_and_nav_rendered() -> None:
 
 def test_nav_may_be_a_bare_string() -> None:
     # Designer emits nav as a dict on some draws and a plain string on others
-    out = _design_manifest_for_stack(
+    out = design_manifest_for_stack(
         _manifest(shared_layout={"nav": "top_tabs", "shell": []})
     )
     assert "`top_tabs` navigation" in out
 
 
 def test_routing_left_to_stack_advisor() -> None:
-    out = _design_manifest_for_stack(_manifest())
+    out = design_manifest_for_stack(_manifest())
     assert "your call" in out
 
 
@@ -126,7 +126,7 @@ def test_routing_left_to_stack_advisor() -> None:
 
 
 def test_surface_feature_joins_are_not_projected() -> None:
-    out = _design_manifest_for_stack(_manifest())
+    out = design_manifest_for_stack(_manifest())
     assert "implements_feature_ids" not in out
     assert "fare_lookup" not in out
     assert "catalog_surface_id" not in out

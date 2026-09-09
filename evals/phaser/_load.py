@@ -21,7 +21,7 @@ probes:
   Probes must report AMBIGUOUS as ambiguous, never silently assign a space,
   and must report an unmeasurable side as UNMEASURABLE, never silently pass.
 * **The slug convention** — ``re.sub(r"[^a-z0-9_]", "_", name.lower())``,
-  identical to ``spec4.agents._utils.slug``, used for the ``nfr_<slug>`` ids
+  identical to ``spec4.agents._feature_context.slug``, used for the ``nfr_<slug>`` ids
   (D-SC2) and the ``requires`` name→id fallback.
 * **Blunt name matching.** Stack entry names are joined to phase text by a
   word-boundary, punctuation-tolerant string match (``name_matches``). This is
@@ -45,7 +45,7 @@ _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 
 def slug(name: str) -> str:
-    """Mirror ``spec4.agents._utils.slug``."""
+    """Mirror ``spec4.agents._feature_context.slug``."""
     return re.sub(r"[^a-z0-9_]", "_", name.lower()) if name else ""
 
 

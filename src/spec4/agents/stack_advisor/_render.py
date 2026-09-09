@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._utils import _render_references
+from spec4.agents._stack_context import render_references
 
 
 def _as_list(value: Any) -> list[Any]:
@@ -372,7 +372,7 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
                 lines.append(f"- {_scalar_text(item)}")
         lines.append("")
 
-    _render_references(ss.get("references", []), lines)
+    render_references(ss.get("references", []), lines)
 
     _render_rest(ss, _TOP_LEVEL_HANDLED, lines)
 

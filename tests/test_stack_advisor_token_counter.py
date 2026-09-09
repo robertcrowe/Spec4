@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Generator
 from typing import Any
 
-from spec4.agents._utils import _stream_suppressing_json
+from spec4.agents._reask import stream_suppressing_json
 from spec4.layouts._chat import (
     _TOKEN_COUNTER_AGENTS,
     _streamed_token_count,
@@ -89,7 +89,7 @@ class TestSuppressedStreamPublishesReceipt:
     def test_suppressed_stream_yields_nothing_but_still_counts(self) -> None:
         session: dict[str, Any] = {}
         out = list(
-            _stream_suppressing_json(
+            stream_suppressing_json(
                 _chunks("```json\n", '{"stack": ', '"value"}', "\n```"),
                 session,
             )
@@ -109,7 +109,7 @@ class TestSuppressedStreamPublishesReceipt:
                 seen.append(session.get("_stream_received_chars", -1))
                 yield part
 
-        assert list(_stream_suppressing_json(watched(), session)) == []
+        assert list(stream_suppressing_json(watched(), session)) == []
         assert seen == [0, 3, 7]
         assert session["_stream_received_chars"] == 13
 
@@ -124,26 +124,26 @@ class TestSuppressedStreamPublishesReceipt:
 
     def test_visible_stream_also_counts(self) -> None:
         session: dict[str, Any] = {}
-        out = list(_stream_suppressing_json(_chunks("Hello ", "there"), session))
+        out = list(stream_suppressing_json(_chunks("Hello ", "there"), session))
         assert "".join(out) == "Hello there"
         assert session["_stream_received_chars"] == 11
 
     def test_turn_seeded_at_zero_clearing_a_stale_total(self) -> None:
         # A prior turn's total must not be read as this turn's progress.
         session: dict[str, Any] = {"_stream_received_chars": 99999}
-        assert list(_stream_suppressing_json(_chunks(), session)) == []
+        assert list(stream_suppressing_json(_chunks(), session)) == []
         assert session["_stream_received_chars"] == 0
 
     def test_empty_chunks_do_not_advance_counter(self) -> None:
         session: dict[str, Any] = {}
-        list(_stream_suppressing_json(_chunks("```", "", "", "ab"), session))
+        list(stream_suppressing_json(_chunks("```", "", "", "ab"), session))
         assert session["_stream_received_chars"] == 5
 
     def test_no_session_leaves_behaviour_unchanged(self) -> None:
         # D-SC60(b): the optional-session path. Every production caller now
         # passes one (brainstormer was the last holdout), but the default must
         # keep working for a caller that only wants the suppression.
-        out = list(_stream_suppressing_json(_chunks("Hello ", "there")))
+        out = list(stream_suppressing_json(_chunks("Hello ", "there")))
         assert "".join(out) == "Hello there"
-        suppressed = list(_stream_suppressing_json(_chunks("```json\n", "{}")))
+        suppressed = list(stream_suppressing_json(_chunks("```json\n", "{}")))
         assert suppressed == []

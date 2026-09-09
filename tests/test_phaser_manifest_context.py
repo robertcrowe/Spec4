@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._utils import _manifest_for_phaser
+from spec4.agents._stack_context import manifest_for_phaser
 
 
 def _surface(name: str, **extra: Any) -> dict[str, Any]:
@@ -31,16 +31,16 @@ def _surface(name: str, **extra: Any) -> dict[str, Any]:
 
 
 def test_absent_manifest_or_no_surfaces_returns_empty() -> None:
-    assert _manifest_for_phaser(None) == ""
-    assert _manifest_for_phaser({}) == ""
-    assert _manifest_for_phaser({"surfaces": []}) == ""
+    assert manifest_for_phaser(None) == ""
+    assert manifest_for_phaser({}) == ""
+    assert manifest_for_phaser({"surfaces": []}) == ""
 
 
 # --- screens ---------------------------------------------------------------
 
 
 def test_screens_render_audience_purpose_and_membership() -> None:
-    out = _manifest_for_phaser(
+    out = manifest_for_phaser(
         {
             "screens": [
                 {
@@ -61,7 +61,7 @@ def test_screens_render_audience_purpose_and_membership() -> None:
 
 
 def test_feature_surface_line_carries_both_join_keys() -> None:
-    out = _manifest_for_phaser(
+    out = manifest_for_phaser(
         {
             "surfaces": [
                 _surface(
@@ -87,7 +87,7 @@ def test_feature_surface_line_carries_both_join_keys() -> None:
 
 
 def test_screen_list_and_string_both_render() -> None:
-    out = _manifest_for_phaser(
+    out = manifest_for_phaser(
         {
             "surfaces": [
                 _surface("form", screen=["commuter_main", "visitor_main"]),
@@ -100,14 +100,14 @@ def test_screen_list_and_string_both_render() -> None:
 
 
 def test_empty_implements_annotated_as_scaffolding() -> None:
-    out = _manifest_for_phaser(
+    out = manifest_for_phaser(
         {"surfaces": [_surface("config_panel", implements_feature_ids=[])]}
     )
     assert "implements: (none — scaffolding, not a feature surface)" in out
 
 
 def test_null_screen_annotated_as_internal() -> None:
-    out = _manifest_for_phaser(
+    out = manifest_for_phaser(
         {"surfaces": [_surface("constraint_validation", screen=None)]}
     )
     assert "screens: (none — internal, non-UI work for its feature)" in out
@@ -117,7 +117,7 @@ def test_null_screen_annotated_as_internal() -> None:
 
 
 def test_dedup_and_placement_guidance_stated() -> None:
-    out = _manifest_for_phaser({"surfaces": [_surface("s")]})
+    out = manifest_for_phaser({"surfaces": [_surface("s")]})
     assert "Group surfaces by product-feature id" in out
     assert "ONE AI capability" in out
     assert "scaffolding" in out
@@ -125,7 +125,7 @@ def test_dedup_and_placement_guidance_stated() -> None:
 
 
 def test_entities_render_with_fields() -> None:
-    out = _manifest_for_phaser(
+    out = manifest_for_phaser(
         {
             "surfaces": [_surface("s")],
             "entities": [{"name": "Zone", "fields": ["id", "name"]}],

@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from spec4.agents._utils import _ai_features_for_stack
+from spec4.agents._feature_context import ai_features_for_stack
 
 _GENERATIVE_TIERS = {
     "single_call",
@@ -75,7 +75,7 @@ def _classify_state(catalog: dict[str, Any]) -> str:
 
 def measure(catalog: dict[str, Any]) -> dict[str, Any]:
     """Return the projection metrics for one catalog."""
-    out = _ai_features_for_stack(catalog)
+    out = ai_features_for_stack(catalog)
     feats = _feature_nodes(catalog)
     infra = _infra_nodes(catalog)
 

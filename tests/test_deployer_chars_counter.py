@@ -14,7 +14,7 @@ from typing import Any
 from unittest.mock import patch
 
 from spec4.agents import deployer
-from spec4.agents._utils import _stream_counting
+from spec4.agents._reask import stream_counting
 from spec4.app_constants import STATE_DEPLOYER_COMPLETE
 from spec4.layouts._chat import _streamed_token_count, _token_count_text
 
@@ -55,7 +55,7 @@ class TestStreamCounting:
 
     def test_yields_chunks_unchanged_and_counts(self) -> None:
         session: dict[str, Any] = {}
-        out = list(_stream_counting(iter(("Hello ", "there")), session))
+        out = list(stream_counting(iter(("Hello ", "there")), session))
         assert "".join(out) == "Hello there"
         assert session["_stream_received_chars"] == 11
 
@@ -66,25 +66,25 @@ class TestStreamCounting:
         captured: list[int] = []
 
         def _consume() -> Any:
-            captured.append((yield from _stream_counting(iter(("abc", "de")), session)))
+            captured.append((yield from stream_counting(iter(("abc", "de")), session)))
 
         list(_consume())
         assert captured == [5]
 
     def test_seed_offsets_the_total(self) -> None:
         session: dict[str, Any] = {}
-        list(_stream_counting(iter(("abc",)), session, seed=100))
+        list(stream_counting(iter(("abc",)), session, seed=100))
         assert session["_stream_received_chars"] == 103
 
     def test_turn_seeded_before_the_first_chunk(self) -> None:
         # A prior turn's total must not be read as this turn's progress.
         session: dict[str, Any] = {"_stream_received_chars": 99999}
-        list(_stream_counting(iter(()), session))
+        list(stream_counting(iter(()), session))
         assert session["_stream_received_chars"] == 0
 
     def test_empty_chunks_do_not_advance_counter(self) -> None:
         session: dict[str, Any] = {}
-        list(_stream_counting(iter(("ab", "", "", "c")), session))
+        list(stream_counting(iter(("ab", "", "", "c")), session))
         assert session["_stream_received_chars"] == 3
 
 

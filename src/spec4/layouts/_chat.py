@@ -14,11 +14,12 @@ siblings, one module each:
 ``_chat_layout`` itself stays here: it is the one function that assembles the
 three into a screen, and it belongs to none of them.
 
-Every name the split moved is re-exported below, so no importer changed when
-the code moved -- import from here or from the owning module, both resolve to
-the same object. ``__all__`` is load-bearing rather than decorative:
-``[tool.mypy] strict`` implies ``no_implicit_reexport``, so without it a
-re-exported name could not be imported from this module at all.
+Phase 4j then moved every importer onto the owning module and dropped the
+re-exports nothing reached through here, so what is listed below is exactly
+the set some importer outside the owning module still needs. ``__all__`` is
+load-bearing rather than decorative: ``[tool.mypy] strict`` implies
+``no_implicit_reexport``, so without it a re-exported name could not be
+imported from this module at all.
 
 The gate helpers come from ``spec4.layouts._llm_gate`` by name rather than as
 ``from spec4.layouts import _llm_gate``. That package import was the whole of
@@ -40,10 +41,6 @@ from spec4.layouts._chat_actions import (
     DOWNLOAD_BTN_PREFIX,
     OPEN_BTN_PREFIX,
     _chat_action_buttons,
-    _ff_controls,
-    _NO_CALLS_RECORDED,
-    _NO_TOKEN_COUNT,
-    _open_button,
     open_button_id,
     _streamed_token_count,
     _token_count_text,
@@ -54,11 +51,9 @@ from spec4.layouts._chat_panels import (
     _breadth_panel,
     _cost_summary,
     _retry_panel,
-    _RUN_COMPLETE,
 )
 from spec4.layouts._chat_status import (
     _agent_status_bar,
-    _completed_agents,
     _PILL_ACTIVE,
     _PILL_BASE,
     _PILL_DONE,
@@ -73,13 +68,8 @@ __all__ = [
     "_chat_action_buttons",
     "_chat_layout",
     "CHAT_ARTIFACTS",
-    "_completed_agents",
     "_cost_summary",
     "DOWNLOAD_BTN_PREFIX",
-    "_ff_controls",
-    "_NO_CALLS_RECORDED",
-    "_NO_TOKEN_COUNT",
-    "_open_button",
     "open_button_id",
     "OPEN_BTN_PREFIX",
     "_PILL_ACTIVE",
@@ -87,7 +77,6 @@ __all__ = [
     "_PILL_DONE",
     "_PILL_UNREACHABLE",
     "_retry_panel",
-    "_RUN_COMPLETE",
     "_streamed_token_count",
     "_token_count_text",
     "_TOKEN_COUNTER_AGENTS",

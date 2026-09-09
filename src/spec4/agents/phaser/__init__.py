@@ -14,15 +14,13 @@ self-contained concerns into siblings, one module each:
 * :mod:`spec4.agents.phaser._revision` -- the design-mock note and the
   revision delta with its phase-scoping note.
 
-The import path ``spec4.agents.phaser`` is unchanged, and every name the split
-moved is re-exported below, so no importer changed when the code moved --
-import from here or from the owning module, both resolve to the same object.
-``__all__`` is load-bearing rather than decorative: ``[tool.mypy] strict``
-implies ``no_implicit_reexport``, so without it a re-exported name could not be
-imported from this module at all. ``validate_phase`` is listed there for the
-same reason: it was an attribute of the pre-split module, it is now used only
-by the sibling that took the code needing it, and the re-export keeps the
-attribute surface whole.
+The import path ``spec4.agents.phaser`` is unchanged. Phase 4j then moved
+every importer onto the owning module and dropped the re-exports nothing
+reached through here, so what is listed below is exactly the set some importer
+outside the owning module still needs. ``__all__`` is
+load-bearing rather than decorative: ``[tool.mypy] strict`` implies
+``no_implicit_reexport``, so without it a re-exported name could not be
+imported from this module at all.
 """
 
 from __future__ import annotations
@@ -38,16 +36,17 @@ from spec4.agents._phase_schema import (
     validate_phase,
 )
 from spec4.agents._seam_check import run_seam_check
-from spec4.agents._utils import (
-    _ai_features_for_phaser,
-    _drop_orphan_or_route_to_fresh_start,
-    _feature_specs_for_phaser,
-    _last_assistant_text,
-    _manifest_for_phaser,
-    _maybe_inject_staleness_question,
-    _replay_last_assistant,
-    _set_status,
-    _stack_digest_for_phaser,
+from spec4.agents._feature_context import (
+    ai_features_for_phaser,
+    feature_specs_for_phaser,
+)
+from spec4.agents._reask import set_status
+from spec4.agents._stack_context import manifest_for_phaser, stack_digest_for_phaser
+from spec4.agents._turn_flow import (
+    drop_orphan_or_route_to_fresh_start,
+    last_assistant_text,
+    maybe_inject_staleness_question,
+    replay_last_assistant,
 )
 from spec4.app_constants import STATE_PHASES_COMPLETE
 
@@ -57,7 +56,6 @@ from spec4.agents.phaser._phase_extract import (
     _extract_and_validate_phases,
     _extract_phases,
     _format_phases_for_display,
-    _objects_with_key,
     _phase_completeness_failure,
 )
 from spec4.agents.phaser._prompt import SYSTEM_PROMPT
@@ -75,7 +73,6 @@ __all__ = [
     "_extract_phases",
     "_format_phases_for_display",
     "_load_phaser_design_note",
-    "_objects_with_key",
     "_phase_completeness_failure",
     "revision_delta",
     "run",
@@ -98,7 +95,7 @@ def run(
         session["phaser_messages"] = []
 
     messages = session["phaser_messages"]
-    user_input = _drop_orphan_or_route_to_fresh_start(messages, user_input)
+    user_input = drop_orphan_or_route_to_fresh_start(messages, user_input)
 
     # The active version is pinned in the session at flow start (the first agent
     # to persist an artifact resolves it via project_manager.resolve_phase_version
@@ -133,11 +130,11 @@ def run(
 
     if user_input is None:
         if messages:
-            stale_q = _maybe_inject_staleness_question(session, "phaser", messages)
+            stale_q = maybe_inject_staleness_question(session, "phaser", messages)
             if stale_q is not None:
                 yield stale_q
                 return
-            yield from _replay_last_assistant(messages)
+            yield from replay_last_assistant(messages)
             return
 
         vision = session.get("vision_statement")
@@ -152,7 +149,7 @@ def run(
         delta = revision_delta(vision)
 
         ai_features_block = (
-            _ai_features_for_phaser(
+            ai_features_for_phaser(
                 ai_features,
                 revision_version=target_version if is_revision else None,
             )
@@ -167,7 +164,7 @@ def run(
         # the hard phase/don't-phase partition stays AI-side via
         # `introduced_in_version` in the block above.
         spine_block = (
-            _feature_specs_for_phaser(feature_specs, ai_features) + "\n"
+            feature_specs_for_phaser(feature_specs, ai_features) + "\n"
             if feature_specs
             else ""
         )
@@ -188,7 +185,7 @@ def run(
             if working_dir
             else None
         )
-        manifest_block_text = _manifest_for_phaser(manifest)
+        manifest_block_text = manifest_for_phaser(manifest)
         manifest_block = f"{manifest_block_text}\n" if manifest_block_text else ""
 
         # D-PH7a: vision-supersession framing. The vision paste is the one
@@ -213,7 +210,7 @@ def run(
         # complete; the deterministic digest rides alongside it, making the
         # join keys (`serves_features`, `serves_capabilities`, `satisfies_nfr`,
         # `status`, `exposure`) and the trustworthy negatives legible.
-        stack_digest = _stack_digest_for_phaser(stack, feature_specs)
+        stack_digest = stack_digest_for_phaser(stack, feature_specs)
         stack_block = (
             f"Here is the technology stack spec:\n\n```json\n{json.dumps(stack, indent=2)}\n```\n\n"
             + (f"{stack_digest}\n" if stack_digest else "")
@@ -339,7 +336,7 @@ def run(
         cleaned_per_msg.append(msg_cleaned)
 
     last_text = (
-        cleaned_per_msg[-1] if cleaned_per_msg else _last_assistant_text(messages)
+        cleaned_per_msg[-1] if cleaned_per_msg else last_assistant_text(messages)
     )
 
     if additions:
@@ -375,7 +372,7 @@ def run(
         )
         failures = failures + coverage_failures
     if phases and failures:
-        if _appears_truncated(_last_assistant_text(messages)):
+        if _appears_truncated(last_assistant_text(messages)):
             failures = failures + [
                 (
                     None,
@@ -413,7 +410,7 @@ def run(
             "corrections. This can take a few minutes…_\n"
         )
         yield status_line
-        _set_status(
+        set_status(
             session,
             "Validating phase structure — re-emitting with corrections…",
         )
@@ -429,7 +426,7 @@ def run(
         # replaces the D-PH7c heartbeat dots, which measured insufficient (a
         # dot is one displayed char, not a signal of the chunk it stood in
         # for).
-        _received = len(_last_assistant_text(messages)) + len(status_line)
+        _received = len(last_assistant_text(messages)) + len(status_line)
         session["_stream_received_chars"] = _received
         for _chunk in llm.stream_turn(
             system,
@@ -443,7 +440,7 @@ def run(
             if _chunk:
                 _received += len(_chunk)
                 session["_stream_received_chars"] = _received
-        phases, failures = _extract_and_validate_phases(_last_assistant_text(messages))
+        phases, failures = _extract_and_validate_phases(last_assistant_text(messages))
         completeness = _phase_completeness_failure(phases)
         if completeness:
             failures = failures + [completeness]
@@ -464,7 +461,7 @@ def run(
             # specifics — the user can act on them, and because this text
             # becomes the assistant message the model re-reads, a later "try
             # again" turn sees what went wrong instead of regenerating blind.
-            if _appears_truncated(_last_assistant_text(messages)):
+            if _appears_truncated(last_assistant_text(messages)):
                 failures = failures + [
                     (
                         None,

@@ -56,7 +56,7 @@ from fanout_baseline import (  # noqa: E402 (evals/ is a script dir, not a packa
 )
 
 from spec4.agentifier.grounding import build_grounding, spec_by_id
-from spec4.agents._utils import slug
+from spec4.agents._feature_context import slug
 
 
 @dataclass

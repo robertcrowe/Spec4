@@ -14,7 +14,7 @@ import json
 import re
 from typing import Any
 
-from spec4.agents._utils import slug
+from spec4.agents._feature_context import slug
 
 MANIFEST_START = "<<<DESIGN_MANIFEST>>>"
 MANIFEST_END = "<<<END_DESIGN_MANIFEST>>>"

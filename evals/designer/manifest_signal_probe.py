@@ -26,7 +26,7 @@ from pathlib import Path
 
 
 def _slug(name: str) -> str:
-    """Canonical id derivation — mirrors spec4.agents._utils.slug."""
+    """Canonical id derivation — mirrors spec4.agents._feature_context.slug."""
     return re.sub(r"[^a-z0-9_]", "_", name.lower()) if name else ""
 
 

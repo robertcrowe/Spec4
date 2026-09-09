@@ -59,7 +59,7 @@ import logging
 import re
 from typing import Any
 
-from spec4.agents._utils import slug
+from spec4.agents._feature_context import slug
 
 _log = logging.getLogger(__name__)
 

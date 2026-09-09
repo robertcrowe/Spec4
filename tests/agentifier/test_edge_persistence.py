@@ -23,7 +23,10 @@ from spec4.agentifier.agentifier import (
     _reselection_pool_from_features,
 )
 from spec4.agentifier.scout import Candidate
-from spec4.agents._utils import _ai_features_for_phaser, _feature_relationship_lines
+from spec4.agents._feature_context import (
+    ai_features_for_phaser,
+    feature_relationship_lines,
+)
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -258,7 +261,7 @@ class TestReselectionPoolRehydration:
 class TestFeatureRelationshipLines:
     def test_empty_when_no_edges(self) -> None:
         feats = [_feat("a"), _feat("b")]
-        assert _feature_relationship_lines(feats) == []
+        assert feature_relationship_lines(feats) == []
 
     def test_composed_under_group_rendered(self) -> None:
         feats = [
@@ -266,7 +269,7 @@ class TestFeatureRelationshipLines:
             _feat("m1", composed_under="orch"),
             _feat("m2", composed_under="orch"),
         ]
-        lines = _feature_relationship_lines(feats)
+        lines = feature_relationship_lines(feats)
         block = "\n".join(lines)
         assert "composed_under" in block
         assert "orch" in block
@@ -275,7 +278,7 @@ class TestFeatureRelationshipLines:
 
     def test_requires_edge_rendered(self) -> None:
         feats = [_feat("producer"), _feat("consumer", requires=["producer"])]
-        lines = _feature_relationship_lines(feats)
+        lines = feature_relationship_lines(feats)
         block = "\n".join(lines)
         assert "requires" in block
         assert "consumer" in block
@@ -285,7 +288,7 @@ class TestFeatureRelationshipLines:
         # An edge pointing at a coordinator not in the feature list is rendered
         # verbatim (D-EP2 option A: no trimming at persistence time).
         feats = [_feat("orphan", composed_under="missing_coordinator")]
-        lines = _feature_relationship_lines(feats)
+        lines = feature_relationship_lines(feats)
         block = "\n".join(lines)
         assert "missing_coordinator" in block
 
@@ -294,7 +297,7 @@ class TestFeatureRelationshipLines:
             _feat("z_member", composed_under="z_coord"),
             _feat("a_member", composed_under="a_coord"),
         ]
-        lines = _feature_relationship_lines(feats)
+        lines = feature_relationship_lines(feats)
         block = "\n".join(lines)
         assert block.index("a_coord") < block.index("z_coord")
 
@@ -305,7 +308,7 @@ class TestAiFeaturesForPhaserRelationships:
 
     def test_no_block_when_no_edges(self) -> None:
         af = self._af([_feat("a"), _feat("b")])
-        result = _ai_features_for_phaser(af)
+        result = ai_features_for_phaser(af)
         assert "graph contract" not in result.lower()
         assert "composed_under" not in result
 
@@ -316,7 +319,7 @@ class TestAiFeaturesForPhaserRelationships:
                 _feat("m", composed_under="orch"),
             ]
         )
-        result = _ai_features_for_phaser(af)
+        result = ai_features_for_phaser(af)
         assert "Feature relationships" in result
         assert "composed_under" in result
         assert "orch" in result
@@ -332,7 +335,7 @@ class TestAiFeaturesForPhaserRelationships:
             _feat("m2", composed_under="orch", **{"phase_priority": "mvp"}),
         ]
         af = self._af(feats)
-        result = _ai_features_for_phaser(af, revision_version=2)
+        result = ai_features_for_phaser(af, revision_version=2)
         # Both members must appear in the relationships block regardless of partition.
         assert "m1" in result
         assert "m2" in result

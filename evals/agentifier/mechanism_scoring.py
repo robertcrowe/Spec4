@@ -47,7 +47,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from spec4.agents._utils import _TIER_ORDER_FOR_SUMMARY, slug
+from spec4.agents._feature_context import TIER_ORDER_FOR_SUMMARY, slug
 
 __all__ = [
     "FeatureScore",
@@ -181,8 +181,8 @@ def _tier_delta(tier: str, expected: list[str]) -> int:
     """
     if not expected or tier in expected:
         return 0
-    got = _TIER_ORDER_FOR_SUMMARY.get(tier, 0)
-    diffs = [got - _TIER_ORDER_FOR_SUMMARY.get(t, 0) for t in expected]
+    got = TIER_ORDER_FOR_SUMMARY.get(tier, 0)
+    diffs = [got - TIER_ORDER_FOR_SUMMARY.get(t, 0) for t in expected]
     return min(diffs, key=abs)
 
 
@@ -248,7 +248,7 @@ def score_vision(
             if feature_entries:
                 top = max(
                     feature_entries,
-                    key=lambda e: _TIER_ORDER_FOR_SUMMARY.get(
+                    key=lambda e: TIER_ORDER_FOR_SUMMARY.get(
                         str(e.get("tier", "")), 0
                     ),
                 )
@@ -258,7 +258,7 @@ def score_vision(
                 if len(top_links) > 1:
                     union = sorted(
                         {t for s in top_links for t in tiers_by_slug[s]},
-                        key=lambda t: _TIER_ORDER_FOR_SUMMARY.get(t, 0),
+                        key=lambda t: TIER_ORDER_FOR_SUMMARY.get(t, 0),
                     )
                     allowed = union or expected_tiers
                 fs.tier_checks.append(

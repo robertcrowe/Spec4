@@ -5,15 +5,15 @@ Agentifier's Spec Drafter produces a rich implementation spec per AI feature
 ``_build_ai_features`` merges the whole spec onto each catalog node. Several
 consumers need to render that spec faithfully:
 
-* ``agents/_utils.py`` — the per-agent context serializers (Phaser today;
+* ``agents/_feature_context.py`` — the per-agent context serializers (Phaser today;
   StackAdvisor and Designer on their own levers).
 * ``project_manager.render_phase_markdown`` — the phase-file spec preamble the
   coding agent actually reads.
 
 This module is the single renderer for all of them. It is a **leaf**: it imports
 nothing from ``spec4.agents`` or ``spec4.project_manager``, because
-``agents/_utils.py`` already imports ``project_manager`` and the reverse edge
-would close an import cycle. Keep it that way.
+``agents/_turn_flow.py`` already imports ``project_manager`` and the reverse
+edge would close an import cycle. Keep it that way.
 
 Rendering is deterministic and lossless — fields are emitted verbatim, never
 paraphrased (see the "deterministic lossless assembly over LLM re-work"

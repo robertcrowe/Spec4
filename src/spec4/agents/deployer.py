@@ -5,17 +5,19 @@ from collections.abc import Generator
 from typing import Any, cast
 
 from spec4 import project_manager, llm, websearch
-from spec4.agents._utils import (
-    _ai_features_for_deployer,
-    _drop_orphan_or_route_to_fresh_start,
-    _last_assistant_text,
-    _maybe_inject_resume_summary,
-    _maybe_inject_staleness_question,
-    _nfr_goals_for_deployer,
-    _phases_for_deployer,
-    _replay_last_assistant,
-    _stack_for_deployer,
-    _stream_counting,
+from spec4.agents._feature_context import ai_features_for_deployer
+from spec4.agents._reask import stream_counting
+from spec4.agents._stack_context import (
+    nfr_goals_for_deployer,
+    phases_for_deployer,
+    stack_for_deployer,
+)
+from spec4.agents._turn_flow import (
+    drop_orphan_or_route_to_fresh_start,
+    last_assistant_text,
+    maybe_inject_resume_summary,
+    maybe_inject_staleness_question,
+    replay_last_assistant,
 )
 from spec4.app_constants import STATE_DEPLOYER_COMPLETE
 
@@ -557,7 +559,7 @@ def run(
         session["deployer_messages"] = []
 
     messages = session["deployer_messages"]
-    user_input = _drop_orphan_or_route_to_fresh_start(messages, user_input)
+    user_input = drop_orphan_or_route_to_fresh_start(messages, user_input)
 
     # Up-front README opt-in (greenfield only): the very first turn is a
     # standalone yes/no gate, handled deterministically and kept out of the LLM
@@ -610,14 +612,14 @@ def run(
 
     if user_input is None:
         if messages:
-            stale_q = _maybe_inject_staleness_question(session, "deployer", messages)
+            stale_q = maybe_inject_staleness_question(session, "deployer", messages)
             if stale_q is not None:
                 yield stale_q
                 return
-            if not _maybe_inject_resume_summary(
+            if not maybe_inject_resume_summary(
                 session, "deployer", messages, STATE_DEPLOYER_COMPLETE
             ):
-                yield from _replay_last_assistant(messages)
+                yield from replay_last_assistant(messages)
                 return
             # Resume summary injected — fall through to LLM call.
         else:
@@ -630,7 +632,7 @@ def run(
             feature_specs = session.get("feature_specs")
             working_dir = session.get("working_dir")
             ai_features_block = (
-                _ai_features_for_deployer(ai_features, stack) + "\n"
+                ai_features_for_deployer(ai_features, stack) + "\n"
                 if ai_features
                 else ""
             )
@@ -665,11 +667,11 @@ def run(
                 yield _README_OPTIN_QUESTION
                 return
 
-            stack_block = _stack_for_deployer(stack)
+            stack_block = stack_for_deployer(stack)
 
-            nfr_block = _nfr_goals_for_deployer(stack, feature_specs)
+            nfr_block = nfr_goals_for_deployer(stack, feature_specs)
 
-            phases_block = _phases_for_deployer(phases, version)
+            phases_block = phases_for_deployer(phases, version)
 
             existing_infra_block = _build_existing_infra_block(code_review)
 
@@ -880,7 +882,7 @@ def run(
     # message fallback would mostly work — but not on the greenfield README beat
     # below, which yields a note and opens a second stream in the same turn.
     # Publish a running total instead; `_received` seeds that second stream.
-    _received = yield from _stream_counting(
+    _received = yield from stream_counting(
         llm.stream_turn(
             system,
             messages,
@@ -892,7 +894,7 @@ def run(
         session,
     )
 
-    last_text = _last_assistant_text(messages)
+    last_text = last_assistant_text(messages)
     if session.get("_deployer_generating_readme"):
         # This turn authored the project README (set by the pending-readme
         # handler above). Stage it for _persist_artifacts to write to the
@@ -935,7 +937,7 @@ def run(
                             "content": build_readme_request(existing, readme_delta),
                         }
                     )
-                    yield from _stream_counting(
+                    yield from stream_counting(
                         llm.stream_turn(
                             system,
                             messages,
@@ -947,9 +949,7 @@ def run(
                         session,
                         seed=_received + len(_README_AUTHORING_NOTE),
                     )
-                    session["_deployer_readme_markdown"] = _last_assistant_text(
-                        messages
-                    )
+                    session["_deployer_readme_markdown"] = last_assistant_text(messages)
                     session["deployer_artifact_msg_count"] = len(messages)
                 # Opted out → nothing further; the plan stands on its own with no
                 # trailing offer.

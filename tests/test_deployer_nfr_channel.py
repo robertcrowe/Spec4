@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._utils import _nfr_goals_for_deployer
+from spec4.agents._stack_context import nfr_goals_for_deployer
 
 
 def _specs(*goals: str) -> dict[str, Any]:
@@ -41,14 +41,14 @@ def _stack(**over: Any) -> dict[str, Any]:
 
 
 def test_no_goals_renders_nothing() -> None:
-    assert _nfr_goals_for_deployer(_stack(), None) == ""
-    assert _nfr_goals_for_deployer(_stack(), {}) == ""
-    assert _nfr_goals_for_deployer(_stack(), _specs()) == ""
+    assert nfr_goals_for_deployer(_stack(), None) == ""
+    assert nfr_goals_for_deployer(_stack(), {}) == ""
+    assert nfr_goals_for_deployer(_stack(), _specs()) == ""
 
 
 def test_goals_render_even_with_no_stack() -> None:
     """The goals are the vision's; an absent stack makes them all unclaimed."""
-    out = _nfr_goals_for_deployer(None, _specs("Works offline"))
+    out = nfr_goals_for_deployer(None, _specs("Works offline"))
     assert "Works offline" in out
     assert "no stack component" in out
 
@@ -66,7 +66,7 @@ def test_claimed_goal_names_its_claiming_entries() -> None:
         },
         libraries=[{"name": "Workbox", "satisfies_nfr": ["nfr_works_offline"]}],
     )
-    out = _nfr_goals_for_deployer(stack, _specs("Works offline"))
+    out = nfr_goals_for_deployer(stack, _specs("Works offline"))
     assert "- claimed by: Workbox, browser_storage" in out
 
 
@@ -78,18 +78,18 @@ def test_claimers_are_deduplicated_and_sorted() -> None:
             {"name": "Alpha", "satisfies_nfr": ["nfr_works_offline"]},
         ]
     )
-    out = _nfr_goals_for_deployer(stack, _specs("Works offline"))
+    out = nfr_goals_for_deployer(stack, _specs("Works offline"))
     assert "claimed by: Alpha, Workbox" in out
 
 
 def test_every_goal_is_rendered_with_its_id_and_text() -> None:
-    out = _nfr_goals_for_deployer(_stack(), _specs("Fast answers", "Stays up"))
+    out = nfr_goals_for_deployer(_stack(), _specs("Fast answers", "Stays up"))
     assert '`nfr_fast_answers` — "Fast answers"' in out
     assert '`nfr_stays_up` — "Stays up"' in out
 
 
 def test_goal_order_follows_the_source_list() -> None:
-    out = _nfr_goals_for_deployer(_stack(), _specs("Zebra", "Apple", "Mango"))
+    out = nfr_goals_for_deployer(_stack(), _specs("Zebra", "Apple", "Mango"))
     assert out.index("Zebra") < out.index("Apple") < out.index("Mango")
 
 
@@ -99,21 +99,21 @@ def test_goal_order_follows_the_source_list() -> None:
 def test_unclaimed_goal_is_surfaced_not_dropped() -> None:
     """The orphan is the interesting case for deployment; it must not vanish."""
     stack = _stack(libraries=[{"name": "Lib", "satisfies_nfr": ["nfr_fast_answers"]}])
-    out = _nfr_goals_for_deployer(
+    out = nfr_goals_for_deployer(
         stack, _specs("Fast answers", "Users can edit and send without leaving")
     )
     assert "Users can edit and send without leaving" in out
 
 
 def test_unclaimed_goal_carries_the_no_invention_instruction() -> None:
-    out = _nfr_goals_for_deployer(_stack(), _specs("Citations are verifiable"))
+    out = nfr_goals_for_deployer(_stack(), _specs("Citations are verifiable"))
     assert "no stack component" in out
     assert "Do not invent an infrastructure claim" in out
 
 
 def test_claimed_and_unclaimed_goals_are_distinguishable() -> None:
     stack = _stack(libraries=[{"name": "Redis", "satisfies_nfr": ["nfr_fast_answers"]}])
-    out = _nfr_goals_for_deployer(stack, _specs("Fast answers", "Refuses bad asks"))
+    out = nfr_goals_for_deployer(stack, _specs("Fast answers", "Refuses bad asks"))
     claimed = out.split("`nfr_fast_answers`")[1].split("- `")[0]
     orphan = out.split("`nfr_refuses_bad_asks`")[1]
     assert "claimed by: Redis" in claimed
@@ -123,7 +123,7 @@ def test_claimed_and_unclaimed_goals_are_distinguishable() -> None:
 def test_claim_matching_no_derived_goal_is_ignored() -> None:
     """An unknown claim id is stack-side drift, not a goal to render."""
     stack = _stack(libraries=[{"name": "Lib", "satisfies_nfr": ["nfr_does_not_exist"]}])
-    out = _nfr_goals_for_deployer(stack, _specs("Fast answers"))
+    out = nfr_goals_for_deployer(stack, _specs("Fast answers"))
     assert "nfr_does_not_exist" not in out
     assert "no stack component" in out
 
@@ -133,7 +133,7 @@ def test_claim_matching_no_derived_goal_is_ignored() -> None:
 
 def test_bare_and_wrapped_stack_shapes_both_work() -> None:
     spec = {"libraries": [{"name": "Redis", "satisfies_nfr": ["nfr_fast_answers"]}]}
-    wrapped = _nfr_goals_for_deployer({"stack_spec": spec}, _specs("Fast answers"))
-    bare = _nfr_goals_for_deployer(spec, _specs("Fast answers"))
+    wrapped = nfr_goals_for_deployer({"stack_spec": spec}, _specs("Fast answers"))
+    bare = nfr_goals_for_deployer(spec, _specs("Fast answers"))
     assert "claimed by: Redis" in wrapped
     assert wrapped == bare

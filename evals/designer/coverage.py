@@ -36,7 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from spec4.agents._utils import _ai_features_for_designer
+from spec4.agents._feature_context import ai_features_for_designer
 
 _INFRA = "infrastructure"
 
@@ -86,7 +86,7 @@ def analyse(draw_dir: Path) -> DrawReport:
         f for f in features if f.get("scope") == "feature" and not _is_infra(f)
     ]
     surface_names = {f.get("name", "") for f in surfaces}
-    note = _ai_features_for_designer(catalog)
+    note = ai_features_for_designer(catalog)
 
     in_note = sum(1 for f in surfaces if f"### `{f.get('name', '')}`" in note)
     with_io = sum(

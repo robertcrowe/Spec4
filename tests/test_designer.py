@@ -2128,7 +2128,7 @@ class TestDesignerRetryWithADifferentModel:
         # Designer's own precondition, so the click routes rather than being
         # refused: reaching the wizard at all means the vision is already there.
         answered = {**answered, "vision_statement": {"vision": "v"}}
-        with patch("spec4.callbacks._chat.ctx") as fake_ctx:
+        with patch("spec4.callbacks._nav.ctx") as fake_ctx:
             fake_ctx.triggered_id = {"type": "agent-pill", "agent": "designer"}
             entered, path = on_agent_pill_click([1], answered)
         assert path == "/design"

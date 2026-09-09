@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._utils import _feature_specs_for_phaser, slug
+from spec4.agents._feature_context import feature_specs_for_phaser, slug
 
 _HEAD = "Feature specifications (from Brainstormer)"
 _VOCAB = "Domain vocabulary"
@@ -52,16 +52,16 @@ def _feature(fid: str, **extra: Any) -> dict[str, Any]:
 
 
 def test_no_specs_returns_empty() -> None:
-    assert _feature_specs_for_phaser(None) == ""
-    assert _feature_specs_for_phaser({}) == ""
-    assert _feature_specs_for_phaser({"features": []}) == ""
+    assert feature_specs_for_phaser(None) == ""
+    assert feature_specs_for_phaser({}) == ""
+    assert feature_specs_for_phaser({"features": []}) == ""
 
 
 # --- base rendering --------------------------------------------------------
 
 
 def test_every_feature_renders_with_id_and_behavioural_fields() -> None:
-    out = _feature_specs_for_phaser(
+    out = feature_specs_for_phaser(
         _specs(
             _feature(
                 "fare_lookup",
@@ -79,7 +79,7 @@ def test_every_feature_renders_with_id_and_behavioural_fields() -> None:
 
 
 def test_phaser_framing_names_verification_and_risk_roles() -> None:
-    out = _feature_specs_for_phaser(_specs(_feature("a")))
+    out = feature_specs_for_phaser(_specs(_feature("a")))
     assert "verification raw material" in out
     assert "risk-assessment raw material" in out
 
@@ -87,13 +87,13 @@ def test_phaser_framing_names_verification_and_risk_roles() -> None:
 def test_non_ai_feature_untagged_without_catalog() -> None:
     # Assert on the header line, not the whole output — the framing prose
     # legitimately mentions "(AI)" when explaining the tag.
-    out = _feature_specs_for_phaser(_specs(_feature("fare_lookup")))
+    out = feature_specs_for_phaser(_specs(_feature("fare_lookup")))
     header = next(line for line in out.splitlines() if line.startswith("###"))
     assert "(AI)" not in header
 
 
 def test_served_feature_tagged_ai_via_grounding_join() -> None:
-    out = _feature_specs_for_phaser(
+    out = feature_specs_for_phaser(
         _specs(_feature("thread_summarization"), _feature("plain_feature")),
         _catalog("thread_summarization"),
     )
@@ -112,7 +112,7 @@ def test_infra_nodes_do_not_tag_features() -> None:
             }
         ]
     }
-    out = _feature_specs_for_phaser(_specs(_feature("fare_lookup")), catalog)
+    out = feature_specs_for_phaser(_specs(_feature("fare_lookup")), catalog)
     header = next(line for line in out.splitlines() if line.startswith("###"))
     assert "(AI)" not in header
 
@@ -121,7 +121,7 @@ def test_infra_nodes_do_not_tag_features() -> None:
 
 
 def test_dependencies_render_with_build_order_framing() -> None:
-    out = _feature_specs_for_phaser(
+    out = feature_specs_for_phaser(
         _specs(_feature("trip_history", dependencies=["fare_lookup"]))
     )
     assert "depends on: fare_lookup" in out
@@ -129,7 +129,7 @@ def test_dependencies_render_with_build_order_framing() -> None:
 
 
 def test_entities_deduplicate_into_shared_vocabulary() -> None:
-    out = _feature_specs_for_phaser(
+    out = feature_specs_for_phaser(
         _specs(
             _feature("a", entities=["Zone", "Fare Table"]),
             _feature("b", entities=["Zone", "Saved Trip"]),
@@ -146,14 +146,14 @@ def test_entities_deduplicate_into_shared_vocabulary() -> None:
 
 def test_nfr_goals_render_with_stable_ids_and_citation_rule() -> None:
     goal = "Fare lookups complete quickly."
-    out = _feature_specs_for_phaser(_specs(_feature("a"), nfr=[goal]))
+    out = feature_specs_for_phaser(_specs(_feature("a"), nfr=[goal]))
     assert f"`nfr_{slug(goal)}`: {goal}" in out
     assert "verification criteria" in out
     assert "never invent a stack claim" in out
 
 
 def test_no_nfr_block_when_goals_absent() -> None:
-    out = _feature_specs_for_phaser(_specs(_feature("a")))
+    out = feature_specs_for_phaser(_specs(_feature("a")))
     assert "Non-functional goals" not in out
 
 
@@ -170,7 +170,7 @@ def _catalog_with_rejection(*rejected_names: str) -> dict[str, Any]:
 
 
 def test_rejected_unserved_spine_feature_tagged_excluded() -> None:
-    out = _feature_specs_for_phaser(
+    out = feature_specs_for_phaser(
         _specs(_feature("suggested_replies_in_three_tones")),
         _catalog_with_rejection("suggested_replies_in_three_tones"),
     )
@@ -181,7 +181,7 @@ def test_rejected_unserved_spine_feature_tagged_excluded() -> None:
 
 def test_rejected_member_name_does_not_tag_spine_features() -> None:
     # Deselected sub-capabilities match no spine id and must not tag anything.
-    out = _feature_specs_for_phaser(
+    out = feature_specs_for_phaser(
         _specs(_feature("thread_summarization")),
         _catalog_with_rejection("context_aware_reply_generation"),
     )
@@ -193,12 +193,12 @@ def test_served_feature_never_tagged_excluded() -> None:
     # in the rejected list; the serves-join wins.
     catalog = _catalog("thread_summarization")
     catalog["explicitly_rejected"] = [{"name": "thread_summarization"}]
-    out = _feature_specs_for_phaser(_specs(_feature("thread_summarization")), catalog)
+    out = feature_specs_for_phaser(_specs(_feature("thread_summarization")), catalog)
     header = next(line for line in out.splitlines() if line.startswith("###"))
     assert "(AI)" in header
     assert "excluded" not in header
 
 
 def test_header_states_the_excluded_exception() -> None:
-    out = _feature_specs_for_phaser(_specs(_feature("a")), _catalog_with_rejection("a"))
+    out = feature_specs_for_phaser(_specs(_feature("a")), _catalog_with_rejection("a"))
     assert "except any feature tagged (excluded)" in out

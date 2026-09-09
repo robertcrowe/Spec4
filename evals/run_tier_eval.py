@@ -36,8 +36,10 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 from spec4.agentifier.pattern_loader import load_patterns  # noqa: E402
 from spec4.agentifier.scout import Candidate  # noqa: E402
 from spec4.agentifier.tier_analyst import TierAnalystAgent, TierAnalystInput  # noqa: E402
-# Reuse the existing tier-ordinal map — defined once in _utils, referenced here.
-from spec4.agents._utils import _TIER_ORDER_FOR_SUMMARY as _TIER_ORDER  # noqa: E402
+# Reuse the existing tier-ordinal map — defined once in _feature_context, used here.
+from spec4.agents._feature_context import (  # noqa: E402
+    TIER_ORDER_FOR_SUMMARY as _TIER_ORDER,
+)
 
 # ---------------------------------------------------------------------------
 # Constants

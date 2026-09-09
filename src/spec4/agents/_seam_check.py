@@ -29,7 +29,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from spec4.agents._utils import _drain_stream, _set_status
+from spec4.agents._reask import drain_stream, set_status
 from spec4.llm import complete_stream, supports_response_format
 
 _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
@@ -188,8 +188,8 @@ def _extract_graph(
     # Drained internally with a live receipt counter (D-PH9). This call always
     # begins mid-turn — Phaser's own drains have already published this turn's
     # total — so the seed continues from the session's current value (D-BS10).
-    _set_status(session, "Running the cross-phase seam check…")
-    raw, _ = _drain_stream(
+    set_status(session, "Running the cross-phase seam check…")
+    raw, _ = drain_stream(
         complete_stream(
             llm_config=llm_config,
             messages=[
