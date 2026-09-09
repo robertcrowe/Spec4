@@ -24,7 +24,11 @@ _PYPI_URL = "https://pypi.org/pypi/spec4/json"
 _TIMEOUT_SECONDS = 3.0
 
 # Process-lifetime cache: "on startup" means once per server process, not
-# once per page load — later page loads reuse the first answer.
+# once per page load — later page loads reuse the first answer. The answer is
+# the same for every session, so nothing about it belongs in one. Unguarded on
+# purpose: two first page loads racing here both fetch, which costs one
+# duplicate request and converges on the same result — a lock on the render
+# path is the wrong trade for a best-effort notice.
 _cache: dict[str, Any] = {"checked": False, "result": None}
 
 
@@ -81,9 +85,3 @@ def check_for_update() -> dict[str, str] | None:
         _cache["checked"] = True
     result: dict[str, str] | None = _cache["result"]
     return result
-
-
-def _reset_cache() -> None:
-    """Test hook: forget the cached answer so the next call re-fetches."""
-    _cache["checked"] = False
-    _cache["result"] = None

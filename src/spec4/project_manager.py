@@ -1113,6 +1113,11 @@ _USAGE_ROLLUP_PARENT: dict[str, str] = {
     "cross_cutting_analyst": "agentifier",
 }
 
+# Serialises the read-modify-write of .spec4/v{N}/usage.json in save_usage():
+# the chat persist funnel (poll thread) and the Designer generation thread can
+# each flush a turn, and both load the existing file, merge their records and
+# rewrite the whole thing. Module-scoped because the file is the shared
+# resource here, not any one session.
 _USAGE_LOCK = threading.Lock()
 
 

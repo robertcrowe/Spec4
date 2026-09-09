@@ -99,14 +99,31 @@ _log = logging.getLogger(__name__)
 # Sub-agent registry
 # ---------------------------------------------------------------------------
 
-_registry = SubAgentRegistry()
-_registry.register(ScoutAgent())
-_registry.register(LinkerAgent())
-_registry.register(ComposerAgent())
-_registry.register(TierAnalystAgent())
-_registry.register(SpecDrafterAgent())
-_registry.register(CrossCuttingAnalyst())
-_registry.register(PrioritizerAgent())
+
+def _build_registry() -> SubAgentRegistry:
+    """Every sub-agent the orchestrator can dispatch to, in registration order.
+
+    Built once at module import and read-only afterwards, so it needs no guard.
+    Deliberately *not* initialised from ``app.py``: this module is imported
+    lazily from ``callbacks`` and ``session`` and never from ``app``, so an
+    init call there would make a deferred import eager and add an
+    ``app`` → ``agentifier`` edge the layering does not have.
+    """
+    registry = SubAgentRegistry()
+    for agent in (
+        ScoutAgent(),
+        LinkerAgent(),
+        ComposerAgent(),
+        TierAnalystAgent(),
+        SpecDrafterAgent(),
+        CrossCuttingAnalyst(),
+        PrioritizerAgent(),
+    ):
+        registry.register(agent)
+    return registry
+
+
+_registry = _build_registry()
 
 # ---------------------------------------------------------------------------
 # Async → sync streaming bridge

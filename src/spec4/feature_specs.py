@@ -312,6 +312,11 @@ def _mechanism_definitions() -> dict[str, str]:
     "reflection" means (and the library exists precisely because those ideas
     drift). Loaded lazily and cached; a library that fails to load degrades
     to no definitions rather than an unrenderable phase file.
+
+    The cache is process-lifetime and never invalidated — nothing calls
+    ``cache_clear()`` — so an edit to the pattern library on disk is only
+    picked up after a restart. Intended: the library ships with the package,
+    and the alternative is re-reading it for every rendered feature.
     """
     try:
         _, mechanisms = load_patterns()

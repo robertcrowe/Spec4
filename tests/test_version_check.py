@@ -26,9 +26,10 @@ from spec4.version_check import (
 @pytest.fixture(autouse=True)
 def _clean_state(monkeypatch: pytest.MonkeyPatch) -> Any:
     monkeypatch.delenv("SPEC4_FAKE_PYPI_VERSION", raising=False)
-    version_check._reset_cache()
+    # Every test gets its own cache and monkeypatch restores the module's on
+    # teardown, so the process-lifetime cache is never written from here.
+    monkeypatch.setattr(version_check, "_cache", {"checked": False, "result": None})
     yield
-    version_check._reset_cache()
 
 
 class TestIsOutdated:

@@ -9,6 +9,20 @@ import uuid
 from collections.abc import Generator
 from typing import Any
 
+# Process-wide registry of in-flight streams, keyed by the id the browser
+# session carries in ``session["_stream_id"]`` — the id is the per-session
+# half, this dict is the process half. Module-scoped because an entry is the
+# handoff between a daemon worker thread and the poll callback: it holds the
+# live session dict by identity (agents mutate it, the poll reads those
+# mutations) plus a buffer the worker appends to between polls, so it cannot
+# live in a dcc.Store.
+#
+# ``_lock`` guards the dict itself — insert and eviction in start(), the
+# lookups in get()/pop(), the test-and-set in claim_finalise() — and the
+# worker thread's writes to its own entry. It deliberately stops at get(),
+# which hands the live entry back by identity because that is the channel
+# agent mutations travel on; a reader therefore sees at worst a stale field,
+# never a torn one.
 _STREAMS: dict[str, dict[str, Any]] = {}
 _lock = threading.Lock()
 
@@ -235,21 +249,30 @@ def start(gen: Generator[str, None, None], session: dict[str, Any]) -> str:
         print(f"[stream {short}] started", flush=True)
 
     def _run() -> None:
+        # Writes go through the captured ``entry``, never ``_STREAMS[stream_id]``:
+        # the worker then touches the shared dict not at all, so it cannot race
+        # the eviction loop above, and its writes take the same lock the done
+        # latch already takes. Reads of entry["text"] below need no lock — this
+        # thread is the only writer of it.
         chunks = 0
         try:
             for chunk in gen:
                 chunks += 1
-                _STREAMS[stream_id]["text"] += chunk
+                with _lock:
+                    entry["text"] += chunk
             if _DEV_MODE:
                 print(
                     f"[stream {short}] generator exhausted cleanly, "
-                    f"chunks={chunks}, text_len={len(_STREAMS[stream_id]['text'])}",
+                    f"chunks={chunks}, text_len={len(entry['text'])}",
                     flush=True,
                 )
         except Exception as exc:
             formatted = _format_error(exc)
-            _STREAMS[stream_id]["text"] += formatted
-            _STREAMS[stream_id]["error"] = True
+            # Formatted outside the lock, applied inside it as one write: a
+            # poll must never see error=True without the message explaining it.
+            with _lock:
+                entry["text"] += formatted
+                entry["error"] = True
             if _DEV_MODE:
                 print(
                     f"[stream {short}] EXCEPTION after {chunks} chunks: "
@@ -260,7 +283,7 @@ def start(gen: Generator[str, None, None], session: dict[str, Any]) -> str:
                 print(
                     f"[stream {short}] formatted error written to text "
                     f"({len(formatted)} chars); text_len now "
-                    f"{len(_STREAMS[stream_id]['text'])}",
+                    f"{len(entry['text'])}",
                     flush=True,
                 )
         finally:

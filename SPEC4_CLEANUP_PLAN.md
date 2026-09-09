@@ -109,7 +109,7 @@ Not used: radon (duplicates `C90`), pylint (overlaps ruff), pydeps/grimp (import
 - (b) moves to the session dict or the browser `dcc.Store` payload per the existing pattern — no new server-side session mechanism. Callbacks that read it get it as an `Input`/`State`, not by import.
 - (c) moves to fixtures.
 - `streaming.py` is the most likely home of (b). Its Phase 1 characterization test must still pass with identical state-transition sequences.
-- Registries in `providers.py` and `websearch.py`: if populated at import time, make population idempotent and explicit (a function called once from `app.py` after construction), respecting D-LR1.
+- Import-time registries (agentifier's sub-agent registry, `providers.py`, `websearch.py`): if built once and read-only afterwards, wrap the construction in a named `_build_registry()`-style function so the module-level assignment is a single explicit call, and comment the result as category (a). Do not add init calls from `app.py` — that would create top-level import edges the layering deliberately avoids. A registry that is mutated after import is category (b) and gets the session-state treatment instead.
 
 **Model/effort:** Opus 5, plan mode, ultrathink. Phase 0 found 8 items (0 `global` statements; `_STREAMS`, `_USAGE_RECORDS`, `_MOCK_BUFFERS`, `version_check._cache`, `project_manager._USAGE_LOCK`, `_registry`, one `lru_cache`, the `app.py` import side effects), so this runs as a single phase. The lock, the registry, and the `lru_cache` are almost certainly category (a); the three streaming containers and `version_check._cache` are the real work.
 

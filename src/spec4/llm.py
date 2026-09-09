@@ -273,6 +273,10 @@ def _build_completion_kwargs(
 
 _STREAM_USAGE_OPTIONS: dict[str, Any] = {"include_usage": True}
 
+# ``_USAGE_LOCK`` guards both ends of the sink: the append in _record_usage(),
+# which runs on whichever thread made the call (an agent's stream worker, the
+# Designer generation thread, an Agentifier asyncio-bridge thread), and the
+# read-and-clear in drain_usage_records(), which runs on the poll thread.
 _USAGE_LOCK = threading.Lock()
 _USAGE_RECORDS: list[dict[str, Any]] = []
 

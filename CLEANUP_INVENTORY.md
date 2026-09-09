@@ -951,7 +951,7 @@ Module-level containers: 67 UPPERCASE containers (dicts, lists, sets, frozensets
 
 Also import-built but never mutated afterwards: `callbacks/__init__.py:2411 OPEN_ARTIFACT_CALLBACKS` (dict of registered callbacks, keyed for tests), `layouts/_chat.py:291 CHAT_ARTIFACTS`, and the `__all__` lists.
 
-Phase 3 scope, then, is items 1–5 (four containers, three locks, one dict cache) plus the `lru_cache`. **Phase 1 (2026-09-08):** items 1, 2 and 5 are now pinned transition-by-transition by `tests/test_streaming_characterization.py`; see §12.2 for what the move must preserve and §12.4 items 8–12 for the oddities observed. Item 1 is the only one with a plausible concurrency gap (unlocked `_STREAMS[stream_id]["text"] +=` on the worker thread while `get_stream` reads under the lock on another); it is not a bug report because CPython's dict/str semantics make the observed effect at worst a stale read, but it should be looked at when the state moves.
+Phase 3 scope, then, is items 1–5 (four containers, three locks, one dict cache) plus the `lru_cache`. **Phase 1 (2026-09-08):** items 1, 2 and 5 are now pinned transition-by-transition by `tests/test_streaming_characterization.py`; see §12.2 for what the move must preserve and §12.4 items 8–12 for the oddities observed. Item 1 is the only one with a plausible concurrency gap (unlocked `_STREAMS[stream_id]["text"] +=` on the worker thread while `get_stream` reads under the lock on another); it is not a bug report because CPython's dict/str semantics make the observed effect at worst a stale read, but it should be looked at when the state moves. **Phase 3 (2026-09-08):** all eight items classified — every one is category (a) and stays module-scoped, each with a comment saying why and what guards it; the unlocked writes in item 1 are fixed. See §14.
 
 ## 9. Test inventory
 
@@ -1104,7 +1104,7 @@ Observations for Phase 6:
 
 - Resolved before Phase 2: `.coverage` is untracked (commit `f859376`) and listed in `.gitignore`; the pytest rewrite-in-place no longer dirties the tree.
 - Phase 2: `dash-iconify` removal from `[project.dependencies]` + mypy override; `download_button_id`; `CODE_REVIEW_SCHEMA_VERSION`; the `valid_tier_names` parameter; `PatternBase`/`PriorityEdits` visibility; the 15 public zero-importer names in §7; the 22 test-side vulture lines.
-- Phase 3: the eight items in §8.
+- ~~Phase 3: the eight items in §8.~~ **Done (2026-09-08), §14.** All eight are category (a); the one (c) found was `version_check._reset_cache`, which moved to a fixture.
 - Phase 4: break the `layouts` ↔ `layouts._chat` cycle; decide the fate of `session.py` as the UI/agent hinge; write the import-assertion test (§6.3); split the eight files over 1,300 lines.
 - Phase 5: the 61 C901 functions, starting with the table in §5.1; the 26 small SIM/B hits; the remaining renderer/artifact cosmetics in §12.4 (items 2, 3, 6, 7 and the open halves of 4 and 5) (goldens in `tests/golden/` pin the current output, so each fix is a deliberate golden update).
 - Phase 6: consolidate `test_deployer_*` / `test_phaser_*` / `test_stack_*`; split `test_agents.py`; run `--durations`; the 162 test-side ARG hits are not targets; the screen-registry overlap in §12.5.
@@ -1218,8 +1218,8 @@ Renderer and artifact output (visible in the goldens):
 7. `agentifier.py:800–801`: `_format_spec_as_text` has its docstring twice (two identical string literals). Phase 5.
 
 State containers (add to §8):
-8. `streaming.py:242/251/252`: the worker thread's `_STREAMS[stream_id]["text"] += chunk` and `["error"] = True` run **without** `_lock`, while `get()` and `claim_finalise()` take it. Observed effect is at worst a stale read; noted again here because the characterization test now reads `entry["text"]` from the test thread exactly this way. Phase 3.
-9. `streaming.pop` has no production caller (`on_stream_poll` reads and never pops); `tests/test_callbacks_stream_poll.py` patches it. Phase 2 candidate once Phase 3 has decided the container's API.
+8. ~~`streaming.py:242/251/252`: the worker thread's `_STREAMS[stream_id]["text"] += chunk` and `["error"] = True` run **without** `_lock`, while `get()` and `claim_finalise()` take it. Observed effect is at worst a stale read; noted again here because the characterization test now reads `entry["text"]` from the test thread exactly this way. Phase 3.~~ **Fixed in Phase 3 (2026-09-08):** the worker writes through the `entry` already in its closure, under `_lock`, and the error path applies text + flag as one critical section. It no longer touches the `_STREAMS` dict at all. What this does *not* close is stated in §14.3.
+9. ~~`streaming.pop` has no production caller (`on_stream_poll` reads and never pops); `tests/test_callbacks_stream_poll.py` patches it. Phase 2 candidate once Phase 3 has decided the container's API.~~ **Decided in Phase 3 (2026-09-08): it stays.** `tests/test_streaming_characterization.py::test_pop_removes_and_returns_the_entry` calls it, and `agents/code_scanner.py:684` names it inside frozen LLM prompt text (Rule 4). Not a Phase 2 candidate any more.
 10. `_STREAMS[id]["session"]` is the live session dict by identity — agents mutate it and the poll reads those mutations. The move in Phase 3 must keep the reference, not copy.
 11. `_MOCK_BUFFERS`: the `expected_chars` denominator makes `progress` an integer percent floored to 0 for the first ~700 characters; and the acknowledged-delivery pop depends on the *browser's* store State moving off step 5, which the test drives by hand. Both by design (comments in `on_mock_stream_poll`); recorded so Phase 3 does not "fix" them.
 12. ~~`resolve_phase_version` pins round **0** for a greenfield project with no rounds on disk, so the first `usage.json` lands in `.spec4/v0/`. Documented in the function; recorded because it surprised the test author.~~ **Struck in Phase 2 (2026-09-08):** intended behaviour, not an oddity — greenfield projects start at v0 by design. Not a bug, not actioned.
@@ -1325,3 +1325,188 @@ The Phase 1 report recorded **92 callbacks** registered in `dash._callback.GLOBA
 | Coverage | same run | `TOTAL 11683 stmts, 893 miss, 92%` (was 11684/894/92% at the end of Phase 1; -1 statement from the three field/parameter/function removals whose bodies were themselves counted, no per-module figure dropped below its Phase 1 floor) |
 
 No regression on any of the four gates. `.coverage` remains untracked and gitignored (untouched, per the phase instruction that this item is already done).
+
+## 14. Phase 3 report — module-level state and globals
+
+Recorded 2026-09-08 on branch `look-rework`. Nothing was written under `.spec4/`,
+`.venv/` or `.git/`, and no git command was run. `tests/test_streaming_characterization.py`
+was **not edited** (`git diff --stat` on it is empty) — it is the phase's definition
+of unchanged behaviour and it passes as-is.
+
+### 14.1 Classification of all eight items
+
+The plan's Phase 3 text predicted that "the three streaming containers and
+`version_check._cache` are the real work" — i.e. category (b), session state that
+leaked to module scope. That prediction did not survive contact with the code.
+**All eight items are category (a).** There are no (b) items at all, and the one
+(c) item is a function rather than state.
+
+| # | Item | Class | Basis |
+|---|---|---|---|
+| 1 | `streaming._STREAMS` + `_lock` | **(a)** | The entry is the handoff between a daemon worker thread and the 500 ms poll: it holds the live session dict *by identity* (agents mutate it, the poll reads those mutations — §12.4 item 10) plus a buffer the worker appends to between polls. Nothing in it survives a round trip through a `dcc.Store`, and Spec4 has no server-side session to move it to. The *key* already lives in the browser store as `session["_stream_id"]`, which is exactly the (b) pattern applied correctly: per-session half in the store, process half in the process. |
+| 2 | `llm._USAGE_RECORDS` + `_USAGE_LOCK` | **(a)** | Already argued in the comment at `llm.py:255-271`: Agentifier sub-agents receive only `llm_config` (no session) and run on an asyncio-bridge thread that does not inherit contextvars, so no session is reachable at the capture point. Process-global is the design decision, not a leak. |
+| 3 | `project_manager._USAGE_LOCK` | **(a)** | A lock serialising a read-modify-write of `.spec4/v{N}/usage.json` between the chat persist funnel and the Designer thread. The shared resource is the file, not a session. The plan names this exact shape as (a). |
+| 4 | `version_check._cache` | **(a)** | Caches "what is the latest release on PyPI" — the same answer for every session, deliberately fetched once per server process. Not session state under any reading. |
+| 4b | `version_check._reset_cache` | **(c)** | The phase's only (c): a function whose sole purpose was to let a test forget the cached answer. Zero callers in `src/`, `evals/`, `scripts/`. Moved to the fixture (§14.4). |
+| 5 | `callbacks.designer._MOCK_BUFFERS` | **(a)** | Same shape as item 1 — a `threading.Event`, an accumulating buffer and up to 512 kB of HTML — keyed by `_gen_id`, which already lives in `designer-session-store`. |
+| 6 | `agentifier._registry` | **(a)** | Populated by seven `.register()` calls at import, read-only afterwards. |
+| 7 | `feature_specs._mechanism_definitions` (`lru_cache(1)`) | **(a)** | Process-lifetime memo of the on-disk pattern library, which ships with the package. |
+| 8 | `app.py` import side effects + `app` / `server` | **(a)** | D-LR1 / Rule 5. Already documented at `app.py:7-13`. Not touched. |
+
+Two structural reasons there is no (b) work here, both independent:
+
+1. **The remedy has no target.** Plan bullet (b) says session state "moves to the
+   session dict or the browser `dcc.Store` payload … no new server-side session
+   mechanism". In Spec4 the session dict *is* the browser store payload. All three
+   containers hold live thread handles, `threading.Event`s and a dict shared by
+   identity with a running worker; none of it is JSON-serialisable, so there is
+   nowhere for it to go that does not mean inventing the server-side session
+   mechanism the plan forbids.
+2. **The contract test pins the shape.** `tests/test_streaming_characterization.py`
+   reaches into all three containers *by module-level name*, asserts each entry's
+   exact key set (`set(entry) == {"text","done","session","error","finalised"}`,
+   `{"done","stop","text","expected_chars"}`), and asserts identity
+   (`streaming.get(sid) is entry`, `entry["session"] is session`). Any move out of
+   module scope, and any change to an entry's key set, fails it.
+
+**No registry work in `providers.py` / `websearch.py`.** The plan's registry bullet
+names those two modules. Both `providers.PROVIDERS` and `websearch.PROVIDERS` are
+constant tables never mutated after import — §8's own sweep confirms only items 1–8
+are mutated — so there was nothing there to make idempotent. The only import-time
+registry in the codebase is item 6.
+
+### 14.2 Files touched
+
+| File | Change |
+|---|---|
+| `src/spec4/streaming.py` | Lock fix in `_run()` (§14.3); category-(a) comment on `_STREAMS` / `_lock` |
+| `src/spec4/llm.py` | Comment only: what `_USAGE_LOCK` guards |
+| `src/spec4/project_manager.py` | Comment only: what `_USAGE_LOCK` serialises |
+| `src/spec4/version_check.py` | Comment on `_cache`; `_reset_cache` removed |
+| `src/spec4/feature_specs.py` | Docstring only: the cache is never invalidated |
+| `src/spec4/agentifier/agentifier.py` | Seven bare `.register()` calls → `_build_registry()` |
+| `tests/test_version_check.py` | `_clean_state` resets via `monkeypatch` instead of `_reset_cache` |
+| `CLEANUP_INVENTORY.md` | This report; §8, §11 and §12.4 items 8–9 marked resolved |
+
+Not touched: `tests/test_streaming_characterization.py`, `src/spec4/app.py`,
+`src/spec4/callbacks/designer.py` (items 5 and 8 already carry adequate comments —
+`designer.py:50-53` states the single-writer/GIL discipline, `app.py:7-13` states
+D-LR1 — so re-commenting them would have been churn, not clarity).
+
+### 14.3 The lock fix (§12.4 item 8) — and what it does not close
+
+Before, `_run()` wrote through the shared dict on every chunk, unlocked, while
+`start()` deleted keys from that same dict under `_lock` and the `finally` block
+already set `done` under it:
+
+```python
+_STREAMS[stream_id]["text"] += chunk        # :242
+_STREAMS[stream_id]["text"] += formatted    # :251
+_STREAMS[stream_id]["error"] = True         # :252
+```
+
+After, the worker writes through the `entry` object already captured in its
+closure, under `_lock`, and the error path is a single critical section:
+
+```python
+with _lock:
+    entry["text"] += chunk
+...
+with _lock:
+    entry["text"] += formatted
+    entry["error"] = True
+```
+
+Three things this changes: the worker no longer touches the `_STREAMS` dict at all,
+so it cannot race `start()`'s eviction loop; `text` and `error` now land together,
+so a reader cannot see `error=True` without the message that explains it; and every
+worker write now takes the same lock as the `done` latch it is ordered against.
+Every remaining `_STREAMS` access in the module is inside `with _lock`.
+
+**What it does not close, stated plainly.** It does not synchronise the *reader*.
+`get()` returns the entry by identity and `on_stream_poll` reads `stream["text"]`,
+`["done"]` and `["session"]` outside the lock. That is not an oversight and it is
+not fixable here: handing back the live entry is the channel agent mutations travel
+on (§12.4 item 10), and both `streaming.get(sid) is entry` and
+`entry["session"] is session` are pinned by the characterization test. The observed
+effect therefore remains exactly what §8 said it was — under CPython, at worst a
+stale read of a field, never a torn one. A design that closed it would have to
+replace `get()` with a snapshot API, which is a Phase 4/5 interface change, not a
+Phase 3 lock fix.
+
+### 14.4 The one (c): `version_check._reset_cache` → the fixture
+
+`_reset_cache` existed only so `tests/test_version_check.py`'s autouse `_clean_state`
+fixture could forget the cached answer; a grep across `src/`, `tests/`, `evals/` and
+`scripts/` found no other caller. Removed from `src/`; the fixture now does
+
+```python
+monkeypatch.setattr(version_check, "_cache", {"checked": False, "result": None})
+```
+
+`check_for_update` reads the module global by name at call time, so rebinding the
+attribute works, and monkeypatch *restores* the module's own cache on teardown
+rather than wiping it — so the process-lifetime cache is now never written by this
+test module at all, which is stricter isolation than the two `_reset_cache()` calls
+it replaces. `version_check.py` stays at 100% coverage.
+
+### 14.5 Item 6: `_build_registry()`
+
+The plan asks that an import-time registry be made "idempotent and explicit (a
+function called once from `app.py` after construction), respecting D-LR1". The
+`app.py` half is infeasible for this registry and was not done: `agentifier.agentifier`
+is imported *lazily*, from function bodies in `callbacks` and `session`, and never
+from `app.py` at all (§6). An init call from `app.py` would make a deliberately
+deferred import eager and add a top-level `app` → `agentifier` edge the layering
+does not have — a layering change, not a cleanup. The "explicit and idempotent"
+half is done: the seven bare `.register()` calls became a named
+`_build_registry() -> SubAgentRegistry`, called once at module scope, whose
+docstring records why it is not called from `app.py`. Same seven agents, same
+registration order. `_registry` remains a module attribute, so the ten
+`patch("spec4.agentifier.agentifier._registry.stream")` calls in
+`tests/agentifier/test_ff_sweep.py` are unaffected.
+
+### 14.6 Deferred / not acted on
+
+- **`streaming.get()` handing out the live entry** (§14.3). The reason the reader
+  stays unsynchronised. Changing it is an API change the pinned contract test
+  forbids; if it is ever wanted, it belongs to whichever later phase is allowed to
+  edit `tests/test_streaming_characterization.py`.
+- **`streaming.pop`** — decided, not deferred: it stays (§12.4 item 9, now struck).
+- **`version_check._cache` is unguarded.** Two first page loads racing into
+  `check_for_update` can both fetch. The cost is one duplicate best-effort HTTP
+  request converging on the same answer; a lock on the render path is the wrong
+  trade. Recorded in the comment rather than "fixed", so the next reader does not
+  mistake absence of a guard for absence of thought.
+- **`feature_specs._mechanism_definitions` is never invalidated.** Nothing calls
+  `cache_clear()`, so a pattern-library edit on disk needs a restart. Intended
+  (the library ships with the package); now stated in the docstring.
+- Everything else already listed in §11 for Phases 4–7 — untouched, per Rule 7.
+
+### 14.7 Statement-count accounting
+
+`TOTAL` moved 11683 → 11680 (−3), which reconciles exactly:
+`streaming.py` +2 (the two `with _lock:` statements), `agentifier.py` −2 (eight
+module-level statements became six), `version_check.py` −3 (`_reset_cache`).
+The comment-only and docstring-only edits add no statements.
+
+### 14.8 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `186 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 60 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4249 passed, 1 skipped in 171.97s (0:02:51)` (exit 0) |
+| Coverage | same run | `TOTAL 11680 stmts, 893 miss, 92%` |
+
+No per-module figure dropped below its floor (§1.3 for non-UI, §12.3 for UI).
+Spot-checked against the containers this phase touched: `streaming.py` 91% (Phase 1
+floor 91%), `version_check.py` 100% (100%), `feature_specs.py` 77% (77%),
+`llm.py` 95% (95%), `project_manager.py` 97% (97%),
+`agentifier/agentifier.py` 89% (89%), `callbacks/designer.py` 74% (74%),
+`app.py` 89% (89%).
+
+A fresh `spec4.app` import still registers **92** callbacks in
+`dash._callback.GLOBAL_CALLBACK_MAP` — the §13.7 invariant, re-checked because both
+`agentifier` and `app.py` were in this phase's scope.
