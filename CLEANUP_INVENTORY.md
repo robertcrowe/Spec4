@@ -1105,7 +1105,7 @@ Observations for Phase 6:
 - Resolved before Phase 2: `.coverage` is untracked (commit `f859376`) and listed in `.gitignore`; the pytest rewrite-in-place no longer dirties the tree.
 - Phase 2: `dash-iconify` removal from `[project.dependencies]` + mypy override; `download_button_id`; `CODE_REVIEW_SCHEMA_VERSION`; the `valid_tier_names` parameter; `PatternBase`/`PriorityEdits` visibility; the 15 public zero-importer names in §7; the 22 test-side vulture lines.
 - ~~Phase 3: the eight items in §8.~~ **Done (2026-09-08), §14.** All eight are category (a); the one (c) found was `version_check._reset_cache`, which moved to a fixture.
-- Phase 4: break the `layouts` ↔ `layouts._chat` cycle; decide the fate of `session.py` as the UI/agent hinge; write the import-assertion test (§6.3); split the eight files over 1,300 lines.
+- Phase 4: break the `layouts` ↔ `layouts._chat` cycle (scheduled: sub-phase 4f, §15.3); ~~decide the fate of `session.py` as the UI/agent hinge~~ **decided (2026-09-08, §15.3): keep it, not a Phase 4 split — its issue is layering, not size**; ~~write the import-assertion test (§6.3)~~ **done (2026-09-08), `tests/test_import_layering.py`, §15**; split the eight files over 1,300 lines (order proposed in §15.3, starting at 4a).
 - Phase 5: the 61 C901 functions, starting with the table in §5.1; the 26 small SIM/B hits; the remaining renderer/artifact cosmetics in §12.4 (items 2, 3, 6, 7 and the open halves of 4 and 5) (goldens in `tests/golden/` pin the current output, so each fix is a deliberate golden update).
 - Phase 6: consolidate `test_deployer_*` / `test_phaser_*` / `test_stack_*`; split `test_agents.py`; run `--durations`; the 162 test-side ARG hits are not targets; the screen-registry overlap in §12.5.
 - Phase 7: rewrite `tests/README.md`; rerun every command in this file and diff against the numbers here.
@@ -1510,3 +1510,145 @@ floor 91%), `version_check.py` 100% (100%), `feature_specs.py` 77% (77%),
 A fresh `spec4.app` import still registers **92** callbacks in
 `dash._callback.GLOBAL_CALLBACK_MAP` — the §13.7 invariant, re-checked because both
 `agentifier` and `app.py` were in this phase's scope.
+
+## 15. Phase 4 pre-work — the layering contract test, and the sub-phase order
+
+Recorded 2026-09-08 on branch `look-rework`. One test file added; **nothing under
+`src/` changed**, `pyproject.toml` is untouched, no existing test was edited.
+Nothing was written under `.spec4/`, `.venv/` or `.git/`, and no git command was
+run. No file was split — each split is its own run, starting at 4a.
+
+### 15.1 The file added
+
+| Path | Purpose |
+|---|---|
+| `tests/test_import_layering.py` | 7 tests. The `ast`-based layering contract §6.3 chose instead of import-linter. Named for imports, not "layering contract", to stay distinct from `tests/test_layout_contract.py` (Dash layouts, Phase 1). |
+
+It walks `src/spec4/**/*.py` with `ast` and rebuilds the edge set §6 was built
+from, then asserts four rules against it. The walk, not `importlib`: it sees
+function-body imports (§6.2 lists seven, and a lazy import is where an upward
+edge would hide), it imports nothing to run, and it can read a module that would
+fail to import.
+
+- `import spec4.x` → an edge to `spec4.x`.
+- `from spec4.x import y` → an edge to `spec4.x`, plus one to `spec4.x.y` when
+  that is itself a module in the walked set — §6's own rule.
+- Relative imports are resolved against the importing module's package, so a
+  sub-phase that converts a module to a package and switches to `from . import x`
+  is still covered.
+- Layer membership is "the name itself, or the name plus a dot". `spec4.app_constants`
+  is therefore **not** part of the `spec4.app` layer, and a `project_manager.py`
+  that becomes `project_manager/` in 4b is still matched by `spec4.project_manager`.
+
+### 15.2 The four rules
+
+| # | Rule | Status today |
+|---:|---|---|
+| 1 | No module under `spec4.agents*`, `spec4.agentifier*` or `spec4.project_manager*` imports anything under `spec4.layouts*`, `spec4.callbacks*`, `spec4.app` or `spec4.session*`. | holds (0 edges) |
+| 2 | No module in `src/` imports `spec4.app`. Scoped to `src/` — tests import it, and `[project.scripts]`'s `spec4.app:main` is an entry point, not an import. | holds (0 edges) |
+| 3 | No module under `spec4.layouts*` imports anything under `spec4.callbacks*` (§6.3 boundary (b)). | holds (0 edges) |
+| 4 | No module named `spec4.callbacks._*` imports the `spec4.callbacks` package itself. | **vacuous today** |
+
+Rule 4 is forward-looking by design. `callbacks/` currently holds only
+`__init__.py` and `designer.py`, so nothing matches `spec4.callbacks._*`; the rule
+starts biting in 4g, when the private sub-modules appear and must take their shared
+helpers from `callbacks/_shared.py` rather than from the package `__init__` that
+imports them for registration — i.e. so the `layouts` ↔ `layouts._chat` cycle
+(§6.1) is not recreated one directory over. It is deliberately excluded from the
+non-emptiness guards below, and the test says so in a comment, so that "no modules
+matched" is not later read as "rule removed". Two scheduled tightenings: 4g moves
+`_open_pick_fields` into `callbacks/_shared.py`, which removes the one existing
+`callbacks.designer` → `spec4.callbacks` edge (`callbacks/designer.py:14`); 4h then
+widens rule 4 from `spec4.callbacks._` to `spec4.callbacks.` — one underscore
+deleted from `_CALLBACKS_PRIVATE`.
+
+Three guards keep the test from passing for the wrong reason: the walk must find
+≥ 55 modules with both layer sets non-empty, and it must still see two known edges
+— `spec4.app` → `spec4.callbacks` (top level) and `spec4.session` →
+`spec4.agentifier.agentifier` (function body). If the second stops being seen the
+walk has gone shallow and every rule is passing vacuously. Each rule reports the
+offending `importer -> imported` pairs, sorted, so a failure names the file to fix.
+
+All four were also checked against a synthetic graph containing one violation of
+each; all four reported it.
+
+### 15.3 Proposed sub-phase order
+
+Line counts are current (Phase 0's table plus the §14.7 deltas). "Largest first"
+alone would start at `agentifier/agentifier.py`, which is the largest *and* least
+separable file in the repo; this order weighs size against how cleanly each file
+already comes apart. Every sub-phase keeps the module's name and import path,
+re-exports every public name, changes no logic, and re-runs the layering test.
+
+| # | File | Lines | Splits into | Why here |
+|---|---|---:|---|---|
+| 4a | `agents/_utils.py` | 2528 | `_turn_flow` (conversation-history surgery for the shared turn loop), `_reask` (artifact-reask protocol + the stream wrappers), `_feature_context` (feature/AI-feature seed blocks per consumer), `_stack_context` (stack/phases/NFR/manifest digests + the style renderers) | Second largest; five banner-delimited blocks of pure functions, no Dash, no shared mutable state. Best payoff per unit of risk. |
+| 4b | `project_manager.py` | 1897 | `_paths` (where an artifact lives: dirs, versioning, rounds), `_artifacts` (read/write every `.spec4/` artifact + README assembly), `_phase_markdown` (phase-file assembly and parsing), `_usage` (usage log + cost rollup) | Foundation module, 18 importers; banner-delimited; phase markdown and README already golden-pinned (§12.1). Staleness + button state (~220 lines) stays in the façade. |
+| 4c | `agents/code_scanner.py` | 1741 | package `code_scanner/`: `_scan` (repo walk + context gathering + budgets), `_prompt` (the frozen ~646-line `SYSTEM_PROMPT`), `_review_render` (`_format_review_as_text` + the seven section renderers) | ~646 lines are one frozen prompt; the renderer is golden-pinned. Separates almost by inspection. |
+| 4d | `agents/stack_advisor.py` | 1432 | package `stack_advisor/`: `_prompt`, `_stack_shape` (normalisation/extraction + revision note), `_render` (`_format_stack_as_text` and friends) | Same shape. Isolating `_format_stack_as_text` (C901 61, the repo's worst) is what makes Phase 5's first decomposition tractable. |
+| 4e | `agents/phaser.py` | 1378 | package `phaser/`: `_prompt`, `_phase_extract` (extraction, truncation and completeness checks), `_revision` (`revision_delta`, `build_revision_note`, design note) | Same shape again; `run` (493 lines) stays whole — shrinking it is Phase 5. |
+| 4f | `layouts/_chat.py` | 997 | `_chat_status` (the strip above the transcript), `_chat_actions` (`_chat_action_buttons` + open/download ids), `_chat_panels` (`_retry_panel`, `_breadth_panel`) | Under the 1,300 line, included because the plan's "resolve the `layouts` ↔ `layouts._chat` cycle in whichever sub-phase touches `layouts/`" otherwise has no home. |
+| 4g | `callbacks/__init__.py` | 2460 | `_shared` (the cross-module helpers, incl. `_open_pick_fields`), `_setup` (the three wizard steps), `_chat` (turn, gate, retry, breadth, stream poll, navigation), `_artifacts` (round tree, artifact view, cost, downloads, open-in-view) | Cleanly banner-grouped, but 78 decorator-registered callbacks must still register exactly once on `import spec4.callbacks`. Late, once the mechanical splits have proven the process. |
+| 4h | `callbacks/designer.py` | 1399 | package `designer/`: `_mock_gen` (`_start_gen`, the worker, `_MOCK_BUFFERS`), `_wizard` (steps 1–4 and approve/back/start-over), `_refine` (regenerate, refine, revise-stale, retry) | Same registration constraint, plus §12.2 pins `_MOCK_BUFFERS` by module-level name on `spec4.callbacks.designer`; the re-export must bind the same dict object. |
+| 4i | `agentifier/agentifier.py` | 3565 | `_seed` (sub-agent call wrappers, seed message, candidate/analysis (de)serialisation, registry), `_render` (every `_format_*`, `_build_ai_features`, priority parsing, revision snapshot), `_ff_review` (both fast-forward review halves) | Largest and least separable: one generator flow, every `_run_*_phase` yields UI updates and mutates the shared `session`. Only the leaf-pure edges come out; the phase drivers stay. Last of the splits, deliberately. |
+| 4j | *(no file)* | — | — | Importer cleanup: retire the compatibility layer the eight splits leave behind. |
+
+**`session.py` (654) is not proposed for a split.** It is smaller than every
+candidate above, and its actual problem — being the UI/agent hinge (§6.2) — is a
+layering decision, not a file-size one. §11's "decide the fate of `session.py`" is
+answered: keep it, out of Phase 4 scope.
+
+### 15.4 Three decisions the order depends on
+
+1. **The `_prompt.py` collision (4c/4d/4e) → package conversion.** Three siblings
+   under `agents/` cannot all be `_prompt.py`. Each of `code_scanner`,
+   `stack_advisor` and `phaser` becomes a package (`__init__.py` + its private
+   modules) rather than gaining prefixed flat files, so the import path
+   `spec4.agents.code_scanner` is unchanged — the same string every importer,
+   every `session.py` dispatch entry and every test already uses. One consequence
+   handled inside 4c: `pyproject.toml`'s ruff per-file-ignore is
+   `"src/spec4/agents/*.py" = ["E501"]` and ruff's `*` does not cross a directory
+   separator, so a nested `_prompt.py` would lose the exemption and the ruff gate
+   would fail on the frozen prompt lines. 4c changes that pattern (and the
+   `agentifier` one) to `**/*.py`. Config forced by the split; no rule set changes.
+2. **Underscore aliases in 4a.** `_utils`'s private names are imported by name
+   across files — 20+ test modules do `from spec4.agents._utils import
+   _stack_for_deployer` and friends. The new modules use public names and
+   `_utils.py` re-exports *both* the public name and the underscore alias, so no
+   importer changes while the code is moving. Zero `patch("spec4.agents._utils.…")`
+   string targets exist, so only the direct imports matter.
+3. **4j retires that layer**, in order: the 4a aliases (importers move to the
+   public names, then the aliases are deleted), then re-exports with no importer
+   anywhere in `src/`, `tests/`, `evals/`, `scripts/`, then a docstring on each
+   façade saying what its sub-modules own. Names that turn out to be genuinely
+   dead are logged here as Phase 2-style candidates, not deleted — 4j moves
+   imports, it does not remove definitions. Not in scope: anything a test patches
+   by string, `__all__` in `spec4/__init__.py` or `agents/__init__.py`, or any
+   import in `app.py` (Rule 5, D-LR1).
+
+### 15.5 Two invariants to re-check per sub-phase, beyond the gate
+
+- The callback registry still holds **92** callbacks (§13.7, §14.8) — the check
+  that catches a callback registering twice or not at all when `callbacks/` is
+  split in 4g/4h.
+- `tests/test_streaming_characterization.py` and `tests/test_layout_contract.py`
+  are not edited. They are the Phase 1 net, and 4f/4g/4h are exactly the
+  sub-phases that would be tempted to edit them.
+
+Per §6.3, 4g is also the point to reconsider import-linter: it is where `callbacks/`
+gains internal layering, which is the case §6.3 named as the one that would justify
+a declarative contract.
+
+### 15.6 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `187 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 60 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 177.41s (0:02:57)` (exit 0) |
+| Coverage | same run | `TOTAL 11680 stmts, 893 miss, 92%` |
+
+4249 → 4256 tests (+7, all in the new file). `187 files already formatted` is
+§14.8's 186 plus the new test. Coverage is byte-for-byte §14.8's — the file adds
+no statements under `src/`, so no per-module floor can have moved.
