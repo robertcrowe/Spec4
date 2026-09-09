@@ -115,8 +115,10 @@ def test_non_ai_stack_has_no_provider_or_infra_sections() -> None:
 def test_general_library_without_serves_renders_plain() -> None:
     out = _format_stack_as_text(
         _wrap(
-            {"name": "X", "libraries": {"backend": [{"name": "pytest",
-             "purpose": "tests"}]}}
+            {
+                "name": "X",
+                "libraries": {"backend": [{"name": "pytest", "purpose": "tests"}]},
+            }
         )
     )
     assert "pytest — tests" in out
@@ -134,7 +136,7 @@ def test_prompt_has_gated_provider_topic() -> None:
     assert "capability_class" in SYSTEM_PROMPT
     # D-SC39: the tier is a checkable value, and the nine names are stated.
     assert "exactly one of the nine catalog tiers" in SYSTEM_PROMPT
-    assert 'Never invent a label' in SYSTEM_PROMPT
+    assert "Never invent a label" in SYSTEM_PROMPT
     # D-SC38: role sits on the capability, not the provider.
     assert "Role belongs on the capability" in SYSTEM_PROMPT
 

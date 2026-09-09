@@ -539,8 +539,7 @@ def format_validation_errors_for_retry(errors: list[str], limit: int = 15) -> st
     capped = errors[:limit]
     bullet_list = "\n".join(f"- {e}" for e in capped)
     truncated_note = (
-        f"\n\n(plus {len(errors) - limit} more — fix the structural issues "
-        "above first)"
+        f"\n\n(plus {len(errors) - limit} more — fix the structural issues above first)"
         if len(errors) > limit
         else ""
     )

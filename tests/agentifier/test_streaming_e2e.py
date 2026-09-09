@@ -36,7 +36,11 @@ _SAMPLE_SPEC_JSON = {
     "success_criteria": ["Works"],
     "failure_modes": [],
     "escalation": "Log and return empty",
-    "eval_approach": {"offline": "golden set", "online": "metrics", "ground_truth": "labels"},
+    "eval_approach": {
+        "offline": "golden set",
+        "online": "metrics",
+        "ground_truth": "labels",
+    },
     "budgets": {"cost_per_call": "$0.001", "p95_latency": "500ms"},
     "privacy_safety": ["No PII"],
     "phase_priority": "mvp",
@@ -89,6 +93,7 @@ class TestSpecDrafterStreaming:
 
     def test_stream_is_async_generator(self) -> None:
         import inspect
+
         agent = SpecDrafterAgent()
         inp = _make_spec_input()
 
@@ -336,9 +341,14 @@ class TestOrchestratorSpecPhase:
         """After all per-feature specs confirmed, agentifier_spec_done is set."""
         session = self._make_session()
         # Provide a cross-cutting mock response too
-        cc_json = {t: {"recommendation": "rec", "rationale": "rat", "cited_patterns": []} for t in [
-            "provider_strategy", "tool_protocol_strategy", "prompt_versioning",
-        ]}
+        cc_json = {
+            t: {"recommendation": "rec", "rationale": "rat", "cited_patterns": []}
+            for t in [
+                "provider_strategy",
+                "tool_protocol_strategy",
+                "prompt_versioning",
+            ]
+        }
 
         with patch("litellm.acompletion", new=self._spec_mock()):
             from spec4.agentifier.agentifier import run as agentifier_run
@@ -349,7 +359,9 @@ class TestOrchestratorSpecPhase:
             ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))  # draft A
                 list(agentifier_run("yes", session, _LLM_CONFIG))  # confirm A, draft B
-                list(agentifier_run("yes", session, _LLM_CONFIG))  # confirm B → spec done
+                list(
+                    agentifier_run("yes", session, _LLM_CONFIG)
+                )  # confirm B → spec done
 
         assert session.get("agentifier_spec_done") is True
         assert session.get("ai_features") is not None
@@ -358,9 +370,14 @@ class TestOrchestratorSpecPhase:
     def test_ai_features_has_correct_schema_keys(self) -> None:
         """Per-feature schema keys are correct after spec phase completes."""
         session = self._make_session()
-        cc_json = {t: {"recommendation": "rec", "rationale": "rat", "cited_patterns": []} for t in [
-            "provider_strategy", "tool_protocol_strategy", "prompt_versioning",
-        ]}
+        cc_json = {
+            t: {"recommendation": "rec", "rationale": "rat", "cited_patterns": []}
+            for t in [
+                "provider_strategy",
+                "tool_protocol_strategy",
+                "prompt_versioning",
+            ]
+        }
 
         with patch("litellm.acompletion", new=self._spec_mock()):
             from spec4.agentifier.agentifier import run as agentifier_run
@@ -395,7 +412,11 @@ class TestOrchestratorSpecPhase:
 
             list(agentifier_run("yes", session, _LLM_CONFIG))  # first draft
             initial_calls = call_count[0]
-            list(agentifier_run("change phase_priority to steel_thread", session, _LLM_CONFIG))
+            list(
+                agentifier_run(
+                    "change phase_priority to steel_thread", session, _LLM_CONFIG
+                )
+            )
 
         assert call_count[0] > initial_calls  # spec drafter called again
 
@@ -405,7 +426,8 @@ class TestOrchestratorSpecPhase:
 # ---------------------------------------------------------------------------
 
 _CC_TOPICS = (
-    "provider_strategy", "prompt_versioning",
+    "provider_strategy",
+    "prompt_versioning",
 )
 
 _CC_ANALYSIS = {
@@ -426,14 +448,26 @@ def _make_cc_session() -> dict[str, Any]:
     session["agentifier_spec_done"] = True
     session["ai_catalog"] = {
         "ai_catalog": [
-            {"name": "fa", "scope": "feature", "rough_description": "desc",
-             "tier_recommendation": "single_call", "tier_decision": "single_call",
-             "tier_decision_rationale": ""},
+            {
+                "name": "fa",
+                "scope": "feature",
+                "rough_description": "desc",
+                "tier_recommendation": "single_call",
+                "tier_decision": "single_call",
+                "tier_decision_rationale": "",
+            },
         ]
     }
     session["ai_features"] = {
-        "ai_features": [{"id": "fa", "name": "fa", "tier": "single_call", "purpose": "p",
-                         "phase_priority": "mvp"}],
+        "ai_features": [
+            {
+                "id": "fa",
+                "name": "fa",
+                "tier": "single_call",
+                "purpose": "p",
+                "phase_priority": "mvp",
+            }
+        ],
         "cross_cutting": {},
         "explicitly_rejected": [],
         "references": [],
@@ -477,13 +511,21 @@ class TestOrchestratorCrossCuttingPhase:
         session = _make_cc_session()
         from spec4.agentifier.agentifier import run as agentifier_run
 
-        cc_revised = {"provider_strategy": {"recommendation": "revised", "rationale": "new", "cited_patterns": []}}
+        cc_revised = {
+            "provider_strategy": {
+                "recommendation": "revised",
+                "rationale": "new",
+                "cited_patterns": [],
+            }
+        }
         cc_text = "```json\n" + json.dumps(cc_revised) + "\n```"
         with patch(
             "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
             return_value=cc_revised,
         ):
-            with patch("litellm.acompletion", new=_make_streaming_mock(cc_text.split())):
+            with patch(
+                "litellm.acompletion", new=_make_streaming_mock(cc_text.split())
+            ):
                 list(agentifier_run("add opentelemetry", session, _LLM_CONFIG))
 
         assert session["agentifier_cross_cutting_index"] == 0
@@ -500,7 +542,9 @@ class TestOrchestratorCrossCuttingPhase:
         session["agentifier_cross_cutting_topics"] = ["prompt_versioning"]
         session["agentifier_cross_cutting_analysis"] = {
             "prompt_versioning": {
-                "recommendation": "r", "rationale": "x", "cited_patterns": [],
+                "recommendation": "r",
+                "rationale": "x",
+                "cited_patterns": [],
             }
         }
         session["agentifier_cross_cutting_index"] = 0
@@ -518,7 +562,9 @@ class TestOrchestratorCrossCuttingPhase:
 
         revised = {
             "provider_strategy": {
-                "recommendation": "rev", "rationale": "x", "cited_patterns": [],
+                "recommendation": "rev",
+                "rationale": "x",
+                "cited_patterns": [],
             }
         }
         cc_text = "```json\n" + json.dumps(revised) + "\n```"
@@ -526,7 +572,9 @@ class TestOrchestratorCrossCuttingPhase:
             "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
             return_value=revised,
         ):
-            with patch("litellm.acompletion", new=_make_streaming_mock(cc_text.split())):
+            with patch(
+                "litellm.acompletion", new=_make_streaming_mock(cc_text.split())
+            ):
                 list(agentifier_run("skip", session, _LLM_CONFIG))
 
         # "skip" on a required topic is treated as a revision, not an advance.
@@ -535,8 +583,13 @@ class TestOrchestratorCrossCuttingPhase:
     def test_no_warranted_topics_skips_cross_cutting(self) -> None:
         session = _make_cc_session()
         session["ai_features"]["ai_features"] = [
-            {"id": "d", "name": "d", "tier": "deterministic", "purpose": "p",
-             "phase_priority": "mvp"},
+            {
+                "id": "d",
+                "name": "d",
+                "tier": "deterministic",
+                "purpose": "p",
+                "phase_priority": "mvp",
+            },
         ]
         session["agentifier_cross_cutting_topics"] = []
         session["agentifier_cross_cutting_analysis"] = None
@@ -602,7 +655,9 @@ class TestFullPipeline:
             "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
             return_value=_CC_ANALYSIS,
         ):
-            with patch("litellm.acompletion", new=_make_streaming_mock(self._spec_words())):
+            with patch(
+                "litellm.acompletion", new=_make_streaming_mock(self._spec_words())
+            ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))  # confirm spec → cc
 
         assert session.get("agentifier_spec_done") is True
@@ -634,7 +689,9 @@ class TestFullPipeline:
             "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
             return_value=_CC_ANALYSIS,
         ):
-            with patch("litellm.acompletion", new=_make_streaming_mock(self._spec_words())):
+            with patch(
+                "litellm.acompletion", new=_make_streaming_mock(self._spec_words())
+            ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))  # confirm → cc
 
         for _ in _CC_TOPICS:

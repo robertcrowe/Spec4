@@ -69,8 +69,18 @@ class TestHeadPresent:
     def test_head_present_group_passes_through_without_llm(self) -> None:
         cands = [
             _c("orch", features=["deck"]),
-            _c("member_a", scope="sub_feature", features=["deck"], composed_under="orch"),
-            _c("member_b", scope="sub_feature", features=["deck"], composed_under="orch"),
+            _c(
+                "member_a",
+                scope="sub_feature",
+                features=["deck"],
+                composed_under="orch",
+            ),
+            _c(
+                "member_b",
+                scope="sub_feature",
+                features=["deck"],
+                composed_under="orch",
+            ),
         ]
         with patch("spec4.agentifier.composer.complete_stream") as mock_complete:
             out = _run(cands)
@@ -86,7 +96,12 @@ class TestHeadPresent:
         # Both candidates pass through untouched and no Composition is recorded.
         cands = [
             _c("orch", features=["deck"], desc="Runs the show."),
-            _c("member_a", scope="sub_feature", features=["deck"], composed_under="orch"),
+            _c(
+                "member_a",
+                scope="sub_feature",
+                features=["deck"],
+                composed_under="orch",
+            ),
         ]
         with patch("spec4.agentifier.composer.complete_stream") as mock_complete:
             out = _run(cands)
@@ -127,7 +142,12 @@ class TestHeadlessSynthesis:
         # A coordinated group whose coined coordinator ("pipeline") Scout did not
         # emit — exactly the head-absent case the live corpus never produced.
         return [
-            _c("stage_one", scope="sub_feature", features=["prod"], composed_under="pipeline"),
+            _c(
+                "stage_one",
+                scope="sub_feature",
+                features=["prod"],
+                composed_under="pipeline",
+            ),
             _c(
                 "stage_two",
                 scope="sub_feature",
@@ -163,7 +183,10 @@ class TestHeadlessSynthesis:
 
     def test_synthesis_failure_presents_flat(self) -> None:
         # complete raising → group detaches, members stand alone, nothing lost.
-        with patch("spec4.agentifier.composer.complete_stream", side_effect=RuntimeError("boom")):
+        with patch(
+            "spec4.agentifier.composer.complete_stream",
+            side_effect=RuntimeError("boom"),
+        ):
             out = _run(self._headless_fixture())
         assert out.n_synthesized == 0
         by = _by_name(out.candidates)
@@ -174,7 +197,8 @@ class TestHeadlessSynthesis:
 
     def test_empty_synthesis_text_presents_flat(self) -> None:
         with patch(
-            "spec4.agentifier.composer.complete_stream", return_value=_mock_response("   ")
+            "spec4.agentifier.composer.complete_stream",
+            return_value=_mock_response("   "),
         ):
             out = _run(self._headless_fixture())
         assert out.n_synthesized == 0
@@ -195,7 +219,10 @@ class TestEnrichment:
             _c("m2", scope="sub_feature", composed_under="orch"),
         ]
         out = _run(cands)
-        assert "Part of the orch capability." in _by_name(out.candidates)["m"].rough_description
+        assert (
+            "Part of the orch capability."
+            in _by_name(out.candidates)["m"].rough_description
+        )
 
     def test_head_gets_coordinates_sentence(self) -> None:
         cands = [
@@ -225,7 +252,10 @@ class TestEnrichment:
             _c("consumer", requires=["producer"], desc="Uses the output."),
         ]
         out = _run(cands)
-        assert "Depends on producer." in _by_name(out.candidates)["consumer"].rough_description
+        assert (
+            "Depends on producer."
+            in _by_name(out.candidates)["consumer"].rough_description
+        )
 
     def test_enrichment_is_idempotent(self) -> None:
         # Running the enrichment twice must not double any sentence. Uses a

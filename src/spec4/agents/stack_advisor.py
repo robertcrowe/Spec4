@@ -708,7 +708,8 @@ def build_revision_note(delta: dict[str, Any]) -> str:
     if clauses:
         segments.append(
             " Recommend only the incremental stack changes this revision's "
-            + "; ".join(clauses) + " require."
+            + "; ".join(clauses)
+            + " require."
         )
     segments.append(
         " Preserve the established stack — languages, deployment, and every "
@@ -852,7 +853,12 @@ def _label(key: Any) -> str:
     return str(key).replace("_", " ").strip().title()
 
 
-_ID_KEYS = ("serves_features", "serves_capabilities", "satisfies_nfr", "satisfies_infra")
+_ID_KEYS = (
+    "serves_features",
+    "serves_capabilities",
+    "satisfies_nfr",
+    "satisfies_infra",
+)
 
 # Labels for the id arrays whose key name alone does not read as English.
 _ID_LABELS = {
@@ -878,7 +884,9 @@ def _render_any(label: str, value: Any, lines: list[str], indent: str = "") -> N
             _render_any(_label(k), v, lines, indent + "  ")
     elif isinstance(value, list):
         if all(isinstance(v, (str, int, float, bool)) for v in value):
-            lines.append(f"{indent}- {label}: {', '.join(_scalar_text(v) for v in value)}")
+            lines.append(
+                f"{indent}- {label}: {', '.join(_scalar_text(v) for v in value)}"
+            )
         else:
             lines.append(f"{indent}- {label}:")
             for item in value:
@@ -886,7 +894,9 @@ def _render_any(label: str, value: Any, lines: list[str], indent: str = "") -> N
                     name = item.get("name") or item.get("path") or item.get("standard")
                     head = _scalar_text(name) if name else "-"
                     lines.append(f"{indent}  - {head}")
-                    _render_rest(item, {"name", "path", "standard"}, lines, indent + "    ")
+                    _render_rest(
+                        item, {"name", "path", "standard"}, lines, indent + "    "
+                    )
                 else:
                     _render_any("-", item, lines, indent + "  ")
     else:
@@ -905,7 +915,9 @@ def _render_rest(
         if key in handled:
             continue
         if key in _ID_KEYS and isinstance(value, list) and value:
-            lines.append(f"{indent}- {_ID_LABELS.get(key, _label(key))}: {_as_ids(value)}")
+            lines.append(
+                f"{indent}- {_ID_LABELS.get(key, _label(key))}: {_as_ids(value)}"
+            )
             continue
         _render_any(_label(key), value, lines, indent)
 
@@ -915,7 +927,9 @@ def _render_entry_links(entry: dict[str, Any], lines: list[str], indent: str) ->
     for key in _ID_KEYS:
         vals = entry.get(key) or []
         if vals:
-            lines.append(f"{indent}- {_ID_LABELS.get(key, _label(key))}: {_as_ids(vals)}")
+            lines.append(
+                f"{indent}- {_ID_LABELS.get(key, _label(key))}: {_as_ids(vals)}"
+            )
 
 
 def _format_stack_as_text(stack: dict[str, Any]) -> str:
@@ -988,7 +1002,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
                     if cap.get("role"):
                         head += f" ({cap['role']})"
                     lines.append(f"  - {head}")
-                    _render_rest(cap, {"tier", "capability_class", "role"}, lines, "    ")
+                    _render_rest(
+                        cap, {"tier", "capability_class", "role"}, lines, "    "
+                    )
             _render_rest(prov, {"capabilities"}, lines, "  ")
         lines.append("")
 
@@ -1047,8 +1063,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
                     if col.get("entities"):
                         bits.append(
                             "holds "
-                            + ", ".join(_scalar_text(e)
-                                        for e in _as_list(col["entities"]))
+                            + ", ".join(
+                                _scalar_text(e) for e in _as_list(col["entities"])
+                            )
                         )
                     if col.get("purpose"):
                         bits.append(_scalar_text(col["purpose"]))
@@ -1130,7 +1147,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
                 head = str(item.get("name", "decision"))
                 value = item.get("value")
                 lines.append(
-                    f"- {head}: {_scalar_text(value)}" if value is not None else f"- {head}"
+                    f"- {head}: {_scalar_text(value)}"
+                    if value is not None
+                    else f"- {head}"
                 )
                 if item.get("description"):
                     lines.append(f"  - {item['description']}")
@@ -1208,7 +1227,9 @@ def run(
 
     if user_input is None:
         if messages:
-            stale_q = _maybe_inject_staleness_question(session, "stack_advisor", messages)
+            stale_q = _maybe_inject_staleness_question(
+                session, "stack_advisor", messages
+            )
             if stale_q is not None:
                 yield stale_q
                 return
@@ -1232,23 +1253,22 @@ def run(
             )
             ai_features_block = (
                 _ai_features_for_stack(ai_features, current_version) + "\n"
-                if ai_features else ""
+                if ai_features
+                else ""
             )
             feature_specs = session.get("feature_specs")
             spine_block = (
                 _feature_specs_for_stack(feature_specs, ai_features) + "\n\n"
-                if feature_specs else ""
+                if feature_specs
+                else ""
             )
 
             design_dir = (
-                project_manager.get_version_dir(working_dir, current_version)
-                / "design"
-                if working_dir
+                project_manager.get_version_dir(working_dir, current_version) / "design"
+                if working_dir and current_version is not None
                 else None
             )
-            design_ctx = _design_manifest_for_stack(
-                _load_design_manifest(design_dir)
-            )
+            design_ctx = _design_manifest_for_stack(_load_design_manifest(design_dir))
             design_block = f"{design_ctx}\n\n" if design_ctx else ""
 
             vision_block = (
@@ -1277,9 +1297,7 @@ def run(
             )
 
             prior_stack = (
-                project_manager.load_prior_stack(working_dir)
-                if working_dir
-                else None
+                project_manager.load_prior_stack(working_dir) if working_dir else None
             )
             delta = revision_delta(vision)
 
@@ -1352,7 +1370,10 @@ def run(
 
     yield from _stream_suppressing_json(
         llm.stream_turn(
-            system, messages, llm_config, search_cfg,
+            system,
+            messages,
+            llm_config,
+            search_cfg,
             agent_name="stack_advisor",
             session=session,
         ),

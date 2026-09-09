@@ -157,9 +157,7 @@ class TestSaveArtifacts:
 
 
 class TestResolvePhaseVersion:
-    def _make_version(
-        self, tmp_path: Path, n: int, implemented: bool = False
-    ) -> None:
+    def _make_version(self, tmp_path: Path, n: int, implemented: bool = False) -> None:
         vdir = tmp_path / ".spec4" / f"v{n}"
         vdir.mkdir(parents=True, exist_ok=True)
         (vdir / "phases").mkdir(exist_ok=True)
@@ -214,6 +212,7 @@ class TestDetectStaleInputs:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("{}", encoding="utf-8")
         import os
+
         os.utime(path, (mtime, mtime))
 
     def test_unknown_agent_returns_empty(self, tmp_path: Path) -> None:
@@ -292,9 +291,7 @@ class TestVersionedLayoutExtras:
         session: dict[str, Any] = {"phase_version": 1}
         assert project_manager.active_version(tmp_path, session) == 1
 
-    def test_active_version_falls_back_to_latest_on_disk(
-        self, tmp_path: Path
-    ) -> None:
+    def test_active_version_falls_back_to_latest_on_disk(self, tmp_path: Path) -> None:
         self._make_version(tmp_path, 0)
         self._make_version(tmp_path, 2)
         assert project_manager.active_version(tmp_path, None) == 2
@@ -419,9 +416,7 @@ class TestImplementedVersionHelpers:
         assert project_manager.latest_phase_version(str(tmp_path)) == 1
         assert project_manager.latest_implemented_version(str(tmp_path)) == 0
 
-    def test_load_prior_vision_returns_implemented_vision(
-        self, tmp_path: Path
-    ) -> None:
+    def test_load_prior_vision_returns_implemented_vision(self, tmp_path: Path) -> None:
         vision = {"vision_statement": {"name": "Checkers"}}
         self._implement(tmp_path, 0, vision)
         assert project_manager.load_prior_vision(str(tmp_path)) == vision
@@ -502,9 +497,7 @@ class TestLoadPriorMock:
     """
 
     def _implement_mock(self, tmp_path: Path, version: int, html: str) -> None:
-        design_dir = (
-            project_manager.get_version_dir(str(tmp_path), version) / "design"
-        )
+        design_dir = project_manager.get_version_dir(str(tmp_path), version) / "design"
         design_dir.mkdir(parents=True, exist_ok=True)
         (design_dir / "mock.html").write_text(html, encoding="utf-8")
         project_manager.get_version_dir(str(tmp_path), version).joinpath(
@@ -603,6 +596,7 @@ class TestLoadPriorStack:
         (version_dir / "stack.json").write_text("[1, 2, 3]")
         version_dir.joinpath("IMPLEMENTED").write_text("")
         assert project_manager.load_prior_stack(str(tmp_path)) is None
+
 
 class TestLoadPriorDeploymentPlan:
     """load_prior_deployment_plan reads the deployment plan of the latest
@@ -962,9 +956,7 @@ class TestRenderPhaseStackRoutingAndNfr:
             "total_phases": 2,
             "phase_title": "Fare core",
             "phase_summary": "s",
-            "features": [
-                {"id": "fare_lookup", "role": "introduced", "scope_note": ""}
-            ],
+            "features": [{"id": "fare_lookup", "role": "introduced", "scope_note": ""}],
             "capabilities": [],
             "tech_stack_spec": {
                 "dependencies": ["fastapi"],
@@ -1014,8 +1006,7 @@ class TestRenderPhaseStackRoutingAndNfr:
         tech = md[md.index("## Tech Stack") : md.index("## Instructions")]
         assert "Approved stack for this phase's declared work" in tech
         assert (
-            "- React Hook Form (libraries): Form state — serves `fare_lookup`"
-            in tech
+            "- React Hook Form (libraries): Form state — serves `fare_lookup`" in tech
         )
         assert "Project-wide stack" in tech
         assert "- FastAPI" in tech
@@ -1144,9 +1135,7 @@ class TestPreambleTwoAltitudesAndSurfaces:
         }
 
     def _preamble(self, phase: dict[str, Any]) -> str:
-        return "\n".join(
-            project_manager._phase_spec_preamble(phase, self._context())
-        )
+        return "\n".join(project_manager._phase_spec_preamble(phase, self._context()))
 
     def test_both_altitudes_render_in_order_with_surfaces_between(self) -> None:
         text = self._preamble(self._phase())

@@ -85,11 +85,7 @@ class TestSuppressingWrapperStatus:
             session["_stream_status"] = "Searching the web: x…"
             yield '{"a": 1}```'
 
-        list(
-            _stream_suppressing_json(
-                chunks(), session, artifact_status="drafting"
-            )
-        )
+        list(_stream_suppressing_json(chunks(), session, artifact_status="drafting"))
         assert session["_stream_status"] == "drafting"
 
     def test_no_status_kwargs_is_a_no_op(self) -> None:
@@ -134,9 +130,7 @@ class TestStreamTurnSearchStatus:
                     ]
                 )
             seen_at_second_prefill.append(session["_stream_status"])
-            return iter(
-                [self._chunk("Answer"), self._chunk("", finish_reason="stop")]
-            )
+            return iter([self._chunk("Answer"), self._chunk("", finish_reason="stop")])
 
         def fake_search(query: str, cfg: Any) -> str:
             seen_during_search.append(session["_stream_status"])
@@ -186,9 +180,7 @@ class TestStreamTurnSearchStatus:
                         self._chunk("", finish_reason="stop"),
                     ]
                 )
-            return iter(
-                [self._chunk("Answer"), self._chunk("", finish_reason="stop")]
-            )
+            return iter([self._chunk("Answer"), self._chunk("", finish_reason="stop")])
 
         with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             with patch("spec4.llm.search", return_value="results"):
@@ -231,15 +223,16 @@ class TestStreamTurnSearchStatus:
             # Simulate someone else (the suppressing wrapper) writing its own
             # status after the search round but before content resumes.
             session["_stream_status"] = "drafting"
-            return iter(
-                [self._chunk("Answer"), self._chunk("", finish_reason="stop")]
-            )
+            return iter([self._chunk("Answer"), self._chunk("", finish_reason="stop")])
 
         with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             with patch("spec4.llm.search", return_value="results"):
                 list(
                     llm.stream_turn(
-                        "sys", [], {"model": "m", "api_key": "k"}, "tv-key",
+                        "sys",
+                        [],
+                        {"model": "m", "api_key": "k"},
+                        "tv-key",
                         session=session,
                     )
                 )
@@ -253,9 +246,7 @@ class TestStreamTurnSearchStatus:
         # No session passed: nothing to assert beyond "does not raise".
 
 
-def _capturing_stream(
-    captured: dict[str, Any], *chunks: str
-) -> Any:
+def _capturing_stream(captured: dict[str, Any], *chunks: str) -> Any:
     """Stand in for ``llm.stream_turn``: records kwargs, replies, yields."""
 
     def _stream(*args: Any, **kwargs: Any) -> Generator[str, None, None]:
@@ -372,9 +363,7 @@ class TestStackAdvisorStatusWiring:
     def test_artifact_turn_ends_with_drafting_status(self, monkeypatch) -> None:
         from spec4.agents import stack_advisor
 
-        stack_json = json.dumps(
-            {"stack": {"name": "Stack", "languages": ["Python"]}}
-        )
+        stack_json = json.dumps({"stack": {"name": "Stack", "languages": ["Python"]}})
         captured: dict[str, Any] = {}
 
         def fake_stream_turn(

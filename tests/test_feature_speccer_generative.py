@@ -60,9 +60,7 @@ def _two_feature_vision() -> dict[str, Any]:
 def _complete_returning(payload: Any) -> Any:
     text = payload if isinstance(payload, str) else json.dumps(payload)
     fenced = f"```json\n{text}\n```"
-    return patch(
-        "spec4.llm.complete_stream", side_effect=lambda **kw: iter([fenced])
-    )
+    return patch("spec4.llm.complete_stream", side_effect=lambda **kw: iter([fenced]))
 
 
 def _stream_chunk(content: str, finish_reason: str | None = None) -> MagicMock:
@@ -107,8 +105,11 @@ class TestEnrichment:
                     "outputs": {"primary": "a session", "format": "token"},
                     "success_criteria": ["valid users get in"],
                     "failure_modes": [
-                        {"mode": "wrong password", "likelihood": "high",
-                         "mitigation": "clear error"}
+                        {
+                            "mode": "wrong password",
+                            "likelihood": "high",
+                            "mitigation": "clear error",
+                        }
                     ],
                     "dependencies": [],
                     "entities": ["User", "Session"],
@@ -324,10 +325,18 @@ class TestRender:
     def test_render_includes_names_purpose_deps_nfr(self) -> None:
         fs = {
             "features": [
-                {"id": "auth", "name": "Auth", "purpose": "Sign in.",
-                 "dependencies": []},
-                {"id": "checkout", "name": "Checkout", "purpose": "Pay.",
-                 "dependencies": ["auth"]},
+                {
+                    "id": "auth",
+                    "name": "Auth",
+                    "purpose": "Sign in.",
+                    "dependencies": [],
+                },
+                {
+                    "id": "checkout",
+                    "name": "Checkout",
+                    "purpose": "Pay.",
+                    "dependencies": ["auth"],
+                },
             ],
             "nfr_goals": ["fast"],
         }
@@ -358,8 +367,11 @@ class TestHookIntegration:
         stream_response = f"Here.\n\n```json\n{vision_json}\n```"
         payload = {
             "features": [
-                {"id": "auth", "purpose": "Authenticate.",
-                 "success_criteria": ["users get in"]}
+                {
+                    "id": "auth",
+                    "purpose": "Authenticate.",
+                    "success_criteria": ["users get in"],
+                }
             ],
             "nfr_goals": ["fast"],
         }

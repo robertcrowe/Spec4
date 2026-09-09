@@ -203,17 +203,11 @@ def _fetch_models(provider_key: str, api_key: str) -> list[str]:
             "https://openrouter.ai/api/v1/models",
             {"Authorization": f"Bearer {api_key}"} if api_key else {},
         )
-        return [
-            f"openrouter/{m['id']}"
-            for m in data.get("data", [])
-            if m.get("id")
-        ]
+        return [f"openrouter/{m['id']}" for m in data.get("data", []) if m.get("id")]
 
     if provider_key == "nebius":
         api_base = PROVIDERS["nebius"]["api_base"]
-        data = _json_get(
-            f"{api_base}models", {"Authorization": f"Bearer {api_key}"}
-        )
+        data = _json_get(f"{api_base}models", {"Authorization": f"Bearer {api_key}"})
         return [
             f"openai/{m['id']}"
             for m in data.get("data", [])

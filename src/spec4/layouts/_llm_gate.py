@@ -171,9 +171,7 @@ def _pick_card(
     error = session.get("agent_llm_error")
     labels = providers.all_provider_labels()
     provider_key = draft.get("provider") or session.get("provider") or ""
-    provider_label = providers.PROVIDERS.get(provider_key, {}).get(
-        "label", labels[0]
-    )
+    provider_label = providers.PROVIDERS.get(provider_key, {}).get("label", labels[0])
     available = draft.get("available_models") or []
 
     if not available:
@@ -237,9 +235,7 @@ def _pick_card(
     )
 
 
-def gate_card(
-    session: dict[str, Any], prefs: dict[str, Any] | None, agent: str
-) -> Any:
+def gate_card(session: dict[str, Any], prefs: dict[str, Any] | None, agent: str) -> Any:
     """The gate in whichever state it is in, resting or expanded."""
     draft = _draft_for(session, agent)
     if draft is None:

@@ -156,13 +156,17 @@ def test_no_nfr_block_when_goals_absent() -> None:
     out = _feature_specs_for_phaser(_specs(_feature("a")))
     assert "Non-functional goals" not in out
 
+
 # --- excluded features (D-PH1i) --------------------------------------------
 
 
 def _catalog_with_rejection(*rejected_names: str) -> dict[str, Any]:
-    return {"ai_features": [], "explicitly_rejected": [
-        {"name": n, "reason": "closure_coordinator_off"} for n in rejected_names
-    ]}
+    return {
+        "ai_features": [],
+        "explicitly_rejected": [
+            {"name": n, "reason": "closure_coordinator_off"} for n in rejected_names
+        ],
+    }
 
 
 def test_rejected_unserved_spine_feature_tagged_excluded() -> None:
@@ -196,7 +200,5 @@ def test_served_feature_never_tagged_excluded() -> None:
 
 
 def test_header_states_the_excluded_exception() -> None:
-    out = _feature_specs_for_phaser(
-        _specs(_feature("a")), _catalog_with_rejection("a")
-    )
+    out = _feature_specs_for_phaser(_specs(_feature("a")), _catalog_with_rejection("a"))
     assert "except any feature tagged (excluded)" in out

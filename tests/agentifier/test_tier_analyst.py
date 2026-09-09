@@ -87,9 +87,7 @@ class TestGuidance:
         kwargs: dict[str, Any] = {}
         if guidance is not None:
             kwargs["guidance"] = guidance
-        inp = TierAnalystInput(
-            candidate=_CANDIDATE, llm_config=_LLM_CONFIG, **kwargs
-        )
+        inp = TierAnalystInput(candidate=_CANDIDATE, llm_config=_LLM_CONFIG, **kwargs)
         with patch(
             "spec4.agentifier.tier_analyst.complete_stream",
             return_value=_make_mock_response(json.dumps(_SAMPLE_TIER_OUTPUT)),
@@ -169,6 +167,7 @@ class TestTierAnalystPromptContent:
     def test_prompt_format_succeeds_and_new_rules_brace_free(self) -> None:
         """TIER_ANALYST_SYSTEM_PROMPT.format() must succeed and new passages must be brace-free."""
         import re
+
         rendered = TIER_ANALYST_SYSTEM_PROMPT.format(
             tier_descriptions="PLACEHOLDER",
             mechanism_context="MECH_PLACEHOLDER",
@@ -177,17 +176,17 @@ class TestTierAnalystPromptContent:
         assert "MECH_PLACEHOLDER" in rendered
         # New framing rule paragraph
         idx1 = rendered.index("data scale and freshness are not evidence")
-        para1 = rendered[idx1:idx1 + 900]
+        para1 = rendered[idx1 : idx1 + 900]
         assert not re.search(r"[{}]", para1)
         # Burden-of-proof clarification sentence
         idx2 = rendered.index("property of the *input itself*")
-        sent2 = rendered[idx2:idx2 + 300]
+        sent2 = rendered[idx2 : idx2 + 300]
         assert not re.search(r"[{}]", sent2)
         # Mechanisms-are-not-tiers rule: everything from the rule heading to
         # the end of the absorption list must be brace-free once the
         # placeholder value has been substituted in.
         idx3 = rendered.index("mechanisms are not tiers")
-        para3 = rendered[idx3:idx3 + 2400]
+        para3 = rendered[idx3 : idx3 + 2400]
         assert not re.search(r"[{}]", para3)
 
 
@@ -309,8 +308,14 @@ class TestTierAnalystAgentRun:
         system = call_kwargs["messages"][0]["content"]
         # All nine tier names should appear in the system prompt
         for name in (
-            "deterministic", "embeddings", "single_call", "rag", "tool_agent",
-            "chained_calls", "planning_agent", "orchestrated_subagents",
+            "deterministic",
+            "embeddings",
+            "single_call",
+            "rag",
+            "tool_agent",
+            "chained_calls",
+            "planning_agent",
+            "orchestrated_subagents",
             "multi_agent_collaboration",
         ):
             assert name in system
@@ -426,7 +431,9 @@ class TestTierAnalystAgentRun:
 
     def test_borderline_false_empties_seams(self) -> None:
         output_data = {
-            **_SAMPLE_TIER_OUTPUT, "borderline": False, "borderline_seams": ["seam"]
+            **_SAMPLE_TIER_OUTPUT,
+            "borderline": False,
+            "borderline_seams": ["seam"],
         }
         mock_response = _make_mock_response(json.dumps(output_data))
         with patch(

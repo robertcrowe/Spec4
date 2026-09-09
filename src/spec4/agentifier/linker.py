@@ -256,7 +256,9 @@ def _normalize_edges(candidates: list[Candidate]) -> list[Candidate]:
                 _log.warning("Linker edge: dropping self requires on %r", c.name)
                 continue
             if r not in valid_targets:
-                _log.warning("Linker edge: dropping dangling requires %r on %r", r, c.name)
+                _log.warning(
+                    "Linker edge: dropping dangling requires %r on %r", r, c.name
+                )
                 continue
             if r not in cleaned:
                 cleaned.append(r)
@@ -344,12 +346,12 @@ def _format_candidates_block(candidates: list[Candidate], vision_purpose: str) -
     lines: list[str] = []
     if vision_purpose:
         lines.append(f"Project purpose: {vision_purpose}\n")
-    lines.append("Candidates (the complete, fixed list — wire edges over exactly these):\n")
+    lines.append(
+        "Candidates (the complete, fixed list — wire edges over exactly these):\n"
+    )
     for c in candidates:
         vision = ", ".join(c.linked_vision_features) or "—"
-        lines.append(
-            f"- {c.name} (vision: {vision}): {c.rough_description}"
-        )
+        lines.append(f"- {c.name} (vision: {vision}): {c.rough_description}")
     lines.append("\nReturn the edge overlay as a JSON object.")
     return "\n".join(lines)
 
@@ -363,9 +365,7 @@ class LinkerAgent:
     async def run(self, input: LinkerInput) -> LinkerOutput:  # noqa: A002
         validate_dataclass_input(input, LinkerInput)
 
-        user_content = _format_candidates_block(
-            input.candidates, input.vision_purpose
-        )
+        user_content = _format_candidates_block(input.candidates, input.vision_purpose)
         llm_config = input.llm_config
 
         overlay: dict[str, EdgeOverlay] = {}

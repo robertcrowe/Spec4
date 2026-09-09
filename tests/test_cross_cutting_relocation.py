@@ -29,16 +29,24 @@ _AI_FEATURES = {
             "cited_patterns": [],
         },
         "observability": {
-            "recommendation": "OBS_LEAK", "rationale": "", "cited_patterns": [],
+            "recommendation": "OBS_LEAK",
+            "rationale": "",
+            "cited_patterns": [],
         },
         "eval_cadence": {
-            "recommendation": "EVAL_LEAK", "rationale": "", "cited_patterns": [],
+            "recommendation": "EVAL_LEAK",
+            "rationale": "",
+            "cited_patterns": [],
         },
         "safety_policy": {
-            "recommendation": "SAFETY_LEAK", "rationale": "", "cited_patterns": [],
+            "recommendation": "SAFETY_LEAK",
+            "rationale": "",
+            "cited_patterns": [],
         },
         "feedback_loop": {
-            "recommendation": "FEEDBACK_LEAK", "rationale": "", "cited_patterns": [],
+            "recommendation": "FEEDBACK_LEAK",
+            "rationale": "",
+            "cited_patterns": [],
         },
     },
 }

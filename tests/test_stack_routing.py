@@ -157,9 +157,7 @@ class TestNfrThreads:
         assert t["claimers"] == ["CacheColl", "PWA"]
 
     def test_orphans_and_unknown_claims_omitted(self) -> None:
-        stack = _stack(
-            libraries=[{"name": "Lib", "satisfies_nfr": ["nfr_made_up"]}]
-        )
+        stack = _stack(libraries=[{"name": "Lib", "satisfies_nfr": ["nfr_made_up"]}])
         assert nfr_threads(stack, self._SPECS) == []
 
     def test_no_specs_threads_nothing(self) -> None:

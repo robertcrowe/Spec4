@@ -35,8 +35,8 @@ class TestSeedThreadingAcrossBranches:
     """Every channel reaches all three seed branches, in one order."""
 
     _COMPOSITION = (
-        '{stack_block}{nfr_block}{phases_block}'
-        '{existing_infra_block}{ai_features_block}'
+        "{stack_block}{nfr_block}{phases_block}"
+        "{existing_infra_block}{ai_features_block}"
     )
 
     def _source(self) -> str:
@@ -79,9 +79,7 @@ class TestStalenessRegistry:
         _, inputs = project_manager._STALE_DEPENDENCIES["deployer"]
         assert ("feature specs", "feature_specs.json") in inputs
 
-    def test_editing_feature_specs_marks_the_plan_stale(
-        self, tmp_path: Any
-    ) -> None:
+    def test_editing_feature_specs_marks_the_plan_stale(self, tmp_path: Any) -> None:
         wd = str(tmp_path)
         project_manager.save_phases(
             wd, [{"phase_number": 1, "phase_title": "Steel"}], 0
@@ -92,9 +90,7 @@ class TestStalenessRegistry:
         assert project_manager.detect_stale_inputs(wd, "deployer") == {}
 
         time.sleep(0.02)
-        project_manager.save_feature_specs(
-            wd, {"nfr_goals": ["Fast", "Offline"]}, 0
-        )
+        project_manager.save_feature_specs(wd, {"nfr_goals": ["Fast", "Offline"]}, 0)
         assert "feature specs" in project_manager.detect_stale_inputs(wd, "deployer")
 
     def test_design_manifest_is_not_a_deployer_input(self) -> None:

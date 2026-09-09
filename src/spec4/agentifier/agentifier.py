@@ -42,6 +42,7 @@ from spec4.agentifier.linker import (
     LinkerAgent,
     LinkerInput,
     LinkerOutcome,
+    LinkerOutput,
     apply_overlay,
 )
 from spec4.agentifier.grounding import build_grounding
@@ -54,6 +55,7 @@ from spec4.agentifier.prioritizer import (
     PrioritizerAgent,
     PrioritizerInput,
     PrioritizerOutcome,
+    PrioritizerOutput,
     normalize_priorities,
 )
 from spec4.agentifier.prioritizer import apply_overlay as apply_priority_overlay
@@ -316,7 +318,8 @@ def _call_scout(
         brownfield=brownfield,
         guidance=guidance,
     )
-    return asyncio.run(_registry.run("scout", scout_input))
+    scout_output: ScoutOutput = asyncio.run(_registry.run("scout", scout_input))
+    return scout_output
 
 
 def _vision_purpose(vision: dict[str, Any]) -> str:
@@ -362,7 +365,7 @@ def _call_linker(
     vision: dict[str, Any],
     llm_config: dict[str, Any],
     on_chunk: Callable[[str], None] | None = None,
-):
+) -> LinkerOutput:
     """Invoke the Linker synchronously via the registry, returning its output."""
     li = LinkerInput(
         candidates=candidates,
@@ -370,7 +373,8 @@ def _call_linker(
         llm_config=llm_config,
         on_chunk=on_chunk,
     )
-    return asyncio.run(_registry.run("linker", li))
+    linker_output: LinkerOutput = asyncio.run(_registry.run("linker", li))
+    return linker_output
 
 
 def _call_composer(
@@ -386,7 +390,8 @@ def _call_composer(
         llm_config=llm_config,
         on_chunk=on_chunk,
     )
-    return asyncio.run(_registry.run("composer", ci))
+    composer_output: ComposerOutput = asyncio.run(_registry.run("composer", ci))
+    return composer_output
 
 
 def _call_prioritizer(
@@ -395,7 +400,7 @@ def _call_prioritizer(
     llm_config: dict[str, Any],
     carried_forward: list[dict[str, Any]],
     on_chunk: Callable[[str], None] | None = None,
-):
+) -> PrioritizerOutput:
     """Invoke the Prioritizer synchronously via the registry, returning its output."""
     pi = PrioritizerInput(
         features=features,
@@ -405,7 +410,10 @@ def _call_prioritizer(
         mvp_vision_features=_vision_mvp_feature_names(vision),
         on_chunk=on_chunk,
     )
-    return asyncio.run(_registry.run("prioritizer", pi))
+    prioritizer_output: PrioritizerOutput = asyncio.run(
+        _registry.run("prioritizer", pi)
+    )
+    return prioritizer_output
 
 
 def _format_composition_summary(compositions: list[Composition]) -> str:
@@ -503,7 +511,10 @@ def _call_tier_analyst(
         guidance=list(guidance or []),
         on_chunk=on_chunk,
     )
-    return asyncio.run(_registry.run("tier_analyst", ta_input))
+    tier_output: TierAnalystOutput = asyncio.run(
+        _registry.run("tier_analyst", ta_input)
+    )
+    return tier_output
 
 
 # ---------------------------------------------------------------------------
@@ -619,9 +630,13 @@ def _build_seed_message(
         else:
             lines.append("Borderline: NO")
         if analysis.risks_of_going_higher:
-            lines.append("Risks of going higher: " + "; ".join(analysis.risks_of_going_higher))
+            lines.append(
+                "Risks of going higher: " + "; ".join(analysis.risks_of_going_higher)
+            )
         if analysis.risks_of_going_lower:
-            lines.append("Risks of going lower: " + "; ".join(analysis.risks_of_going_lower))
+            lines.append(
+                "Risks of going lower: " + "; ".join(analysis.risks_of_going_lower)
+            )
         parts.append("\n".join(lines))
     return "\n".join(parts)
 
@@ -747,14 +762,31 @@ def _is_spec_confirmed(text: str) -> bool:
     """Return True when the user's reply is an affirmative confirmation."""
     t = text.lower().strip().rstrip(".,!?")
     affirmatives = {
-        "yes", "y", "ok", "okay", "lgtm", "good", "next",
-        "continue", "proceed", "confirm", "done", "approved", "accept",
-        "looks good", "ship it", "go ahead", "move on", "yes please",
+        "yes",
+        "y",
+        "ok",
+        "okay",
+        "lgtm",
+        "good",
+        "next",
+        "continue",
+        "proceed",
+        "confirm",
+        "done",
+        "approved",
+        "accept",
+        "looks good",
+        "ship it",
+        "go ahead",
+        "move on",
+        "yes please",
     }
     if t in affirmatives:
         return True
     for word in affirmatives:
-        if t.startswith(word) and (len(t) == len(word) or not t[len(word) : len(word) + 1].isalpha()):
+        if t.startswith(word) and (
+            len(t) == len(word) or not t[len(word) : len(word) + 1].isalpha()
+        ):
             return True
     return False
 
@@ -1074,7 +1106,9 @@ def _removed_feature_heads_up(
         linked = set(f.get("linked_vision_features") or [])
         overlap = linked & removed
         if overlap:
-            hits.append(f"- **{f.get('name', '')}** (built for: {', '.join(sorted(overlap))})")
+            hits.append(
+                f"- **{f.get('name', '')}** (built for: {', '.join(sorted(overlap))})"
+            )
     if not hits:
         return ""
     return (
@@ -1153,9 +1187,7 @@ def _dump_subagent_failure(
         failures = pathlib.Path(working_dir) / ".spec4" / "failures"
         failures.mkdir(parents=True, exist_ok=True)
         n = len(list(failures.glob(f"{kind}_{name}_*.txt")))
-        (failures / f"{kind}_{name}_{n + 1}.txt").write_text(
-            raw, encoding="utf-8"
-        )
+        (failures / f"{kind}_{name}_{n + 1}.txt").write_text(raw, encoding="utf-8")
     except Exception:  # noqa: BLE001 - diagnostics must never break the turn
         _log.exception("failure dump failed for %s/%s", kind, name)
 
@@ -1181,9 +1213,7 @@ def _draft_spec(
 
     header = f"\n\n{action} spec for **`{feature_name}`** ({spec_index + 1}/{n})…\n\n"
     yield header
-    _set_status(
-        session, f"{action} spec for {feature_name} ({spec_index + 1}/{n})…"
-    )
+    _set_status(session, f"{action} spec for {feature_name} ({spec_index + 1}/{n})…")
 
     tiers, mechanisms = load_patterns()
     candidates_data = session.get("agentifier_candidates") or []
@@ -1217,7 +1247,9 @@ def _draft_spec(
                 ttft_label="spec_drafter",
             )
         except Exception as exc:
-            error = f"Spec Drafter failed for `{feature_name}`: {exc}. Please try again."
+            error = (
+                f"Spec Drafter failed for `{feature_name}`: {exc}. Please try again."
+            )
             _append_assistant(session, error)
             yield error
             return
@@ -1226,6 +1258,7 @@ def _draft_spec(
         if not spec:
             # If the LLM output raw JSON without fences, try parsing directly
             import json as _json
+
             try:
                 spec = _json.loads(spec_text.strip())
             except Exception:
@@ -1235,9 +1268,7 @@ def _draft_spec(
         _dump_subagent_failure(session, "spec_drafter", feature_name, spec_text)
         if attempt == 1:
             yield f"Draft output for `{feature_name}` was unreadable — retrying…\n\n"
-            _set_status(
-                session, f"Re-drafting spec for {feature_name} (retry)…"
-            )
+            _set_status(session, f"Re-drafting spec for {feature_name} (retry)…")
 
     if not spec:
         error = (
@@ -1252,6 +1283,7 @@ def _draft_spec(
     ref_search = websearch.from_session(session)
     if ref_search and spec.get("references"):
         from spec4.agentifier.reference_verifier import enrich_references
+
         spec["references"] = enrich_references(spec["references"], ref_search)
 
     # Store or replace spec result for this index
@@ -1341,7 +1373,9 @@ def _finalize_specs(
     ai_features: dict[str, Any] = {
         "ai_features": features,
         "cross_cutting": {},
-        "explicitly_rejected": list(session.get("agentifier_explicitly_rejected") or []),
+        "explicitly_rejected": list(
+            session.get("agentifier_explicitly_rejected") or []
+        ),
         "references": [],
         "consolidation": [],
         "reconciliation": reconciliation,
@@ -1386,8 +1420,7 @@ def _finalize_specs(
     analysis = _extract_cross_cutting_analysis(raw)
     if not analysis:
         err = (
-            "Could not parse cross-cutting analysis JSON. "
-            "Reply **retry** to try again."
+            "Could not parse cross-cutting analysis JSON. Reply **retry** to try again."
         )
         msgs.append({"role": "assistant", "content": err})
         session["_display_override"] = err
@@ -1435,7 +1468,9 @@ def _discovery_guidance(session: dict[str, Any]) -> list[dict[str, Any]]:
             prior = None
         if isinstance(prior, dict):
             events.extend(
-                e for e in (prior.get("discovery_guidance") or []) if isinstance(e, dict)
+                e
+                for e in (prior.get("discovery_guidance") or [])
+                if isinstance(e, dict)
             )
     seen = {e.get("requested_at") for e in events}
     guidance = session.get("agentifier_retry_guidance") or {}
@@ -1542,6 +1577,7 @@ def _complete_agentifier(
 def _extract_cross_cutting_analysis(text: str) -> dict[str, Any] | None:
     """Extract cross-cutting JSON. Handles full-analysis and single-topic formats."""
     import json as _json
+
     data = _extract_json_block(text)
     if data is None:
         try:
@@ -1595,7 +1631,9 @@ def _present_cc_ff_review(
         i = topics.index(t)
         # Show the recorded decision, falling back to the analysis view.
         view = {t: decisions.get(t) or analysis.get(t) or {}}
-        body = _format_cross_cutting_topic(t, i, view, len(topics), include_prompt=False)
+        body = _format_cross_cutting_topic(
+            t, i, view, len(topics), include_prompt=False
+        )
         if i < locked:
             parts.append(f"*(locked — decided earlier)*\n{body}")
         elif not (decisions.get(t) or {}):
@@ -1671,8 +1709,7 @@ def _handle_cc_ff_review(
             problems.append("unknown: " + ", ".join(f"`{t}`" for t in unknown))
         if locked_hits:
             problems.append(
-                "locked (decided earlier): "
-                + ", ".join(f"`{t}`" for t in locked_hits)
+                "locked (decided earlier): " + ", ".join(f"`{t}`" for t in locked_hits)
             )
         display = (
             "No changes applied — " + "; ".join(problems) + ". "
@@ -1859,23 +1896,34 @@ def _format_priority_table(features: list[dict[str, Any]]) -> str:
             row.insert(3, f.get("composed_under") or "—")
         lines.append("| " + " | ".join(row) + " |")
 
-    thread = [f.get("name", "") for f in features if f.get("phase_priority") == "steel_thread"]
+    thread = [
+        f.get("name", "") for f in features if f.get("phase_priority") == "steel_thread"
+    ]
     lines.append("")
     if thread:
         lines.append(
-            "**Steel thread** — built first, end to end: " + ", ".join(f"`{n}`" for n in thread)
+            "**Steel thread** — built first, end to end: "
+            + ", ".join(f"`{n}`" for n in thread)
         )
     else:
         lines.append("**Steel thread** — nothing assigned yet.")
 
-    deferred = [f.get("name", "") for f in features if f.get("phase_priority") in ("v2", "future")]
+    deferred = [
+        f.get("name", "")
+        for f in features
+        if f.get("phase_priority") in ("v2", "future")
+    ]
     if deferred:
         lines.append(f"**Deferred past the first release:** {len(deferred)}.")
 
     # Name a feature that is not already in the thread, so the example does not
     # read as a no-op. Falls back safely on an empty or all-steel_thread set.
     example = next(
-        (f.get("name", "") for f in features if f.get("phase_priority") != "steel_thread"),
+        (
+            f.get("name", "")
+            for f in features
+            if f.get("phase_priority") != "steel_thread"
+        ),
         features[0].get("name", "feature_name") if features else "feature_name",
     )
     lines.append(
@@ -1935,7 +1983,9 @@ def _run_spec_phase(
         return
 
     spec_index: int = session.get("agentifier_spec_index") or 0
-    spec_results: list[dict[str, Any]] = list(session.get("agentifier_spec_results") or [])
+    spec_results: list[dict[str, Any]] = list(
+        session.get("agentifier_spec_results") or []
+    )
 
     # Pending = we already have a spec draft for spec_index (stored, awaiting confirm)
     is_pending = len(spec_results) > spec_index and bool(spec_results[spec_index])
@@ -2053,9 +2103,7 @@ def _present_spec_ff_review(
             )
         else:
             parts.append(_format_spec_as_text(entry, spec, i, n))
-    display = (
-        "\n\n".join(parts) + _spec_ff_review_prompt(locked_names) + failure_note
-    )
+    display = "\n\n".join(parts) + _spec_ff_review_prompt(locked_names) + failure_note
     msgs.append({"role": "assistant", "content": display})
     session["_display_override"] = display
     yield display
@@ -2168,9 +2216,7 @@ def _handle_spec_ff_review(
         yield display
         return
 
-    name_to_index = {
-        e.get("name", ""): i for i, e in enumerate(catalog_entries)
-    }
+    name_to_index = {e.get("name", ""): i for i, e in enumerate(catalog_entries)}
     revised: list[int] = []
     for name, instruction in routed.items():
         i = name_to_index[name]
@@ -2218,9 +2264,9 @@ def _run_cross_cutting_phase(
         _set_status(session, "Analysing cross-cutting system concerns…")
         _, mechanisms = load_patterns()
         features = (session.get("ai_features") or {}).get("ai_features") or []
-        topics = session.get("agentifier_cross_cutting_topics") or warranted_topics(
-            features
-        )
+        topics: list[str] = session.get(
+            "agentifier_cross_cutting_topics"
+        ) or warranted_topics(features)
         if not topics:
             session["agentifier_cross_cutting_topics"] = []
             session["agentifier_cross_cutting_decisions"] = {}
@@ -2259,7 +2305,7 @@ def _run_cross_cutting_phase(
         session["agentifier_cross_cutting_index"] = 0
         session["agentifier_cross_cutting_decisions"] = {}
 
-    topics: list[str] = session.get("agentifier_cross_cutting_topics") or list(
+    topics = session.get("agentifier_cross_cutting_topics") or list(
         CROSS_CUTTING_TOPICS
     )
     index: int = session.get("agentifier_cross_cutting_index") or 0
@@ -2283,8 +2329,12 @@ def _run_cross_cutting_phase(
     ):
         # Record the decision for this topic (empty dict when skipped), then advance.
         skipped = current_topic in SKIPPABLE_TOPICS and _is_skip(user_input)
-        decisions: dict[str, Any] = dict(session.get("agentifier_cross_cutting_decisions") or {})
-        decisions[current_topic] = {} if skipped else (analysis.get(current_topic) or {})
+        decisions: dict[str, Any] = dict(
+            session.get("agentifier_cross_cutting_decisions") or {}
+        )
+        decisions[current_topic] = (
+            {} if skipped else (analysis.get(current_topic) or {})
+        )
         session["agentifier_cross_cutting_decisions"] = decisions
         index += 1
         session["agentifier_cross_cutting_index"] = index
@@ -2296,7 +2346,9 @@ def _run_cross_cutting_phase(
             return
 
         current_topic = topics[index]
-        display = _format_cross_cutting_topic(current_topic, index, analysis, len(topics))
+        display = _format_cross_cutting_topic(
+            current_topic, index, analysis, len(topics)
+        )
     else:
         # Revision — re-run analyst for this topic only
         _, mechanisms = load_patterns()
@@ -2333,7 +2385,9 @@ def _run_cross_cutting_phase(
             session["agentifier_cross_cutting_analysis"] = merged
             analysis = merged
 
-        display = _format_cross_cutting_topic(current_topic, index, analysis, len(topics))
+        display = _format_cross_cutting_topic(
+            current_topic, index, analysis, len(topics)
+        )
 
     msgs.append({"role": "assistant", "content": display})
     session["_display_override"] = display
@@ -2650,9 +2704,8 @@ def _run_catalog_phase(
             return
 
         # Breadth selection pending (Scout already ran, awaiting developer's selection)
-        if (
-            session.get("agentifier_scout_pool") is not None
-            and not session.get("agentifier_breadth_chosen")
+        if session.get("agentifier_scout_pool") is not None and not session.get(
+            "agentifier_breadth_chosen"
         ):
             intro = session.get("agentifier_breadth_intro") or ""
             yield intro
@@ -2692,11 +2745,11 @@ def _run_catalog_phase(
             )
             _prior_ai = (
                 project_manager.load_prior_ai_features(working_dir)
-                if _prior_v is not None
+                if working_dir and _prior_v is not None
                 else None
             )
             _scout_revision: dict[str, Any] | None = None
-            if _delta and _prior_v is not None:
+            if _delta and working_dir and _prior_v is not None:
                 _carried = list((_prior_ai or {}).get("ai_features") or [])
                 _cur_v = project_manager.resolve_phase_version(
                     working_dir, project_manager.session_is_brownfield(session)
@@ -2758,9 +2811,7 @@ def _run_catalog_phase(
             )
             pre_stream_chars += len(_scout_banner)
             yield _scout_banner
-            _set_status(
-                session, "Scout is scanning your vision for AI opportunities…"
-            )
+            _set_status(session, "Scout is scanning your vision for AI opportunities…")
 
             if _DEV_MODE:
                 print("[agentifier] calling Scout…", flush=True)
@@ -2768,9 +2819,7 @@ def _run_catalog_phase(
             # (plus prior drains' write-backs) — the live session key is never
             # cleared between turns, so seeding from it would carry the
             # previous turn's total into this turn's accounting.
-            _on_chunk, _drained_total = _session_counter(
-                session, seed=pre_stream_chars
-            )
+            _on_chunk, _drained_total = _session_counter(session, seed=pre_stream_chars)
             try:
                 scout_output = _call_scout(
                     vision,
@@ -2795,8 +2844,7 @@ def _run_catalog_phase(
                     # rather than reporting this as a deterministic-core vision
                     # (greenfield) or a presentation-only tweak (revision).
                     yield (
-                        "Scout's analysis couldn't be read this time. "
-                        "Please try again."
+                        "Scout's analysis couldn't be read this time. Please try again."
                     )
                     return
                 if session.get("agentifier_revision"):
@@ -2885,9 +2933,7 @@ def _run_catalog_phase(
                 )
                 pre_stream_chars += len(_linker_banner)
                 yield _linker_banner
-                _set_status(
-                    session, "Linker is mapping dependencies between features…"
-                )
+                _set_status(session, "Linker is mapping dependencies between features…")
                 if _DEV_MODE:
                     print("[agentifier] calling Linker…", flush=True)
                 # D-AT3: seed turn-locally from the text this turn has yielded
@@ -2953,9 +2999,7 @@ def _run_catalog_phase(
             )
             pre_stream_chars += len(_composer_banner)
             yield _composer_banner
-            _set_status(
-                session, "Composer is grouping coordinated candidates…"
-            )
+            _set_status(session, "Composer is grouping coordinated candidates…")
             _input_candidates = list(candidates)  # snapshot for diagnostics
             if _DEV_MODE:
                 print("[agentifier] calling Composer…", flush=True)
@@ -2973,9 +3017,7 @@ def _run_catalog_phase(
             # (plus prior drains' write-backs) — the live session key is never
             # cleared between turns, so seeding from it would carry the
             # previous turn's total into this turn's accounting.
-            _on_chunk, _drained_total = _session_counter(
-                session, seed=pre_stream_chars
-            )
+            _on_chunk, _drained_total = _session_counter(session, seed=pre_stream_chars)
             try:
                 composed = _call_composer(
                     candidates, vision, llm_config, on_chunk=_on_chunk
@@ -3196,13 +3238,17 @@ def _run_catalog_phase(
             yield f"\nTier Analyst failed: {exc}. Please try again."
             return
 
-        _done_line = "\nTier analysis complete.\n\n---\n\n_Preparing your briefing…_\n\n"
+        _done_line = (
+            "\nTier analysis complete.\n\n---\n\n_Preparing your briefing…_\n\n"
+        )
         pre_stream_chars += len(_done_line)
         yield _done_line
         _set_status(session, "Preparing your feature briefing…")
 
         session["agentifier_candidates"] = _candidates_to_dicts(to_analyze)
-        session["agentifier_analyses"] = _analyses_to_dicts(breadth_analyses, to_analyze)
+        session["agentifier_analyses"] = _analyses_to_dicts(
+            breadth_analyses, to_analyze
+        )
 
         # The developer's answer, never the presence of a scan: CodeScanner run
         # over a greenfield skeleton must not make the orchestrator open with
@@ -3226,7 +3272,10 @@ def _run_catalog_phase(
 
     yield from _stream_suppressing_json(
         llm.stream_turn(
-            system, msgs, llm_config, search_cfg,
+            system,
+            msgs,
+            llm_config,
+            search_cfg,
             agent_name="agentifier",
             session=session,
         ),
@@ -3428,9 +3477,7 @@ def _handle_reentry(
         yield from _replay_last_assistant(session["agentifier_messages"])
         return
 
-    selected = [
-        f for f in (ai_features.get("ai_features") or []) if f.get("name")
-    ]
+    selected = [f for f in (ai_features.get("ai_features") or []) if f.get("name")]
     selected_names = [f["name"] for f in selected]
     session["agentifier_preserved_features"] = {f["name"]: f for f in selected}
     session["agentifier_scout_pool"] = _candidates_to_dicts(pool)

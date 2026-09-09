@@ -60,9 +60,7 @@ class TestNewRoundAlerts:
             for t in texts
         )
 
-    def test_suppresses_empty_directory_alert(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_suppresses_empty_directory_alert(self, tmp_path: pathlib.Path) -> None:
         _implemented_v0_with_mock(tmp_path)
         session = _load_working_dir(str(tmp_path), _base_session())
         texts = _alert_texts(_agent_select_layout(session))
@@ -76,9 +74,7 @@ class TestNewRoundAlerts:
         texts = _alert_texts(_agent_select_layout(session))
         assert not any("Loaded from .spec4/" in t for t in texts)
 
-    def test_falls_back_when_no_prior_name(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_falls_back_when_no_prior_name(self, tmp_path: pathlib.Path) -> None:
         # A prior vision without a name must not break the message.
         v0 = tmp_path / ".spec4" / "v0"
         v0.mkdir(parents=True)
@@ -86,6 +82,4 @@ class TestNewRoundAlerts:
         (v0 / "IMPLEMENTED").write_text("")
         session = _load_working_dir(str(tmp_path), _base_session())
         texts = _alert_texts(_agent_select_layout(session))
-        assert any(
-            "Your previous version has been implemented" in t for t in texts
-        )
+        assert any("Your previous version has been implemented" in t for t in texts)

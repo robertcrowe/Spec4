@@ -22,7 +22,9 @@ class TestProbeToolSupport:
 
     def test_api_base_passed_through(self) -> None:
         with patch(_PATCH, return_value=MagicMock()) as mock_completion:
-            probe_tool_support("openai/llama-3", "sk-test", api_base="https://example.com/v1/")
+            probe_tool_support(
+                "openai/llama-3", "sk-test", api_base="https://example.com/v1/"
+            )
             call_kwargs = mock_completion.call_args[1]
             assert call_kwargs["api_base"] == "https://example.com/v1/"
 

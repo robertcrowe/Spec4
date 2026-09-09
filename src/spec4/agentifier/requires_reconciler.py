@@ -70,11 +70,11 @@ INVERSION = "SUSPECTED-INVERSION"
 CONFLICTING = "CONFLICTING"
 NO_EVIDENCE = "NO-EVIDENCE"
 
-S3_FLOOR = 4       # minimum shared tokens for a directional S3 (D-RI10)
-S3_DOMINANCE = 2   # directional side must be >= this multiple of the other
+S3_FLOOR = 4  # minimum shared tokens for a directional S3 (D-RI10)
+S3_DOMINANCE = 2  # directional side must be >= this multiple of the other
 S2_MAX_LINKED = 2  # fallback gate: vision feature must be this selective
-PROD_MARGIN = 2    # production map: unique max must lead runner-up by this
-PROD_FLOOR = 3     # production map: minimum overlap to name a producer
+PROD_MARGIN = 2  # production map: unique max must lead runner-up by this
+PROD_FLOOR = 3  # production map: minimum overlap to name a producer
 
 _GENERIC_INPUT_SUFFIXES = frozenset(
     {"output", "outputs", "result", "results", "data", "response", "artifact"}
@@ -442,9 +442,7 @@ def reconcile_requires(
     name_to_node = {str(n["name"]): n for n in nodes if n.get("name")}
     slug_to_node = {str(n["id"]): n for n in nodes if n.get("id")}
     specs = [
-        f
-        for f in ((feature_specs or {}).get("features") or [])
-        if isinstance(f, dict)
+        f for f in ((feature_specs or {}).get("features") or []) if isinstance(f, dict)
     ]
     prod_map = build_production_map(specs, nodes)
     vf_link_counts: dict[str, int] = {}
@@ -453,7 +451,9 @@ def reconcile_requires(
             key = slug(str(vf))
             vf_link_counts[key] = vf_link_counts.get(key, 0) + 1
 
-    candidates: list[tuple[str, str, dict[str, Any], dict[str, Any], str, list[str]]] = []
+    candidates: list[
+        tuple[str, str, dict[str, Any], dict[str, Any], str, list[str]]
+    ] = []
     for consumer in nodes:
         for req_name in list(consumer.get("requires") or []):
             req_name = str(req_name)
@@ -465,14 +465,16 @@ def reconcile_requires(
             verdict = classify_edge(consumer, producer, prod_map, vf_link_counts)
             if verdict["class"] != INVERSION:
                 continue
-            candidates.append((
-                str(consumer.get("id") or ""),
-                str(producer.get("id") or ""),
-                consumer,
-                producer,
-                req_name,
-                list(verdict["rev"]),
-            ))
+            candidates.append(
+                (
+                    str(consumer.get("id") or ""),
+                    str(producer.get("id") or ""),
+                    consumer,
+                    producer,
+                    req_name,
+                    list(verdict["rev"]),
+                )
+            )
 
     records: list[dict[str, Any]] = []
     for from_id, to_id, consumer, producer, req_name, signals in sorted(
@@ -481,10 +483,14 @@ def reconcile_requires(
         consumer_reqs = list(consumer.get("requires") or [])
         producer_reqs = list(producer.get("requires") or [])
         consumer["requires"] = [r for r in consumer_reqs if str(r) != req_name]
-        already = any(
-            _resolve(str(r), name_to_node, slug_to_node) is consumer
-            for r in producer["requires"]
-        ) if (producer.get("requires")) else False
+        already = (
+            any(
+                _resolve(str(r), name_to_node, slug_to_node) is consumer
+                for r in producer["requires"]
+            )
+            if (producer.get("requires"))
+            else False
+        )
         producer.setdefault("requires", [])
         if not already:
             producer["requires"] = list(producer["requires"]) + [
@@ -493,23 +499,27 @@ def reconcile_requires(
         if _has_cycle(nodes):
             consumer["requires"] = consumer_reqs
             producer["requires"] = producer_reqs
-            records.append({
-                "from": from_id,
-                "to": to_id,
-                "direction": "reverted-cycle",
-                "signals": signals,
-            })
+            records.append(
+                {
+                    "from": from_id,
+                    "to": to_id,
+                    "direction": "reverted-cycle",
+                    "signals": signals,
+                }
+            )
             _log.warning(
                 "Reconciler: flip %r -> %r reverted (would create cycle)",
                 from_id,
                 to_id,
             )
             continue
-        records.append({
-            "from": from_id,
-            "to": to_id,
-            "direction": "flipped",
-            "signals": signals,
-        })
+        records.append(
+            {
+                "from": from_id,
+                "to": to_id,
+                "direction": "flipped",
+                "signals": signals,
+            }
+        )
         _log.info("Reconciler: flipped requires edge %r -> %r", from_id, to_id)
     return records

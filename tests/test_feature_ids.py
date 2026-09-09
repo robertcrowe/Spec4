@@ -115,9 +115,7 @@ class TestAssignFeatureIds:
         assert feats[1]["User Reviews"]["id"] == "user_reviews"
 
     def test_id_equals_slug_of_name_invariant(self) -> None:
-        vision = _envelope(
-            [{"Some Weird Name!": {"description": "d"}}]
-        )
+        vision = _envelope([{"Some Weird Name!": {"description": "d"}}])
         brainstormer._assign_feature_ids(vision)
         val = _mvp(vision)[0]["Some Weird Name!"]
         assert val["id"] == slug("Some Weird Name!")

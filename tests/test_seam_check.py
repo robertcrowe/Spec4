@@ -64,20 +64,24 @@ class TestTableProvenance:
         assert any("purchase_history" in f.message for f in highs)
 
     def test_created_earlier_then_read_is_clean(self):
-        g = _g([
-            _phase(1, creates_tables=["inventory_item"]),
-            _phase(2, reads_tables=["inventory_item"]),
-        ])
+        g = _g(
+            [
+                _phase(1, creates_tables=["inventory_item"]),
+                _phase(2, reads_tables=["inventory_item"]),
+            ]
+        )
         flagged = [
             f for f in _check_table_provenance(g) if f.severity in ("high", "medium")
         ]
         assert flagged == []
 
     def test_created_after_read_is_medium(self):
-        g = _g([
-            _phase(2, reads_tables=["orders"]),
-            _phase(5, creates_tables=["orders"]),
-        ])
+        g = _g(
+            [
+                _phase(2, reads_tables=["orders"]),
+                _phase(5, creates_tables=["orders"]),
+            ]
+        )
         meds = [f for f in _check_table_provenance(g) if f.severity == "medium"]
         assert any("orders" in f.message for f in meds)
 
@@ -95,10 +99,14 @@ class TestEndpointProvenance:
         assert any(f.severity == "medium" for f in findings)
 
     def test_consumed_with_producer_is_clean(self):
-        g = _g([
-            _phase(1, creates_endpoints=["POST /inventory/add"]),
-            _phase(2, consumes_endpoints=["post /inventory/add"]),  # case-insensitive
-        ])
+        g = _g(
+            [
+                _phase(1, creates_endpoints=["POST /inventory/add"]),
+                _phase(
+                    2, consumes_endpoints=["post /inventory/add"]
+                ),  # case-insensitive
+            ]
+        )
         assert _check_endpoint_provenance(g) == []
 
 
@@ -189,8 +197,7 @@ class TestDeclarationAlignment:
                 {"id": i, "role": "introduced", "scope_note": ""} for i in ids
             ],
             "features": [
-                {"id": i, "role": "introduced", "scope_note": ""}
-                for i in features
+                {"id": i, "role": "introduced", "scope_note": ""} for i in features
             ],
         }
 
@@ -201,10 +208,12 @@ class TestDeclarationAlignment:
 
     def test_under_declaration_is_high(self):
         # Phase 2 builds the search frontend but declares only its sibling.
-        g = _g([
-            _phase(1, covers_features=["meaning_search"]),
-            _phase(2, covers_features=["related_items", "meaning_search"]),
-        ])
+        g = _g(
+            [
+                _phase(1, covers_features=["meaning_search"]),
+                _phase(2, covers_features=["related_items", "meaning_search"]),
+            ]
+        )
         phases = [self._decl(1, "meaning_search"), self._decl(2, "related_items")]
         findings = _check_declaration_alignment(g, phases, self._AF)
         assert len(findings) == 1
@@ -214,10 +223,12 @@ class TestDeclarationAlignment:
         assert "not attached to phase 2" in f.message
 
     def test_over_declaration_is_medium(self):
-        g = _g([
-            _phase(1, covers_features=["meaning_search"]),
-            _phase(2, covers_features=["related_items"]),
-        ])
+        g = _g(
+            [
+                _phase(1, covers_features=["meaning_search"]),
+                _phase(2, covers_features=["related_items"]),
+            ]
+        )
         # Phase 2 also declares meaning_search, but does not implement it there.
         phases = [
             self._decl(1, "meaning_search"),
@@ -235,8 +246,7 @@ class TestDeclarationAlignment:
         phases = [self._decl(1, "meaning_search", "related_items")]
         assert _check_declaration_alignment(g, phases, self._AF) == []
         assert any(
-            "Related items" in f.message
-            for f in _check_feature_coverage(g, self._AF)
+            "Related items" in f.message for f in _check_feature_coverage(g, self._AF)
         )
 
     def test_extracted_ids_outside_the_catalog_are_ignored(self):

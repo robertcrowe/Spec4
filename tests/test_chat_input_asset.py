@@ -6,9 +6,7 @@ of the script so a refactor can't silently drop them.
 
 from pathlib import Path
 
-ASSET = (
-    Path(__file__).parent.parent / "src" / "spec4" / "assets" / "chat_input.js"
-)
+ASSET = Path(__file__).parent.parent / "src" / "spec4" / "assets" / "chat_input.js"
 
 
 class TestChatInputAsset:

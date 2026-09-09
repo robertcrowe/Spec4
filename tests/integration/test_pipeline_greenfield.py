@@ -70,13 +70,28 @@ _AI_CATALOG = {
 _AI_SPEC = {
     "purpose": "Enable natural language restaurant search.",
     "invocation": {"trigger": "user query", "mode": "synchronous"},
-    "inputs": [{"name": "query", "type": "string", "description": "search text", "required": True}],
-    "outputs": {"primary": "restaurant list", "format": "JSON array", "schema_notes": None},
+    "inputs": [
+        {
+            "name": "query",
+            "type": "string",
+            "description": "search text",
+            "required": True,
+        }
+    ],
+    "outputs": {
+        "primary": "restaurant list",
+        "format": "JSON array",
+        "schema_notes": None,
+    },
     "decision_authority": "autonomous",
     "success_criteria": ["Returns relevant results"],
     "failure_modes": [],
     "escalation": "Return empty results",
-    "eval_approach": {"offline": "golden set", "online": "CTR", "ground_truth": "human labels"},
+    "eval_approach": {
+        "offline": "golden set",
+        "online": "CTR",
+        "ground_truth": "human labels",
+    },
     "budgets": {"cost_per_call": "$0.002", "p95_latency": "800ms"},
     "privacy_safety": ["No PII stored"],
     "phase_priority": "mvp",
@@ -85,9 +100,15 @@ _AI_SPEC = {
 }
 
 _CC_ANALYSIS = {
-    t: {"recommendation": f"recommendation for {t}", "rationale": "rationale", "cited_patterns": []}
+    t: {
+        "recommendation": f"recommendation for {t}",
+        "rationale": "rationale",
+        "cited_patterns": [],
+    }
     for t in [
-        "provider_strategy", "tool_protocol_strategy", "prompt_versioning",
+        "provider_strategy",
+        "tool_protocol_strategy",
+        "prompt_versioning",
     ]
 }
 
@@ -123,7 +144,9 @@ def _make_stream_turn_mock(text: str) -> Any:
     """Mock llm.stream_turn to yield chunks and append an assistant message."""
     words = text.split()
 
-    def _stream_turn(system: Any, messages: list[Any], *args: Any, **kwargs: Any) -> Any:
+    def _stream_turn(
+        system: Any, messages: list[Any], *args: Any, **kwargs: Any
+    ) -> Any:
         content = " ".join(words)
         messages.append({"role": "assistant", "content": content})
         return iter(words)
@@ -172,7 +195,9 @@ class TestDownstreamBackwardCompatibility:
         session = self._base_session()
         stack_text = "```json\n" + json.dumps(_STACK) + "\n```"
         mock_stream = _make_stream_turn_mock(stack_text)
-        with patch("spec4.agents.stack_advisor.llm.stream_turn", side_effect=mock_stream):
+        with patch(
+            "spec4.agents.stack_advisor.llm.stream_turn", side_effect=mock_stream
+        ):
             list(stack_run(None, session, _LLM_CONFIG))
         # JSON output is suppressed in chat; state and artifact must still be set
         assert session["stack_advisor_state"] == STATE_STACK_COMPLETE
@@ -220,7 +245,12 @@ class TestDownstreamAiFeaturesConsumption:
                     "tier": "rag",
                     "purpose": "Natural language restaurant search",
                     "phase_priority": "mvp",
-                    "mechanisms": [{"name": "retrieval_reranking", "rationale": "improve relevance"}],
+                    "mechanisms": [
+                        {
+                            "name": "retrieval_reranking",
+                            "rationale": "improve relevance",
+                        }
+                    ],
                 }
             ],
             "cross_cutting": _CC_ANALYSIS,
@@ -235,12 +265,16 @@ class TestDownstreamAiFeaturesConsumption:
         session = self._session_with_ai_features()
         captured_seeds: list[str] = []
 
-        def _mock_stream(system: Any, messages: list[Any], *args: Any, **kwargs: Any) -> Any:
+        def _mock_stream(
+            system: Any, messages: list[Any], *args: Any, **kwargs: Any
+        ) -> Any:
             captured_seeds.append(messages[0]["content"])
             messages.append({"role": "assistant", "content": "stack response"})
             return iter(["stack", "response"])
 
-        with patch("spec4.agents.stack_advisor.llm.stream_turn", side_effect=_mock_stream):
+        with patch(
+            "spec4.agents.stack_advisor.llm.stream_turn", side_effect=_mock_stream
+        ):
             list(stack_run(None, session, _LLM_CONFIG))
 
         assert captured_seeds
@@ -253,7 +287,9 @@ class TestDownstreamAiFeaturesConsumption:
         session = self._session_with_ai_features()
         captured_seeds: list[str] = []
 
-        def _mock_stream(system: Any, messages: list[Any], *args: Any, **kwargs: Any) -> Any:
+        def _mock_stream(
+            system: Any, messages: list[Any], *args: Any, **kwargs: Any
+        ) -> Any:
             captured_seeds.append(messages[0]["content"])
             phase_text = "```json\n" + json.dumps(_PHASE) + "\n```"
             messages.append({"role": "assistant", "content": phase_text})
@@ -276,7 +312,9 @@ class TestDownstreamAiFeaturesConsumption:
         session["_deployer_readme_optin_done"] = True
         captured_seeds: list[str] = []
 
-        def _mock_stream(system: Any, messages: list[Any], *args: Any, **kwargs: Any) -> Any:
+        def _mock_stream(
+            system: Any, messages: list[Any], *args: Any, **kwargs: Any
+        ) -> Any:
             captured_seeds.append(messages[0]["content"])
             messages.append({"role": "assistant", "content": "deployer response"})
             return iter(["deployer", "response"])
@@ -320,7 +358,9 @@ class TestAgentifierGreenfield:
                 return_value=_CC_ANALYSIS,
             ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))  # draft
-                list(agentifier_run("yes", session, _LLM_CONFIG))  # confirm → cross-cutting
+                list(
+                    agentifier_run("yes", session, _LLM_CONFIG)
+                )  # confirm → cross-cutting
 
         assert session.get("agentifier_spec_done") is True
         assert session["ai_features"] is not None
@@ -334,7 +374,8 @@ class TestAgentifierGreenfield:
 
         session = self._make_session()
         _cc_topics = (
-            "provider_strategy", "prompt_versioning",
+            "provider_strategy",
+            "prompt_versioning",
         )
 
         with patch("litellm.acompletion", new=_make_streaming_mock(_AI_SPEC)):
@@ -343,7 +384,9 @@ class TestAgentifierGreenfield:
                 return_value=_CC_ANALYSIS,
             ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))  # draft
-                list(agentifier_run("yes", session, _LLM_CONFIG))  # confirm → cross-cutting
+                list(
+                    agentifier_run("yes", session, _LLM_CONFIG)
+                )  # confirm → cross-cutting
 
         for _ in _cc_topics:
             list(agentifier_run("yes", session, _LLM_CONFIG))
@@ -360,7 +403,8 @@ class TestAgentifierGreenfield:
 
         session = self._make_session()
         _cc_topics = (
-            "provider_strategy", "prompt_versioning",
+            "provider_strategy",
+            "prompt_versioning",
         )
 
         with patch("litellm.acompletion", new=_make_streaming_mock(_AI_SPEC)):

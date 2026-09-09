@@ -1,4 +1,5 @@
 """Adding a feature in Agentifier marks downstream stale AND re-seeds its content."""
+
 from __future__ import annotations
 
 import time
@@ -31,8 +32,11 @@ def test_ai_features_change_flags_all_downstream(tmp_path):
 def test_revision_context_includes_ai_features(tmp_path):
     session = {
         "working_dir": str(tmp_path),
-        "ai_features": {"ai_features": [{"name": "shopping_list_generation",
-                                         "tier": "deterministic"}]},
+        "ai_features": {
+            "ai_features": [
+                {"name": "shopping_list_generation", "tier": "deterministic"}
+            ]
+        },
     }
     ctx = _utils._build_revision_context(session, ["AI features"])
     assert "Updated AI features spec" in ctx
@@ -40,8 +44,10 @@ def test_revision_context_includes_ai_features(tmp_path):
 
 
 def test_revision_context_skips_ai_features_when_not_stale(tmp_path):
-    session = {"working_dir": str(tmp_path),
-               "ai_features": {"ai_features": [{"name": "x"}]}}
+    session = {
+        "working_dir": str(tmp_path),
+        "ai_features": {"ai_features": [{"name": "x"}]},
+    }
     ctx = _utils._build_revision_context(session, ["vision"])
     assert "Updated AI features spec" not in ctx
 

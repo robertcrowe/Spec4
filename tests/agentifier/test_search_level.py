@@ -46,27 +46,50 @@ def _make_candidates(n: int) -> list[Candidate]:
 class TestParseCandidatesPreservesOrder:
     def test_order_matches_llm_array_order(self) -> None:
         names = ["alpha", "beta", "gamma", "delta"]
-        data = json.dumps([
-            {"name": n, "linked_vision_features": [], "scope": "feature",
-             "rough_description": f"desc {n}", "linked_existing_workflow": ""}
-            for n in names
-        ])
+        data = json.dumps(
+            [
+                {
+                    "name": n,
+                    "linked_vision_features": [],
+                    "scope": "feature",
+                    "rough_description": f"desc {n}",
+                    "linked_existing_workflow": "",
+                }
+                for n in names
+            ]
+        )
         candidates, _ = _parse_candidates(data)
         assert [c.name for c in candidates] == names
 
     def test_reversed_array_preserved_reversed(self) -> None:
         names = ["z_last", "m_middle", "a_first"]
-        data = json.dumps([
-            {"name": n, "linked_vision_features": [], "scope": "feature",
-             "rough_description": "", "linked_existing_workflow": ""}
-            for n in names
-        ])
+        data = json.dumps(
+            [
+                {
+                    "name": n,
+                    "linked_vision_features": [],
+                    "scope": "feature",
+                    "rough_description": "",
+                    "linked_existing_workflow": "",
+                }
+                for n in names
+            ]
+        )
         candidates, _ = _parse_candidates(data)
         assert [c.name for c in candidates] == names
 
     def test_single_item_order_preserved(self) -> None:
-        data = json.dumps([{"name": "only_one", "linked_vision_features": [],
-                            "scope": "feature", "rough_description": "", "linked_existing_workflow": ""}])
+        data = json.dumps(
+            [
+                {
+                    "name": "only_one",
+                    "linked_vision_features": [],
+                    "scope": "feature",
+                    "rough_description": "",
+                    "linked_existing_workflow": "",
+                }
+            ]
+        )
         candidates, _ = _parse_candidates(data)
         assert candidates[0].name == "only_one"
 
@@ -79,19 +102,25 @@ class TestParseCandidatesPreservesOrder:
 class TestScoutSystemPromptOrdering:
     def test_ranking_instruction_removed_from_scout_prompt(self) -> None:
         from spec4.agentifier.scout import SCOUT_SYSTEM_PROMPT
+
         # Ordering is not Scout's job — must not be in the prompt.
         assert "priority order" not in SCOUT_SYSTEM_PROMPT.lower()
         assert "Return candidates in priority order" not in SCOUT_SYSTEM_PROMPT
 
     def test_scout_prompt_says_any_order_and_drops_ranker(self) -> None:
         from spec4.agentifier.scout import SCOUT_SYSTEM_PROMPT
+
         # Ranker is gone; Scout should just return candidates in any order.
         assert "any order" in SCOUT_SYSTEM_PROMPT.lower()
         assert "ranker" not in SCOUT_SYSTEM_PROMPT.lower()
 
     def test_prompt_still_contains_divergent_mandate(self) -> None:
         from spec4.agentifier.scout import SCOUT_SYSTEM_PROMPT
-        assert "DIVERGENT" in SCOUT_SYSTEM_PROMPT or "divergent" in SCOUT_SYSTEM_PROMPT.lower()
+
+        assert (
+            "DIVERGENT" in SCOUT_SYSTEM_PROMPT
+            or "divergent" in SCOUT_SYSTEM_PROMPT.lower()
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +130,7 @@ class TestScoutSystemPromptOrdering:
 
 def _make_mock_scout(n: int) -> Any:
     from spec4.agentifier.scout import ScoutOutput
+
     candidates = _make_candidates(n)
     return patch(
         "spec4.agentifier.agentifier._call_scout",
@@ -110,8 +140,10 @@ def _make_mock_scout(n: int) -> Any:
 
 def _make_mock_composer() -> Any:
     from spec4.agentifier.composer import ComposerOutput
+
     def _noop(candidates: Any, vision: Any, llm_config: Any) -> Any:
         return ComposerOutput(candidates=candidates)
+
     return patch(
         "spec4.agentifier.agentifier._call_composer",
         side_effect=_noop,
@@ -123,6 +155,7 @@ def _make_mock_linker() -> Any:
     # level (like Scout/Composer/Analyst) so the deterministic path to the panel
     # makes no real model call. Empty overlay = no edges (a flat pool).
     from spec4.agentifier.linker import LinkerOutcome, LinkerOutput
+
     return patch(
         "spec4.agentifier.agentifier._call_linker",
         return_value=LinkerOutput(overlay={}, outcome=LinkerOutcome.EMPTY),
@@ -131,6 +164,7 @@ def _make_mock_linker() -> Any:
 
 def _make_mock_analyst(n: int) -> Any:
     from spec4.agentifier.tier_analyst import TierAnalystOutput
+
     analysis = TierAnalystOutput(
         recommended_tier="single_call",
         rationale="Simple call.",
@@ -148,6 +182,7 @@ def _make_mock_analyst(n: int) -> Any:
 
 def _mock_litellm_stream(text: str) -> Any:
     from unittest.mock import MagicMock as _MM
+
     chunk = _MM()
     chunk.choices[0].delta.content = text
     chunk.choices[0].delta.tool_calls = None
@@ -161,6 +196,7 @@ def _mock_litellm_stream(text: str) -> Any:
 
 def _make_session_for_breadth() -> dict[str, Any]:
     from spec4.session import _default_session
+
     session = _default_session()
     session["vision_statement"] = _SAMPLE_VISION
     session["llm_config"] = _LLM_CONFIG
@@ -173,10 +209,15 @@ class TestOrchestratorBreadthSubState:
         """With a multi-candidate pool, fresh start yields breadth intro, no LLM call."""
         session = _make_session_for_breadth()
 
-        with _make_mock_scout(10), _make_mock_composer(), _make_mock_linker(), \
-                _make_mock_analyst(10), \
-                patch("spec4.llm.litellm.completion") as mock_llm:
+        with (
+            _make_mock_scout(10),
+            _make_mock_composer(),
+            _make_mock_linker(),
+            _make_mock_analyst(10),
+            patch("spec4.llm.litellm.completion") as mock_llm,
+        ):
             from spec4.agentifier.agentifier import run as agentifier_run
+
             output = "".join(agentifier_run(None, session, _LLM_CONFIG))
 
         mock_llm.assert_not_called()
@@ -193,10 +234,15 @@ class TestOrchestratorBreadthSubState:
         candidate)."""
         session = _make_session_for_breadth()
 
-        with _make_mock_scout(3), _make_mock_composer(), _make_mock_linker(), \
-                _make_mock_analyst(3), \
-                patch("spec4.llm.litellm.completion") as mock_llm:
+        with (
+            _make_mock_scout(3),
+            _make_mock_composer(),
+            _make_mock_linker(),
+            _make_mock_analyst(3),
+            patch("spec4.llm.litellm.completion") as mock_llm,
+        ):
             from spec4.agentifier.agentifier import run as agentifier_run
+
             output = "".join(agentifier_run(None, session, _LLM_CONFIG))
 
         mock_llm.assert_not_called()
@@ -210,8 +256,13 @@ class TestOrchestratorBreadthSubState:
         """After breadth panel, submitting a selection calls TierAnalyst on selected."""
         session = _make_session_for_breadth()
         pool_dicts = [
-            {"name": f"f{i}", "linked_vision_features": [], "scope": "feature",
-             "rough_description": f"desc {i}", "linked_existing_workflow": ""}
+            {
+                "name": f"f{i}",
+                "linked_vision_features": [],
+                "scope": "feature",
+                "rough_description": f"desc {i}",
+                "linked_existing_workflow": "",
+            }
             for i in range(20)
         ]
         session["agentifier_scout_pool"] = pool_dicts
@@ -221,7 +272,10 @@ class TestOrchestratorBreadthSubState:
 
         with _make_mock_analyst(3), _mock_litellm_stream("Welcome!"):
             from spec4.agentifier.agentifier import run as agentifier_run
-            list(agentifier_run("Selected 3 features: f0, f5, f10", session, _LLM_CONFIG))
+
+            list(
+                agentifier_run("Selected 3 features: f0, f5, f10", session, _LLM_CONFIG)
+            )
 
         assert session.get("agentifier_breadth_chosen") is True
         assert len(session["agentifier_candidates"]) == 3
@@ -232,8 +286,13 @@ class TestOrchestratorBreadthSubState:
         """Selecting non-adjacent candidates by name is honored exactly."""
         session = _make_session_for_breadth()
         session["agentifier_scout_pool"] = [
-            {"name": f"f{i}", "linked_vision_features": [], "scope": "feature",
-             "rough_description": f"desc {i}", "linked_existing_workflow": ""}
+            {
+                "name": f"f{i}",
+                "linked_vision_features": [],
+                "scope": "feature",
+                "rough_description": f"desc {i}",
+                "linked_existing_workflow": "",
+            }
             for i in range(10)
         ]
         session["agentifier_breadth_chosen"] = False
@@ -241,6 +300,7 @@ class TestOrchestratorBreadthSubState:
 
         with _make_mock_analyst(2), _mock_litellm_stream("Hi!"):
             from spec4.agentifier.agentifier import run as agentifier_run
+
             list(agentifier_run("Selected 2", session, _LLM_CONFIG))
 
         names = [c["name"] for c in session["agentifier_candidates"]]
@@ -250,8 +310,13 @@ class TestOrchestratorBreadthSubState:
         """Unselected candidates appear in explicitly_rejected (no band tag)."""
         session = _make_session_for_breadth()
         pool_dicts = [
-            {"name": f"f{i}", "linked_vision_features": [], "scope": "feature",
-             "rough_description": f"desc {i}", "linked_existing_workflow": ""}
+            {
+                "name": f"f{i}",
+                "linked_vision_features": [],
+                "scope": "feature",
+                "rough_description": f"desc {i}",
+                "linked_existing_workflow": "",
+            }
             for i in range(10)
         ]
         session["agentifier_scout_pool"] = pool_dicts
@@ -260,6 +325,7 @@ class TestOrchestratorBreadthSubState:
 
         with _make_mock_analyst(1), _mock_litellm_stream("Hi!"):
             from spec4.agentifier.agentifier import run as agentifier_run
+
             list(agentifier_run("Selected 1", session, _LLM_CONFIG))
 
         rejected = session.get("agentifier_explicitly_rejected") or []
@@ -274,16 +340,24 @@ class TestOrchestratorBreadthSubState:
         """Selecting nothing marks agentifier complete with empty ai_features."""
         session = _make_session_for_breadth()
         session["agentifier_scout_pool"] = [
-            {"name": f"f{i}", "linked_vision_features": [], "scope": "feature",
-             "rough_description": "", "linked_existing_workflow": ""}
+            {
+                "name": f"f{i}",
+                "linked_vision_features": [],
+                "scope": "feature",
+                "rough_description": "",
+                "linked_existing_workflow": "",
+            }
             for i in range(5)
         ]
         session["agentifier_breadth_chosen"] = False
         session["agentifier_breadth_selection"] = []
 
-        with patch("spec4.agentifier.agentifier._call_tier_analyst") as mock_ta, \
-                patch("spec4.llm.litellm.completion") as mock_llm:
+        with (
+            patch("spec4.agentifier.agentifier._call_tier_analyst") as mock_ta,
+            patch("spec4.llm.litellm.completion") as mock_llm,
+        ):
             from spec4.agentifier.agentifier import run as agentifier_run
+
             list(agentifier_run("Selected no features.", session, _LLM_CONFIG))
 
         mock_ta.assert_not_called()
@@ -296,16 +370,24 @@ class TestOrchestratorBreadthSubState:
         """Selecting nothing lists all candidates in explicitly_rejected."""
         session = _make_session_for_breadth()
         session["agentifier_scout_pool"] = [
-            {"name": f"f{i}", "linked_vision_features": [], "scope": "feature",
-             "rough_description": "", "linked_existing_workflow": ""}
+            {
+                "name": f"f{i}",
+                "linked_vision_features": [],
+                "scope": "feature",
+                "rough_description": "",
+                "linked_existing_workflow": "",
+            }
             for i in range(5)
         ]
         session["agentifier_breadth_chosen"] = False
         session["agentifier_breadth_selection"] = []
 
-        with patch("spec4.agentifier.agentifier._call_tier_analyst"), \
-                patch("spec4.llm.litellm.completion"):
+        with (
+            patch("spec4.agentifier.agentifier._call_tier_analyst"),
+            patch("spec4.llm.litellm.completion"),
+        ):
             from spec4.agentifier.agentifier import run as agentifier_run
+
             list(agentifier_run("Selected no features.", session, _LLM_CONFIG))
 
         rejected = session.get("agentifier_explicitly_rejected") or []
@@ -317,8 +399,13 @@ class TestOrchestratorBreadthSubState:
         """If breadth selection is pending and user_input=None, intro is replayed."""
         session = _make_session_for_breadth()
         session["agentifier_scout_pool"] = [
-            {"name": f"f{i}", "linked_vision_features": [], "scope": "feature",
-             "rough_description": "", "linked_existing_workflow": ""}
+            {
+                "name": f"f{i}",
+                "linked_vision_features": [],
+                "scope": "feature",
+                "rough_description": "",
+                "linked_existing_workflow": "",
+            }
             for i in range(10)
         ]
         session["agentifier_breadth_chosen"] = False
@@ -326,6 +413,7 @@ class TestOrchestratorBreadthSubState:
 
         with patch("spec4.llm.litellm.completion") as mock_llm:
             from spec4.agentifier.agentifier import run as agentifier_run
+
             output = "".join(agentifier_run(None, session, _LLM_CONFIG))
 
         mock_llm.assert_not_called()
@@ -335,9 +423,14 @@ class TestOrchestratorBreadthSubState:
         """TierAnalyst is NOT called during the Scout/breadth-intro turn."""
         session = _make_session_for_breadth()
 
-        with _make_mock_scout(10), _make_mock_composer(), _make_mock_linker(), \
-                patch("spec4.agentifier.agentifier._call_tier_analyst") as mock_ta:
+        with (
+            _make_mock_scout(10),
+            _make_mock_composer(),
+            _make_mock_linker(),
+            patch("spec4.agentifier.agentifier._call_tier_analyst") as mock_ta,
+        ):
             from spec4.agentifier.agentifier import run as agentifier_run
+
             list(agentifier_run(None, session, _LLM_CONFIG))
 
         mock_ta.assert_not_called()
@@ -346,16 +439,25 @@ class TestOrchestratorBreadthSubState:
         """Scout is NOT called again when user submits breadth selection."""
         session = _make_session_for_breadth()
         session["agentifier_scout_pool"] = [
-            {"name": f"f{i}", "linked_vision_features": [], "scope": "feature",
-             "rough_description": "", "linked_existing_workflow": ""}
+            {
+                "name": f"f{i}",
+                "linked_vision_features": [],
+                "scope": "feature",
+                "rough_description": "",
+                "linked_existing_workflow": "",
+            }
             for i in range(10)
         ]
         session["agentifier_breadth_chosen"] = False
         session["agentifier_breadth_selection"] = ["f0", "f1", "f2"]
 
-        with patch("spec4.agentifier.agentifier._call_scout") as mock_scout, \
-                _make_mock_analyst(3), _mock_litellm_stream("Hi!"):
+        with (
+            patch("spec4.agentifier.agentifier._call_scout") as mock_scout,
+            _make_mock_analyst(3),
+            _mock_litellm_stream("Hi!"),
+        ):
             from spec4.agentifier.agentifier import run as agentifier_run
+
             list(agentifier_run("Selected 3", session, _LLM_CONFIG))
 
         mock_scout.assert_not_called()
@@ -366,6 +468,7 @@ class TestOrchestratorBreadthSubState:
 
         with _make_mock_scout(10), _make_mock_composer(), _make_mock_linker():
             from spec4.agentifier.agentifier import run as agentifier_run
+
             list(agentifier_run(None, session, _LLM_CONFIG))
 
         override = session.get("_display_override")
@@ -406,8 +509,13 @@ class TestBreadthCandidates:
 
 
 _CROSS_CUTTING_TOPICS_NAMES = (
-    "observability", "prompt_versioning", "feedback_loop", "safety_policy",
-    "provider_strategy", "eval_cadence", "tool_protocol_strategy",
+    "observability",
+    "prompt_versioning",
+    "feedback_loop",
+    "safety_policy",
+    "provider_strategy",
+    "eval_cadence",
+    "tool_protocol_strategy",
 )
 
 
@@ -440,9 +548,12 @@ class TestFinalizeSpecsExplicitlyRejected:
         async def _fake_stream(*a: Any, **kw: Any) -> Any:
             async def _gen() -> Any:
                 yield "```json\n" + _json.dumps(_full) + "\n```"
+
             return _gen()
 
-        with patch("spec4.agentifier.cross_cutting_analyst.acomplete", new=_fake_stream):
+        with patch(
+            "spec4.agentifier.cross_cutting_analyst.acomplete", new=_fake_stream
+        ):
             list(_finalize_specs(session, _LLM_CONFIG))
         return session.get("ai_features") or {}
 

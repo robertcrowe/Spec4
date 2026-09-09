@@ -18,8 +18,14 @@ def test_merge_adds_entry_to_tier_in_wrapped_stack():
     stack = {"stack_spec": {"libraries": {"backend": [{"name": "FastAPI"}]}}}
     out = merge_library_additions(
         stack,
-        [{"name": "APScheduler", "tier": "backend",
-          "category": "scheduler", "purpose": "jobs"}],
+        [
+            {
+                "name": "APScheduler",
+                "tier": "backend",
+                "category": "scheduler",
+                "purpose": "jobs",
+            }
+        ],
     )
     backend = out["stack_spec"]["libraries"]["backend"]
     names = [lib["name"] for lib in backend]
@@ -41,9 +47,7 @@ def test_merge_keeps_same_category_different_name():
     stack = {
         "stack_spec": {
             "libraries": {
-                "backend": [
-                    {"name": "Open Food Facts API", "category": "external_api"}
-                ]
+                "backend": [{"name": "Open Food Facts API", "category": "external_api"}]
             }
         }
     }
@@ -90,11 +94,11 @@ def test_merge_skips_malformed_additions():
     out = merge_library_additions(
         stack,
         [
-            {"name": "", "tier": "backend"},          # no name
-            {"name": "Y", "tier": "nonsense"},        # bad tier
-            {"tier": "backend"},                      # missing name
-            "not a dict",                             # wrong type
-            {"name": "Good", "tier": "backend"},      # the only valid one
+            {"name": "", "tier": "backend"},  # no name
+            {"name": "Y", "tier": "nonsense"},  # bad tier
+            {"tier": "backend"},  # missing name
+            "not a dict",  # wrong type
+            {"name": "Good", "tier": "backend"},  # the only valid one
         ],
     )
     names = [lib["name"] for lib in out["stack_spec"]["libraries"]["backend"]]
@@ -151,9 +155,7 @@ def test_extract_no_block_returns_text_unchanged():
 
 def test_extract_tolerates_prose_around_block():
     text = (
-        "Sure.\n"
-        '{"stack_addition": {"name": "APScheduler", "tier": "backend"}}\n'
-        "Done."
+        'Sure.\n{"stack_addition": {"name": "APScheduler", "tier": "backend"}}\nDone.'
     )
     additions, cleaned = _extract_and_strip_stack_additions(text)
     assert additions[0]["name"] == "APScheduler"
@@ -207,22 +209,22 @@ def test_extract_wrapper_with_phases_is_collected_but_not_stripped():
 def test_merge_preserves_join_keys():
     merged = merge_library_additions(
         {"stack_spec": {"libraries": {"backend": []}}},
-        [{
-            "name": "SendGrid",
-            "tier": "backend",
-            "category": "external_api",
-            "purpose": "transactional email for approved replies",
-            "serves_features": ["reply_flow"],
-            "serves_capabilities": ["draft_reply_generation"],
-            "satisfies_nfr": ["nfr_send_replies_without_leaving_the_app"],
-        }],
+        [
+            {
+                "name": "SendGrid",
+                "tier": "backend",
+                "category": "external_api",
+                "purpose": "transactional email for approved replies",
+                "serves_features": ["reply_flow"],
+                "serves_capabilities": ["draft_reply_generation"],
+                "satisfies_nfr": ["nfr_send_replies_without_leaving_the_app"],
+            }
+        ],
     )
     lib = merged["stack_spec"]["libraries"]["backend"][0]
     assert lib["serves_features"] == ["reply_flow"]
     assert lib["serves_capabilities"] == ["draft_reply_generation"]
-    assert lib["satisfies_nfr"] == [
-        "nfr_send_replies_without_leaving_the_app"
-    ]
+    assert lib["satisfies_nfr"] == ["nfr_send_replies_without_leaving_the_app"]
 
 
 def test_merge_sanitizes_join_keys():
@@ -230,13 +232,15 @@ def test_merge_sanitizes_join_keys():
     # (or a non-list value) is omitted rather than carried as noise.
     merged = merge_library_additions(
         {},
-        [{
-            "name": "Lib",
-            "tier": "backend",
-            "serves_features": ["  ok  ", "", 7, None],
-            "serves_capabilities": [],
-            "satisfies_nfr": "nfr_not_a_list",
-        }],
+        [
+            {
+                "name": "Lib",
+                "tier": "backend",
+                "serves_features": ["  ok  ", "", 7, None],
+                "serves_capabilities": [],
+                "satisfies_nfr": "nfr_not_a_list",
+            }
+        ],
     )
     lib = merged["libraries"]["backend"][0]
     assert lib["serves_features"] == ["ok"]
@@ -274,12 +278,14 @@ def test_merged_keyed_addition_routes_instead_of_stapling():
 
     stack = merge_library_additions(
         {"stack_spec": {"libraries": {"backend": [{"name": "FastAPI"}]}}},
-        [{
-            "name": "SendGrid",
-            "tier": "backend",
-            "serves_features": ["reply_flow"],
-            "satisfies_nfr": ["nfr_send_replies_without_leaving_the_app"],
-        }],
+        [
+            {
+                "name": "SendGrid",
+                "tier": "backend",
+                "serves_features": ["reply_flow"],
+                "satisfies_nfr": ["nfr_send_replies_without_leaving_the_app"],
+            }
+        ],
     )
     staples = baseline_library_names(stack)
     assert "FastAPI" in staples

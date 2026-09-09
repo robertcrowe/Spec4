@@ -47,9 +47,7 @@ __all__ = [
 
 
 def _surfaces(manifest: dict[str, Any] | None) -> list[dict[str, Any]]:
-    return [
-        s for s in ((manifest or {}).get("surfaces") or []) if isinstance(s, dict)
-    ]
+    return [s for s in ((manifest or {}).get("surfaces") or []) if isinstance(s, dict)]
 
 
 def screens_of(surface: dict[str, Any]) -> list[str]:
@@ -71,7 +69,7 @@ def catalog_id(surface: dict[str, Any]) -> str:
 def input_names(surface: dict[str, Any]) -> list[str]:
     """Input identifiers; tolerates string items and ``{name: ...}`` objects."""
     out: list[str] = []
-    for item in (surface.get("inputs") or []):
+    for item in surface.get("inputs") or []:
         if isinstance(item, dict):
             name = item.get("name")
             if name:
@@ -131,8 +129,7 @@ def surface_detail_lines(surface: dict[str, Any]) -> list[str]:
     lines.append(
         f"  - screens: {', '.join(screens)}"
         if screens
-        else "  - screens: none — internal, non-UI implementation work for "
-        "its feature"
+        else "  - screens: none — internal, non-UI implementation work for its feature"
     )
     names = input_names(surface)
     if names:
@@ -178,9 +175,11 @@ def surfaces_for_declarations(
             catalog_id(surface) and catalog_id(surface) in capability_ids
         )
         if via_features or via_capability:
-            out.append({
-                "surface": surface,
-                "via_features": via_features,
-                "via_capability": via_capability,
-            })
+            out.append(
+                {
+                    "surface": surface,
+                    "via_features": via_features,
+                    "via_capability": via_capability,
+                }
+            )
     return out

@@ -64,9 +64,7 @@ def test_deterministic_feature_surfaces_knowledge_source() -> None:
                 "name": "digest",
                 "tier": "deterministic",
                 "invocation": {"mode": "scheduled"},
-                "knowledge_sources": [
-                    {"name": "orders_db", "type": "relational_db"}
-                ],
+                "knowledge_sources": [{"name": "orders_db", "type": "relational_db"}],
             }
         )
     )
@@ -256,9 +254,7 @@ def _grounded(node_id: str, *served: str, **extra: Any) -> dict[str, Any]:
         "id": node_id,
         "name": node_id,
         "tier": "single_call",
-        "vision_grounding": {
-            "served_features": [{"id": s, "name": s} for s in served]
-        },
+        "vision_grounding": {"served_features": [{"id": s, "name": s} for s in served]},
     }
     node.update(extra)
     return node
@@ -287,9 +283,7 @@ def test_sub_feature_scope_rendered() -> None:
 def test_served_product_feature_is_rendered() -> None:
     out = _ai_features_for_stack(
         _spec(
-            _grounded(
-                "adaptive_investigation_orchestration", "adaptive_investigation"
-            )
+            _grounded("adaptive_investigation_orchestration", "adaptive_investigation")
         )
     )
     assert "serves product feature(s): adaptive_investigation" in out
@@ -370,8 +364,14 @@ def test_scope_and_new_revision_tag_coexist() -> None:
 
 
 def _rejected(*names: str) -> dict[str, Any]:
-    spec = _spec({"name": "Thread_Summarization", "id": "thread_summarization",
-                  "kind": "feature", "tier": "chained_calls"})
+    spec = _spec(
+        {
+            "name": "Thread_Summarization",
+            "id": "thread_summarization",
+            "kind": "feature",
+            "tier": "chained_calls",
+        }
+    )
     spec["explicitly_rejected"] = [
         {"name": n, "rough_description": "deselected in the panel"} for n in names
     ]
@@ -410,16 +410,23 @@ def test_rejected_block_preserves_the_spine_features_ordinary_stack() -> None:
 
 
 def test_no_rejected_block_when_nothing_was_deselected() -> None:
-    out = _ai_features_for_stack(_spec(
-        {"name": "Thread_Summarization", "id": "thread_summarization",
-         "kind": "feature", "tier": "chained_calls"}
-    ))
+    out = _ai_features_for_stack(
+        _spec(
+            {
+                "name": "Thread_Summarization",
+                "id": "thread_summarization",
+                "kind": "feature",
+                "tier": "chained_calls",
+            }
+        )
+    )
     assert "Explicitly rejected" not in out
 
 
 def test_phaser_wording_is_unchanged_by_the_stack_variant() -> None:
     """The default consumer must still be Phaser's, untouched."""
     from spec4.agents._utils import _explicitly_rejected_lines
+
     lines = _explicitly_rejected_lines(_rejected("Reply_Tone_Matching"))
     assert any("do NOT plan phases for these" in ln for ln in lines)
     assert not any("provider capability" in ln for ln in lines)

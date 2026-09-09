@@ -70,9 +70,7 @@ class TestEnrich:
 
     def test_unlinked_ai_surface_not_pinned(self) -> None:
         manifest = {
-            "surfaces": [
-                {"name": "x", "kind": "ai", "implements_features": ["keep"]}
-            ]
+            "surfaces": [{"name": "x", "kind": "ai", "implements_features": ["keep"]}]
         }
         out = enrich_manifest(manifest, _AI)
         assert out["surfaces"][0]["implements_features"] == ["keep"]
@@ -169,6 +167,7 @@ class TestValidate:
     def test_infrastructure_surface_not_required(self) -> None:
         _m, warnings = validate_manifest(self._base(), _AI, _VISION)
         assert not any("vec_store" in w for w in warnings)
+
 
 class TestEnrichIds:
     def test_pins_feature_ids_via_vision_map(self) -> None:

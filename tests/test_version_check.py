@@ -89,9 +89,7 @@ class TestFetchLatestVersion:
 
 class TestCheckForUpdate:
     def test_outdated_reports_both_versions(self) -> None:
-        with patch.object(
-            version_check, "fetch_latest_version", return_value="99.0.0"
-        ):
+        with patch.object(version_check, "fetch_latest_version", return_value="99.0.0"):
             info = check_for_update()
         assert info is not None
         assert info["latest"] == "99.0.0"

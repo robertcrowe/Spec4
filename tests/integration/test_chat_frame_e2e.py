@@ -305,14 +305,27 @@ class TestTheRenderedFrame:
         assert labels.first.inner_text() == "You"
         assert labels.nth(1).inner_text() == "Brainstormer"
 
-    def test_no_transcript_block_is_filled(self, page: Page) -> None:
-        """Measured as the browser resolves it, not as the stylesheet reads."""
-        backgrounds = page.eval_on_selector_all(
-            "#chat-scroll-area .chat-msg",
+    def test_user_turns_are_filled_and_agent_turns_are_not(self, page: Page) -> None:
+        """Measured as the browser resolves it, not as the stylesheet reads.
+
+        The agent's turn sits unfilled on the page; the user's is set on the
+        surface colour (``--mantine-color-dark-6``, ``#12121a``), the same
+        dark grey as the composer, so what they typed reads as continuous
+        with where they typed it. The two kinds of block must stay visually
+        distinct.
+        """
+        agent = page.eval_on_selector_all(
+            "#chat-scroll-area .chat-msg.chat-bubble-assistant",
             "els => els.map(el => getComputedStyle(el).backgroundColor)",
         )
-        assert backgrounds
-        assert set(backgrounds) == {"rgba(0, 0, 0, 0)"}
+        user = page.eval_on_selector_all(
+            "#chat-scroll-area .chat-msg.chat-bubble-user",
+            "els => els.map(el => getComputedStyle(el).backgroundColor)",
+        )
+        assert agent and user
+        assert set(agent) == {"rgba(0, 0, 0, 0)"}
+        assert set(user) == {"rgb(18, 18, 26)"}
+        assert set(agent).isdisjoint(user)
 
     def test_the_model_name_renders_in_monospace(self, page: Page) -> None:
         font = page.eval_on_selector(
@@ -554,9 +567,7 @@ class TestOpenLeadsIntoTheArtifactView:
         finished.click("#btn-open-vision")
         finished.wait_for_url("**/artifacts")
         finished.wait_for_selector("#artifact-view-scroll")
-        assert ".spec4/v0/vision.json" in finished.inner_text(
-            "#artifact-view-header"
-        )
+        assert ".spec4/v0/vision.json" in finished.inner_text("#artifact-view-header")
 
     def test_the_file_s_content_is_rendered(self, finished: Page) -> None:
         """Not merely selected: the pane shows the file, pretty-printed, with
@@ -609,9 +620,7 @@ class TestTheCompletedRunsCostStrip:
         )
         finished.click("#status-bar-nav-project")
         finished.wait_for_selector("#round-cost")
-        assert "cost-strip" in (
-            finished.get_attribute("#round-cost", "class") or ""
-        )
+        assert "cost-strip" in (finished.get_attribute("#round-cost", "class") or "")
 
     def test_the_figures_render_in_monospace(self, finished: Page) -> None:
         font = finished.eval_on_selector(

@@ -391,9 +391,7 @@ class TestDesignerCapture:
             "spec4.llm.litellm.completion", **(patch_kw or default_kw)
         ) as mock_llm:
             list(
-                generate_mock_streaming(
-                    session, "gpt-4o-mini", "k", [], True, **extra
-                )
+                generate_mock_streaming(session, "gpt-4o-mini", "k", [], True, **extra)
             )
         return mock_llm
 
@@ -622,9 +620,7 @@ class TestSaveUsageSchema:
 
 
 class TestSaveUsageReadModifyWrite:
-    def test_second_run_on_another_model_appends_history(
-        self, tmp_path: Path
-    ) -> None:
+    def test_second_run_on_another_model_appends_history(self, tmp_path: Path) -> None:
         project_manager.save_usage(
             tmp_path, [_call("phaser", "gpt-4o-mini", "openai", 100, 20, 0.001)], 0
         )
@@ -677,8 +673,12 @@ class TestSaveUsageReadModifyWrite:
                 "computed_cost_source": "x",
                 "fast_forward": False,
             },
-            "agents": {"phaser": {**project_manager.summarize_usage([prior_call]),
-                                  "history": [prior_call]}},
+            "agents": {
+                "phaser": {
+                    **project_manager.summarize_usage([prior_call]),
+                    "history": [prior_call],
+                }
+            },
             "totals": project_manager.usage_totals(
                 {"phaser": project_manager.summarize_usage([prior_call])}
             ),
@@ -818,9 +818,7 @@ class TestSaveUsageAtomicity:
         assert path.read_text() == before
         assert [p.name for p in path.parent.iterdir()] == ["usage.json"]
 
-    def test_partial_content_write_never_reaches_the_file(
-        self, tmp_path: Path
-    ) -> None:
+    def test_partial_content_write_never_reaches_the_file(self, tmp_path: Path) -> None:
         project_manager.save_usage(tmp_path, [_call("phaser")], 0)
         path = _usage_path(tmp_path)
         before = path.read_text()
@@ -912,11 +910,7 @@ def _stream_one(
 ) -> None:
     chunks = [_delta("x", "stop"), _usage_chunk(_usage(prompt, completion))]
     with patch("spec4.llm.litellm.completion", return_value=iter(chunks)):
-        list(
-            llm.complete_stream(
-                llm_config=cfg or _CFG, messages=[], agent_name=agent
-            )
-        )
+        list(llm.complete_stream(llm_config=cfg or _CFG, messages=[], agent_name=agent))
 
 
 class TestPersistFlush:
@@ -960,9 +954,7 @@ class TestPersistFlush:
         assert set(data["agents"]) == {"brainstormer", "stack_advisor"}
         assert data["totals"]["calls"] == 2
 
-    def test_usage_write_failure_does_not_block_artifacts(
-        self, tmp_path: Path
-    ) -> None:
+    def test_usage_write_failure_does_not_block_artifacts(self, tmp_path: Path) -> None:
         _stream_one("brainstormer")
         session = {
             **_default_session(),
@@ -1018,9 +1010,7 @@ class TestUsageReport:
     def test_a_non_default_effort_is_shown_beside_the_model(
         self, tmp_path: Path
     ) -> None:
-        project_manager.save_usage(
-            tmp_path, [_call("phaser", effort="high")], 0
-        )
+        project_manager.save_usage(tmp_path, [_call("phaser", effort="high")], 0)
         data = project_manager.load_usage(tmp_path, 0)
         assert data is not None
         assert "gpt-4o-mini (openai, high)" in usage_report.render_usage_table(data)
@@ -1034,9 +1024,7 @@ class TestUsageReport:
         assert "gpt-4o-mini (openai)" in table
         assert "default" not in table
 
-    def test_the_fallback_string_is_rendered_as_recorded(
-        self, tmp_path: Path
-    ) -> None:
+    def test_the_fallback_string_is_rendered_as_recorded(self, tmp_path: Path) -> None:
         """A level asked for and refused is worth seeing in the report."""
         project_manager.save_usage(
             tmp_path, [_call("phaser", effort="default (fallback from max)")], 0
@@ -1071,9 +1059,7 @@ class TestUsageReport:
         table = usage_report.render_usage_table(data)
         assert "gpt-4o-mini (openai)" in table
 
-    def test_a_hand_written_legacy_file_renders_unchanged(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_hand_written_legacy_file_renders_unchanged(self, tmp_path: Path) -> None:
         """The pre-effort on-disk shape, read straight from JSON."""
         version_dir = project_manager.ensure_version_dir(tmp_path, 0)
         (version_dir / "usage.json").write_text(
@@ -1256,16 +1242,27 @@ class TestTurnTokenReadout:
         # Nothing before any turn has finished.
         assert _turn_token_text(base) == ""
         # Nothing for a different agent's turn.
-        assert _turn_token_text({**base, "active_agent": "deployer",
-                                 "_turn_usage": usage}) == ""
+        assert (
+            _turn_token_text({**base, "active_agent": "deployer", "_turn_usage": usage})
+            == ""
+        )
         # All calls missing usage: a marker, not blank or zero.
-        assert _turn_token_text(
-            {**base, "_turn_usage": {**usage, "input": 0, "output": 0, "missing": 1}}
-        ) == "no token count"
+        assert (
+            _turn_token_text(
+                {
+                    **base,
+                    "_turn_usage": {**usage, "input": 0, "output": 0, "missing": 1},
+                }
+            )
+            == "no token count"
+        )
         # Some calls missing: the counted part, flagged.
-        assert _turn_token_text(
-            {**base, "_turn_usage": {**usage, "calls": 2, "missing": 1}}
-        ) == "Tokens: 4,180 in / 312 out (partial)"
+        assert (
+            _turn_token_text(
+                {**base, "_turn_usage": {**usage, "calls": 2, "missing": 1}}
+            )
+            == "Tokens: 4,180 in / 312 out (partial)"
+        )
 
     def test_row_places_readout_right_after_the_counter_once_done(self) -> None:
         session = {

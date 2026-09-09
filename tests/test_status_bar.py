@@ -335,9 +335,7 @@ class TestTheStylesheetPinsWhatTheLayoutMarks:
 
     def _css(self) -> str:
         return (
-            pathlib.Path(app_module.__file__).resolve().parent
-            / "assets"
-            / "v3.css"
+            pathlib.Path(app_module.__file__).resolve().parent / "assets" / "v3.css"
         ).read_text(encoding="utf-8")
 
     def _rule(self, selector: str) -> str:
@@ -415,9 +413,7 @@ class TestTheShellHasNoMarketingChrome:
 
     def test_the_page_no_longer_carries_a_footer(self) -> None:
         """`render_page` used to wrap every screen in the marketing footer."""
-        content, _, _ = app_module.render_page(
-            _default_session(), {}, 0, None, None
-        )
+        content, _, _ = app_module.render_page(_default_session(), {}, 0, None, None)
         assert "footer" not in _class_names(content)
         assert not any(
             type(node).__name__ == "Footer" for node in [content, *_flatten(content)]
@@ -586,9 +582,7 @@ class TestStatusBarCallback:
         assert "anthropic" in text
         assert "claude-sonnet-4-6" in text
 
-    def test_it_agrees_with_what_a_turn_would_do(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_it_agrees_with_what_a_turn_would_do(self, tmp_path: pathlib.Path) -> None:
         """The bar and the dispatch answer one question, through one route.
 
         A bar saying "connected" while `_get_agent_gen` refuses to start is
@@ -894,9 +888,7 @@ class TestTheBarOpensSetup:
         assert advanced["model"] is None
         assert advanced["llm_config"] is None
 
-        with patch(
-            "spec4.callbacks.providers.list_models", return_value=([], "nope")
-        ):
+        with patch("spec4.callbacks.providers.list_models", return_value=([], "nope")):
             failed, _ = cb.on_setup_connect(1, "OpenAI", "sk-bad", False, opened, {})
         assert failed["model"] == opened["model"]
         assert failed["llm_config"] == opened["llm_config"]

@@ -280,9 +280,7 @@ def test_s2_production_map_drives_flip_with_feature_specs() -> None:
         "features": [
             {
                 "id": "deck_build",
-                "outputs": {
-                    "primary": "a complete slide-by-slide investor pitch deck"
-                },
+                "outputs": {"primary": "a complete slide-by-slide investor pitch deck"},
             }
         ]
     }

@@ -66,9 +66,7 @@ class TestStreamCounting:
         captured: list[int] = []
 
         def _consume() -> Any:
-            captured.append(
-                (yield from _stream_counting(iter(("abc", "de")), session))
-            )
+            captured.append((yield from _stream_counting(iter(("abc", "de")), session)))
 
         list(_consume())
         assert captured == [5]
@@ -94,9 +92,7 @@ class TestDeployerPublishesReceipt:
     def test_plain_turn_publishes_a_total(self) -> None:
         session = _session()
         with (
-            patch.object(
-                deployer.llm, "build_system_prompt", return_value=""
-            ),
+            patch.object(deployer.llm, "build_system_prompt", return_value=""),
             patch.object(
                 deployer.llm, "stream_turn", _fake_stream("How ", "about GCP?")
             ),
@@ -124,9 +120,7 @@ class TestReadmeBeatStaysMonotonic:
             return _watched()
 
         with (
-            patch.object(
-                deployer.llm, "build_system_prompt", return_value=""
-            ),
+            patch.object(deployer.llm, "build_system_prompt", return_value=""),
             patch.object(deployer.llm, "stream_turn", _stream),
         ):
             return list(deployer.run("go", session, {"model": "x"}))

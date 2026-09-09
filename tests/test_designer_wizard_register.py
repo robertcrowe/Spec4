@@ -132,9 +132,7 @@ def _filled(node: Any) -> list[Any]:
 
 def _step_row(node: Any) -> Any:
     return next(
-        c
-        for c in _walk(node)
-        if getattr(c, "className", None) == DESIGNER_STEPS_CLASS
+        c for c in _walk(node) if getattr(c, "className", None) == DESIGNER_STEPS_CLASS
     )
 
 
@@ -273,9 +271,7 @@ class TestStepRow:
         "step,label",
         [(n + 1, label) for n, label in enumerate(DESIGNER_STEPS)] + [(7, "Preview")],
     )
-    def test_the_step_on_screen_is_the_marked_one(
-        self, step: int, label: str
-    ) -> None:
+    def test_the_step_on_screen_is_the_marked_one(self, step: int, label: str) -> None:
         """Every wizard step from 1 to 7, including the two that share Preview."""
         from spec4.layouts.designer import designer_step_row, stepper_index
 
@@ -285,9 +281,7 @@ class TestStepRow:
     def test_the_row_reads_as_plain_text(self, page: Any) -> None:
         """No markers of any kind: the entries are the labels, and nothing else."""
         row = _step_row(page)
-        assert [
-            entry.children for entry in row.children
-        ] == list(DESIGNER_STEPS)
+        assert [entry.children for entry in row.children] == list(DESIGNER_STEPS)
 
     def test_earlier_steps_are_done_and_later_ones_dimmed(self) -> None:
         from spec4.layouts.designer import designer_step_row
@@ -365,9 +359,7 @@ class TestTheStepperOutputResolves:
         ]
         assert not missing, f"outputs with no component to write to: {missing}"
 
-    def test_every_output_names_a_property_that_component_has(
-        self, page: Any
-    ) -> None:
+    def test_every_output_names_a_property_that_component_has(self, page: Any) -> None:
         by_id = {
             c.id: c for c in _walk(page) if isinstance(getattr(c, "id", None), str)
         }
@@ -401,14 +393,12 @@ class TestTheStepperOutputResolves:
 
 class TestNoAccordionAndNoAlerts:
     def test_the_wizard_renders_no_accordion(self, page: Any) -> None:
-        """"How to use Designer" is deleted, not collapsed or moved."""
+        """ "How to use Designer" is deleted, not collapsed or moved."""
         assert _of_type(page, "Accordion") == []
         assert _of_type(page, "AccordionItem") == []
 
     def test_the_wizard_renders_no_introduction(self, page: Any) -> None:
-        text = " ".join(
-            c for c in _dim_lines(page) + [str(page)] if isinstance(c, str)
-        )
+        text = " ".join(c for c in _dim_lines(page) + [str(page)] if isinstance(c, str))
         assert "Hello! I'm the" not in text
         assert "How to use Designer" not in text
 
@@ -500,9 +490,7 @@ _PRIMARIES: dict[str, str | None] = {
 
 class TestOnePrimaryPerStep:
     @pytest.mark.parametrize("label,content", _steps() + _warning_steps())
-    def test_never_more_than_one_filled_button(
-        self, label: str, content: Any
-    ) -> None:
+    def test_never_more_than_one_filled_button(self, label: str, content: Any) -> None:
         filled = _filled(content)
         assert len(filled) <= 1, (
             f"{label}: two things to press — "
@@ -518,9 +506,7 @@ class TestOnePrimaryPerStep:
         assert filled == ([expected] if expected else []), label
 
     @pytest.mark.parametrize("label,content", _steps())
-    def test_the_primary_takes_the_theme_accent(
-        self, label: str, content: Any
-    ) -> None:
+    def test_the_primary_takes_the_theme_accent(self, label: str, content: Any) -> None:
         """No `color` prop: the single accent is inherited, never named (D-LR2)."""
         for button in _filled(content):
             assert getattr(button, "color", None) is None, label
@@ -560,9 +546,7 @@ class TestOnePrimaryPerStep:
         assert "btn-warn" in (start_over.className or "").split()
 
     @pytest.mark.parametrize("label,content", _steps() + _warning_steps())
-    def test_no_button_label_carries_a_glyph(
-        self, label: str, content: Any
-    ) -> None:
+    def test_no_button_label_carries_a_glyph(self, label: str, content: Any) -> None:
         offenders = [
             b.children
             for b in _buttons(content)
@@ -663,9 +647,7 @@ class TestTheUntouchedMachinery:
 
     def test_each_upload_zone_holds_one_dimmed_line(self) -> None:
         for content in (_step4_content(_STORE, True), _step7_content(_STORE, True)):
-            upload = next(
-                c for c in _walk(content) if type(c).__name__ == "Upload"
-            )
+            upload = next(c for c in _walk(content) if type(c).__name__ == "Upload")
             assert len(_dim_lines(upload.children)) == 1
 
     def test_the_cost_strip_still_closes_the_preview(self, tmp_path: Any) -> None:

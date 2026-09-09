@@ -336,9 +336,7 @@ class TestMechanismGlossary:
     def test_definition_sits_with_the_entry_not_in_a_far_section(self) -> None:
         text = "\n".join(render_feature_block(_rag_feature()))
         lines = text.splitlines()
-        head = next(
-            i for i, ln in enumerate(lines) if "`retrieval_reranking`" in ln
-        )
+        head = next(i for i, ln in enumerate(lines) if "`retrieval_reranking`" in ln)
         assert lines[head + 1].strip().startswith("- definition: ")
 
     def test_unknown_mechanism_renders_without_definition(self) -> None:

@@ -80,7 +80,7 @@ Return ONLY this JSON object, no prose, no code fences:
 class SeamFinding:
     """A single advisory seam finding."""
 
-    check: str   # "table" | "endpoint" | "coverage" | "declaration"
+    check: str  # "table" | "endpoint" | "coverage" | "declaration"
     severity: str  # "high" | "medium" | "info"
     message: str
 
@@ -264,10 +264,7 @@ def _check_endpoint_provenance(graph: dict[str, Any]) -> list[SeamFinding]:
     """Every consumed endpoint should be defined by some phase."""
     findings: list[SeamFinding] = []
     producers = {
-        _norm(e)
-        for p in graph["phases"]
-        for e in p["creates_endpoints"]
-        if _norm(e)
+        _norm(e) for p in graph["phases"] for e in p["creates_endpoints"] if _norm(e)
     }
     for p in graph["phases"]:
         n = p["phase_number"]
@@ -295,10 +292,7 @@ def _check_feature_coverage(
         return findings
 
     covered = {
-        _norm(c)
-        for p in graph["phases"]
-        for c in p["covers_features"]
-        if _norm(c)
+        _norm(c) for p in graph["phases"] for c in p["covers_features"] if _norm(c)
     }
     for f in features:
         priority = (f.get("phase_priority") or "mvp").lower()
@@ -337,9 +331,7 @@ def _declared_by_phase(phases: list[dict[str, Any]]) -> dict[int, set[str]]:
         # Key-presence era detection (not truthiness): present-but-empty
         # `capabilities` means "no capabilities declared", never "fall back
         # to features[]" — that would read product ids against the catalog.
-        source = (
-            p.get("features") if "capabilities" not in p else p.get("capabilities")
-        )
+        source = p.get("features") if "capabilities" not in p else p.get("capabilities")
         ids = {
             _norm(d.get("id"))
             for d in (source or [])

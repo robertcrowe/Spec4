@@ -185,9 +185,7 @@ class TestSpecPhaseFFSweep:
             side_effect=_fake_stream(calls, _spec_payload),
         ):
             out = _collect(
-                _run_spec_phase(
-                    "beta_feat: fine\nzzz_feat: nope", session, LLM
-                )
+                _run_spec_phase("beta_feat: fine\nzzz_feat: nope", session, LLM)
             )
         assert calls == []  # atomic: the valid line is not applied either
         assert "zzz_feat" in out
@@ -324,7 +322,9 @@ class TestCrossCuttingFFSweep:
         assert len(calls) == 1
         assert calls[0][1].topic == "tool_protocol_strategy"
         assert calls[0][1].revision_instruction == "add tracing"
-        decision = session["agentifier_cross_cutting_decisions"]["tool_protocol_strategy"]
+        decision = session["agentifier_cross_cutting_decisions"][
+            "tool_protocol_strategy"
+        ]
         assert decision.get("recommendation") == "revised tool_protocol_strategy"
         assert session["agentifier_cross_cutting_ff_review"] is True
 
@@ -341,9 +341,7 @@ class TestCrossCuttingFFSweep:
             side_effect=_fake_stream(calls, _cc_payload),
         ):
             out = _collect(
-                _run_cross_cutting_phase(
-                    "provider_strategy: redo", session, LLM
-                )
+                _run_cross_cutting_phase("provider_strategy: redo", session, LLM)
             )
         assert calls == []
         assert "locked" in out.lower()
@@ -372,9 +370,11 @@ def _flaky_stream(calls: list[Any], fail_names: dict[str, int]) -> Any:
 
         async def _gen() -> Any:
             if seen[feat] <= fail_names.get(feat, 0):
-                yield "```json\n{\"purpose\": \"truncated and never clo"
+                yield '```json\n{"purpose": "truncated and never clo'
             else:
-                yield "```json\n" + json.dumps({"purpose": f"spec for {feat}"}) + "\n```"
+                yield (
+                    "```json\n" + json.dumps({"purpose": f"spec for {feat}"}) + "\n```"
+                )
 
         return _gen()
 
@@ -450,12 +450,17 @@ class TestSweepFailureHandling:
         """D-AF7: the full raw output of a failed extraction is persisted."""
         session = _spec_session()
         session["working_dir"] = str(tmp_path)
-        with patch("spec4.agentifier.agentifier._DEV_MODE", True), patch(
-            "spec4.agentifier.agentifier._registry.stream",
-            side_effect=_flaky_stream([], {"beta_feat": 99}),
+        with (
+            patch("spec4.agentifier.agentifier._DEV_MODE", True),
+            patch(
+                "spec4.agentifier.agentifier._registry.stream",
+                side_effect=_flaky_stream([], {"beta_feat": 99}),
+            ),
         ):
             _collect(_run_spec_phase(FF_PROMPT, session, LLM))
-        failures = list((tmp_path / ".spec4" / "failures").glob("spec_drafter_beta_feat_*.txt"))
+        failures = list(
+            (tmp_path / ".spec4" / "failures").glob("spec_drafter_beta_feat_*.txt")
+        )
         assert len(failures) == 2  # both failed attempts dumped in full
         content = failures[0].read_text(encoding="utf-8")
         assert "truncated and never clo" in content
@@ -463,9 +468,12 @@ class TestSweepFailureHandling:
     def test_no_failure_dump_outside_dev_mode(self, tmp_path: Any) -> None:
         session = _spec_session()
         session["working_dir"] = str(tmp_path)
-        with patch("spec4.agentifier.agentifier._DEV_MODE", False), patch(
-            "spec4.agentifier.agentifier._registry.stream",
-            side_effect=_flaky_stream([], {"beta_feat": 99}),
+        with (
+            patch("spec4.agentifier.agentifier._DEV_MODE", False),
+            patch(
+                "spec4.agentifier.agentifier._registry.stream",
+                side_effect=_flaky_stream([], {"beta_feat": 99}),
+            ),
         ):
             _collect(_run_spec_phase(FF_PROMPT, session, LLM))
         assert not (tmp_path / ".spec4" / "failures").exists()

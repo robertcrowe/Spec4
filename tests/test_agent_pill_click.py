@@ -173,9 +173,7 @@ class TestNoEnabledButtonIsRefused:
             if pathname is no_update:
                 refused.append(agent)
 
-        assert not refused, (
-            f"enabled buttons whose click was refused: {refused}"
-        )
+        assert not refused, f"enabled buttons whose click was refused: {refused}"
 
 
 # ---------------------------------------------------------------------------
@@ -204,9 +202,7 @@ class TestUnconnectedClickGoesToSetup:
         assert pathname == "/setup"
         assert new_session["phase"] == "setup"
 
-    def test_it_does_not_look_like_a_precondition_failure(
-        self, tmp_path: Any
-    ) -> None:
+    def test_it_does_not_look_like_a_precondition_failure(self, tmp_path: Any) -> None:
         """`agent_select_error` is for a *blocked* agent, and this is not one.
 
         Leaving a message there would put "Requires a vision statement"-shaped
@@ -267,9 +263,7 @@ class TestUnconnectedClickGoesToSetup:
         assert pathname == "/chat"
         assert new_session["phase"] == "chat"
 
-    def test_another_agents_override_is_not_a_connection(
-        self, tmp_path: Any
-    ) -> None:
+    def test_another_agents_override_is_not_a_connection(self, tmp_path: Any) -> None:
         """The override belongs to one agent; the rest still need a default."""
         session = _session(
             str(tmp_path),

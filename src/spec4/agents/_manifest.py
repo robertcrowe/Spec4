@@ -127,7 +127,7 @@ def enrich_manifest(
             continue
         if surface.get("kind") == "ai":
             catalog_surface = surface.get("catalog_surface")
-            fact = facts.get(catalog_surface)
+            fact = facts.get(catalog_surface) if catalog_surface is not None else None
             if fact:
                 surface["implements_features"] = fact["implements_features"]
                 if fact["invocation"]:

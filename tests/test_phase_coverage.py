@@ -220,14 +220,16 @@ class TestInfrastructureOrdering:
 
     def test_feature_to_feature_edges_are_not_order_checked(self) -> None:
         catalog = _catalog()
-        catalog["ai_features"].append({
-            "id": "reranker",
-            "name": "Reranker",
-            "kind": "feature",
-            "tier": "single_call",
-            "phase_priority": "mvp",
-            "requires": ["RAG Answerer"],
-        })
+        catalog["ai_features"].append(
+            {
+                "id": "reranker",
+                "name": "Reranker",
+                "kind": "feature",
+                "tier": "single_call",
+                "phase_priority": "mvp",
+                "requires": ["RAG Answerer"],
+            }
+        )
         phases = [
             _phase(1, _decl("vector_index"), _decl("reranker")),
             _phase(2, _decl("rag_answerer")),
@@ -249,15 +251,17 @@ class TestRevisionPartition:
         catalog = _catalog()
         for node in catalog["ai_features"]:
             node["introduced_in_version"] = 0
-        catalog["ai_features"].append({
-            "id": "new_feature",
-            "name": "New Feature",
-            "kind": "feature",
-            "tier": "single_call",
-            "phase_priority": "mvp",
-            "requires": [],
-            "introduced_in_version": 1,
-        })
+        catalog["ai_features"].append(
+            {
+                "id": "new_feature",
+                "name": "New Feature",
+                "kind": "feature",
+                "tier": "single_call",
+                "phase_priority": "mvp",
+                "requires": [],
+                "introduced_in_version": 1,
+            }
+        )
         return catalog
 
     def test_established_capabilities_are_not_required(self) -> None:
@@ -407,15 +411,11 @@ class TestExcludedDisposition:
             phases, catalog, feature_specs=specs
         )
         assert failures == []
-        assert any(
-            "smart_replies" in a and "Agentifier" in a for a in advisories
-        )
+        assert any("smart_replies" in a and "Agentifier" in a for a in advisories)
 
     def test_declared_excluded_feature_fails(self) -> None:
         specs, catalog = self._specs_with_rejection()
-        phases = [
-            _phase(1, features=[_decl("checkout"), _decl("smart_replies")])
-        ]
+        phases = [_phase(1, features=[_decl("checkout"), _decl("smart_replies")])]
         failures, _ = check_phase_coverage(phases, catalog, feature_specs=specs)
         assert "excluded from this plan" in _messages(failures)
 
@@ -432,9 +432,7 @@ class TestExcludedDisposition:
                     "tier": "single_call",
                     "phase_priority": "mvp",
                     "requires": [],
-                    "vision_grounding": {
-                        "served_features": [{"id": "smart_replies"}]
-                    },
+                    "vision_grounding": {"served_features": [{"id": "smart_replies"}]},
                 }
             ],
             "explicitly_rejected": [{"name": "smart_replies"}],
@@ -456,9 +454,7 @@ class TestProductDependencyOrdering:
             _phase(1, features=[_decl("history")]),
             _phase(2, features=[_decl("lookup")]),
         ]
-        failures, advisories = check_phase_coverage(
-            phases, None, feature_specs=specs
-        )
+        failures, advisories = check_phase_coverage(phases, None, feature_specs=specs)
         assert failures == []
         assert any("Build order" in a and "history" in a for a in advisories)
 
@@ -471,9 +467,7 @@ class TestProductDependencyOrdering:
             _phase(1, features=[_decl("lookup")]),
             _phase(2, features=[_decl("history")]),
         ]
-        failures, advisories = check_phase_coverage(
-            phases, None, feature_specs=specs
-        )
+        failures, advisories = check_phase_coverage(phases, None, feature_specs=specs)
         assert failures == []
         assert not any("Build order" in a for a in advisories)
 

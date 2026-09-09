@@ -171,9 +171,7 @@ def _shell_ids() -> set[str]:
     here too. It is still derived, not hand-listed: a second control added to
     that line is picked up without editing this function.
     """
-    filled = html.Span(
-        _status_context("/a/project", 0, "anthropic", "m", True)
-    )
+    filled = html.Span(_status_context("/a/project", 0, "anthropic", "m", True))
     return _ids(app_module.app.layout) | _ids(filled)
 
 
@@ -239,9 +237,7 @@ def _phase_screens(tmp_path: pathlib.Path) -> list[tuple[str, set[str]]]:
 
     # The directory browser. There is no landing screen to walk: the root
     # resolves to this or to the project view, and nothing else renders.
-    screens.append(
-        ("working_dir", _page_ids(_render(_session(phase="working_dir"))))
-    )
+    screens.append(("working_dir", _page_ids(_render(_session(phase="working_dir")))))
     screens.append(
         (
             "working_dir: unopenable remembered directory",
@@ -369,9 +365,7 @@ def _phase_screens(tmp_path: pathlib.Path) -> list[tuple[str, set[str]]]:
             },
         }
     )
-    carried.update(
-        {"phase": "chat", "active_agent": "code_scanner", "working_dir": wd}
-    )
+    carried.update({"phase": "chat", "active_agent": "code_scanner", "working_dir": wd})
     screens.append(("gate: carried forward", _page_ids(_render(carried))))
     reopened = on_gate_chip(1, _answered(carried, "code_scanner"))
     screens.append(("gate: reopened via chip", _page_ids(_render(reopened))))
@@ -521,9 +515,7 @@ class TestCallbackInputsAreCoPresent:
             label for label, present in screens if not present
         ]
 
-    def test_every_page_level_callback_is_reached(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_every_page_level_callback_is_reached(self, tmp_path: pathlib.Path) -> None:
         """The screen list must be able to fire every page-level callback.
 
         Without this, adding a screen-specific callback and forgetting to add
@@ -587,9 +579,7 @@ class TestProjectViewIds:
         session = _session(working_dir=str(tmp_path), phase="agent_select")
         assert _ROUND_TREE_IDS <= _page_ids(_render(session))
 
-    def test_the_retired_button_is_on_no_screen(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_the_retired_button_is_on_no_screen(self, tmp_path: pathlib.Path) -> None:
         """The change-provider button left the project view for the bar.
 
         Listed rather than merely deleted, for the reason the shell's removed
@@ -964,9 +954,7 @@ class TestShellIds:
     def test_no_callback_still_references_a_removed_id(self) -> None:
         """The drawer's callback had to go in the same commit as the drawer."""
         removed = {"nav-drawer", "nav-overlay", "nav-burger", "nav-close-btn"}
-        offenders = [
-            name for name, _, every in _callback_refs() if every & removed
-        ]
+        offenders = [name for name, _, every in _callback_refs() if every & removed]
         assert not offenders
 
     def test_page_ids_exclude_the_shell(self) -> None:

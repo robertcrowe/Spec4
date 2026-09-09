@@ -71,9 +71,10 @@ class TestLoadVision:
         # vision saved for the active round is the one found.
         project_manager.save_vision(tmp_path, _vision("Active"), 0)
         session = {"phase_version": 0}
-        assert project_manager.load_vision(tmp_path, session)[
-            "vision_statement"
-        ]["name"] == "Active"
+        assert (
+            project_manager.load_vision(tmp_path, session)["vision_statement"]["name"]
+            == "Active"
+        )
 
 
 # ---------------------------------------------------------------------------

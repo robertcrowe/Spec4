@@ -88,11 +88,7 @@ def _of_type(node: Any, name: str) -> list[Any]:
 
 
 def _ids(node: Any) -> set[str]:
-    return {
-        c.id
-        for c in _walk(node)
-        if isinstance(getattr(c, "id", None), str)
-    }
+    return {c.id for c in _walk(node) if isinstance(getattr(c, "id", None), str)}
 
 
 def _strings(node: Any) -> list[str]:
@@ -342,8 +338,7 @@ class TestNoticesAreDimmedLines:
     def test_the_connected_notice_sits_above_the_model_select(self) -> None:
         page = _model_step()
         order = [
-            getattr(c, "className", None) or getattr(c, "id", None)
-            for c in _walk(page)
+            getattr(c, "className", None) or getattr(c, "id", None) for c in _walk(page)
         ]
         assert order.index("dim-line") < order.index(SETUP_IDS["model"])
 
@@ -424,9 +419,7 @@ class TestStepIndicator:
     ) -> None:
         page = _steps()[active][1]
         row = next(
-            c
-            for c in _walk(page)
-            if getattr(c, "className", None) == SETUP_STEPS_CLASS
+            c for c in _walk(page) if getattr(c, "className", None) == SETUP_STEPS_CLASS
         )
         marked = [
             c
@@ -455,9 +448,7 @@ class TestStepIndicator:
             ],
             [
                 SETUP_STEP_CLASS,
-                _shared.step_modifier_class(
-                    SETUP_STEP_CLASS, _shared.STEP_UNREACHABLE
-                ),
+                _shared.step_modifier_class(SETUP_STEP_CLASS, _shared.STEP_UNREACHABLE),
             ],
         ]
 
@@ -506,9 +497,7 @@ class TestEffortSelect:
     def test_the_offered_values_for_an_unseeded_provider_are_the_base_four(
         self,
     ) -> None:
-        with patch(
-            "spec4.llm_selection.supports_reasoning_effort", return_value=True
-        ):
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=True):
             page = _model_step({"provider": "cohere"})
         effort = next(
             c for c in _walk(page) if getattr(c, "id", None) == SETUP_IDS["effort"]
@@ -540,9 +529,7 @@ class TestEffortSelect:
     def test_a_model_without_effort_support_offers_default_alone_disabled(
         self,
     ) -> None:
-        with patch(
-            "spec4.llm_selection.supports_reasoning_effort", return_value=False
-        ):
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=False):
             page = _model_step()
         effort = next(
             c for c in _walk(page) if getattr(c, "id", None) == SETUP_IDS["effort"]
@@ -551,9 +538,7 @@ class TestEffortSelect:
         assert effort.disabled is True
 
     def test_the_stored_default_effort_prefills_the_select(self) -> None:
-        with patch(
-            "spec4.llm_selection.supports_reasoning_effort", return_value=True
-        ):
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=True):
             page = _model_step({}, {"effort": "medium"})
         effort = next(
             c for c in _walk(page) if getattr(c, "id", None) == SETUP_IDS["effort"]
@@ -562,12 +547,13 @@ class TestEffortSelect:
 
     def test_the_prefill_is_read_through_the_shared_read_path(self) -> None:
         """`default_provider_model` is the (provider, model, effort) reader."""
-        with patch.object(
-            llm_selection,
-            "default_provider_model",
-            return_value=("openai", "gpt-5", "high"),
-        ) as read, patch(
-            "spec4.llm_selection.supports_reasoning_effort", return_value=True
+        with (
+            patch.object(
+                llm_selection,
+                "default_provider_model",
+                return_value=("openai", "gpt-5", "high"),
+            ) as read,
+            patch("spec4.llm_selection.supports_reasoning_effort", return_value=True),
         ):
             page = _model_step()
         assert read.called
@@ -620,9 +606,7 @@ class TestEffortOptionsFollowTheModel:
         assert disabled is True
 
     def test_it_survives_a_session_with_no_provider_yet(self) -> None:
-        with patch(
-            "spec4.llm_selection.supports_reasoning_effort", return_value=True
-        ):
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=True):
             data, _, _ = on_setup_effort_options("m", None, None)
         assert data == ["default", "low", "medium", "high"]
 
@@ -632,9 +616,10 @@ class TestEffortIsWrittenThroughTheOnePath:
 
     def _continue(self, chosen: Any, prefs: Any) -> Any:
         session = {"provider": "openai", "api_key": "sk-test", "model": None}
-        with patch(
-            "spec4.llm_selection.probe_image_support", return_value=True
-        ), patch("spec4.llm_selection.probe_tool_support", return_value=True):
+        with (
+            patch("spec4.llm_selection.probe_image_support", return_value=True),
+            patch("spec4.llm_selection.probe_tool_support", return_value=True),
+        ):
             return on_setup_model_continue(1, "gpt-5", chosen, session, prefs)
 
     def test_the_chosen_effort_reaches_the_prefs_store(self) -> None:
@@ -685,9 +670,7 @@ class TestFieldsComeFromTheSharedBuilders:
     ) -> None:
         import spec4.layouts._setup as setup_module
 
-        monkeypatch.setattr(
-            setup_module, "provider_key_fields", lambda *a, **k: []
-        )
+        monkeypatch.setattr(setup_module, "provider_key_fields", lambda *a, **k: [])
         ids = _ids(_provider_step())
         assert SETUP_IDS["provider"] not in ids
         assert SETUP_IDS["api_key"] not in ids
@@ -742,9 +725,7 @@ class TestFieldsComeFromTheSharedBuilders:
     def test_the_effort_select_reaches_the_gate_too(self) -> None:
         from spec4.layouts._setup import GATE_IDS
 
-        with patch(
-            "spec4.llm_selection.supports_reasoning_effort", return_value=True
-        ):
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=True):
             row = model_field(
                 GATE_IDS,
                 available=["gpt-5"],

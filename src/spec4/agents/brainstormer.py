@@ -412,15 +412,15 @@ def _apply_revision_history(
       session) labelled it ``modified`` (see :func:`_reclassify_changes`).
     """
     block = emitted.pop("revision", None)
-    base = list(
-        prior_vision.get("vision_statement", {}).get("revision_history", [])
-    )
+    base = list(prior_vision.get("vision_statement", {}).get("revision_history", []))
     this_entry: dict[str, Any] | None = None
     if isinstance(block, dict):
         this_entry = _stamp_revision_block(block, version, based_on_version)
     else:
-        cur_history = (current_vision or {}).get("vision_statement", {}).get(
-            "revision_history", []
+        cur_history = (
+            (current_vision or {})
+            .get("vision_statement", {})
+            .get("revision_history", [])
         )
         for entry in cur_history:
             if isinstance(entry, dict) and entry.get("version") == version:
@@ -511,7 +511,9 @@ def _format_vision_as_text(
     lines: list[str] = []
 
     name = vs.get("name", "")
-    lines.append(f"**Vision Statement: {name}**\n" if name else "**Vision Statement**\n")
+    lines.append(
+        f"**Vision Statement: {name}**\n" if name else "**Vision Statement**\n"
+    )
 
     if isinstance(raw_v, str):
         lines.append(f"**Vision:** {raw_v}\n")
@@ -657,9 +659,7 @@ def run(
             code_review = session.get("code_review")
             working_dir = session.get("working_dir")
             prior_vision = (
-                project_manager.load_prior_vision(working_dir)
-                if working_dir
-                else None
+                project_manager.load_prior_vision(working_dir) if working_dir else None
             )
 
             code_review_block = (
@@ -774,7 +774,10 @@ def run(
     # multi-minute draw — the D-SC60 failure, which applies here identically.
     yield from _stream_suppressing_json(
         llm.stream_turn(
-            system, msgs, llm_config, search_cfg,
+            system,
+            msgs,
+            llm_config,
+            search_cfg,
             agent_name="brainstormer",
             session=session,
         ),
@@ -815,7 +818,7 @@ def run(
         prior_vision = (
             project_manager.load_prior_vision(working_dir) if working_dir else None
         )
-        if prior_vision is not None:
+        if working_dir and prior_vision is not None:
             # Revision round: deterministically fold this round's delta into the
             # accumulating revision_history. Code owns the version integers.
             version = project_manager.resolve_phase_version(
@@ -849,9 +852,7 @@ def run(
                 traceback.print_exc()
             display = _vision_fallback_display(vision)
             footer_included = True
-        specs_display = feature_speccer.render_feature_specs(
-            session["feature_specs"]
-        )
+        specs_display = feature_speccer.render_feature_specs(session["feature_specs"])
         if specs_display:
             display = f"{display}\n\n{specs_display}"
         if not footer_included:

@@ -4,7 +4,7 @@ import json
 import re
 from collections.abc import Generator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from spec4 import project_manager, llm, websearch
 from spec4.agents._phase_coverage import check_phase_coverage
@@ -795,9 +795,7 @@ def _phase_completeness_failure(
         return None
     expected = max(totals)
     numbers = [
-        p["phase_number"]
-        for p in phases
-        if isinstance(p.get("phase_number"), int)
+        p["phase_number"] for p in phases if isinstance(p.get("phase_number"), int)
     ]
     missing = sorted(set(range(1, expected + 1)) - set(numbers))
     duplicates = sorted({n for n in numbers if numbers.count(n) > 1})
@@ -825,9 +823,7 @@ def _phase_completeness_failure(
 
 def _format_phases_for_display(phases: list[dict[str, Any]]) -> str:
     """Render every phase as Markdown for the in-chat display."""
-    return "\n\n---\n\n".join(
-        project_manager.render_phase_markdown(p) for p in phases
-    )
+    return "\n\n---\n\n".join(project_manager.render_phase_markdown(p) for p in phases)
 
 
 def revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -914,9 +910,7 @@ def run(
     if target_version is None:
         _brownfield = project_manager.session_is_brownfield(session)
         if _wd:
-            target_version, _ = project_manager.resolve_phase_version(
-                _wd, _brownfield
-            )
+            target_version, _ = project_manager.resolve_phase_version(_wd, _brownfield)
         else:
             target_version = 1 if _brownfield else 0
         session["phase_version"] = target_version
@@ -983,9 +977,7 @@ def run(
             else None
         )
         design_note = (
-            _load_phaser_design_note(design_dir, target_version)
-            if design_dir
-            else ""
+            _load_phaser_design_note(design_dir, target_version) if design_dir else ""
         )
         design_note_block = f"{design_note}\n\n" if design_note else ""
         # D-PH1d: deterministic projection of the design manifest's join keys
@@ -1082,7 +1074,10 @@ def run(
             # then reframe the instruction so the plan covers only this revision's
             # surface. is_revision implies an implemented predecessor, so a fresh
             # code review is present and extra_block already carries that guidance.
-            extra_block = f"{extra_block}{build_revision_note(delta)}\n\n"
+            # is_revision implies delta is not None (see its definition).
+            extra_block = (
+                f"{extra_block}{build_revision_note(cast(dict[str, Any], delta))}\n\n"
+            )
             instruction = (
                 "Please introduce yourself as Phaser, then plan the development "
                 "phases for ONLY this revision's new or changed surface. Treat the "
@@ -1098,9 +1093,7 @@ def run(
             f"All artifacts for this round are stored under `.spec4/v{target_version}/`. "
             "Use this version number wherever the paths above contain `{N}`.\n\n"
         )
-        seed = (
-            f"{round_block}{vision_block}{spine_block}{stack_block}{extra_block}{ai_features_block}{manifest_block}{design_note_block}{instruction}"
-        )
+        seed = f"{round_block}{vision_block}{spine_block}{stack_block}{extra_block}{ai_features_block}{manifest_block}{design_note_block}{instruction}"
         messages.append({"role": "user", "content": seed})
     else:
         messages.append({"role": "user", "content": user_input})
@@ -1110,7 +1103,11 @@ def run(
 
     pre_len = len(messages)
     yield from llm.stream_turn(
-        system, messages, llm_config, search_cfg, agent_name="phaser",
+        system,
+        messages,
+        llm_config,
+        search_cfg,
+        agent_name="phaser",
         session=session,
     )
 
@@ -1140,8 +1137,8 @@ def run(
             m["content"] = msg_cleaned
         cleaned_per_msg.append(msg_cleaned)
 
-    last_text = cleaned_per_msg[-1] if cleaned_per_msg else _last_assistant_text(
-        messages
+    last_text = (
+        cleaned_per_msg[-1] if cleaned_per_msg else _last_assistant_text(messages)
     )
 
     if additions:
@@ -1178,21 +1175,21 @@ def run(
         failures = failures + coverage_failures
     if phases and failures:
         if _appears_truncated(_last_assistant_text(messages)):
-            failures = failures + [(
-                None,
-                [
-                    "the response appears truncated at the model's output "
-                    "limit — it ends inside an unterminated JSON object, so "
-                    "the final phase block(s) are missing. Re-emitting the "
-                    "same content will hit the same limit; emit more compact "
-                    "phases (shorter instructions, fewer steps per phase)."
-                ],
-            )]
+            failures = failures + [
+                (
+                    None,
+                    [
+                        "the response appears truncated at the model's output "
+                        "limit — it ends inside an unterminated JSON object, so "
+                        "the final phase block(s) are missing. Re-emitting the "
+                        "same content will hit the same limit; emit more compact "
+                        "phases (shorter instructions, fewer steps per phase)."
+                    ],
+                )
+            ]
         print(
             "[agent-gen] phaser: validation failures (attempt 1): "
-            + " | ".join(
-                f"phase {n}: {'; '.join(errs)}" for n, errs in failures
-            ),
+            + " | ".join(f"phase {n}: {'; '.join(errs)}" for n, errs in failures),
             flush=True,
         )
         # JSON was emitted but at least one phase failed schema validation.
@@ -1245,9 +1242,7 @@ def run(
             if _chunk:
                 _received += len(_chunk)
                 session["_stream_received_chars"] = _received
-        phases, failures = _extract_and_validate_phases(
-            _last_assistant_text(messages)
-        )
+        phases, failures = _extract_and_validate_phases(_last_assistant_text(messages))
         completeness = _phase_completeness_failure(phases)
         if completeness:
             failures = failures + [completeness]
@@ -1269,22 +1264,22 @@ def run(
             # becomes the assistant message the model re-reads, a later "try
             # again" turn sees what went wrong instead of regenerating blind.
             if _appears_truncated(_last_assistant_text(messages)):
-                failures = failures + [(
-                    None,
-                    [
-                        "the response appears truncated at the model's "
-                        "output limit — it ends inside an unterminated JSON "
-                        "object, so the final phase block(s) are missing. "
-                        "Re-emitting the same content will hit the same "
-                        "limit; emit more compact phases (shorter "
-                        "instructions, fewer steps per phase)."
-                    ],
-                )]
+                failures = failures + [
+                    (
+                        None,
+                        [
+                            "the response appears truncated at the model's "
+                            "output limit — it ends inside an unterminated JSON "
+                            "object, so the final phase block(s) are missing. "
+                            "Re-emitting the same content will hit the same "
+                            "limit; emit more compact phases (shorter "
+                            "instructions, fewer steps per phase)."
+                        ],
+                    )
+                ]
             print(
                 "[agent-gen] phaser: validation failures (after retry): "
-                + " | ".join(
-                    f"phase {n}: {'; '.join(errs)}" for n, errs in failures
-                ),
+                + " | ".join(f"phase {n}: {'; '.join(errs)}" for n, errs in failures),
                 flush=True,
             )
             if (
@@ -1299,11 +1294,7 @@ def run(
                 for err in errs
             ]
             _shown = "\n".join(_bullets[:10])
-            _more = (
-                f"\n(plus {len(_bullets) - 10} more)"
-                if len(_bullets) > 10
-                else ""
-            )
+            _more = f"\n(plus {len(_bullets) - 10} more)" if len(_bullets) > 10 else ""
             fallback = (
                 "I tried to emit the structured phases but they didn't pass "
                 "validation. The specific failures were:\n\n"
@@ -1341,8 +1332,7 @@ def run(
             "**Your phases are ready.** Each phase is a structured prompt you will hand "
             "to your AI coding agent — one at a time, in order. The next step, "
             "**Deployer**, will show you exactly how to load and use these phases with "
-            "your chosen coding agent.\n\n"
-            + _format_phases_for_display(phases)
+            "your chosen coding agent.\n\n" + _format_phases_for_display(phases)
         )
         session["phaser_state"] = STATE_PHASES_COMPLETE
         session["phases"] = phases

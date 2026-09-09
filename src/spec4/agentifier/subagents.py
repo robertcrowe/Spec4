@@ -203,7 +203,9 @@ class SubAgentRegistry:
         return result
 
     async def stream(
-        self, name: str, input: Any  # noqa: A002
+        self,
+        name: str,
+        input: Any,  # noqa: A002
     ) -> AsyncGenerator[Any, None]:
         """Invoke a streaming sub-agent by name, yielding its chunks.
 

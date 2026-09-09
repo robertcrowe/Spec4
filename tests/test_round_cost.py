@@ -213,9 +213,7 @@ class TestEstimateLabel:
 
 
 class TestNumbers:
-    def test_token_totals_match_the_usage_record(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_token_totals_match_the_usage_record(self, tmp_path: pathlib.Path) -> None:
         _write(
             tmp_path,
             [
@@ -251,9 +249,7 @@ class TestNumbers:
         record = project_manager.round_cost(tmp_path, 0)
         assert record["total"] == summary["total"]
 
-    def test_cache_reads_are_named_when_reported(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_cache_reads_are_named_when_reported(self, tmp_path: pathlib.Path) -> None:
         _write(tmp_path, [_call("phaser", cached=4000, cost=0.5)])
         assert "(4,000 cached)" in _lines(tmp_path)[0]
 
@@ -297,8 +293,7 @@ class TestUnpricedCalls:
             {"agent": "agentifier", "model": "gpt-5-mini", "calls": 5}
         ]
         assert _lines(tmp_path)[1] == (
-            "5 of 5 calls could not be priced and are excluded: "
-            "Agentifier (gpt-5-mini)"
+            "5 of 5 calls could not be priced and are excluded: Agentifier (gpt-5-mini)"
         )
 
     def test_two_models_under_one_agent_are_two_entries(
@@ -529,9 +524,7 @@ class TestMalformedUsage:
         (version_dir / "usage.json").write_text("{ not json", encoding="utf-8")
         assert _lines(tmp_path)[0] == f"{COST_LABEL}, v0: {NO_CALLS}"
 
-    def test_a_history_of_junk_records_is_skipped(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_a_history_of_junk_records_is_skipped(self, tmp_path: pathlib.Path) -> None:
         record = project_manager.round_cost(tmp_path, 0)
         junk = {"phaser": {"history": ["x", None]}}
         assert project_manager.unpriced_calls(junk) == []

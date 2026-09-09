@@ -93,9 +93,7 @@ def setup_step_row(active: int) -> html.Div:
                     tooltip=f"Finish {SETUP_STEPS[active]} first",
                 )
             )
-    return step_row(
-        entries, base_class=SETUP_STEP_CLASS, row_class=SETUP_STEPS_CLASS
-    )
+    return step_row(entries, base_class=SETUP_STEP_CLASS, row_class=SETUP_STEPS_CLASS)
 
 
 def _step_title(text: str) -> Any:
@@ -396,9 +394,7 @@ def _setup_search_layout(
             setup_step_row(2),
             _step_title("Web search"),
             _dim(
-                _capability_notice(
-                    str(session["model"]), image_support, tool_support
-                )
+                _capability_notice(str(session["model"]), image_support, tool_support)
             ),
             _card(
                 dmc.Select(

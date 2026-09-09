@@ -327,9 +327,7 @@ def agent_rows(
                 # panel cannot end up with four suffix rules. An agent that has
                 # not run has no model, and the helper leaves the cell blank
                 # rather than printing a lone effort (D-AR3).
-                model=llm_selection.model_effort_display(
-                    cells.model, cells.effort
-                ),
+                model=llm_selection.model_effort_display(cells.model, cells.effort),
                 tokens=cells.tokens,
                 action=state,
                 disabled=state == ACTION_DISABLED,

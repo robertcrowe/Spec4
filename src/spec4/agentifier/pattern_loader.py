@@ -283,8 +283,10 @@ def _validate_frontmatter(meta: dict[str, Any], path: Path, category: str) -> No
                     f"field '{tier_field}'."
                 )
         order = meta["tier_order"]
-        if not isinstance(order, int) or isinstance(order, bool) or not (
-            1 <= order <= _TIER_COUNT
+        if (
+            not isinstance(order, int)
+            or isinstance(order, bool)
+            or not (1 <= order <= _TIER_COUNT)
         ):
             raise PatternValidationError(
                 f"{path.name}: 'tier_order' must be an integer between 1 and "
@@ -355,12 +357,9 @@ def _build_pattern(path: Path, category: str) -> PatternBase:
 
 def _load_dir(directory: Path, category: str) -> list[PatternBase]:
     if not directory.is_dir():
-        raise PatternValidationError(
-            f"pattern directory not found: {directory}"
-        )
+        raise PatternValidationError(f"pattern directory not found: {directory}")
     patterns = [
-        _build_pattern(path, category)
-        for path in sorted(directory.glob("*.md"))
+        _build_pattern(path, category) for path in sorted(directory.glob("*.md"))
     ]
     return patterns
 
@@ -384,9 +383,7 @@ def load_patterns(
     """
     root = Path(patterns_dir) if patterns_dir is not None else _patterns_root()
 
-    tiers = [
-        p for p in _load_dir(root / "tiers", "tier") if isinstance(p, TierPattern)
-    ]
+    tiers = [p for p in _load_dir(root / "tiers", "tier") if isinstance(p, TierPattern)]
     mechanisms = [
         p
         for p in _load_dir(root / "mechanisms", "mechanism")

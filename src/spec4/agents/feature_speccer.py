@@ -28,7 +28,13 @@ FEATURE_SPECS_VERSION = 1
 
 # Behavioral fields the generative pass fills, aligned with the Spec Drafter /
 # render_feature_block field names. `id`/`name` stay code-owned.
-_LIST_FIELDS = ("inputs", "success_criteria", "failure_modes", "dependencies", "entities")
+_LIST_FIELDS = (
+    "inputs",
+    "success_criteria",
+    "failure_modes",
+    "dependencies",
+    "entities",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +200,9 @@ def _vision_context(vision: dict[str, Any]) -> dict[str, Any]:
     v = inner if isinstance(inner, dict) else {}
     return {
         "name": str(vs.get("name", "") or ""),
-        "purpose": str(v.get("purpose", "") if isinstance(inner, dict) else inner or ""),
+        "purpose": str(
+            v.get("purpose", "") if isinstance(inner, dict) else inner or ""
+        ),
         "ui_surface": str(v.get("ui_surface", "") or ""),
         "audience": [str(a) for a in v.get("target_audience", []) if a],
     }
@@ -320,9 +328,7 @@ def _coerce_invocation(value: Any) -> dict[str, Any]:
     return {"trigger": trigger} if trigger else {}
 
 
-def _merge(
-    scaffold: list[dict[str, Any]], enriched: Any
-) -> list[dict[str, Any]]:
+def _merge(scaffold: list[dict[str, Any]], enriched: Any) -> list[dict[str, Any]]:
     """Overlay the model's enriched fields onto the code-owned scaffold, by id.
 
     id/name stay code-owned; every judgment field is taken from the model when
@@ -467,7 +473,9 @@ def build_feature_specs(
     never breaks on this pass. ``session`` (D-BS8) is threaded to the drain
     for receipt-counter publishing only; ``None`` preserves prior behavior.
     """
-    scaffold = [_scaffold_feature(name, desc) for name, desc in _vision_features(vision)]
+    scaffold = [
+        _scaffold_feature(name, desc) for name, desc in _vision_features(vision)
+    ]
     result: dict[str, Any] = {
         "version": FEATURE_SPECS_VERSION,
         "features": scaffold,

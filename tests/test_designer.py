@@ -95,9 +95,7 @@ class TestDetectNoUi:
         # Brainstormer captures the UI surface as vision.ui_surface; ensure
         # we honour it even when nested under the vision envelope.
         v_envelope = {
-            "vision_statement": {
-                "vision": {"ui_surface": "CLI tool for batch jobs"}
-            }
+            "vision_statement": {"vision": {"ui_surface": "CLI tool for batch jobs"}}
         }
         assert detect_no_ui(v_envelope, {}) is True
 
@@ -372,11 +370,13 @@ class TestBuildMockPrompt:
         normal = build_mock_prompt(_session(), ["<nav/>"], False)
         capture = build_mock_prompt(_session(), ["<nav/>"], False, capture_mode=True)
         normal_combined = " ".join(
-            str(p.get("text", "")) for p in normal[1]["content"]  # type: ignore[index]
+            str(p.get("text", ""))
+            for p in normal[1]["content"]  # type: ignore[index]
             if isinstance(p, dict)
         )
         capture_combined = " ".join(
-            str(p.get("text", "")) for p in capture[1]["content"]  # type: ignore[index]
+            str(p.get("text", ""))
+            for p in capture[1]["content"]  # type: ignore[index]
             if isinstance(p, dict)
         )
         assert "starting point" in normal_combined
@@ -426,9 +426,7 @@ class TestBuildMockPrompt:
                 "ai_features": ai_features,
             },
         )
-        combined = " ".join(
-            str(p.get("text", "")) for p in messages[1]["content"]
-        )
+        combined = " ".join(str(p.get("text", "")) for p in messages[1]["content"])
         assert "User-Facing AI Surfaces" in combined
         assert "policy_qa" in combined
         assert "a grounded answer" in combined
@@ -611,9 +609,7 @@ class TestGenerateMockStreaming:
             captured.append(kwargs)
             return iter([_make_stream_chunk("", finish_reason="stop")])
 
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ):
+        with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             list(
                 generate_mock_streaming(
                     _gen_session(), "gpt-4o", "sk-test", ["<nav>nav</nav>"], False
@@ -808,8 +804,14 @@ class TestCapturePassesPlanningContext:
         captured: dict[str, Any] = {}
 
         def fake_start_gen(
-            store_arg, wd, model, api_key, tavily_key, support,
-            planning_context=None, **kwargs
+            store_arg,
+            wd,
+            model,
+            api_key,
+            tavily_key,
+            support,
+            planning_context=None,
+            **kwargs,
         ):
             captured["pc"] = planning_context
             captured["kwargs"] = kwargs
@@ -831,9 +833,7 @@ class TestCapturePassesPlanningContext:
             },
         }
 
-    def test_capture_mode_is_still_requested(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_capture_mode_is_still_requested(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.setattr(
             _dmod().project_manager, "load_ai_features", lambda wd: None
         )
@@ -843,9 +843,7 @@ class TestCapturePassesPlanningContext:
         out = self._run(monkeypatch, self._session(tmp_path))
         assert out["kwargs"]["capture_mode"] is True
 
-    def test_planning_context_is_passed(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_planning_context_is_passed(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.setattr(
             _dmod().project_manager, "load_ai_features", lambda wd: None
         )
@@ -857,9 +855,7 @@ class TestCapturePassesPlanningContext:
         assert pc["vision_statement"] == {"name": "App"}
         assert pc["ai_features"]["ai_features"][0]["name"] == "Surf"
 
-    def test_disk_catalog_wins_over_session(
-        self, tmp_path: Path, monkeypatch
-    ) -> None:
+    def test_disk_catalog_wins_over_session(self, tmp_path: Path, monkeypatch) -> None:
         disk = {"ai_features": [{"name": "fresh", "scope": "feature"}]}
         monkeypatch.setattr(
             _dmod().project_manager, "load_ai_features", lambda wd: disk
@@ -906,20 +902,22 @@ class TestRetryReproducesTheDraw:
         captured: dict[str, Any] = {}
 
         def fake_start_gen(
-            store_arg, wd, model, api_key, tavily_key, support,
-            planning_context=None, **kwargs
+            store_arg,
+            wd,
+            model,
+            api_key,
+            tavily_key,
+            support,
+            planning_context=None,
+            **kwargs,
         ):
             captured["pc"] = planning_context
             captured["kwargs"] = kwargs
             return {}, {}, False
 
         monkeypatch.setattr(dmod, "_start_gen", fake_start_gen)
-        monkeypatch.setattr(
-            dmod.project_manager, "load_ai_features", lambda wd: None
-        )
-        monkeypatch.setattr(
-            dmod.project_manager, "load_feature_specs", lambda wd: None
-        )
+        monkeypatch.setattr(dmod.project_manager, "load_ai_features", lambda wd: None)
+        monkeypatch.setattr(dmod.project_manager, "load_feature_specs", lambda wd: None)
         dmod.on_designer_retry(1, store, session, True)
         return captured
 
@@ -1156,16 +1154,20 @@ class TestRegenerateSourcesCatalogFromDisk:
         captured: dict[str, Any] = {}
 
         def fake_start_gen(
-            store_arg, wd, model, api_key, tavily_key, support,
-            planning_context=None, **kwargs
+            store_arg,
+            wd,
+            model,
+            api_key,
+            tavily_key,
+            support,
+            planning_context=None,
+            **kwargs,
         ):
             captured["pc"] = planning_context
             return {}, {}, False
 
         monkeypatch.setattr(dmod, "_start_gen", fake_start_gen)
-        dmod.on_designer_regenerate(
-            1, "AI features changed", [], store, session, True
-        )
+        dmod.on_designer_regenerate(1, "AI features changed", [], store, session, True)
         return captured["pc"]
 
     def test_disk_ai_features_win_over_session(
@@ -1174,9 +1176,7 @@ class TestRegenerateSourcesCatalogFromDisk:
         from spec4.callbacks import designer as dmod
 
         disk_cat = {
-            "ai_features": [
-                {"name": "kept", "scope": "feature", "tier": "single_call"}
-            ]
+            "ai_features": [{"name": "kept", "scope": "feature", "tier": "single_call"}]
         }
         stale_cat = {
             "ai_features": [
@@ -1193,8 +1193,11 @@ class TestRegenerateSourcesCatalogFromDisk:
             "ai_features": stale_cat,
         }
         store = {
-            "step": 7, "mock_html": "<html>old</html>", "preference_text": "",
-            "screenshots": [], "refine_images": [],
+            "step": 7,
+            "mock_html": "<html>old</html>",
+            "preference_text": "",
+            "screenshots": [],
+            "refine_images": [],
         }
         pc = self._run(monkeypatch, session, store)
         names = [f["name"] for f in pc["ai_features"]["ai_features"]]
@@ -1208,20 +1211,22 @@ class TestRegenerateSourcesCatalogFromDisk:
         sess_cat = {
             "ai_features": [{"name": "s", "scope": "feature", "tier": "single_call"}]
         }
-        monkeypatch.setattr(
-            dmod.project_manager, "load_ai_features", lambda wd: None
-        )
+        monkeypatch.setattr(dmod.project_manager, "load_ai_features", lambda wd: None)
         session = {
             "working_dir": str(tmp_path),
             "vision_statement": {"name": "App"},
             "ai_features": sess_cat,
         }
         store = {
-            "step": 7, "mock_html": "x", "preference_text": "",
-            "screenshots": [], "refine_images": [],
+            "step": 7,
+            "mock_html": "x",
+            "preference_text": "",
+            "screenshots": [],
+            "refine_images": [],
         }
         pc = self._run(monkeypatch, session, store)
         assert pc["ai_features"] is sess_cat
+
 
 from spec4.agents._manifest import MANIFEST_START  # noqa: E402
 
@@ -1234,33 +1239,33 @@ class TestManifestInstruction:
         assert "design manifest" in combined.lower()
 
     def test_capture_includes_manifest_directive(self) -> None:
-        parts = build_mock_prompt(
-            _session(), ["<nav/>"], False, capture_mode=True
-        )[1]["content"]
+        parts = build_mock_prompt(_session(), ["<nav/>"], False, capture_mode=True)[1][
+            "content"
+        ]
         combined = " ".join(str(p.get("text", "")) for p in parts)
         assert MANIFEST_START in combined
 
     def test_refine_includes_manifest_directive(self) -> None:
         """D-DM9: refinements change the mock, so they must restate the
         manifest — it used to be written once and then frozen."""
-        parts = build_mock_prompt(
-            _session(), [], False, existing_html="<html></html>"
-        )[1]["content"]
+        parts = build_mock_prompt(_session(), [], False, existing_html="<html></html>")[
+            1
+        ]["content"]
         combined = " ".join(str(p.get("text", "")) for p in parts)
         assert MANIFEST_START in combined
 
     def test_refine_adds_the_restate_note(self) -> None:
-        parts = build_mock_prompt(
-            _session(), [], False, existing_html="<html></html>"
-        )[1]["content"]
+        parts = build_mock_prompt(_session(), [], False, existing_html="<html></html>")[
+            1
+        ]["content"]
         combined = " ".join(str(p.get("text", "")) for p in parts)
         assert "re-state the manifest for the updated mock" in combined.lower()
         assert "not a diff" in combined
 
     def test_refine_note_covers_purely_visual_changes(self) -> None:
-        parts = build_mock_prompt(
-            _session(), [], False, existing_html="<html></html>"
-        )[1]["content"]
+        parts = build_mock_prompt(_session(), [], False, existing_html="<html></html>")[
+            1
+        ]["content"]
         combined = " ".join(str(p.get("text", "")) for p in parts)
         assert "re-state it anyway" in combined
 
@@ -1280,9 +1285,9 @@ class TestManifestInstruction:
         assert "describe what you recreated" not in combined.lower()
 
     def test_capture_adds_the_describe_what_you_recreated_note(self) -> None:
-        parts = build_mock_prompt(
-            _session(), ["<nav/>"], False, capture_mode=True
-        )[1]["content"]
+        parts = build_mock_prompt(_session(), ["<nav/>"], False, capture_mode=True)[1][
+            "content"
+        ]
         combined = " ".join(str(p.get("text", "")) for p in parts)
         assert "describe what you recreated" in combined.lower()
         assert "Do not invent screens" in combined
@@ -1586,9 +1591,7 @@ class TestRenderGateSkipsBufferTicks:
         ]
         assert marked == ["Preview"]
 
-    def test_delivery_response_updating_both_props_renders(
-        self, monkeypatch
-    ) -> None:
+    def test_delivery_response_updating_both_props_renders(self, monkeypatch) -> None:
         from dash import no_update
 
         content, _ = self._render(
@@ -1638,7 +1641,12 @@ class TestGenerationSavesToPinnedVersion:
             lambda *a, **kw: iter([html + "__DONE__"]),
         )
         store, _, _ = dmod._start_gen(
-            {}, str(tmp_path), "m", "key", None, False,
+            {},
+            str(tmp_path),
+            "m",
+            "key",
+            None,
+            False,
             session={"phase_version": 1},
         )
         gen_id = store["_gen_id"]
@@ -1654,9 +1662,7 @@ class TestGenerationSavesToPinnedVersion:
                 / "design"
                 / "mock.html"
             )
-            v2_design = (
-                project_manager.get_version_dir(str(tmp_path), 2) / "design"
-            )
+            v2_design = project_manager.get_version_dir(str(tmp_path), 2) / "design"
             assert v1_mock.exists()
             assert not v2_design.exists()
         finally:
@@ -1664,9 +1670,7 @@ class TestGenerationSavesToPinnedVersion:
 
 
 class TestStartGenCleansUpPriorBuffer:
-    def test_prior_unacked_buffer_is_popped_and_stopped(
-        self, monkeypatch: Any
-    ) -> None:
+    def test_prior_unacked_buffer_is_popped_and_stopped(self, monkeypatch: Any) -> None:
         dmod = _dmod()
         stop_ev = threading.Event()
         dmod._MOCK_BUFFERS["old-gen"] = {
@@ -1674,9 +1678,7 @@ class TestStartGenCleansUpPriorBuffer:
             "stop": stop_ev,
             "text": "",
         }
-        monkeypatch.setattr(
-            dmod, "generate_mock_streaming", lambda *a, **kw: iter(())
-        )
+        monkeypatch.setattr(dmod, "generate_mock_streaming", lambda *a, **kw: iter(()))
         store, _, _ = dmod._start_gen(
             {"_gen_id": "old-gen"}, None, "m", "key", None, False
         )
@@ -1703,18 +1705,14 @@ class TestProgressBarSizing:
     _MOCK = "<!DOCTYPE html><html><body>" + "x" * 5000 + "</body></html>"
     _MANIFEST = '{"screens": ["' + "m" * 1000 + '"]}'
 
-    def _implement_prior(
-        self, tmp_path: Path, with_manifest: bool = True
-    ) -> None:
+    def _implement_prior(self, tmp_path: Path, with_manifest: bool = True) -> None:
         from spec4 import project_manager
 
         design_dir = project_manager.get_version_dir(str(tmp_path), 0) / "design"
         design_dir.mkdir(parents=True, exist_ok=True)
         (design_dir / "mock.html").write_text(self._MOCK, encoding="utf-8")
         if with_manifest:
-            (design_dir / "manifest.json").write_text(
-                self._MANIFEST, encoding="utf-8"
-            )
+            (design_dir / "manifest.json").write_text(self._MANIFEST, encoding="utf-8")
         project_manager.get_version_dir(str(tmp_path), 0).joinpath(
             "IMPLEMENTED"
         ).write_text("")
@@ -1736,9 +1734,7 @@ class TestProgressBarSizing:
         expected = dmod._expected_stream_chars(str(tmp_path))
         assert expected == int((len(self._MOCK) + len(self._MANIFEST)) * 1.1)
 
-    def test_sized_from_mock_alone_when_manifest_missing(
-        self, tmp_path: Path
-    ) -> None:
+    def test_sized_from_mock_alone_when_manifest_missing(self, tmp_path: Path) -> None:
         dmod = _dmod()
         self._implement_prior(tmp_path, with_manifest=False)
         expected = dmod._expected_stream_chars(str(tmp_path))
@@ -1749,9 +1745,7 @@ class TestProgressBarSizing:
     ) -> None:
         dmod = _dmod()
         self._implement_prior(tmp_path)
-        monkeypatch.setattr(
-            dmod, "generate_mock_streaming", lambda *a, **kw: iter(())
-        )
+        monkeypatch.setattr(dmod, "generate_mock_streaming", lambda *a, **kw: iter(()))
         store, _, _ = dmod._start_gen({}, str(tmp_path), "m", "key", None, False)
         gen_id = store["_gen_id"]
         try:
@@ -1772,9 +1766,7 @@ class TestProgressBarSizing:
             "expected_chars": 10_000,
         }
         try:
-            buf, _, _ = dmod.on_mock_stream_poll(
-                1, {"step": 5, "_gen_id": gen_id}
-            )
+            buf, _, _ = dmod.on_mock_stream_poll(1, {"step": 5, "_gen_id": gen_id})
             assert buf["progress"] == 50
         finally:
             dmod._MOCK_BUFFERS.pop(gen_id, None)
@@ -1790,9 +1782,7 @@ class TestProgressBarSizing:
             "text": "y" * 35_000,
         }
         try:
-            buf, _, _ = dmod.on_mock_stream_poll(
-                1, {"step": 5, "_gen_id": gen_id}
-            )
+            buf, _, _ = dmod.on_mock_stream_poll(1, {"step": 5, "_gen_id": gen_id})
             assert buf["progress"] == 35_000 * 100 // dmod._DEFAULT_EXPECTED_CHARS
         finally:
             dmod._MOCK_BUFFERS.pop(gen_id, None)
@@ -1860,12 +1850,8 @@ class TestGenerationThreadResilience:
             raise OSError("filesystem gone")
 
         monkeypatch.setattr(dmod, "generate_mock_streaming", fake_stream)
-        monkeypatch.setattr(
-            dmod.project_manager, "active_version", raise_oserror
-        )
-        store, _, _ = dmod._start_gen(
-            {}, str(tmp_path), "m", "key", None, False
-        )
+        monkeypatch.setattr(dmod.project_manager, "active_version", raise_oserror)
+        store, _, _ = dmod._start_gen({}, str(tmp_path), "m", "key", None, False)
         gen_id = store["_gen_id"]
         try:
             entry = self._wait_done(dmod, gen_id)
@@ -1879,6 +1865,7 @@ class TestGenerationThreadResilience:
             assert new_store["mock_html"] == html
         finally:
             dmod._MOCK_BUFFERS.pop(gen_id, None)
+
 
 from spec4.callbacks.designer import _extract_html  # noqa: E402
 
@@ -1919,8 +1906,7 @@ class TestExtractHtmlPrefersTheFinalDocument:
 
     def test_a_fence_without_html_is_skipped(self) -> None:
         text = (
-            "```html\n<html><body>FINAL</body></html>\n```\n"
-            "```\njust some notes\n```"
+            "```html\n<html><body>FINAL</body></html>\n```\n```\njust some notes\n```"
         )
         assert "FINAL" in (_extract_html(text) or "")
 
@@ -2072,9 +2058,10 @@ class TestDesignerRetryWithADifferentModel:
         )
         with patch.object(providers, "list_models", return_value=(["gpt-5"], "")):
             opened, _ = on_gate_connect(1, "OpenAI", "sk-new", opened, {})
-        with patch(
-            "spec4.llm_selection.probe_image_support", return_value=True
-        ), patch("spec4.llm_selection.probe_tool_support", return_value=True):
+        with (
+            patch("spec4.llm_selection.probe_image_support", return_value=True),
+            patch("spec4.llm_selection.probe_tool_support", return_value=True),
+        ):
             answered, _ = on_gate_continue(1, "gpt-5", None, opened)
         return answered, designer_layout(answered, {})
 
@@ -2198,10 +2185,9 @@ class TestDesignerAutoRetry:
         )
         with patch.object(providers, "list_models", return_value=(["gpt-5"], "")):
             opened, _ = on_gate_connect(1, "OpenAI", "sk-new", opened, {})
-        with patch(
-            "spec4.llm_selection.probe_image_support", return_value=True
-        ), patch(
-            "spec4.llm_selection.probe_tool_support", return_value=tool_support
+        with (
+            patch("spec4.llm_selection.probe_image_support", return_value=True),
+            patch("spec4.llm_selection.probe_tool_support", return_value=tool_support),
         ):
             answered, _ = on_gate_continue(1, "gpt-5", None, opened)
         return answered
@@ -2243,9 +2229,7 @@ class TestDesignerAutoRetry:
 
         dmod = _dmod()
         answered = self._choose()
-        store = _component(
-            designer_layout(answered, {}), "designer-session-store"
-        ).data
+        store = _component(designer_layout(answered, {}), "designer-session-store").data
         with patch.object(
             dmod, "_start_gen", return_value=({"step": 5}, {"tokens": 0}, False)
         ) as start:
@@ -2259,9 +2243,7 @@ class TestDesignerAutoRetry:
 
         dmod = _dmod()
         answered = self._choose()
-        store = _component(
-            designer_layout(answered, {}), "designer-session-store"
-        ).data
+        store = _component(designer_layout(answered, {}), "designer-session-store").data
         with patch.object(
             dmod, "_start_gen", return_value=({"step": 5}, {"tokens": 0}, False)
         ):
@@ -2278,9 +2260,7 @@ class TestDesignerAutoRetry:
         interval against a running server."""
         dmod = _dmod()
         with patch.object(dmod, "_start_gen") as start:
-            result = dmod.on_designer_auto_retry(
-                1, self._STORE, self._session(), True
-            )
+            result = dmod.on_designer_auto_retry(1, self._STORE, self._session(), True)
         start.assert_not_called()
         assert all(r is no_update for r in result)
 

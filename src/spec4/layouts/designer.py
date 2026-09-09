@@ -208,9 +208,7 @@ def _step2_content(has_existing_ui: bool = True, is_revision: bool = False) -> A
     # feel already in the project.
     first: Any
     if is_revision:
-        first = _primary(
-            "Carry design forward & update", "btn-designer-carry-forward"
-        )
+        first = _primary("Carry design forward & update", "btn-designer-carry-forward")
     else:
         first = _neutral(
             "Modify existing look and feel",
@@ -407,9 +405,7 @@ def _step5_content(
         children.append(
             _button_row(
                 _neutral("Retry", "btn-designer-retry"),
-                _neutral(
-                    "Try a different provider/model", "btn-designer-retry-model"
-                ),
+                _neutral("Try a different provider/model", "btn-designer-retry-model"),
             )
         )
     return dmc.Stack(children, gap="xs")
@@ -467,9 +463,7 @@ def _stale_banner(stale: list[str]) -> Any:
     )
 
 
-def _step6_content(
-    store: dict[str, Any], session: dict[str, Any] | None = None
-) -> Any:
+def _step6_content(store: dict[str, Any], session: dict[str, Any] | None = None) -> Any:
     stale_inputs: list[str] = store.get("_stale_inputs") or []
     children: list[Any] = []
     if stale_inputs:
@@ -503,9 +497,7 @@ def _step6_content(
         children.append(_dim(MOCK_APPROVED))
         children.append(
             _button_row(
-                _primary(
-                    "Continue to Stack Advisor", "btn-designer-continue-stack"
-                ),
+                _primary("Continue to Stack Advisor", "btn-designer-continue-stack"),
                 _neutral("Refine", "btn-designer-refine"),
                 _warn("Start Over", "btn-designer-start-over"),
             )
@@ -576,9 +568,7 @@ def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> 
         _dim("Describe the changes you'd like."),
         dmc.Textarea(
             id="designer-refine-input",
-            placeholder=(
-                "e.g. a larger opening block, a warmer palette, tighter rows"
-            ),
+            placeholder=("e.g. a larger opening block, a warmer palette, tighter rows"),
             minRows=3,
             autosize=True,
             value=store.get("refine_text", ""),
@@ -601,10 +591,7 @@ def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> 
     if refine_images:
         children.append(
             dmc.Stack(
-                [
-                    _refine_image_row(i, img)
-                    for i, img in enumerate(refine_images)
-                ],
+                [_refine_image_row(i, img) for i, img in enumerate(refine_images)],
                 gap="xs",
             )
         )
@@ -626,9 +613,10 @@ def designer_layout(
     # of the wizard also keeps the wizard's stores from initialising against a
     # model the developer has not chosen yet; answering re-renders the page,
     # since `render_page` is driven by the session store.
-    if _llm_gate.is_open(session, "designer") or (
-        session.get("agent_llm_draft") or {}
-    ).get("agent") == "designer":
+    if (
+        _llm_gate.is_open(session, "designer")
+        or (session.get("agent_llm_draft") or {}).get("agent") == "designer"
+    ):
         # No heading above it. The gate's own first line reads "Model for
         # Designer: …", so a title saying "Designer" over it named the agent
         # twice on a screen whose whole content is one panel — and the status
@@ -647,9 +635,7 @@ def designer_layout(
     # would capture a starter template as the design baseline. A mock already
     # saved under .spec4/ is Spec4's own output and still counts either way.
     if session.get("project_mode") == PROJECT_MODE_NEW:
-        has_existing_ui = bool(
-            working_dir and (design_dir / "mock.html").exists()
-        )
+        has_existing_ui = bool(working_dir and (design_dir / "mock.html").exists())
     else:
         has_existing_ui = (
             detect_has_ui_source(pathlib.Path(working_dir), design_dir)

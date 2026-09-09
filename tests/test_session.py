@@ -520,9 +520,7 @@ class TestLoadWorkingDirNewRound:
         )
         (v0 / "IMPLEMENTED").write_text("")
 
-    def test_does_not_hydrate_prior_artifacts(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_does_not_hydrate_prior_artifacts(self, tmp_path: pathlib.Path) -> None:
         self._implemented_v0(tmp_path)
         session = _load_working_dir(str(tmp_path), self._base_session())
         assert session["vision_statement"] is None
@@ -545,9 +543,7 @@ class TestLoadWorkingDirNewRound:
         session = _load_working_dir(str(tmp_path), self._base_session())
         assert session["_prior_app_name"] == "ShelfLife"
 
-    def test_in_progress_round_still_hydrates(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_in_progress_round_still_hydrates(self, tmp_path: pathlib.Path) -> None:
         # No IMPLEMENTED marker: the highest round is in progress and must still
         # load for resume — the new-round guard must not fire here.
         v0 = tmp_path / ".spec4" / "v0"

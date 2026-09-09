@@ -368,14 +368,22 @@ class TestGuidedRedraw:
     def test_every_click_is_one_history_event(self) -> None:
         session = _session(agentifier_scout_pool=list(_OLD_POOL))
         first = self._run(session, "Fewer, simpler.")
-        first["agentifier_scout_pool"] = [{"name": "second_draw", "rough_description": ""}]
+        first["agentifier_scout_pool"] = [
+            {"name": "second_draw", "rough_description": ""}
+        ]
         first["_stream_id"] = None
         second = self._run(first, "")
-        second["agentifier_scout_pool"] = [{"name": "third_draw", "rough_description": ""}]
+        second["agentifier_scout_pool"] = [
+            {"name": "third_draw", "rough_description": ""}
+        ]
         second["_stream_id"] = None
         third = self._run(second, "Drop third_draw.")
         history = third["agentifier_retry_guidance"]["history"]
-        assert [e["note"] for e in history] == ["Fewer, simpler.", None, "Drop third_draw."]
+        assert [e["note"] for e in history] == [
+            "Fewer, simpler.",
+            None,
+            "Drop third_draw.",
+        ]
         assert [[c["name"] for c in e["rejected_candidates"]] for e in history] == [
             ["support_chatbot", "smart_search"],
             ["second_draw"],
@@ -388,7 +396,9 @@ class TestGuidedRedraw:
         session = _session(agentifier_scout_pool=list(_OLD_POOL))
         first = self._run(session, "Fewer, simpler.")
         # The redraw produced a new pool the developer is now rejecting too.
-        first["agentifier_scout_pool"] = [{"name": "second_draw", "rough_description": ""}]
+        first["agentifier_scout_pool"] = [
+            {"name": "second_draw", "rough_description": ""}
+        ]
         first["_stream_id"] = None
         second = self._run(first, "Even fewer — max 3.")
         guidance = second["agentifier_retry_guidance"]
@@ -398,7 +408,9 @@ class TestGuidedRedraw:
     def test_blank_note_keeps_prior_notes_and_refreshes_the_set(self) -> None:
         session = _session(agentifier_scout_pool=list(_OLD_POOL))
         first = self._run(session, "Fewer, simpler.")
-        first["agentifier_scout_pool"] = [{"name": "second_draw", "rough_description": ""}]
+        first["agentifier_scout_pool"] = [
+            {"name": "second_draw", "rough_description": ""}
+        ]
         first["_stream_id"] = None
         second = self._run(first, "")
         guidance = second["agentifier_retry_guidance"]
@@ -527,10 +539,18 @@ class TestDiscoveryGuidanceArtifact:
         session["agentifier_retry_guidance"] = {
             "notes": ["Fewer.", "Drop b."],
             "previous_candidates": [],
-            "history": [_event("Fewer.", "t1", "a", "b"), _event(None, "t2", "b"), _event("Drop b.", "t3", "b")],
+            "history": [
+                _event("Fewer.", "t1", "a", "b"),
+                _event(None, "t2", "b"),
+                _event("Drop b.", "t3", "b"),
+            ],
         }
         out = self._complete(session)
-        assert [e["note"] for e in out["discovery_guidance"]] == ["Fewer.", None, "Drop b."]
+        assert [e["note"] for e in out["discovery_guidance"]] == [
+            "Fewer.",
+            None,
+            "Drop b.",
+        ]
         assert out["discovery_guidance"][0]["rejected_candidates"][1]["name"] == "b"
 
     def test_no_redraw_writes_an_empty_list(self, tmp_path: Any) -> None:
@@ -545,7 +565,9 @@ class TestDiscoveryGuidanceArtifact:
         v0 = tmp_path / ".spec4" / "v0"
         v0.mkdir(parents=True)
         (v0 / "ai_features.json").write_text(
-            json.dumps({"ai_features": [], "discovery_guidance": [_event("Old.", "t0", "x")]})
+            json.dumps(
+                {"ai_features": [], "discovery_guidance": [_event("Old.", "t0", "x")]}
+            )
         )
         session = _session(working_dir=str(tmp_path), phase_version=0)
         session["agentifier_retry_guidance"] = {
@@ -563,7 +585,9 @@ class TestDiscoveryGuidanceArtifact:
         v0 = tmp_path / ".spec4" / "v0"
         v0.mkdir(parents=True)
         (v0 / "ai_features.json").write_text(
-            json.dumps({"ai_features": [], "discovery_guidance": [_event("Old.", "t0", "x")]})
+            json.dumps(
+                {"ai_features": [], "discovery_guidance": [_event("Old.", "t0", "x")]}
+            )
         )
         session = _session(working_dir=str(tmp_path), phase_version=0)
         session["agentifier_retry_guidance"] = None
@@ -711,9 +735,7 @@ class TestRevisionRound:
 
         assert session.get("agentifier_revision") is True
         assert session["agentifier_revision_delta"]["goal"] == "Add export"
-        assert [f["name"] for f in session["agentifier_carried_forward"]] == [
-            "shipped"
-        ]
+        assert [f["name"] for f in session["agentifier_carried_forward"]] == ["shipped"]
 
     def test_scout_is_told_it_is_a_revision(self, tmp_path: Any) -> None:
         session = _session(
@@ -846,6 +868,5 @@ class TestPanelButton:
 
         assert _breadth_panel(self._panel_session(_stream_id="abc")) is None
         assert (
-            _breadth_panel(self._panel_session(agentifier_breadth_chosen=True))
-            is None
+            _breadth_panel(self._panel_session(agentifier_breadth_chosen=True)) is None
         )

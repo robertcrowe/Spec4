@@ -48,20 +48,22 @@ ROADMAP_STATUSES = ("optional", "deferred")
 #: entry (a provider ``capabilities[]`` item; persistence stores are keyed, and
 #: the store key IS the identity) takes the nearest ancestor key *outside* this
 #: set as its name — e.g. ``providers.OpenAI.capabilities[0]`` names ``OpenAI``.
-_STACK_CONTAINER_KEYS = frozenset({
-    "capabilities",
-    "collections",
-    "libraries",
-    "integrations",
-    "infrastructure",
-    "targets",
-    "auth",
-    "providers",
-    "persistence",
-    "deployment",
-    "security",
-    "stack_spec",
-})
+_STACK_CONTAINER_KEYS = frozenset(
+    {
+        "capabilities",
+        "collections",
+        "libraries",
+        "integrations",
+        "infrastructure",
+        "targets",
+        "auth",
+        "providers",
+        "persistence",
+        "deployment",
+        "security",
+        "stack_spec",
+    }
+)
 
 #: The join/semantics fields whose presence makes a stack object an "entry".
 _STACK_SIGNAL_FIELDS = (
@@ -198,7 +200,7 @@ def derived_nfr_ids(feature_specs: dict[str, Any] | None) -> dict[str, str]:
     deployment-relevant goal is the interesting case) do not.
     """
     out: dict[str, str] = {}
-    for goal in ((feature_specs or {}).get("nfr_goals") or []):
+    for goal in (feature_specs or {}).get("nfr_goals") or []:
         if isinstance(goal, str) and goal.strip():
             out[f"nfr_{_slug(goal.strip())}"] = goal.strip()
     return out
@@ -232,7 +234,7 @@ def nfr_threads(
     by_id: dict[str, dict[str, Any]] = {}
     for rec in stack_signal_entries(stack):
         entry = rec["entry"]
-        for raw in (entry.get("satisfies_nfr") or []):
+        for raw in entry.get("satisfies_nfr") or []:
             nid = str(raw)
             if nid not in derived:
                 continue
@@ -248,9 +250,7 @@ def nfr_threads(
             )
             rec_out["claimers"].append(rec["label"])
             rec_out["serves_features"] |= _served(entry, "serves_features")
-            rec_out["serves_capabilities"] |= _served(
-                entry, "serves_capabilities"
-            )
+            rec_out["serves_capabilities"] |= _served(entry, "serves_capabilities")
 
     out: list[dict[str, Any]] = []
     for nid in derived:  # stable goal order

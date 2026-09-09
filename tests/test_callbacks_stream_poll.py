@@ -227,6 +227,7 @@ class TestBreadthPanelValueSeeding:
     def _find_checkbox_group(self, component: Any) -> Any:
         """Walk the component tree to find the dmc.CheckboxGroup."""
         import dash_mantine_components as dmc
+
         if isinstance(component, dmc.CheckboxGroup):
             return component
         children = getattr(component, "children", None) or []
@@ -282,6 +283,7 @@ class TestBreadthPanelValueSeeding:
     def test_panel_is_dmc_paper_with_chat_bubble_class(self) -> None:
         """Fix 1: active panel must be a dmc.Paper with className chat-bubble-assistant."""  # noqa: E501
         import dash_mantine_components as dmc
+
         session = self._make_session_with_groups(selection=None)
         panel = _breadth_panel(session)
         assert panel is not None
@@ -423,8 +425,10 @@ class TestChatLayoutInputVisibility:
     def test_chat_input_present_when_breadth_active(self) -> None:
         """Textarea must be mounted even when hidden — State reference must be valid."""
         import dash_mantine_components as dmc
+
         session = _make_active_breadth_session()
         layout = _chat_layout(session)
+
         def _is_chat_input(c: Any) -> bool:
             return (
                 isinstance(c, dmc.Textarea) and getattr(c, "id", None) == "chat-input"

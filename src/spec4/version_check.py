@@ -79,7 +79,8 @@ def check_for_update() -> dict[str, str] | None:
             else None
         )
         _cache["checked"] = True
-    return _cache["result"]
+    result: dict[str, str] | None = _cache["result"]
+    return result
 
 
 def _reset_cache() -> None:

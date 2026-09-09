@@ -106,10 +106,11 @@ class TestOnFastForward:
 
     def test_click_injects_prompt_verbatim(self) -> None:
         session = self._session()
-        with patch(
-            "spec4.session.stack_advisor.run", return_value=iter(["ok"])
-        ) as mock_run, patch(
-            "spec4.callbacks.streaming.start", return_value="sid"
+        with (
+            patch(
+                "spec4.session.stack_advisor.run", return_value=iter(["ok"])
+            ) as mock_run,
+            patch("spec4.callbacks.streaming.start", return_value="sid"),
         ):
             new_session, _ = on_fast_forward(1, session)
         # Agent history and display transcript both receive the exact prompt.
@@ -120,9 +121,10 @@ class TestOnFastForward:
 
     def test_click_starts_stream(self) -> None:
         session = self._session()
-        with patch(
-            "spec4.session.stack_advisor.run", return_value=iter(["ok"])
-        ), patch("spec4.callbacks.streaming.start", return_value="sid"):
+        with (
+            patch("spec4.session.stack_advisor.run", return_value=iter(["ok"])),
+            patch("spec4.callbacks.streaming.start", return_value="sid"),
+        ):
             new_session, max_intervals = on_fast_forward(1, session)
         assert new_session["_stream_id"] == "sid"
         assert max_intervals == -1

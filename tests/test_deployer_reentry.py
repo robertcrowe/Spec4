@@ -1,4 +1,5 @@
 """Deployer re-entry seeds the existing plan content (no 'paste it' loop)."""
+
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -16,11 +17,15 @@ def test_reentry_seed_embeds_existing_plan():
         "code_review": {},
         "ai_features": None,
     }
-    with patch.object(
-        deployer.project_manager, "load_deployment_plan",
-        return_value="# Deploy\n## Deployment Steps\nUse Cloud Run.",
-    ), patch.object(deployer.llm, "build_system_prompt", return_value=""), \
-       patch.object(deployer.llm, "stream_turn", return_value=iter(())):
+    with (
+        patch.object(
+            deployer.project_manager,
+            "load_deployment_plan",
+            return_value="# Deploy\n## Deployment Steps\nUse Cloud Run.",
+        ),
+        patch.object(deployer.llm, "build_system_prompt", return_value=""),
+        patch.object(deployer.llm, "stream_turn", return_value=iter(())),
+    ):
         list(deployer.run(None, session, {"model": "x"}))
     seed = session["deployer_messages"][0]["content"]
     # The actual plan text is in the seed, and the model is told not to ask for a paste.

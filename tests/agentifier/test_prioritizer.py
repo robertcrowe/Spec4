@@ -568,6 +568,7 @@ class TestBeginPriorityPhase:
         out = self._run(session)
         assert "Priority analysis unavailable" not in out
 
+
 # ---------------------------------------------------------------------------
 # The priority checkpoint — one table, one turn (D-PP9 B)
 # ---------------------------------------------------------------------------
@@ -688,7 +689,9 @@ class TestRunPriorityPhase:
         assert "`producer`" in out
 
     def test_unchanged_features_are_not_reported_as_adjusted(self) -> None:
-        session = self._session_with([_feature("alpha", "mvp"), _feature("beta", "mvp")])
+        session = self._session_with(
+            [_feature("alpha", "mvp"), _feature("beta", "mvp")]
+        )
         out = self._run(session, "alpha: v2")
         assert "Adjusted" not in out
         assert "Updated" in out
@@ -759,6 +762,7 @@ class TestFormatPriorityTable:
     def test_empty_feature_list_does_not_raise(self) -> None:
         assert "feature_name: steel_thread" in self._table([])
 
+
 # ---------------------------------------------------------------------------
 # D-PP14 — vision MVP commitments reach the prompt
 # ---------------------------------------------------------------------------
@@ -775,7 +779,9 @@ class TestVisionMvpFeatureNames:
         return _vision_mvp_feature_names(vision)
 
     def test_single_key_mapping_is_the_brainstormer_shape(self) -> None:
-        vision = _vision([{"Order_Help_Chat": {"description": "…"}}, {"Account_Orders": {}}])
+        vision = _vision(
+            [{"Order_Help_Chat": {"description": "…"}}, {"Account_Orders": {}}]
+        )
         assert self._names(vision) == ["Order_Help_Chat", "Account_Orders"]
 
     def test_plain_strings_and_named_mappings(self) -> None:
@@ -796,13 +802,17 @@ class TestMvpMarking:
 
         return _format_features_block(features, [], "purpose", committed)
 
-    def _feature_lines(self, features: list[dict[str, Any]], committed: list[str]) -> str:
+    def _feature_lines(
+        self, features: list[dict[str, Any]], committed: list[str]
+    ) -> str:
         # The preamble mentions "[MVP]" literally; only the rows carry the mark.
         block = self._block(features, committed)
         return "\n".join(ln for ln in block.splitlines() if ln.startswith("- "))
 
     def test_committed_top_level_feature_is_marked(self) -> None:
-        f = _feature("writeup", linked_vision_features=["findings_writeup"], scope="feature")
+        f = _feature(
+            "writeup", linked_vision_features=["findings_writeup"], scope="feature"
+        )
         assert "writeup [MVP]" in self._block([f], ["findings_writeup"])
 
     def test_cross_feature_scope_is_marked(self) -> None:
@@ -812,11 +822,15 @@ class TestMvpMarking:
     def test_sub_feature_is_never_marked(self) -> None:
         # linked_vision_features is provenance, not commitment: every member of a
         # decomposed capability traces back to the same vision entry.
-        f = _feature("member", linked_vision_features=["investigation"], scope="sub_feature")
+        f = _feature(
+            "member", linked_vision_features=["investigation"], scope="sub_feature"
+        )
         assert "[MVP]" not in self._feature_lines([f], ["investigation"])
 
     def test_unlinked_feature_is_not_marked(self) -> None:
-        f = _feature("extra", linked_vision_features=["something_else"], scope="feature")
+        f = _feature(
+            "extra", linked_vision_features=["something_else"], scope="feature"
+        )
         assert "[MVP]" not in self._feature_lines([f], ["investigation"])
 
     def test_preamble_lists_committed_capabilities(self) -> None:
@@ -825,13 +839,17 @@ class TestMvpMarking:
         assert "cap_one, cap_two" in out
 
     def test_no_commitments_means_no_preamble_and_no_marks(self) -> None:
-        out = self._block([_feature("a", linked_vision_features=["cap"], scope="feature")], [])
+        out = self._block(
+            [_feature("a", linked_vision_features=["cap"], scope="feature")], []
+        )
         assert "part of the first release" not in out
         assert "[MVP]" not in out
 
     def test_agent_passes_commitments_into_the_prompt(self) -> None:
         pi = PrioritizerInput(
-            features=[_feature("writeup", linked_vision_features=["fw"], scope="feature")],
+            features=[
+                _feature("writeup", linked_vision_features=["fw"], scope="feature")
+            ],
             vision_purpose="Ship it.",
             llm_config=_LLM_CONFIG,
             mvp_vision_features=["fw"],

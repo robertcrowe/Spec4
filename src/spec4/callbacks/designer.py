@@ -159,14 +159,14 @@ def _extract_html(text: str) -> str | None:
     trailing fragment without a closing tag never matches, so a completed
     earlier document still beats an abandoned later one.
     """
-    matches = re.findall(
+    matches: list[str] = re.findall(
         r"(<!DOCTYPE html>.*?</html>|<html[\s>].*?</html>)",
         text,
         re.IGNORECASE | re.DOTALL,
     )
     if matches:
         return matches[-1].strip()
-    code_matches = re.findall(r"```(?:html)?\s*(.*?)\s*```", text, re.DOTALL)
+    code_matches: list[str] = re.findall(r"```(?:html)?\s*(.*?)\s*```", text, re.DOTALL)
     for inner in reversed(code_matches):
         inner = inner.strip()
         if "<html" in inner.lower() or "<!doctype" in inner.lower():
@@ -291,9 +291,7 @@ def _start_gen(
                 / "design"
             )
         except Exception as exc:
-            logger.warning(
-                "Designer: could not resolve the design save dir: %s", exc
-            )
+            logger.warning("Designer: could not resolve the design save dir: %s", exc)
 
     def _run() -> None:
         try:
@@ -303,7 +301,13 @@ def _start_gen(
             if _DEV_MODE:
                 print("\n[Designer] Generating mock...", flush=True)
             for chunk in generate_mock_streaming(
-                ds, model, api_key, snippets, image_support, search_cfg, stop_ev,
+                ds,
+                model,
+                api_key,
+                snippets,
+                image_support,
+                search_cfg,
+                stop_ev,
                 planning_context=planning_context,
                 existing_html=existing_html,
                 capture_mode=capture_mode,
@@ -323,8 +327,7 @@ def _start_gen(
             # can't race itself.
             accumulated = buf_entry["text"]
             done_ok = (
-                "__DONE__" in accumulated
-                and "__GENERATION_ERROR__:" not in accumulated
+                "__DONE__" in accumulated and "__GENERATION_ERROR__:" not in accumulated
             )
             if done_ok:
                 html_text = accumulated.replace("__DONE__", "").strip()
@@ -378,9 +381,7 @@ def _start_gen(
             # the user gets the error alert and a Retry button.
             logger.warning("Designer generation thread crashed", exc_info=True)
             msg = str(exc).strip() or repr(exc)
-            buf_entry["text"] += (
-                f"__GENERATION_ERROR__: {type(exc).__name__}: {msg}"
-            )
+            buf_entry["text"] += f"__GENERATION_ERROR__: {type(exc).__name__}: {msg}"
         finally:
             # The mock draw never passes through the chat poll's persist
             # funnel, so the generation thread flushes its own LLM usage.
@@ -409,7 +410,9 @@ def _start_gen(
     # Leaving them in bloats every subsequent callback's State and Output
     # payload, which has been observed to break Dash dispatch silently.
     updated_store = {
-        **store, "step": 5, "_gen_id": gen_id,
+        **store,
+        "step": 5,
+        "_gen_id": gen_id,
         "_has_existing_html": existing_html is not None,
         # D-DM8: retry re-runs whatever this draw was. Without recording the
         # mode, retrying a failed capture silently regenerated as a greenfield
@@ -573,9 +576,15 @@ def on_designer_step2_choice(
     # which skips both the instruction and _persist_manifest). It therefore
     # needs the same planning context as every other manifest-bearing draw.
     new_store, buf, disabled = _start_gen(
-        store or {}, wd, model, api_key, search_cfg, support,
+        store or {},
+        wd,
+        model,
+        api_key,
+        search_cfg,
+        support,
         _planning_ctx(sess, wd),
-        capture_mode=True, api_base=api_base,
+        capture_mode=True,
+        api_base=api_base,
         extra_kwargs=aws_kw or None,
         session=sess,
         effort=effort,
@@ -712,7 +721,13 @@ def on_designer_generate_mock(
         else None
     )
     new_store, buf, disabled = _start_gen(
-        updated, wd, model, api_key, search_cfg, support, planning_ctx,
+        updated,
+        wd,
+        model,
+        api_key,
+        search_cfg,
+        support,
+        planning_ctx,
         api_base=api_base,
         extra_kwargs=aws_kw or None,
         session=sess,
@@ -781,7 +796,7 @@ def on_mock_stream_poll(n: Any, store: Any) -> Any:
 
     if "__GENERATION_ERROR__:" in accumulated:
         idx = accumulated.index("__GENERATION_ERROR__:")
-        error_msg = accumulated[idx + len("__GENERATION_ERROR__:"):].strip()
+        error_msg = accumulated[idx + len("__GENERATION_ERROR__:") :].strip()
         error_msg = error_msg or "Generation failed — check the server log for details."
         _MOCK_BUFFERS.pop(gen_id, None)
         return {"error": error_msg}, no_update, True
@@ -1151,7 +1166,12 @@ def on_designer_regenerate(
         else None
     )
     new_store, buf, disabled = _start_gen(
-        updated, wd, model, api_key, search_cfg, support,
+        updated,
+        wd,
+        model,
+        api_key,
+        search_cfg,
+        support,
         planning_ctx,
         existing_html=existing_html,
         api_base=api_base,
@@ -1222,8 +1242,15 @@ def on_designer_revise_stale(
         "_has_existing_ui": store.get("_has_existing_ui", False),
     }
     return _start_gen(
-        regen_store, wd, model, api_key, search_cfg, support, planning_ctx,
-        api_base=api_base, extra_kwargs=aws_kw or None,
+        regen_store,
+        wd,
+        model,
+        api_key,
+        search_cfg,
+        support,
+        planning_ctx,
+        api_base=api_base,
+        extra_kwargs=aws_kw or None,
         session=sess,
         effort=effort,
     )
@@ -1237,9 +1264,7 @@ def on_designer_revise_stale(
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_retry_model(
-    n: Any, store: Any, buffer_data: Any, session: Any
-) -> Any:
+def on_designer_retry_model(n: Any, store: Any, buffer_data: Any, session: Any) -> Any:
     """Open the model picker from a failed draw, keeping the draw recoverable.
 
     Opening the picker writes `session`, which rebuilds the page and re-creates
@@ -1299,7 +1324,12 @@ def _rerun_failed_draw(store: Any, session: Any, image_support: Any) -> Any:
     # manifest-bearing, so withholding it here would leave the manifest
     # instruction referencing sections absent from the prompt.
     new_store, buf, disabled = _start_gen(
-        store, wd, model, api_key, search_cfg, support,
+        store,
+        wd,
+        model,
+        api_key,
+        search_cfg,
+        support,
         _planning_ctx(sess, wd),
         existing_html=existing_html,
         capture_mode=bool(store.get("_capture_mode")),
@@ -1349,9 +1379,7 @@ def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> A
     State("image-support-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_auto_retry(
-    n: Any, store: Any, session: Any, image_support: Any
-) -> Any:
+def on_designer_auto_retry(n: Any, store: Any, session: Any, image_support: Any) -> Any:
     """Draw again as soon as a different model has been chosen.
 
     Choosing a model from a failed draw *is* the decision to re-run it, so no

@@ -87,9 +87,7 @@ def _stale_phrase(stale: list[str]) -> str:
     return ", ".join(stale[:-1]) + f", and {stale[-1]}"
 
 
-def _build_revision_context(
-    session: dict[str, Any], stale: list[str]
-) -> str:
+def _build_revision_context(session: dict[str, Any], stale: list[str]) -> str:
     """Build a synthetic user message containing the latest upstream artifacts.
 
     Injected into the conversation history alongside the staleness question so
@@ -104,29 +102,25 @@ def _build_revision_context(
         v = session.get("vision_statement")
         if v is not None:
             parts.append(
-                "Updated vision statement:\n\n"
-                f"```json\n{json.dumps(v, indent=2)}\n```"
+                f"Updated vision statement:\n\n```json\n{json.dumps(v, indent=2)}\n```"
             )
     if "AI features" in stale:
         af = session.get("ai_features")
         if af is not None:
             parts.append(
-                "Updated AI features spec:\n\n"
-                f"```json\n{json.dumps(af, indent=2)}\n```"
+                f"Updated AI features spec:\n\n```json\n{json.dumps(af, indent=2)}\n```"
             )
     if "stack" in stale:
         s = session.get("stack_statement")
         if s is not None:
             parts.append(
-                "Updated stack spec:\n\n"
-                f"```json\n{json.dumps(s, indent=2)}\n```"
+                f"Updated stack spec:\n\n```json\n{json.dumps(s, indent=2)}\n```"
             )
     if "code review" in stale:
         cr = session.get("code_review")
         if cr is not None:
             parts.append(
-                "Updated code review:\n\n"
-                f"```json\n{json.dumps(cr, indent=2)}\n```"
+                f"Updated code review:\n\n```json\n{json.dumps(cr, indent=2)}\n```"
             )
     if "phases" in stale:
         ph = session.get("phases") or []
@@ -159,9 +153,7 @@ def _build_revision_context(
             )
             try:
                 html = mock_path.read_text(encoding="utf-8", errors="replace")
-                parts.append(
-                    "Updated UI mock (HTML):\n\n```html\n" + html + "\n```"
-                )
+                parts.append("Updated UI mock (HTML):\n\n```html\n" + html + "\n```")
             except OSError:
                 pass
     return "\n\n".join(parts)
@@ -246,10 +238,9 @@ def _maybe_inject_resume_summary(
         return False
     if session.get(f"{agent}_resumed"):
         return False
-    if (
-        session.get(f"{agent}_state") == complete_state
-        and session.get(f"{agent}_artifact_msg_count") == len(msgs)
-    ):
+    if session.get(f"{agent}_state") == complete_state and session.get(
+        f"{agent}_artifact_msg_count"
+    ) == len(msgs):
         return False
     msgs.append(
         {
@@ -533,9 +524,7 @@ def _stream_suppressing_json(
                     buf = ""
             if session is not None:
                 desired = (
-                    artifact_status
-                    if suppress
-                    else (reply_status if flushed else None)
+                    artifact_status if suppress else (reply_status if flushed else None)
                 )
                 if desired and session.get("_stream_status") != desired:
                     session["_stream_status"] = desired
@@ -661,7 +650,9 @@ _STYLE_LEAF_KEYS = (
 )
 
 
-def _render_one_style(style: dict[str, Any], lines: list[str], indent: str = "") -> None:
+def _render_one_style(
+    style: dict[str, Any], lines: list[str], indent: str = ""
+) -> None:
     """Append one style block's fields. Shared by the flat and nested shapes."""
     for key in _STYLE_LEAF_KEYS:
         if key in style:
@@ -709,9 +700,15 @@ def _render_coding_style(style: dict[str, Any], lines: list[str]) -> None:
 # ---------------------------------------------------------------------------
 
 _TIER_ORDER_FOR_SUMMARY = {
-    "deterministic": 1, "embeddings": 2, "single_call": 3, "rag": 4,
-    "tool_agent": 5, "chained_calls": 6, "planning_agent": 7,
-    "orchestrated_subagents": 8, "multi_agent_collaboration": 9,
+    "deterministic": 1,
+    "embeddings": 2,
+    "single_call": 3,
+    "rag": 4,
+    "tool_agent": 5,
+    "chained_calls": 6,
+    "planning_agent": 7,
+    "orchestrated_subagents": 8,
+    "multi_agent_collaboration": 9,
 }
 
 
@@ -725,7 +722,7 @@ def _served_product_feature_ids(node: dict[str, Any]) -> list[str]:
     """
     grounding = node.get("vision_grounding") or {}
     out: list[str] = []
-    for sf in (grounding.get("served_features") or []):
+    for sf in grounding.get("served_features") or []:
         if isinstance(sf, dict) and sf.get("id"):
             fid = str(sf["id"])
             if fid not in out:
@@ -772,7 +769,7 @@ def _project_feature_for_stack(
     if fmt:
         lines.append(f"    - output format: {fmt}")
 
-    for ks in (f.get("knowledge_sources") or []):
+    for ks in f.get("knowledge_sources") or []:
         if not isinstance(ks, dict):
             continue
         ks_name = ks.get("name") or "source"
@@ -783,7 +780,7 @@ def _project_feature_for_stack(
             line += f" — {desc[:100]}"
         lines.append(line)
 
-    for cap in ((f.get("tool_access") or {}).get("capabilities_needed") or []):
+    for cap in (f.get("tool_access") or {}).get("capabilities_needed") or []:
         if not isinstance(cap, dict):
             continue
         purpose = (cap.get("purpose") or "capability").strip()
@@ -794,11 +791,11 @@ def _project_feature_for_stack(
             detail += f", server={cap['mcp_server']}"
         lines.append(f"    - tool access: {purpose[:80]} [{detail}]")
 
-    mechs = [
+    raw_mechs = [
         (m.get("name") if isinstance(m, dict) else str(m))
         for m in (f.get("mechanisms") or [])
     ]
-    mechs = [m for m in mechs if m]
+    mechs: list[str] = [m for m in raw_mechs if m]
     if mechs:
         lines.append(f"    - mechanisms: {', '.join(mechs)}")
 
@@ -868,7 +865,7 @@ def _ai_features_for_stack(
 
     if any_new:
         lines.append(
-            "- Features tagged \"NEW this revision\" are NOT yet implemented in "
+            '- Features tagged "NEW this revision" are NOT yet implemented in '
             "the carried-forward stack; treat each as a new functional area "
             "requiring stack support, not pre-existing capability."
         )
@@ -899,9 +896,7 @@ def _ai_features_for_stack(
         lines.append(f"\n- Provider strategy: {rec}")
     if (cross.get("tool_protocol_strategy") or {}).get("recommendation"):
         rec = cross["tool_protocol_strategy"]["recommendation"][:200]
-        lines.append(
-            f"- Tool protocol strategy (MCP vs direct, build vs reuse): {rec}"
-        )
+        lines.append(f"- Tool protocol strategy (MCP vs direct, build vs reuse): {rec}")
     if (cross.get("prompt_versioning") or {}).get("recommendation"):
         rec = cross["prompt_versioning"]["recommendation"][:200]
         lines.append(f"- Prompt versioning: {rec}")
@@ -1074,11 +1069,13 @@ def _ai_features_for_phaser(
         if revision_version is not None
         else "**AI features spec (from Agentifier) — use phase_priority to decide when to implement each:**\n"
     )
-    lines.extend([
-        header,
-        "| Feature | id | Kind | Tier | Scope | Phase Priority |",
-        "| --- | --- | --- | --- | --- | --- |",
-    ])
+    lines.extend(
+        [
+            header,
+            "| Feature | id | Kind | Tier | Scope | Phase Priority |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+    )
     for f in features:
         name = f.get("name", "")
         fid = f.get("id", "")
@@ -1093,15 +1090,27 @@ def _ai_features_for_phaser(
     )
 
     lines.append("\nPhasing guidance:")
-    steel = [f.get("name", "") for f in features if f.get("phase_priority") == "steel_thread"]
+    steel = [
+        f.get("name", "") for f in features if f.get("phase_priority") == "steel_thread"
+    ]
     if steel:
-        lines.append(f"- **steel_thread** features belong in Phase 1 or Phase 2: {', '.join(steel)}")
+        lines.append(
+            f"- **steel_thread** features belong in Phase 1 or Phase 2: {', '.join(steel)}"
+        )
     mvp = [f.get("name", "") for f in features if f.get("phase_priority") == "mvp"]
     if mvp:
-        lines.append(f"- **mvp** features must be implemented before the first release: {', '.join(mvp)}")
-    v2 = [f.get("name", "") for f in features if f.get("phase_priority") in ("v2", "future")]
+        lines.append(
+            f"- **mvp** features must be implemented before the first release: {', '.join(mvp)}"
+        )
+    v2 = [
+        f.get("name", "")
+        for f in features
+        if f.get("phase_priority") in ("v2", "future")
+    ]
     if v2:
-        lines.append(f"- **v2/future** features may be deferred post-MVP: {', '.join(v2)}")
+        lines.append(
+            f"- **v2/future** features may be deferred post-MVP: {', '.join(v2)}"
+        )
     infra = [f.get("name", "") for f in features if f.get("kind") == INFRA_KIND]
     if infra:
         lines.append(
@@ -1109,7 +1118,9 @@ def _ai_features_for_phaser(
             "capabilities. Each must be stood up in the same phase as its first "
             f"consumer or earlier: {', '.join(infra)}"
         )
-    cross_feat = [f.get("name", "") for f in features if f.get("scope") == "cross_feature"]
+    cross_feat = [
+        f.get("name", "") for f in features if f.get("scope") == "cross_feature"
+    ]
     if cross_feat:
         lines.append(
             "- **cross_feature** features span more than one vision feature. Treat "
@@ -1225,8 +1236,7 @@ def _ai_features_for_deployer(
     if tiers_in_use:
         lines.append(f"- AI feature tiers in use: {', '.join(tiers_in_use)}")
     if any(
-        _TIER_ORDER_FOR_SUMMARY.get(str(f.get("tier") or ""), 0) >= 5
-        for f in features
+        _TIER_ORDER_FOR_SUMMARY.get(str(f.get("tier") or ""), 0) >= 5 for f in features
     ):
         lines.append(
             "- Tool-calling features require LLM API keys in environment configuration"
@@ -1313,7 +1323,9 @@ def _phases_for_deployer(phases: list[dict[str, Any]], version: Any) -> str:
     for p in phases:
         num = p.get("phase_number")
         title = str(p.get("phase_title") or "").strip()
-        lines.append(f"- Phase {num}: {title} (`.spec4/v{version}/phases/phase{num}.md`)")
+        lines.append(
+            f"- Phase {num}: {title} (`.spec4/v{version}/phases/phase{num}.md`)"
+        )
     lines.append("")
 
     config_lines: list[str] = []
@@ -1396,7 +1408,8 @@ def _stack_for_deployer(stack: dict[str, Any] | None) -> str:
         return f"  - {label}: {text}" if text else None
 
     targets = [
-        t for t in ((spec.get("deployment") or {}).get("targets") or [])
+        t
+        for t in ((spec.get("deployment") or {}).get("targets") or [])
         if isinstance(t, dict)
     ]
     if targets:
@@ -1431,9 +1444,11 @@ def _stack_for_deployer(stack: dict[str, Any] | None) -> str:
         lines.append("")
 
     security = spec.get("security")
-    auth = [
-        a for a in ((security or {}).get("auth") or []) if isinstance(a, dict)
-    ] if isinstance(security, dict) else []
+    auth = (
+        [a for a in ((security or {}).get("auth") or []) if isinstance(a, dict)]
+        if isinstance(security, dict)
+        else []
+    )
     if auth:
         lines.append(
             f"**Authentication** — {len(auth)} mechanism(s). Their credentials are "
@@ -1477,8 +1492,10 @@ def _stack_for_deployer(stack: dict[str, Any] | None) -> str:
             choice = str(entry.get("choice") or "").strip()
             purpose = str(entry.get("purpose") or "").strip()
             if status in ROADMAP_STATUSES:
-                roadmap.append(f"- `{name}` ({section}, {status})"
-                               + (f" — {purpose}" if purpose else ""))
+                roadmap.append(
+                    f"- `{name}` ({section}, {status})"
+                    + (f" — {purpose}" if purpose else "")
+                )
                 continue
             row = f"- `{name}` ({section})" + (f": {choice}" if choice else "")
             if purpose:
@@ -1561,7 +1578,7 @@ def _nfr_goals_for_deployer(
     claimers: dict[str, list[str]] = {}
     if isinstance(stack, dict) and stack:
         for rec in stack_signal_entries(stack):
-            for raw in (rec["entry"].get("satisfies_nfr") or []):
+            for raw in rec["entry"].get("satisfies_nfr") or []:
                 nid = str(raw)
                 if nid in derived:
                     claimers.setdefault(nid, []).append(rec["label"])
@@ -1575,7 +1592,7 @@ def _nfr_goals_for_deployer(
         "an invented one.\n"
     ]
     for nid, goal in derived.items():
-        lines.append(f"- `{nid}` — \"{goal}\"")
+        lines.append(f'- `{nid}` — "{goal}"')
         named = sorted(set(claimers.get(nid, [])))
         if named:
             lines.append(f"  - claimed by: {', '.join(named)}")
@@ -1641,9 +1658,7 @@ def _ai_features_for_designer(ai_features: dict[str, Any]) -> str:
     def _is_infra(f: dict[str, Any]) -> bool:
         return f.get("tier") == "infrastructure" or f.get("kind") == "infrastructure"
 
-    surfaces = [
-        f for f in features if f.get("scope") == "feature" and not _is_infra(f)
-    ]
+    surfaces = [f for f in features if f.get("scope") == "feature" and not _is_infra(f)]
     if not surfaces:
         return ""
 
@@ -1733,8 +1748,10 @@ def _ai_features_for_designer(ai_features: dict[str, Any]) -> str:
                 m_primary = m_out.get("primary", "") if isinstance(m_out, dict) else ""
                 detail = _short_text(m_primary or m.get("purpose", ""), 130)
                 mauth = m.get("decision_authority", "autonomous")
-                aff = " [suggestion]" if mauth == "suggest" else (
-                    " [confirm]" if mauth == "confirm" else ""
+                aff = (
+                    " [suggestion]"
+                    if mauth == "suggest"
+                    else (" [confirm]" if mauth == "confirm" else "")
                 )
                 lines.append(f"    - `{mname}` ({mtier}){aff}: {detail}")
 
@@ -1815,9 +1832,7 @@ def _feature_specs_for_designer(feature_specs: dict[str, Any] | None) -> str:
         name = f.get("name") or f.get("id") or ""
         lines.append(f"### `{name}`")
         lines.extend(
-            render_feature_block(
-                f, fields=DESIGNER_SPEC_FIELDS, include_graph=False
-            )
+            render_feature_block(f, fields=DESIGNER_SPEC_FIELDS, include_graph=False)
         )
         lines.append("")
         for ent in f.get("entities") or []:
@@ -1910,17 +1925,19 @@ def _design_manifest_for_stack(manifest: dict[str, Any] | None) -> str:
             if not name:
                 continue
             fields = [str(f) for f in (e.get("fields") or []) if str(f).strip()]
-            lines.append(f"- `{name}`: {', '.join(fields)}" if fields else f"- `{name}`")
+            lines.append(
+                f"- `{name}`: {', '.join(fields)}" if fields else f"- `{name}`"
+            )
         lines.append("")
 
     if surfaces:
         written: list[str] = []
         read: list[str] = []
         for s in surfaces:
-            for ent in (s.get("writes") or []):
+            for ent in s.get("writes") or []:
                 if isinstance(ent, str) and ent not in written:
                     written.append(ent)
-            for ent in (s.get("reads") or []):
+            for ent in s.get("reads") or []:
                 if isinstance(ent, str) and ent not in read:
                     read.append(ent)
         read_only = [e for e in read if e not in written]
@@ -2000,11 +2017,11 @@ def _feature_specs_for_stack(
     # never shares its id), so this is the only sound "is this feature AI-backed"
     # signal available without the manifest (D-SC5).
     ai_served: set[str] = set()
-    for node in ((ai_features or {}).get("ai_features") or []):
+    for node in (ai_features or {}).get("ai_features") or []:
         if not isinstance(node, dict) or node.get("kind") == INFRA_KIND:
             continue
         grounding = node.get("vision_grounding") or {}
-        for sf in (grounding.get("served_features") or []):
+        for sf in grounding.get("served_features") or []:
             if isinstance(sf, dict):
                 for key in ("id", "name"):
                     if sf.get(key):
@@ -2037,13 +2054,11 @@ def _feature_specs_for_stack(
         lines.extend(
             render_feature_block(f, fields=STACK_SPEC_FIELDS, include_graph=False)
         )
-        deps = [
-            str(d).strip() for d in (f.get("dependencies") or []) if str(d).strip()
-        ]
+        deps = [str(d).strip() for d in (f.get("dependencies") or []) if str(d).strip()]
         if deps:
             lines.append(f"- depends on: {', '.join(deps)}")
         lines.append("")
-        for ent in (f.get("entities") or []):
+        for ent in f.get("entities") or []:
             if isinstance(ent, str) and ent not in seen:
                 seen.add(ent)
                 entities.append(ent)
@@ -2088,11 +2103,11 @@ def _ai_served_feature_ids(ai_features: dict[str, Any] | None) -> set[str]:
     ``excluded_feature_ids`` (a served feature is never excluded).
     """
     served: set[str] = set()
-    for node in ((ai_features or {}).get("ai_features") or []):
+    for node in (ai_features or {}).get("ai_features") or []:
         if not isinstance(node, dict) or node.get("kind") == INFRA_KIND:
             continue
         grounding = node.get("vision_grounding") or {}
-        for sf in (grounding.get("served_features") or []):
+        for sf in grounding.get("served_features") or []:
             if isinstance(sf, dict):
                 for key in ("id", "name"):
                     if sf.get(key):
@@ -2120,7 +2135,7 @@ def excluded_feature_ids(
     if not feats:
         return set()
     rejected: set[str] = set()
-    for entry in ((ai_features or {}).get("explicitly_rejected") or []):
+    for entry in (ai_features or {}).get("explicitly_rejected") or []:
         name = entry.get("name") if isinstance(entry, dict) else entry
         if name:
             rejected.add(str(name))
@@ -2222,16 +2237,14 @@ def _feature_specs_for_phaser(
                 f, fields=PHASER_PRODUCT_SPEC_FIELDS, include_graph=False
             )
         )
-        deps = [
-            str(d).strip() for d in (f.get("dependencies") or []) if str(d).strip()
-        ]
+        deps = [str(d).strip() for d in (f.get("dependencies") or []) if str(d).strip()]
         if deps:
             lines.append(
                 f"- depends on: {', '.join(deps)} (build these no later than "
                 f"`{fid or name}`)"
             )
         lines.append("")
-        for ent in (f.get("entities") or []):
+        for ent in f.get("entities") or []:
             if isinstance(ent, str) and ent not in seen:
                 seen.add(ent)
                 entities.append(ent)
@@ -2335,7 +2348,7 @@ def _stack_digest_for_phaser(
 
     nfr_claims = backlinks("satisfies_nfr")
     derived: dict[str, str] = {}
-    for g in ((feature_specs or {}).get("nfr_goals") or []):
+    for g in (feature_specs or {}).get("nfr_goals") or []:
         if isinstance(g, str) and g.strip():
             derived[f"nfr_{slug(g.strip())}"] = g.strip()
     if nfr_claims or derived:
@@ -2347,11 +2360,14 @@ def _stack_digest_for_phaser(
         for nid in sorted(set(nfr_claims) | set(derived)):
             claimers = nfr_claims.get(nid)
             if claimers:
-                unknown = "" if (not derived or nid in derived) else (
-                    " [matches no project goal]"
+                unknown = (
+                    ""
+                    if (not derived or nid in derived)
+                    else (" [matches no project goal]")
                 )
-                lines.append(f"- `{nid}`{unknown}: claimed by "
-                             f"{', '.join(sorted(set(claimers)))}")
+                lines.append(
+                    f"- `{nid}`{unknown}: claimed by {', '.join(sorted(set(claimers)))}"
+                )
             else:
                 lines.append(
                     f"- `{nid}`: UNCLAIMED — no stack entry claims this goal. "
@@ -2374,12 +2390,11 @@ def _stack_digest_for_phaser(
             lines.append(f"- {label}: status `{e['entry']['status']}`")
     else:
         lines.append(
-            "- No entry carries a status in this stack: every entry is a "
-            "build item."
+            "- No entry carries a status in this stack: every entry is a build item."
         )
     lines.append("")
 
-    targets = ((spec.get("deployment") or {}).get("targets") or [])
+    targets = (spec.get("deployment") or {}).get("targets") or []
     exposure_lines = []
     for t in targets:
         if not isinstance(t, dict):
@@ -2402,8 +2417,7 @@ def _stack_digest_for_phaser(
     )
     security = spec.get("security")
     no_auth = security is None or (
-        isinstance(security, dict)
-        and not any(v for v in security.values())
+        isinstance(security, dict) and not any(v for v in security.values())
     )
     if no_auth:
         lines.append(

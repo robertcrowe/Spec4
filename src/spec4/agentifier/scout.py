@@ -388,10 +388,14 @@ def _parse_candidates(raw: str) -> tuple[list[Candidate], ScoutOutcome]:
             results.append(
                 Candidate(
                     name=str(item.get("name", "")),
-                    linked_vision_features=list(item.get("linked_vision_features") or []),
+                    linked_vision_features=list(
+                        item.get("linked_vision_features") or []
+                    ),
                     scope=str(item.get("scope", "feature")),
                     rough_description=str(item.get("rough_description", "")),
-                    linked_existing_workflow=str(item.get("linked_existing_workflow") or ""),
+                    linked_existing_workflow=str(
+                        item.get("linked_existing_workflow") or ""
+                    ),
                 )
             )
         # Scout surfaces nodes only; the Linker wires edges over the closed set
@@ -510,12 +514,8 @@ class ScoutAgent:
             if input.code_review
             else ""
         )
-        revision_block = (
-            _format_scout_revision_block(revision) if revision else ""
-        )
-        guidance_block = (
-            _format_scout_guidance_block(guidance) if guidance else ""
-        )
+        revision_block = _format_scout_revision_block(revision) if revision else ""
+        guidance_block = _format_scout_guidance_block(guidance) if guidance else ""
 
         user_content = (
             f"Here is the project vision statement:\n\n```json\n{vision_text}\n```"

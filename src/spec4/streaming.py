@@ -64,20 +64,20 @@ def _walk_str(payload: Any, *paths: tuple[str, ...]) -> str | None:
 def _extract_message(payload: Any) -> str | None:
     return _walk_str(
         payload,
-        ("error", "message"),         # OpenAI, Google, Mistral
+        ("error", "message"),  # OpenAI, Google, Mistral
         ("error", "error", "message"),  # Some doubly-wrapped responses
-        ("message",),                 # Cohere, plain envelopes
-        ("detail",),                  # FastAPI-style
-        ("error",),                   # Some providers stuff a plain str under "error"
+        ("message",),  # Cohere, plain envelopes
+        ("detail",),  # FastAPI-style
+        ("error",),  # Some providers stuff a plain str under "error"
     )
 
 
 def _extract_status(payload: Any) -> str | None:
     return _walk_str(
         payload,
-        ("error", "status"),          # Google: RESOURCE_EXHAUSTED, INVALID_ARGUMENT
-        ("error", "type"),            # OpenAI: invalid_request_error
-        ("error", "error", "type"),   # Anthropic: rate_limit_error
+        ("error", "status"),  # Google: RESOURCE_EXHAUSTED, INVALID_ARGUMENT
+        ("error", "type"),  # OpenAI: invalid_request_error
+        ("error", "error", "type"),  # Anthropic: rate_limit_error
         ("type",),
     )
 

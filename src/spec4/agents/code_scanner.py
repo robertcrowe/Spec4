@@ -95,9 +95,7 @@ _DEPLOY_SIGNAL_FILES = {
 }
 
 _README_NAMES = {"README.md", "README.rst", "README.txt", "README"}
-_CI_DIR_PARTS = (
-    (".github", "workflows"),
-)
+_CI_DIR_PARTS = ((".github", "workflows"),)
 _CI_FILE_BASENAMES = {
     ".gitlab-ci.yml",
     ".circleci",
@@ -271,9 +269,7 @@ def _format_readme_block(
     ]
 
 
-def _format_ci_block(
-    root: pathlib.Path, all_files: list[pathlib.Path]
-) -> list[str]:
+def _format_ci_block(root: pathlib.Path, all_files: list[pathlib.Path]) -> list[str]:
     ci_files: list[pathlib.Path] = []
     for f in all_files:
         rel_parts = f.relative_to(root).parts
@@ -302,7 +298,10 @@ def _format_deployment_signals(
         rel_parts = f.relative_to(root).parts
         if f.name in _DEPLOY_SIGNAL_FILES:
             deploy_files.append(f)
-        if any(p in _TERRAFORM_DIRS for p in rel_parts) and f.suffix in {".tf", ".tfvars"}:
+        if any(p in _TERRAFORM_DIRS for p in rel_parts) and f.suffix in {
+            ".tf",
+            ".tfvars",
+        }:
             has_terraform = True
     if not deploy_files and not has_terraform:
         return []
@@ -314,7 +313,9 @@ def _format_deployment_signals(
             continue
         out.append(f"#### `{f.relative_to(root)}`\n```\n{content}\n```\n")
     if has_terraform:
-        out.append("- Terraform configuration detected under infrastructure directory\n")
+        out.append(
+            "- Terraform configuration detected under infrastructure directory\n"
+        )
     return out
 
 
@@ -1053,8 +1054,7 @@ def _normalize_style_for_renderer(style: dict[str, Any]) -> dict[str, Any]:
     for key, val in style.items():
         if key == "naming_conventions" and isinstance(val, dict):
             flat[key] = {
-                k: v.get("value") if isinstance(v, dict) else v
-                for k, v in val.items()
+                k: v.get("value") if isinstance(v, dict) else v for k, v in val.items()
             }
         elif isinstance(val, dict) and "value" in val:
             flat[key] = _style_value(val)
@@ -1077,9 +1077,7 @@ def _format_empty_review(cr: dict[str, Any]) -> str:
             lines.append(f"- {note}")
         lines.append("")
     else:
-        lines.append(
-            "This directory does not appear to contain a software project.\n"
-        )
+        lines.append("This directory does not appear to contain a software project.\n")
     lines.append(
         "---\n\n"
         "You can still continue to the **Brainstormer** to define a vision for a new "
@@ -1147,9 +1145,7 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
 
     runtime = cr.get("runtime_versions")
     if isinstance(runtime, dict) and runtime:
-        items = [
-            f"{k}: {v}" for k, v in runtime.items() if not k.startswith("_") and v
-        ]
+        items = [f"{k}: {v}" for k, v in runtime.items() if not k.startswith("_") and v]
         if items:
             lines.append(f"**Runtime versions:** {', '.join(items)}\n")
 
@@ -1174,7 +1170,9 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
                 name = d.get("name", "")
                 purpose = d.get("purpose", "")
                 source = d.get("source", "")
-                suffix_bits = [p for p in (purpose, f"source: {source}" if source else "") if p]
+                suffix_bits = [
+                    p for p in (purpose, f"source: {source}" if source else "") if p
+                ]
                 suffix = f" — {' · '.join(suffix_bits)}" if suffix_bits else ""
                 lines.append(f"- {name}{suffix}" if name else f"- {d}")
             else:
@@ -1226,9 +1224,13 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
             framework = ui.get("framework", "")
             styling = ui.get("styling", "")
             bits = [b for b in (kind, framework, styling) if b]
-            lines.append(f"**UI:** {' · '.join(bits)}\n" if bits else "**UI:** present\n")
+            lines.append(
+                f"**UI:** {' · '.join(bits)}\n" if bits else "**UI:** present\n"
+            )
 
-    _render_coding_style(_normalize_style_for_renderer(cr.get("coding_style", {})), lines)
+    _render_coding_style(
+        _normalize_style_for_renderer(cr.get("coding_style", {})), lines
+    )
 
     notes = cr.get("notes")
     if isinstance(notes, dict):
@@ -1293,7 +1295,13 @@ def _render_env_vars(env_vars: Any, lines: list[str]) -> None:
             continue
         purpose = entry.get("purpose", "")
         required = entry.get("required")
-        flag = " (required)" if required is True else " (optional)" if required is False else ""
+        flag = (
+            " (required)"
+            if required is True
+            else " (optional)"
+            if required is False
+            else ""
+        )
         suffix = f" — {purpose}" if purpose else ""
         lines.append(f"- `{name}`{flag}{suffix}")
     lines.append("")
@@ -1309,11 +1317,15 @@ def _render_deployment(deployment: Any, lines: list[str]) -> None:
         dfp = container.get("dockerfile_path")
         compose = container.get("compose_path")
         base = container.get("base_image")
-        sub_bits = [b for b in (
-            f"`{dfp}`" if dfp else "",
-            f"compose: `{compose}`" if compose else "",
-            f"base: `{base}`" if base else "",
-        ) if b]
+        sub_bits = [
+            b
+            for b in (
+                f"`{dfp}`" if dfp else "",
+                f"compose: `{compose}`" if compose else "",
+                f"base: `{base}`" if base else "",
+            )
+            if b
+        ]
         head = tool or "container"
         bits.append(f"{head} ({', '.join(sub_bits)})" if sub_bits else head)
     orch = deployment.get("orchestration")
@@ -1357,10 +1369,14 @@ def _render_api_surface(api_surface: Any, lines: list[str]) -> None:
         handler = entry.get("handler", "")
         summary = entry.get("summary", "")
         head = f"[{protocol}] `{path_or_method}`" if path_or_method else f"[{protocol}]"
-        tail_bits = [b for b in (
-            f"→ `{handler}`" if handler else "",
-            summary,
-        ) if b]
+        tail_bits = [
+            b
+            for b in (
+                f"→ `{handler}`" if handler else "",
+                summary,
+            )
+            if b
+        ]
         tail = f" — {' · '.join(tail_bits)}" if tail_bits else ""
         lines.append(f"- {head}{tail}")
     lines.append("")
@@ -1389,10 +1405,14 @@ def _render_ai_capabilities(ai_caps: Any, lines: list[str]) -> None:
         kind = entry.get("kind", "")
         location = entry.get("location", "")
         head = f"{name} [{kind}]" if name and kind else name or str(entry)
-        tail_bits = [b for b in (
-            entry.get("description", ""),
-            f"`{location}`" if location else "",
-        ) if b]
+        tail_bits = [
+            b
+            for b in (
+                entry.get("description", ""),
+                f"`{location}`" if location else "",
+            )
+            if b
+        ]
         tail = f" — {' · '.join(tail_bits)}" if tail_bits else ""
         lines.append(f"- {head}{tail}")
     lines.append("")
@@ -1509,7 +1529,7 @@ def _build_update_scan_seed(
         "- Present the changes as a readable summary grouped under the same "
         "section names used in the prior review. Mark each item explicitly as "
         "Added / Removed / Changed.\n"
-        "- After presenting the changes, ask: \"Anything to correct? Reply "
+        '- After presenting the changes, ask: "Anything to correct? Reply '
         "'looks good' to merge and finalize.\"\n"
         "- When the user confirms, emit a complete updated `code_review` JSON block "
         "(schema_version 1) reflecting the merged state. The block must be "
@@ -1571,7 +1591,10 @@ def run(
             ):
                 display = _format_review_as_text(existing_review)
                 msgs.append(
-                    {"role": "user", "content": "[Spec4: displaying existing code review]"}
+                    {
+                        "role": "user",
+                        "content": "[Spec4: displaying existing code review]",
+                    }
                 )
                 msgs.append({"role": "assistant", "content": display})
                 session["code_scanner_artifact_msg_count"] = len(msgs)
@@ -1635,16 +1658,17 @@ def run(
 
     yield from _stream_suppressing_json(
         llm.stream_turn(
-            system, msgs, llm_config, search_cfg,
+            system,
+            msgs,
+            llm_config,
+            search_cfg,
             agent_name="code_scanner",
             session=session,
         ),
         session,
         seed=pre_stream_chars,
         reply_status="CodeScanner is replying…",
-        artifact_status=(
-            "Drafting the code review — this can take a few minutes…"
-        ),
+        artifact_status=("Drafting the code review — this can take a few minutes…"),
     )
 
     raw_reply = _last_assistant_text(msgs)
@@ -1684,8 +1708,7 @@ def run(
             agent_name="code_scanner",
             correction=retry_user_msg,
             status_line=(
-                "\n\n_The structured review needs a correction pass — "
-                "re-emitting…_\n"
+                "\n\n_The structured review needs a correction pass — re-emitting…_\n"
             ),
             response_format=response_format,
             session=session,

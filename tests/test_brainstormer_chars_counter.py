@@ -84,18 +84,14 @@ class TestCounterReachesTheLayout:
 
     def test_mid_conversation_turn_shows_the_counter(self) -> None:
         session = _session(_stream_id="abc", _stream_received_chars=5150)
-        assert _counter_texts(_chat_action_buttons(session)) == [
-            "Chars received: 5150"
-        ]
+        assert _counter_texts(_chat_action_buttons(session)) == ["Chars received: 5150"]
 
     def test_complete_state_shows_the_counter(self) -> None:
         session = _session(
             brainstormer_state=STATE_VISION_COMPLETE,
             _stream_received_chars=1234,
         )
-        assert _counter_texts(_chat_action_buttons(session)) == [
-            "Chars received: 1234"
-        ]
+        assert _counter_texts(_chat_action_buttons(session)) == ["Chars received: 1234"]
 
     def test_bare_before_the_first_chunk(self) -> None:
         # No stream and no count: the bar would be an empty row under a divider.
@@ -139,18 +135,12 @@ class TestSuppressedVisionTurnPublishesReceipt:
     """The finalize turn yields nothing, so the displayed-character fallback
     reads 0 for its whole duration — the case the published total exists for."""
 
-    _VISION = (
-        '```json\n{"vision_statement": {"vision": {"purpose": "x"}}}\n```'
-    )
+    _VISION = '```json\n{"vision_statement": {"vision": {"purpose": "x"}}}\n```'
 
     def _run(self, session: dict[str, Any], *chunks: str) -> list[str]:
         with (
-            patch.object(
-                brainstormer.llm, "build_system_prompt", return_value=""
-            ),
-            patch.object(
-                brainstormer.llm, "stream_turn", _fake_stream(*chunks)
-            ),
+            patch.object(brainstormer.llm, "build_system_prompt", return_value=""),
+            patch.object(brainstormer.llm, "stream_turn", _fake_stream(*chunks)),
         ):
             return list(brainstormer.run("go", session, {"model": "x"}))
 
@@ -190,9 +180,7 @@ class TestReaskKeepsCounterMonotonic:
             return _fake_stream(next(replies))(*args, **kwargs)
 
         with (
-            patch.object(
-                brainstormer.llm, "build_system_prompt", return_value=""
-            ),
+            patch.object(brainstormer.llm, "build_system_prompt", return_value=""),
             patch.object(brainstormer.llm, "stream_turn", _stream),
         ):
             out = list(brainstormer.run("go", session, {"model": "x"}))

@@ -4,6 +4,7 @@ Revision mode scopes a new round to the vision delta: already-built AI features
 are carried forward silently, Scout is informed of the delta, and every feature
 in the snapshot is stamped with a deterministic ``introduced_in_version``.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -185,9 +186,12 @@ def _revision_session(new_feats: list[dict[str, Any]]) -> dict[str, Any]:
         "agentifier_cross_cutting_decisions": {"provider_strategy": "new_decision"},
         "agentifier_revision": True,
         "agentifier_carried_forward": [
-            {"name": "expiry_prediction", "phase_priority": "mvp",
-             "introduced_in_version": 0,
-             "linked_vision_features": ["Legacy_Coupons"]},
+            {
+                "name": "expiry_prediction",
+                "phase_priority": "mvp",
+                "introduced_in_version": 0,
+                "linked_vision_features": ["Legacy_Coupons"],
+            },
         ],
         "agentifier_revision_version": 1,
         "agentifier_revision_prior_version": 0,
@@ -284,16 +288,23 @@ class TestFreshStartRevisionDetection:
 
     def test_detects_revision_and_informs_scout(self) -> None:
         session = self._session(_REVISION_VISION)
-        with patch.object(
-            agentifier, "_call_scout", side_effect=RuntimeError("stop")
-        ) as mock_scout, patch.object(
-            agentifier.project_manager,
-            "load_prior_ai_features",
-            return_value=_PRIOR_AI,
-        ), patch.object(
-            agentifier.project_manager, "resolve_phase_version", return_value=(1, False)
-        ), patch.object(
-            agentifier.project_manager, "latest_implemented_version", return_value=0
+        with (
+            patch.object(
+                agentifier, "_call_scout", side_effect=RuntimeError("stop")
+            ) as mock_scout,
+            patch.object(
+                agentifier.project_manager,
+                "load_prior_ai_features",
+                return_value=_PRIOR_AI,
+            ),
+            patch.object(
+                agentifier.project_manager,
+                "resolve_phase_version",
+                return_value=(1, False),
+            ),
+            patch.object(
+                agentifier.project_manager, "latest_implemented_version", return_value=0
+            ),
         ):
             _collect(agentifier._run_catalog_phase(None, session, {"model": "x"}))
 
@@ -313,10 +324,13 @@ class TestFreshStartRevisionDetection:
 
     def test_greenfield_no_revision_scout_none(self) -> None:
         session = self._session({"vision_statement": {"name": "Fresh"}})
-        with patch.object(
-            agentifier, "_call_scout", side_effect=RuntimeError("stop")
-        ) as mock_scout, patch.object(
-            agentifier.project_manager, "load_prior_ai_features", return_value=None
+        with (
+            patch.object(
+                agentifier, "_call_scout", side_effect=RuntimeError("stop")
+            ) as mock_scout,
+            patch.object(
+                agentifier.project_manager, "load_prior_ai_features", return_value=None
+            ),
         ):
             _collect(agentifier._run_catalog_phase(None, session, {"model": "x"}))
         assert "agentifier_revision" not in session
@@ -330,14 +344,21 @@ class TestFreshStartRevisionDetection:
         # revision flow runs with an empty carried-forward set and Scout is
         # informed of the delta.
         session = self._session(_REVISION_VISION)
-        with patch.object(
-            agentifier, "_call_scout", side_effect=RuntimeError("stop")
-        ) as mock_scout, patch.object(
-            agentifier.project_manager, "load_prior_ai_features", return_value=None
-        ), patch.object(
-            agentifier.project_manager, "resolve_phase_version", return_value=(1, False)
-        ), patch.object(
-            agentifier.project_manager, "latest_implemented_version", return_value=0
+        with (
+            patch.object(
+                agentifier, "_call_scout", side_effect=RuntimeError("stop")
+            ) as mock_scout,
+            patch.object(
+                agentifier.project_manager, "load_prior_ai_features", return_value=None
+            ),
+            patch.object(
+                agentifier.project_manager,
+                "resolve_phase_version",
+                return_value=(1, False),
+            ),
+            patch.object(
+                agentifier.project_manager, "latest_implemented_version", return_value=0
+            ),
         ):
             _collect(agentifier._run_catalog_phase(None, session, {"model": "x"}))
         assert session["agentifier_revision"] is True
@@ -373,14 +394,23 @@ class TestRevisionScoutZeroNew:
         from spec4.agentifier.scout import ScoutOutput
 
         session = self._session(_REVISION_VISION)
-        with patch.object(
-            agentifier, "_call_scout", return_value=ScoutOutput(candidates=[])
-        ), patch.object(
-            agentifier.project_manager, "load_prior_ai_features", return_value=_PRIOR_AI
-        ), patch.object(
-            agentifier.project_manager, "resolve_phase_version", return_value=(1, False)
-        ), patch.object(
-            agentifier.project_manager, "latest_implemented_version", return_value=0
+        with (
+            patch.object(
+                agentifier, "_call_scout", return_value=ScoutOutput(candidates=[])
+            ),
+            patch.object(
+                agentifier.project_manager,
+                "load_prior_ai_features",
+                return_value=_PRIOR_AI,
+            ),
+            patch.object(
+                agentifier.project_manager,
+                "resolve_phase_version",
+                return_value=(1, False),
+            ),
+            patch.object(
+                agentifier.project_manager, "latest_implemented_version", return_value=0
+            ),
         ):
             out = _collect(agentifier._run_catalog_phase(None, session, {"model": "x"}))
 
@@ -399,10 +429,13 @@ class TestRevisionScoutZeroNew:
         from spec4.agentifier.scout import ScoutOutput
 
         session = self._session({"vision_statement": {"name": "Fresh"}})
-        with patch.object(
-            agentifier, "_call_scout", return_value=ScoutOutput(candidates=[])
-        ), patch.object(
-            agentifier.project_manager, "load_prior_ai_features", return_value=None
+        with (
+            patch.object(
+                agentifier, "_call_scout", return_value=ScoutOutput(candidates=[])
+            ),
+            patch.object(
+                agentifier.project_manager, "load_prior_ai_features", return_value=None
+            ),
         ):
             out = _collect(agentifier._run_catalog_phase(None, session, {"model": "x"}))
         assert "did not find any AI-integration opportunities" in out

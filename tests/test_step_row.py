@@ -97,9 +97,7 @@ class TestTheRow:
 class TestActiveMarking:
     def test_exactly_one_entry_carries_the_active_modifier(self) -> None:
         active = step_modifier_class(BASE, STEP_ACTIVE)
-        marked = [
-            node.children for node in _items() if active in _classes(node)
-        ]
+        marked = [node.children for node in _items() if active in _classes(node)]
         assert marked == ["Gamma"]
 
     def test_the_active_entry_is_not_a_control(self) -> None:

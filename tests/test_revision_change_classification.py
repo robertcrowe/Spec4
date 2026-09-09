@@ -31,8 +31,13 @@ def _emitted(names: list[str], changes: dict[str, list[str]]) -> dict:
     return e
 
 
-def _changes_after(emitted: dict, prior: dict, current: dict | None = None,
-                   version: int = 1, based_on: int = 0) -> dict:
+def _changes_after(
+    emitted: dict,
+    prior: dict,
+    current: dict | None = None,
+    version: int = 1,
+    based_on: int = 0,
+) -> dict:
     out = _apply_revision_history(emitted, prior, current, version, based_on)
     return out["vision_statement"]["revision_history"][-1]["changes"]
 
@@ -123,8 +128,7 @@ def test_reentry_path_is_also_reconciled() -> None:
                     "version": 1,
                     "based_on_version": 0,
                     "goal": "g",
-                    "changes": {"added": [], "modified": ["Trash_Talk"],
-                                "removed": []},
+                    "changes": {"added": [], "modified": ["Trash_Talk"], "removed": []},
                 }
             ]
         }

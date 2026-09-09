@@ -36,7 +36,9 @@ _SAMPLE_FEATURES = [
         "name": "review_summariser",
         "tier": "rag",
         "purpose": "Summarise customer reviews from vector store",
-        "mechanisms": [{"name": "retrieval_reranking", "rationale": "Improve relevance"}],
+        "mechanisms": [
+            {"name": "retrieval_reranking", "rationale": "Improve relevance"}
+        ],
         "tool_access": None,
     },
     {
@@ -58,7 +60,14 @@ _SAMPLE_FEATURES = [
     },
 ]
 
-_FULL_ANALYSIS = {t: {"recommendation": f"rec for {t}", "rationale": "rationale", "cited_patterns": []} for t in CROSS_CUTTING_TOPICS}
+_FULL_ANALYSIS = {
+    t: {
+        "recommendation": f"rec for {t}",
+        "rationale": "rationale",
+        "cited_patterns": [],
+    }
+    for t in CROSS_CUTTING_TOPICS
+}
 _FULL_ANALYSIS["tool_protocol_strategy"]["cited_patterns"] = ["mcp"]
 
 _SINGLE_TOPIC_REVISION = {
@@ -381,7 +390,9 @@ class TestSingleTopicRevision:
 
             return _gen()
 
-        inp = _make_input(topic="provider_strategy", revision="Anchor to a frontier-tier model")
+        inp = _make_input(
+            topic="provider_strategy", revision="Anchor to a frontier-tier model"
+        )
         with patch("spec4.agentifier.cross_cutting_analyst.acomplete", new=_cap):
             asyncio.run(_drain(inp))
 
@@ -431,7 +442,9 @@ class TestSingleTopicRevision:
             llm_config=_LLM_CONFIG,
             topic="provider_strategy",
             revision_instruction="Bump the tier",
-            prior_decisions={"provider_strategy": {"recommendation": "Use a small model"}},
+            prior_decisions={
+                "provider_strategy": {"recommendation": "Use a small model"}
+            },
         )
         with patch("spec4.agentifier.cross_cutting_analyst.acomplete", new=_cap):
             asyncio.run(_drain(inp))
@@ -462,7 +475,10 @@ class TestExtractCrossCuttingAnalysis:
         result = _extract_cross_cutting_analysis(text)
         assert result is not None
         assert "provider_strategy" in result
-        assert result["provider_strategy"]["recommendation"] == "Revised provider strategy recommendation"
+        assert (
+            result["provider_strategy"]["recommendation"]
+            == "Revised provider strategy recommendation"
+        )
 
     def test_returns_none_for_empty_text(self) -> None:
         from spec4.agentifier.agentifier import _extract_cross_cutting_analysis

@@ -100,14 +100,10 @@ def test_exemplar_shows_more_than_one_store() -> None:
 
 def test_exemplar_shows_a_store_with_two_collections_serving_two_features() -> None:
     """The shape a flat store-keyed block could not express."""
-    multi = [
-        s for s in _persistence().values() if len(s.get("collections") or []) >= 2
-    ]
+    multi = [s for s in _persistence().values() if len(s.get("collections") or []) >= 2]
     assert multi, "no multi-collection store in the exemplar"
     served = {
-        f
-        for col in multi[0]["collections"]
-        for f in (col.get("serves_features") or [])
+        f for col in multi[0]["collections"] for f in (col.get("serves_features") or [])
     }
     assert len(served) >= 2
 
@@ -287,9 +283,13 @@ def test_persistence_emitted_as_a_list_is_normalised(  # D-SC18b applies here to
 
 
 def test_extraction_normalises_persistence_end_to_end() -> None:
-    payload = "```json\n" + json.dumps(
-        {"stack_spec": {"persistence": [{"name": "s", "choice": "PostgreSQL"}]}}
-    ) + "\n```"
+    payload = (
+        "```json\n"
+        + json.dumps(
+            {"stack_spec": {"persistence": [{"name": "s", "choice": "PostgreSQL"}]}}
+        )
+        + "\n```"
+    )
     spec = _extract_stack_json(payload)
     assert spec is not None
     assert isinstance(spec["stack_spec"]["persistence"], dict)

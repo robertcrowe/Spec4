@@ -52,10 +52,14 @@ def lookup_reference_url(reference_text: str, search_config: Any) -> str | None:
     except Exception:
         return None
 
-    if not result or result.startswith("Search failed:") or result.startswith("No search"):
+    if (
+        not result
+        or result.startswith("Search failed:")
+        or result.startswith("No search")
+    ):
         return None
 
-    urls = _URL_PATTERN.findall(result)
+    urls: list[str] = _URL_PATTERN.findall(result)
     # Prefer docs/reference URLs over generic landing pages
     for url in urls:
         lower = url.lower()

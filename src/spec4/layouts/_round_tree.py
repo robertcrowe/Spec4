@@ -303,9 +303,7 @@ def round_tree_lines(
     project.
     """
     if not working_dir or round_number is None:
-        return [
-            TreeLine(a.path, a.lane, STATUS_MISSING) for a in ROUND_ARTIFACTS
-        ]
+        return [TreeLine(a.path, a.lane, STATUS_MISSING) for a in ROUND_ARTIFACTS]
 
     base = project_manager.get_version_dir(working_dir, round_number)
     stale = _stale_agents(working_dir, round_number)

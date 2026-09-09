@@ -40,17 +40,19 @@ def test_absent_manifest_or_no_surfaces_returns_empty() -> None:
 
 
 def test_screens_render_audience_purpose_and_membership() -> None:
-    out = _manifest_for_phaser({
-        "screens": [
-            {
-                "id": "commuter_main",
-                "audience": "Daily commuters",
-                "purpose": "Primary fare lookup",
-                "surfaces": ["fare_lookup_form", "fare_result"],
-            }
-        ],
-        "surfaces": [_surface("fare_lookup_form")],
-    })
+    out = _manifest_for_phaser(
+        {
+            "screens": [
+                {
+                    "id": "commuter_main",
+                    "audience": "Daily commuters",
+                    "purpose": "Primary fare lookup",
+                    "surfaces": ["fare_lookup_form", "fare_result"],
+                }
+            ],
+            "surfaces": [_surface("fare_lookup_form")],
+        }
+    )
     assert "- `commuter_main` (Daily commuters): Primary fare lookup" in out
     assert "surfaces: fare_lookup_form, fare_result" in out
 
@@ -59,19 +61,21 @@ def test_screens_render_audience_purpose_and_membership() -> None:
 
 
 def test_feature_surface_line_carries_both_join_keys() -> None:
-    out = _manifest_for_phaser({
-        "surfaces": [
-            _surface(
-                "summary_view",
-                kind="ai",
-                implements_feature_ids=["thread_summarization"],
-                catalog_surface_id="thread_summarization",
-                reads=["EmailThread"],
-                writes=["Summary"],
-                depends_on=["input_paste"],
-            )
-        ]
-    })
+    out = _manifest_for_phaser(
+        {
+            "surfaces": [
+                _surface(
+                    "summary_view",
+                    kind="ai",
+                    implements_feature_ids=["thread_summarization"],
+                    catalog_surface_id="thread_summarization",
+                    reads=["EmailThread"],
+                    writes=["Summary"],
+                    depends_on=["input_paste"],
+                )
+            ]
+        }
+    )
     line = next(
         text for text in out.splitlines() if text.startswith("- `summary_view`")
     )
@@ -83,27 +87,29 @@ def test_feature_surface_line_carries_both_join_keys() -> None:
 
 
 def test_screen_list_and_string_both_render() -> None:
-    out = _manifest_for_phaser({
-        "surfaces": [
-            _surface("form", screen=["commuter_main", "visitor_main"]),
-            _surface("paste", screen="main_thread_processor"),
-        ]
-    })
+    out = _manifest_for_phaser(
+        {
+            "surfaces": [
+                _surface("form", screen=["commuter_main", "visitor_main"]),
+                _surface("paste", screen="main_thread_processor"),
+            ]
+        }
+    )
     assert "screens: commuter_main, visitor_main" in out
     assert "screens: main_thread_processor" in out
 
 
 def test_empty_implements_annotated_as_scaffolding() -> None:
-    out = _manifest_for_phaser({
-        "surfaces": [_surface("config_panel", implements_feature_ids=[])]
-    })
+    out = _manifest_for_phaser(
+        {"surfaces": [_surface("config_panel", implements_feature_ids=[])]}
+    )
     assert "implements: (none — scaffolding, not a feature surface)" in out
 
 
 def test_null_screen_annotated_as_internal() -> None:
-    out = _manifest_for_phaser({
-        "surfaces": [_surface("constraint_validation", screen=None)]
-    })
+    out = _manifest_for_phaser(
+        {"surfaces": [_surface("constraint_validation", screen=None)]}
+    )
     assert "screens: (none — internal, non-UI work for its feature)" in out
 
 
@@ -119,9 +125,11 @@ def test_dedup_and_placement_guidance_stated() -> None:
 
 
 def test_entities_render_with_fields() -> None:
-    out = _manifest_for_phaser({
-        "surfaces": [_surface("s")],
-        "entities": [{"name": "Zone", "fields": ["id", "name"]}],
-    })
+    out = _manifest_for_phaser(
+        {
+            "surfaces": [_surface("s")],
+            "entities": [{"name": "Zone", "fields": ["id", "name"]}],
+        }
+    )
     assert "Design entities" in out
     assert "- Zone: id, name" in out

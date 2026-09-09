@@ -127,9 +127,10 @@ class TestBuildLlmConfig:
 
 class TestProbeCapabilities:
     def test_bedrock_is_assumed_capable_without_probing(self) -> None:
-        with patch("spec4.llm_selection.probe_image_support") as image, patch(
-            "spec4.llm_selection.probe_tool_support"
-        ) as tool:
+        with (
+            patch("spec4.llm_selection.probe_image_support") as image,
+            patch("spec4.llm_selection.probe_tool_support") as tool,
+        ):
             assert llm_selection.probe_capabilities("bedrock", {"model": "m"}) == (
                 True,
                 True,
@@ -138,9 +139,10 @@ class TestProbeCapabilities:
         tool.assert_not_called()
 
     def test_results_are_passed_through(self) -> None:
-        with patch(
-            "spec4.llm_selection.probe_image_support", return_value=False
-        ), patch("spec4.llm_selection.probe_tool_support", return_value=True):
+        with (
+            patch("spec4.llm_selection.probe_image_support", return_value=False),
+            patch("spec4.llm_selection.probe_tool_support", return_value=True),
+        ):
             assert llm_selection.probe_capabilities("openai", _OVERRIDE_CONFIG) == (
                 False,
                 True,
@@ -148,10 +150,15 @@ class TestProbeCapabilities:
 
     def test_a_raising_probe_yields_unknown_not_an_error(self) -> None:
         """Advisory, never blocking: a broken probe must not fail the flow."""
-        with patch(
-            "spec4.llm_selection.probe_image_support", side_effect=RuntimeError("boom")
-        ), patch(
-            "spec4.llm_selection.probe_tool_support", side_effect=RuntimeError("boom")
+        with (
+            patch(
+                "spec4.llm_selection.probe_image_support",
+                side_effect=RuntimeError("boom"),
+            ),
+            patch(
+                "spec4.llm_selection.probe_tool_support",
+                side_effect=RuntimeError("boom"),
+            ),
         ):
             assert llm_selection.probe_capabilities("openai", _OVERRIDE_CONFIG) == (
                 None,
@@ -161,9 +168,12 @@ class TestProbeCapabilities:
     def test_aws_credentials_reach_the_probe(self) -> None:
         cfg = llm_selection.build_llm_config("openai", "gpt-5", "k")
         cfg["aws_region_name"] = "us-east-1"
-        with patch(
-            "spec4.llm_selection.probe_image_support", return_value=True
-        ) as image, patch("spec4.llm_selection.probe_tool_support", return_value=True):
+        with (
+            patch(
+                "spec4.llm_selection.probe_image_support", return_value=True
+            ) as image,
+            patch("spec4.llm_selection.probe_tool_support", return_value=True),
+        ):
             llm_selection.probe_capabilities("openai", cfg)
         assert image.call_args[1]["aws_region_name"] == "us-east-1"
 
@@ -320,9 +330,7 @@ class TestOfferedEfforts:
         ]
 
     def test_a_missing_provider_offers_the_base_four(self) -> None:
-        with patch(
-            "spec4.llm_selection.supports_reasoning_effort", return_value=True
-        ):
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=True):
             assert llm_selection.offered_efforts(None, "m") == [
                 "default",
                 "low",
@@ -332,9 +340,7 @@ class TestOfferedEfforts:
 
     def test_the_probe_is_never_asked_which_levels_are_accepted(self) -> None:
         """A probe that reports levels must not widen what is offered."""
-        with patch(
-            "spec4.llm_selection.supports_reasoning_effort", return_value=True
-        ):
+        with patch("spec4.llm_selection.supports_reasoning_effort", return_value=True):
             offered = llm_selection.offered_efforts("gemini", "m")
         assert offered == ["default", "low", "medium", "high"]
 
@@ -439,18 +445,20 @@ class TestOverridesSurviveTheDefaultChanging:
         session["agent_llm_asked"] = {"code_scanner": True, "phaser": True}
         before = {k: dict(v) for k, v in session["agent_llm"].items()}
 
-        with patch.object(
-            providers, "list_models", return_value=(["gpt-5"], "")
-        ), patch(
-            "spec4.callbacks.providers.list_models", return_value=(["gpt-5"], "")
+        with (
+            patch.object(providers, "list_models", return_value=(["gpt-5"], "")),
+            patch(
+                "spec4.callbacks.providers.list_models", return_value=(["gpt-5"], "")
+            ),
         ):
             connected, _ = on_setup_connect(
                 1, "OpenAI", "sk-new-default", False, session, {}
             )
 
-        with patch(
-            "spec4.llm_selection.probe_image_support", return_value=True
-        ), patch("spec4.llm_selection.probe_tool_support", return_value=True):
+        with (
+            patch("spec4.llm_selection.probe_image_support", return_value=True),
+            patch("spec4.llm_selection.probe_tool_support", return_value=True),
+        ):
             updated, _, _, _, _ = on_setup_model_continue(
                 1, "gpt-5", "default", connected, {}
             )
@@ -471,9 +479,7 @@ class TestOverridesSurviveTheDefaultChanging:
 
 
 class TestDefaultSessionKeys:
-    @pytest.mark.parametrize(
-        "key", ["agent_llm", "agent_llm_asked", "agent_llm_error"]
-    )
+    @pytest.mark.parametrize("key", ["agent_llm", "agent_llm_asked", "agent_llm_error"])
     def test_key_is_present(self, key: str) -> None:
         assert key in _default_session()
 
@@ -616,9 +622,10 @@ class TestGateAnswers:
         session = _with_override("code_scanner")
         session["active_agent"] = "code_scanner"
         before = dict(session["agent_llm"]["code_scanner"])
-        with patch("spec4.llm_selection.probe_image_support") as image, patch(
-            "spec4.llm_selection.probe_tool_support"
-        ) as tool:
+        with (
+            patch("spec4.llm_selection.probe_image_support") as image,
+            patch("spec4.llm_selection.probe_tool_support") as tool,
+        ):
             updated = on_gate_keep(1, session)
         image.assert_not_called()
         tool.assert_not_called()
@@ -648,9 +655,10 @@ class TestGateAnswers:
             "api_key": "sk-override",
             "available_models": ["gpt-5-mini"],
         }
-        with patch(
-            "spec4.llm_selection.probe_image_support", return_value=True
-        ), patch("spec4.llm_selection.probe_tool_support", return_value=False):
+        with (
+            patch("spec4.llm_selection.probe_image_support", return_value=True),
+            patch("spec4.llm_selection.probe_tool_support", return_value=False),
+        ):
             updated, _ = on_gate_continue(1, "gpt-5-mini", None, session)
         entry = updated["agent_llm"]["code_scanner"]
         assert entry["llm_config"] == {
@@ -733,9 +741,10 @@ class TestGateFailureParity:
             "api_key": "sk-x",
             "available_models": ["gpt-5-mini"],
         }
-        with patch(
-            "spec4.llm_selection.probe_image_support", side_effect=RuntimeError
-        ), patch("spec4.llm_selection.probe_tool_support", side_effect=RuntimeError):
+        with (
+            patch("spec4.llm_selection.probe_image_support", side_effect=RuntimeError),
+            patch("spec4.llm_selection.probe_tool_support", side_effect=RuntimeError),
+        ):
             updated, _ = on_gate_continue(1, "gpt-5-mini", None, session)
         entry = updated["agent_llm"]["code_scanner"]
         assert entry["image_support"] is None
@@ -770,9 +779,10 @@ class TestGateBlocksTheTurn:
     def test_the_turn_starts_once_answered(self) -> None:
         session = _session(active_agent="phaser")
         answered = on_gate_use_default(1, session)
-        with patch(
-            "spec4.callbacks._get_agent_gen", return_value=iter(["x"])
-        ) as gen, patch("spec4.callbacks.streaming.start", return_value="sid"):
+        with (
+            patch("spec4.callbacks._get_agent_gen", return_value=iter(["x"])) as gen,
+            patch("spec4.callbacks.streaming.start", return_value="sid"),
+        ):
             updated, _ = on_init_turn(1, answered)
         gen.assert_called_once()
         assert updated["_stream_id"] == "sid"
@@ -841,9 +851,7 @@ def _child_ids(node: Any) -> list[str]:
 
 def _row_index(layout: Any, comp_id: str) -> int:
     """Where in the chat layout's top level the row holding ``comp_id`` sits."""
-    return next(
-        i for i, c in enumerate(layout.children) if comp_id in _child_ids(c)
-    )
+    return next(i for i, c in enumerate(layout.children) if comp_id in _child_ids(c))
 
 
 class TestModelChipPlacement:
@@ -852,9 +860,7 @@ class TestModelChipPlacement:
     among the Fast Forward / download buttons and the readouts."""
 
     def _answered(self) -> dict[str, Any]:
-        return on_gate_use_default(
-            1, _session(active_agent="phaser", phase="chat")
-        )
+        return on_gate_use_default(1, _session(active_agent="phaser", phase="chat"))
 
     def test_it_left_the_action_row(self) -> None:
         session = self._answered()
@@ -868,9 +874,7 @@ class TestModelChipPlacement:
 
     def test_the_footer_sits_below_the_input(self) -> None:
         layout = _chat_layout(self._answered(), {})
-        assert _row_index(layout, "chat-status-line") > _row_index(
-            layout, "chat-input"
-        )
+        assert _row_index(layout, "chat-status-line") > _row_index(layout, "chat-input")
 
     def test_the_status_line_still_reserves_its_line(self) -> None:
         """Moving it into a flex row must not cost the reserved height that
@@ -885,9 +889,9 @@ class TestModelChipPlacement:
     def test_the_gate_still_suppresses_it(self) -> None:
         layout = _chat_layout(_session(active_agent="phaser", phase="chat"), {})
         assert _find(layout, "btn-agent-llm-chip") is None
-        assert _child_ids(
-            layout.children[_row_index(layout, "chat-status-line")]
-        ) == ["chat-status-line"]
+        assert _child_ids(layout.children[_row_index(layout, "chat-status-line")]) == [
+            "chat-status-line"
+        ]
 
 
 class TestDesignerGate:
@@ -940,8 +944,10 @@ class TestPerAgentCapabilityReachesTheDesigner:
         with patch("spec4.callbacks.designer.ctx") as fake_ctx:
             fake_ctx.triggered = [{"prop_id": "designer-session-store.data"}]
             content, _ = render_designer_step(
-                store, {"tokens": 0, "progress": 0, "error": None},
-                global_flag, session,
+                store,
+                {"tokens": 0, "progress": 0, "error": None},
+                global_flag,
+                session,
             )
         return content
 
@@ -958,11 +964,12 @@ class TestPerAgentCapabilityReachesTheDesigner:
             "api_key": "sk-or",
             "available_models": ["openrouter/deepseek/deepseek-v4-flash"],
         }
-        with patch(
-            "spec4.llm_selection.probe_image_support", return_value=False
-        ) as image, patch(
-            "spec4.llm_selection.probe_tool_support", return_value=False
-        ) as tool:
+        with (
+            patch(
+                "spec4.llm_selection.probe_image_support", return_value=False
+            ) as image,
+            patch("spec4.llm_selection.probe_tool_support", return_value=False) as tool,
+        ):
             after, _ = on_gate_continue(
                 1, "openrouter/deepseek/deepseek-v4-flash", None, session
             )
@@ -973,9 +980,7 @@ class TestPerAgentCapabilityReachesTheDesigner:
         assert entry["tool_support"] is False
 
     def test_the_default_still_offers_upload(self) -> None:
-        assert self._is_upload(
-            self._render(4, {}, True), "designer-screenshot-upload"
-        )
+        assert self._is_upload(self._render(4, {}, True), "designer-screenshot-upload")
         assert self._is_upload(self._render(7, {}, True), "designer-refine-upload")
 
     def test_an_override_without_image_support_hides_upload(self) -> None:
@@ -993,14 +998,11 @@ class TestPerAgentCapabilityReachesTheDesigner:
         session = {"agent_llm": {"designer": self._ENTRY}}
         # `is not None`: an empty Dash component is falsy (no children).
         assert (
-            _find(self._render(7, session, True), "designer-refine-upload")
-            is not None
+            _find(self._render(7, session, True), "designer-refine-upload") is not None
         )
 
     def test_an_image_capable_override_still_offers_upload(self) -> None:
-        session = {
-            "agent_llm": {"designer": {**self._ENTRY, "image_support": True}}
-        }
+        session = {"agent_llm": {"designer": {**self._ENTRY, "image_support": True}}}
         # ...even when the *default* was probed as incapable.
         assert self._is_upload(
             self._render(4, session, False), "designer-screenshot-upload"
@@ -1013,9 +1015,7 @@ class TestPerAgentCapabilityReachesTheDesigner:
         )
 
     def test_an_unprobed_override_falls_back_to_the_store(self) -> None:
-        session = {
-            "agent_llm": {"designer": {**self._ENTRY, "image_support": None}}
-        }
+        session = {"agent_llm": {"designer": {**self._ENTRY, "image_support": None}}}
         assert self._is_upload(
             self._render(4, session, True), "designer-screenshot-upload"
         )
@@ -1123,7 +1123,7 @@ class TestOpenRouterKeyIsVerified:
 
 
 class TestDesignerStartOverReopensTheGate:
-    """"Start over" restarts Designer at its first question, which is the model.
+    """ "Start over" restarts Designer at its first question, which is the model.
 
     It reset the wizard to the intro but left the gate answered, so the previous
     model stayed silently in force — not what starting over means. The override
@@ -1197,7 +1197,7 @@ class TestDesignerStartOverReopensTheGate:
 
 
 class TestIsConnected:
-    """"Can this agent send a request?", asked before the request.
+    """ "Can this agent send a request?", asked before the request.
 
     It goes through `resolve`, so it answers about the same config the turn
     will use — which is the whole point. A predicate that read

@@ -320,9 +320,7 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
             session["ai_catalog"] = ai_catalog
             session["agentifier_catalog_done"] = True
             # spec drafting not yet complete — keep STATE_IN_PROGRESS
-    deployment_plan = (
-        None if new_round else project_manager.load_deployment_plan(path)
-    )
+    deployment_plan = None if new_round else project_manager.load_deployment_plan(path)
     if deployment_plan:
         session["deployer_state"] = STATE_DEPLOYER_COMPLETE
     session["_deployer_plan_existed"] = bool(deployment_plan)
@@ -469,6 +467,7 @@ def _get_agent_gen(
         gen = brainstormer.run(user_input, session, llm_config)
     elif active == "agentifier":
         from spec4.agentifier.agentifier import run as _agentifier_run
+
         gen = _agentifier_run(user_input, session, llm_config)
     elif active == "stack_advisor":
         gen = stack_advisor.run(user_input, session, llm_config)
@@ -496,8 +495,7 @@ def _trace_gen(
             if yielded == 1:
                 preview = chunk[:80]
                 print(
-                    f"[agent-gen] {label}: first chunk "
-                    f"(len={len(chunk)}): {preview!r}",
+                    f"[agent-gen] {label}: first chunk (len={len(chunk)}): {preview!r}",
                     flush=True,
                 )
             yield chunk
@@ -524,9 +522,7 @@ def _turn_was_fast_forward(session: dict[str, Any]) -> bool:
     return False
 
 
-def _summarize_turn_usage(
-    agent: Any, records: list[dict[str, Any]]
-) -> dict[str, Any]:
+def _summarize_turn_usage(agent: Any, records: list[dict[str, Any]]) -> dict[str, Any]:
     """Token readout for one finished turn, from its per-call usage records.
 
     ``{"agent", "input", "output", "calls", "missing"}`` for the chat row's
@@ -632,9 +628,7 @@ def _persist_artifacts(session: dict[str, Any]) -> None:
                 "stack": session.get("stack_statement"),
                 # D-PH5: the per-phase UI-surface attach reads the finalized
                 # design manifest; None (no design round) renders nothing.
-                "manifest": project_manager.load_design_manifest(
-                    working_dir, version
-                ),
+                "manifest": project_manager.load_design_manifest(working_dir, version),
             },
         )
     if session.get("deployer_state") == STATE_DEPLOYER_COMPLETE:

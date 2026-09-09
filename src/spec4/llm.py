@@ -627,9 +627,7 @@ def stream_completion(
     place and cannot drift for this one caller. Errors propagate unchanged,
     except a refused effort level, which is retried once without it.
     """
-    kwargs = _build_completion_kwargs(
-        llm_config, messages, stream=True, **extra_kwargs
-    )
+    kwargs = _build_completion_kwargs(llm_config, messages, stream=True, **extra_kwargs)
     return _open_stream(kwargs, agent_name)
 
 
@@ -848,9 +846,7 @@ def stream_turn(
         response_format is not None and not _history_has_tool_use(messages)
     )
     tools = (
-        [WEB_SEARCH_TOOL]
-        if search_config and not suppress_tools_for_format
-        else None
+        [WEB_SEARCH_TOOL] if search_config and not suppress_tools_for_format else None
     )
 
     # Snapshot the status at entry so it can be restored once the model
@@ -903,8 +899,7 @@ def stream_turn(
                     if (
                         session is not None
                         and entry_status
-                        and session.get("_stream_status")
-                        == "Reading search results…"
+                        and session.get("_stream_status") == "Reading search results…"
                     ):
                         # Content resumed after a search round: put the
                         # caller's own status back. Guarded on the exact
@@ -929,9 +924,7 @@ def stream_turn(
                             if tc.function.name:
                                 tool_call_acc[i]["name"] += tc.function.name
                             if tc.function.arguments:
-                                tool_call_acc[i]["arguments"] += (
-                                    tc.function.arguments
-                                )
+                                tool_call_acc[i]["arguments"] += tc.function.arguments
         finally:
             # Close the wrapped stream explicitly so an abandoned turn records
             # its usage now, not whenever the garbage collector gets to it.
@@ -966,9 +959,7 @@ def stream_turn(
                     # its own status on receiving the marker chunk, and this
                     # must land on top of that, not under it.
                     if session is not None:
-                        session["_stream_status"] = (
-                            f"Searching the web: {query}…"
-                        )
+                        session["_stream_status"] = f"Searching the web: {query}…"
                     if search_config is None:
                         raise RuntimeError(
                             "web_search tool called but search_config is None"

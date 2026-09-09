@@ -154,9 +154,7 @@ def on_status_bar(session: Any, prefs: Any) -> Any:
     on_settings = phase_now == "setup"
     on_artifacts = phase_now == "artifacts"
     return (
-        _status_context(
-            working_dir, round_number, provider, model, connected, effort
-        ),
+        _status_context(working_dir, round_number, provider, model, connected, effort),
         _status_nav_class(not on_settings and not on_artifacts),
         _status_nav_class(on_artifacts),
         _status_nav_class(on_settings),
@@ -1782,9 +1780,7 @@ def on_breadth_try_again(n_clicks: Any, session: Any, note: Any = None) -> Any:
     session = dict(session or {})
     note = (note or "").strip() if isinstance(note, str) else ""
     prior = session.get("agentifier_retry_guidance") or {}
-    prior_notes = [
-        str(n).strip() for n in (prior.get("notes") or []) if str(n).strip()
-    ]
+    prior_notes = [str(n).strip() for n in (prior.get("notes") or []) if str(n).strip()]
     prior_history = [e for e in (prior.get("history") or []) if isinstance(e, dict)]
     rejected = [
         {
@@ -2319,9 +2315,7 @@ def dl_phases(n: Any, session: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _open_target(
-    working_dir: Any, round_number: int | None, path: str
-) -> str:
+def _open_target(working_dir: Any, round_number: int | None, path: str) -> str:
     """The path an Open button actually selects, resolved for this round.
 
     One artifact needs the indirection: ``phases/`` is a directory standing

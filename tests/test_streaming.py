@@ -70,9 +70,8 @@ GOOGLE_VERTEX_PAYLOAD: dict[str, Any] = {
     }
 }
 
-GOOGLE_VERTEX_RATE_LIMIT = (
-    "litellm.RateLimitError: litellm.RateLimitError: "
-    + _wrap("vertex_ai_betaException", GOOGLE_VERTEX_PAYLOAD)
+GOOGLE_VERTEX_RATE_LIMIT = "litellm.RateLimitError: litellm.RateLimitError: " + _wrap(
+    "vertex_ai_betaException", GOOGLE_VERTEX_PAYLOAD
 )
 
 
@@ -259,8 +258,7 @@ class TestRetryInProseTriggers:
             "MistralException",
             {
                 "message": (
-                    "Service is temporarily unavailable. "
-                    "Please retry in 5 seconds."
+                    "Service is temporarily unavailable. Please retry in 5 seconds."
                 ),
             },
         )
@@ -274,9 +272,7 @@ class TestAuthErrorNoBody:
 
     def test_plain_authentication_error_renders_cleanly(self) -> None:
         out = _format_error(
-            FakeAuthenticationError(
-                "AuthenticationError: anthropic API key is invalid"
-            )
+            FakeAuthenticationError("AuthenticationError: anthropic API key is invalid")
         )
         assert out.startswith("**Error: FakeAuthenticationError**")
         assert "anthropic API key is invalid" in out

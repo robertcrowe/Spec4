@@ -14,6 +14,7 @@ from typing import Any
 os.environ.setdefault("LITELLM_LOG", "ERROR")
 
 import litellm as _litellm
+
 _litellm.suppress_debug_info = True
 
 import dash
@@ -367,7 +368,9 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
     State("tool-support-store", "data"),
     prevent_initial_call="initial_duplicate",
 )
-def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any, tool_support: Any) -> Any:
+def render_page(
+    session: Any, prefs: Any, render_count: Any, image_support: Any, tool_support: Any
+) -> Any:
     """Draw the screen the session's phase names.
 
     Restoring a remembered working directory is not done here — the router
@@ -392,9 +395,8 @@ def render_page(session: Any, prefs: Any, render_count: Any, image_support: Any,
         # only if it is still there. Seeding the browser at a path that cannot
         # be opened is how the picker ends up showing home while "Select This
         # Directory" points somewhere else.
-        if (
-            not session.get("browser_path")
-            and project_manager.directory_opens(prefs.get("working_dir"))
+        if not session.get("browser_path") and project_manager.directory_opens(
+            prefs.get("working_dir")
         ):
             session = {**session, "browser_path": prefs["working_dir"]}
             new_session = session

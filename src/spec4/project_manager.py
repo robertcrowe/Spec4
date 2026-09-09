@@ -149,22 +149,14 @@ def _write_text_if_changed(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def save_vision(
-    working_dir: str | Path, vision: dict[str, Any], version: int
-) -> None:
+def save_vision(working_dir: str | Path, vision: dict[str, Any], version: int) -> None:
     version_dir = ensure_version_dir(working_dir, version)
-    _write_text_if_changed(
-        version_dir / "vision.json", json.dumps(vision, indent=2)
-    )
+    _write_text_if_changed(version_dir / "vision.json", json.dumps(vision, indent=2))
 
 
-def save_stack(
-    working_dir: str | Path, stack: dict[str, Any], version: int
-) -> None:
+def save_stack(working_dir: str | Path, stack: dict[str, Any], version: int) -> None:
     version_dir = ensure_version_dir(working_dir, version)
-    _write_text_if_changed(
-        version_dir / "stack.json", json.dumps(stack, indent=2)
-    )
+    _write_text_if_changed(version_dir / "stack.json", json.dumps(stack, indent=2))
 
 
 def merge_library_additions(
@@ -320,9 +312,10 @@ def load_prior_vision(working_dir: str | Path) -> dict[str, Any] | None:
     if not vision_path.exists():
         return None
     try:
-        return json.loads(vision_path.read_text())
+        vision: dict[str, Any] = json.loads(vision_path.read_text())
     except (OSError, json.JSONDecodeError):
         return None
+    return vision
 
 
 def active_version(
@@ -404,7 +397,7 @@ def session_is_brownfield(session: dict[str, Any] | None) -> bool:
 
     Unanswered (an empty directory never asks) reads as greenfield.
     """
-    return bool(session) and session.get("project_mode") == PROJECT_MODE_EXISTING
+    return bool(session and session.get("project_mode") == PROJECT_MODE_EXISTING)
 
 
 def resolve_phase_version(
@@ -509,9 +502,7 @@ def _phase_spec_preamble(
     # the capability side. The legacy `or features` fallback keeps pre-D-PH2
     # sets rendering (AI ids lived in features[] then); either lookup simply
     # misses for ids from the other era's space.
-    feature_decls = [
-        d for d in (phase.get("features") or []) if isinstance(d, dict)
-    ]
+    feature_decls = [d for d in (phase.get("features") or []) if isinstance(d, dict)]
     # Era detection is KEY PRESENCE, not truthiness: a new-schema phase with
     # an empty `capabilities` array declares no capabilities — falling back to
     # `features[]` there would read product ids against the AI catalog and
@@ -520,8 +511,7 @@ def _phase_spec_preamble(
     capability_decls = [
         d
         for d in (
-            (phase.get("features") if legacy else phase.get("capabilities"))
-            or []
+            (phase.get("features") if legacy else phase.get("capabilities")) or []
         )
         if isinstance(d, dict)
     ]
@@ -534,9 +524,7 @@ def _phase_spec_preamble(
         for f in (((context or {}).get("feature_specs") or {}).get("features") or [])
         if isinstance(f, dict) and f.get("id")
     }
-    declared_feature_ids = {
-        str(d.get("id")) for d in feature_decls if d.get("id")
-    }
+    declared_feature_ids = {str(d.get("id")) for d in feature_decls if d.get("id")}
     declared_capability_ids = {
         str(d.get("id")) for d in capability_decls if d.get("id")
     }
@@ -621,11 +609,14 @@ def _phase_spec_preamble(
         name = feature.get("name") or decl.get("id")
         ai_blocks.extend(_decl_heading(str(name), "AI capability", decl))
         grounding = feature.get("vision_grounding") or {}
-        served = sorted({
-            str(sf.get("id"))
-            for sf in (grounding.get("served_features") or [])
-            if isinstance(sf, dict) and sf.get("id")
-        } & declared_feature_ids)
+        served = sorted(
+            {
+                str(sf.get("id"))
+                for sf in (grounding.get("served_features") or [])
+                if isinstance(sf, dict) and sf.get("id")
+            }
+            & declared_feature_ids
+        )
         if served:
             ai_blocks.append(
                 "Serves product feature(s): "
@@ -737,9 +728,7 @@ def _phase_nfr_lines(
     capabilities = _declared_ids(phase, "capabilities")
     number = phase.get("phase_number")
     total = phase.get("total_phases")
-    is_final = (
-        isinstance(number, int) and isinstance(total, int) and number == total
-    )
+    is_final = isinstance(number, int) and isinstance(total, int) and number == total
     hits: list[str] = []
     for thread in nfr_threads(stack, specs):
         if thread["global"]:
@@ -804,10 +793,12 @@ def render_phase_markdown(
         "",
     ]
     lines.extend(_phase_spec_preamble(phase, context))
-    lines.extend([
-        "## Tech Stack",
-        "",
-    ])
+    lines.extend(
+        [
+            "## Tech Stack",
+            "",
+        ]
+    )
     if deps:
         lines.append("**Dependencies:**")
         lines.append("")
@@ -973,9 +964,7 @@ def load_vision(
         return None
 
 
-def save_deployment_plan(
-    working_dir: str | Path, markdown: str, version: int
-) -> None:
+def save_deployment_plan(working_dir: str | Path, markdown: str, version: int) -> None:
     version_dir = ensure_version_dir(working_dir, version)
     _write_text_if_changed(version_dir / "deployment-plan.md", markdown)
 
@@ -1379,9 +1368,7 @@ def unpriced_calls(agents: Any) -> list[dict[str, Any]]:
     return list(groups.values())
 
 
-def round_cost(
-    working_dir: str | Path | None, version: int | None
-) -> dict[str, Any]:
+def round_cost(working_dir: str | Path | None, version: int | None) -> dict[str, Any]:
     """The round's cost figures for the project view.
 
     A read-time view over ``usage.json``, like :func:`cost_summary` beside it,
@@ -1887,8 +1874,8 @@ def _artifact_button_state(
 
     input_rels = {rel for _name, rel in raw_inputs}
     ordered = [rel for rel in _PIPELINE_ARTIFACT_ORDER if rel in input_rels]
-    chain = [(rel, mtime(rel)) for rel in ordered]
-    chain = [(rel, m) for rel, m in chain if m is not None]
+    raw_chain = [(rel, mtime(rel)) for rel in ordered]
+    chain: list[tuple[str, float]] = [(rel, m) for rel, m in raw_chain if m is not None]
 
     for (_, m_prev), (_, m_next) in zip(chain, chain[1:]):
         if m_prev > m_next:

@@ -337,9 +337,9 @@ _MANIFEST_INSTRUCTION = (
     "audience; `surfaces` lists the surface names placed on that screen.\n"
     "- `surfaces`: [{name, kind, screen, implements_features[], inputs[], output, "
     "states[], reads[], writes[], depends_on[]}] — one entry per user-facing UI "
-    "surface. Cover every user-facing non-AI vision feature (kind: \"non_ai\"), "
+    'surface. Cover every user-facing non-AI vision feature (kind: "non_ai"), '
     "and realize every AI surface listed above through one or more UI surfaces "
-    "(kind: \"ai\"). `implements_features` names only the vision feature(s) this "
+    '(kind: "ai"). `implements_features` names only the vision feature(s) this '
     "surface genuinely realizes — leave it empty (`[]`) for a surface that no MVP "
     "feature covers (setup/config, history, or a surface serving an audience whose "
     "needs are not in the feature set), rather than attributing it to an unrelated "
@@ -347,7 +347,7 @@ _MANIFEST_INSTRUCTION = (
     "`inputs` are the form controls; `output` is the result shown; `states` are "
     "the UI states to design (e.g. idle, loading, empty, error); `reads`/`writes` "
     "name `entities`; `depends_on` names other surfaces that must exist first (a "
-    "detail needs its list, an edit needs the record). For kind \"ai\" also "
+    'detail needs its list, an edit needs the record). For kind "ai" also '
     "include `affordance`, `invocation`, and `catalog_surface` — the exact name "
     "from the AI-surfaces list above that this surface realizes (if you split one "
     "AI capability across several UI surfaces, each names the same "
@@ -407,47 +407,56 @@ def build_mock_prompt(
     parts: list[dict[str, object]] = []
 
     if existing_html:
-        parts.append({
-            "type": "text",
-            "text": (
-                "## Existing Mock\n\n"
-                "Below is the current HTML. Apply the requested changes to it — "
-                "preserve everything not explicitly changed.\n\n"
-                "```html\n" + existing_html + "\n```\n\n---"
-            ),
-        })
-    if planning_context and planning_context.get("vision_statement"):
-        from spec4.agents._utils import _slim_vision_framing
-        framing = _slim_vision_framing(planning_context["vision_statement"])
-        if framing:
-            parts.append({
+        parts.append(
+            {
                 "type": "text",
                 "text": (
-                    "## Project Vision\n\n"
-                    "Use the following project framing to inform global design "
-                    "(purpose, UI surface, audiences, and differentiators). The "
-                    "per-feature substance is in the feature specifications "
-                    "below:\n\n"
-                    + json.dumps(framing, indent=2)
-                    + "\n\n---"
+                    "## Existing Mock\n\n"
+                    "Below is the current HTML. Apply the requested changes to it — "
+                    "preserve everything not explicitly changed.\n\n"
+                    "```html\n" + existing_html + "\n```\n\n---"
                 ),
-            })
+            }
+        )
+    if planning_context and planning_context.get("vision_statement"):
+        from spec4.agents._utils import _slim_vision_framing
+
+        framing = _slim_vision_framing(planning_context["vision_statement"])
+        if framing:
+            parts.append(
+                {
+                    "type": "text",
+                    "text": (
+                        "## Project Vision\n\n"
+                        "Use the following project framing to inform global design "
+                        "(purpose, UI surface, audiences, and differentiators). The "
+                        "per-feature substance is in the feature specifications "
+                        "below:\n\n" + json.dumps(framing, indent=2) + "\n\n---"
+                    ),
+                }
+            )
     if planning_context and planning_context.get("feature_specs"):
         from spec4.agents._utils import _feature_specs_for_designer
+
         specs_note = _feature_specs_for_designer(planning_context["feature_specs"])
         if specs_note:
-            parts.append({
-                "type": "text",
-                "text": "## Feature Specifications\n\n" + specs_note + "\n---",
-            })
+            parts.append(
+                {
+                    "type": "text",
+                    "text": "## Feature Specifications\n\n" + specs_note + "\n---",
+                }
+            )
     if planning_context and planning_context.get("ai_features"):
         from spec4.agents._utils import _ai_features_for_designer
+
         ai_note = _ai_features_for_designer(planning_context["ai_features"])
         if ai_note:
-            parts.append({
-                "type": "text",
-                "text": "## User-Facing AI Surfaces\n\n" + ai_note + "\n---",
-            })
+            parts.append(
+                {
+                    "type": "text",
+                    "text": "## User-Facing AI Surfaces\n\n" + ai_note + "\n---",
+                }
+            )
 
     if session["preference_text"]:
         parts.append({"type": "text", "text": session["preference_text"]})
@@ -549,7 +558,11 @@ def generate_mock_streaming(
     effort: str = "default",
 ) -> Iterator[str]:
     messages: list[dict[str, Any]] = build_mock_prompt(
-        session, ui_source_snippets, image_support, planning_context, existing_html,
+        session,
+        ui_source_snippets,
+        image_support,
+        planning_context,
+        existing_html,
         capture_mode,
     )
     tools: list[dict[str, Any]] | None = [WEB_SEARCH_TOOL] if search_config else None
@@ -605,7 +618,10 @@ def generate_mock_streaming(
                 if chunk_count <= 3 or tc_deltas:
                     logger.debug(
                         "Chunk %d: content=%r tool_calls=%s finish_reason=%s",
-                        chunk_count, content, bool(tc_deltas), last_finish_reason,
+                        chunk_count,
+                        content,
+                        bool(tc_deltas),
+                        last_finish_reason,
                     )
 
                 if content:
@@ -627,22 +643,28 @@ def generate_mock_streaming(
 
             logger.debug(
                 "Iteration complete — %d chunks, finish_reason=%s",
-                chunk_count, last_finish_reason,
+                chunk_count,
+                last_finish_reason,
             )
 
             if tool_call_acc:
-                messages.append({
-                    "role": "assistant",
-                    "content": full_text or None,
-                    "tool_calls": [
-                        {
-                            "id": tc["id"],
-                            "type": "function",
-                            "function": {"name": tc["name"], "arguments": tc["arguments"]},
-                        }
-                        for tc in tool_call_acc.values()
-                    ],
-                })
+                messages.append(
+                    {
+                        "role": "assistant",
+                        "content": full_text or None,
+                        "tool_calls": [
+                            {
+                                "id": tc["id"],
+                                "type": "function",
+                                "function": {
+                                    "name": tc["name"],
+                                    "arguments": tc["arguments"],
+                                },
+                            }
+                            for tc in tool_call_acc.values()
+                        ],
+                    }
+                )
                 for tc in tool_call_acc.values():
                     logger.debug("Tool call: %s args=%s", tc["name"], tc["arguments"])
                     if tc["name"] == "web_search":
@@ -652,11 +674,13 @@ def generate_mock_streaming(
                             query = tc["arguments"]
                         logger.debug("Web search: %r", query)
                         result = web_search(query, search_config)
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc["id"],
-                            "content": result,
-                        })
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tc["id"],
+                                "content": result,
+                            }
+                        )
                 continue
 
             break

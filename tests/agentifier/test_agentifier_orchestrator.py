@@ -127,9 +127,7 @@ def make_stream_chunk(content: str, finish_reason: str | None = None) -> MagicMo
 def mock_litellm_stream(text: str) -> Any:
     chunks = [make_stream_chunk(c) for c in text]
     chunks.append(make_stream_chunk("", finish_reason="stop"))
-    return patch(
-        "spec4.llm.litellm.completion", return_value=iter(chunks)
-    )
+    return patch("spec4.llm.litellm.completion", return_value=iter(chunks))
 
 
 # ---------------------------------------------------------------------------
@@ -185,13 +183,17 @@ class TestFreshStart:
         session = make_session()
         candidates = [_CANDIDATE_A, _CANDIDATE_B]
         analyses = [_ANALYSIS_A, _ANALYSIS_B]
-        with patch(
-            "spec4.agentifier.agentifier._call_scout",
-            return_value=ScoutOutput(candidates=candidates),
-        ), patch(
-            "spec4.agentifier.agentifier._call_tier_analyst",
-            side_effect=analyses,
-        ) as mock_analyst, mock_litellm_stream("Hello!"):
+        with (
+            patch(
+                "spec4.agentifier.agentifier._call_scout",
+                return_value=ScoutOutput(candidates=candidates),
+            ),
+            patch(
+                "spec4.agentifier.agentifier._call_tier_analyst",
+                side_effect=analyses,
+            ) as mock_analyst,
+            mock_litellm_stream("Hello!"),
+        ):
             drive_panel(session)
         assert mock_analyst.call_count == 2
 
@@ -232,13 +234,17 @@ class TestFreshStart:
 
     def test_seed_message_surfaces_borderline_seams(self) -> None:
         session = make_session()
-        with patch(
-            "spec4.agentifier.agentifier._call_scout",
-            return_value=ScoutOutput(candidates=[_CANDIDATE_A]),
-        ), patch(
-            "spec4.agentifier.agentifier._call_tier_analyst",
-            return_value=_BORDERLINE_ANALYSIS,
-        ), mock_litellm_stream("Hello!"):
+        with (
+            patch(
+                "spec4.agentifier.agentifier._call_scout",
+                return_value=ScoutOutput(candidates=[_CANDIDATE_A]),
+            ),
+            patch(
+                "spec4.agentifier.agentifier._call_tier_analyst",
+                return_value=_BORDERLINE_ANALYSIS,
+            ),
+            mock_litellm_stream("Hello!"),
+        ):
             drive_panel(session)
         msgs = session["agentifier_messages"]
         first_user = next(m for m in msgs if m["role"] == "user")
@@ -262,10 +268,13 @@ class TestFreshStart:
 
     def test_empty_candidates_returns_message_without_llm_call(self) -> None:
         session = make_session()
-        with patch(
-            "spec4.agentifier.agentifier._call_scout",
-            return_value=ScoutOutput(candidates=[]),
-        ), patch("spec4.llm.litellm.completion") as mock_llm:
+        with (
+            patch(
+                "spec4.agentifier.agentifier._call_scout",
+                return_value=ScoutOutput(candidates=[]),
+            ),
+            patch("spec4.llm.litellm.completion") as mock_llm,
+        ):
             output = collect(agentifier.run(None, session, _LLM_CONFIG))
         mock_llm.assert_not_called()
         assert output != ""
@@ -274,12 +283,15 @@ class TestFreshStart:
         # A soft parse failure must surface as a retry, NOT be reported as a
         # deterministic-core vision.
         session = make_session()
-        with patch(
-            "spec4.agentifier.agentifier._call_scout",
-            return_value=ScoutOutput(
-                candidates=[], outcome=ScoutOutcome.UNREADABLE
+        with (
+            patch(
+                "spec4.agentifier.agentifier._call_scout",
+                return_value=ScoutOutput(
+                    candidates=[], outcome=ScoutOutcome.UNREADABLE
+                ),
             ),
-        ), patch("spec4.llm.litellm.completion") as mock_llm:
+            patch("spec4.llm.litellm.completion") as mock_llm,
+        ):
             output = collect(agentifier.run(None, session, _LLM_CONFIG))
         mock_llm.assert_not_called()
         assert "try again" in output.lower()
@@ -312,9 +324,10 @@ class TestReentry:
                 {"role": "assistant", "content": "prior response"},
             ]
         )
-        with patch(
-            "spec4.agentifier.agentifier._call_scout"
-        ) as mock_scout, patch("spec4.llm.litellm.completion"):
+        with (
+            patch("spec4.agentifier.agentifier._call_scout") as mock_scout,
+            patch("spec4.llm.litellm.completion"),
+        ):
             collect(agentifier.run(None, session, _LLM_CONFIG))
         mock_scout.assert_not_called()
 
@@ -351,9 +364,10 @@ class TestOrphanRecovery:
                 }
             ],
         )
-        with patch(
-            "spec4.agentifier.agentifier._call_scout"
-        ) as mock_scout, mock_litellm_stream("Recovery response"):
+        with (
+            patch("spec4.agentifier.agentifier._call_scout") as mock_scout,
+            mock_litellm_stream("Recovery response"),
+        ):
             collect(agentifier.run(None, session, _LLM_CONFIG))
         mock_scout.assert_not_called()
 
@@ -382,9 +396,10 @@ class TestOrphanRecovery:
                 }
             ],
         )
-        with patch(
-            "spec4.agentifier.agentifier._call_scout"
-        ) as mock_scout, mock_litellm_stream("Re-seed response"):
+        with (
+            patch("spec4.agentifier.agentifier._call_scout") as mock_scout,
+            mock_litellm_stream("Re-seed response"),
+        ):
             collect(agentifier.run(None, session, _LLM_CONFIG))
         mock_scout.assert_not_called()
 
@@ -621,7 +636,10 @@ class TestBuildSeedMessage:
             linked_existing_workflow="keyword-based SQL LIKE search in views.py",
         )
         msg = agentifier._build_seed_message([brownfield], [_ANALYSIS_A])
-        assert "Existing implementation this would replace: keyword-based SQL LIKE search in views.py" in msg
+        assert (
+            "Existing implementation this would replace: keyword-based SQL LIKE search in views.py"
+            in msg
+        )
         # Greenfield candidates (default "") never emit the line.
         msg_green = agentifier._build_seed_message([_CANDIDATE_A], [_ANALYSIS_A])
         assert "Existing implementation this would replace" not in msg_green
@@ -811,7 +829,9 @@ class TestBuildAiFeatures:
 
     def test_tier_decision_rationale_unchanged(self) -> None:
         # Adding tier_analysis must not touch tier_decision_rationale.
-        entries = [self._entry("smart_search", tier_decision_rationale="User override.")]
+        entries = [
+            self._entry("smart_search", tier_decision_rationale="User override.")
+        ]
         candidates = [self._candidate_dict("smart_search")]
         analyses = [self._analysis_dict("smart_search")]
         features = agentifier._build_ai_features(entries, [], candidates, analyses)
@@ -852,7 +872,9 @@ class TestBuildAiFeatures:
 
     def test_enriched_candidate_description_preferred_over_catalog_entry(self) -> None:
         # Candidate carries Composer-enriched text; catalog entry has plain text.
-        entry = self._entry("barcode_lookup", **{"rough_description": "Plain catalog description."})
+        entry = self._entry(
+            "barcode_lookup", **{"rough_description": "Plain catalog description."}
+        )
         candidate = {
             "name": "barcode_lookup",
             "linked_vision_features": ["inventory"],
@@ -861,11 +883,16 @@ class TestBuildAiFeatures:
             "linked_existing_workflow": "",
         }
         features = agentifier._build_ai_features([entry], [], [candidate])
-        assert features[0]["rough_description"] == "ENRICHED: Plain catalog description. Enables nutrition lookup."
+        assert (
+            features[0]["rough_description"]
+            == "ENRICHED: Plain catalog description. Enables nutrition lookup."
+        )
 
     def test_falls_back_to_catalog_entry_when_no_candidate_match(self) -> None:
         # Name not in candidates_by_name → catalog entry's rough_description used.
-        entry = self._entry("orphan_feature", **{"rough_description": "Entry fallback text."})
+        entry = self._entry(
+            "orphan_feature", **{"rough_description": "Entry fallback text."}
+        )
         features = agentifier._build_ai_features([entry], [], [])
         assert features[0]["rough_description"] == "Entry fallback text."
 
@@ -933,35 +960,41 @@ class TestApproachesOverview:
 
     def test_small_pool_yields_overview(self) -> None:
         session = make_session()
-        with patch(
-            "spec4.agentifier.agentifier._call_scout",
-            return_value=ScoutOutput(candidates=[_CANDIDATE_A]),
-        ), patch(
-            "spec4.agentifier.agentifier._call_tier_analyst",
-            return_value=_ANALYSIS_A,
-        ), mock_litellm_stream("Hello!"):
+        with (
+            patch(
+                "spec4.agentifier.agentifier._call_scout",
+                return_value=ScoutOutput(candidates=[_CANDIDATE_A]),
+            ),
+            patch(
+                "spec4.agentifier.agentifier._call_tier_analyst",
+                return_value=_ANALYSIS_A,
+            ),
+            mock_litellm_stream("Hello!"),
+        ):
             output = collect(agentifier.run(None, session, _LLM_CONFIG))
         assert agentifier._APPROACHES_OVERVIEW in output
 
     def test_large_pool_prepends_overview_to_breadth_intro(self) -> None:
         session = make_session()
         candidates = [self._candidate(f"cand_{i}") for i in range(4)]
-        with patch(
-            "spec4.agentifier.agentifier._call_scout",
-            return_value=ScoutOutput(candidates=candidates),
-        ), mock_litellm_stream("Hello!"):
+        with (
+            patch(
+                "spec4.agentifier.agentifier._call_scout",
+                return_value=ScoutOutput(candidates=candidates),
+            ),
+            mock_litellm_stream("Hello!"),
+        ):
             output = collect(agentifier.run(None, session, _LLM_CONFIG))
         # Stored intro is replayed when the developer re-enters the breadth step,
         # so the overview must live inside it — and lead the streamed intro.
-        assert (
-            agentifier._APPROACHES_OVERVIEW in session["agentifier_breadth_intro"]
-        )
+        assert agentifier._APPROACHES_OVERVIEW in session["agentifier_breadth_intro"]
         assert agentifier._APPROACHES_OVERVIEW in output
 
     def test_overview_uses_approaches_not_tier_wording(self) -> None:
         # User-facing copy says "approaches"; the word "tier" must not leak in.
         assert "approach" in agentifier._APPROACHES_OVERVIEW.lower()
         assert "tier" not in agentifier._APPROACHES_OVERVIEW.lower()
+
 
 # ---------------------------------------------------------------------------
 # D-AT-P3 — an unreadable catalog block
@@ -1016,9 +1049,7 @@ class TestUnparseableCatalog:
     def _run(self, *replies: str) -> tuple[dict[str, Any], str, list[Any]]:
         session = self._session()
         fake_completion, calls = _reply_sequence(*replies)
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ):
+        with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             output = collect(agentifier.run("yes, finalize it", session, _LLM_CONFIG))
         return session, output, calls
 

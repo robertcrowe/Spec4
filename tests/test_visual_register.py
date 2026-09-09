@@ -203,12 +203,9 @@ class TestNoMarketingChrome:
         assert _EXCEPTION_MARKER in css
         smuggled = css + "\n.hero h1 { -webkit-text-fill-color: transparent; }\n"
         lines = [
-            line for line in smuggled.splitlines()
-            if _EXCEPTION_MARKER not in line
+            line for line in smuggled.splitlines() if _EXCEPTION_MARKER not in line
         ]
-        assert any(
-            pattern.search("\n".join(lines)) for _, pattern in _BANNED_CSS
-        )
+        assert any(pattern.search("\n".join(lines)) for _, pattern in _BANNED_CSS)
 
     def test_the_marked_rule_still_fails_without_its_marker(self) -> None:
         """The stripe is exempt because of the marker, not because of its shape."""
@@ -281,11 +278,7 @@ class TestProgressStripesAreReadable:
     def test_every_progress_bar_opts_into_the_readable_stripe(self) -> None:
         offenders = []
         for where, line, node in _progress_calls():
-            names = {
-                kw.arg: kw.value
-                for kw in node.keywords
-                if kw.arg is not None
-            }
+            names = {kw.arg: kw.value for kw in node.keywords if kw.arg is not None}
             value = names.get("classNames")
             if not (isinstance(value, ast.Name) and value.id == "PROGRESS_CLASS_NAMES"):
                 offenders.append(f"{where}:{line}")
@@ -313,7 +306,7 @@ class TestProgressStripesAreReadable:
         to a lightening blend fails it.
         """
         rule = re.search(
-            r"\.progress-stripe\[data-striped\]\s*\{(.*?)\}", 
+            r"\.progress-stripe\[data-striped\]\s*\{(.*?)\}",
             STYLESHEET.read_text(encoding="utf-8"),
             re.S,
         )

@@ -163,16 +163,28 @@ def _garbled_stack() -> dict:
     developer's receipt. D-SC33 made the renderer total, which stopped fields being
     dropped; nothing stopped them being mangled.
     """
-    return {"stack_spec": {"persistence": {"primary_store": {
-        "choice": "PostgreSQL 16",
-        "durability": "source of truth",
-        "collections": [
-            {"name": "policy_audit_log", "entities": "Policy change history",
-             "serves_features": "policy_library_management"},
-            {"name": "policies", "entities": ["Policy"],
-             "serves_features": ["policy_qa"]},
-        ],
-    }}}}
+    return {
+        "stack_spec": {
+            "persistence": {
+                "primary_store": {
+                    "choice": "PostgreSQL 16",
+                    "durability": "source of truth",
+                    "collections": [
+                        {
+                            "name": "policy_audit_log",
+                            "entities": "Policy change history",
+                            "serves_features": "policy_library_management",
+                        },
+                        {
+                            "name": "policies",
+                            "entities": ["Policy"],
+                            "serves_features": ["policy_qa"],
+                        },
+                    ],
+                }
+            }
+        }
+    }
 
 
 def test_a_string_where_entities_expects_a_list_does_not_garble() -> None:

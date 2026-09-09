@@ -230,7 +230,10 @@ class TestRequiresCycles:
 
 class TestBackwardCompatible:
     def test_no_edges_leaves_scope_untouched(self) -> None:
-        cs = [_candidate("plain", scope="feature"), _candidate("other", scope="cross_feature")]
+        cs = [
+            _candidate("plain", scope="feature"),
+            _candidate("other", scope="cross_feature"),
+        ]
         _normalize_edges(cs)
         by = _by_name(cs)
         assert by["plain"].scope == "feature"

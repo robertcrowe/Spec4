@@ -33,13 +33,13 @@ SKIPPABLE_TOPICS = frozenset({"prompt_versioning"})
 def _needs_provider(features: list[dict[str, Any]]) -> bool:
     """Any feature above ``deterministic`` calls a model — generative or an
     embedding model — and therefore needs a provider capability decision."""
-    return any(_TIER_ORDER.get(f.get("tier"), 3) >= 2 for f in features)
+    return any(_TIER_ORDER.get(f.get("tier") or "", 3) >= 2 for f in features)
 
 
 def _has_prompts(features: list[dict[str, Any]]) -> bool:
     """Generative tiers (``single_call`` and up) have a prompt to version;
     ``deterministic`` and ``embeddings`` features do not."""
-    return any(_TIER_ORDER.get(f.get("tier"), 3) >= 3 for f in features)
+    return any(_TIER_ORDER.get(f.get("tier") or "", 3) >= 3 for f in features)
 
 
 def _has_tool_access(features: list[dict[str, Any]]) -> bool:
@@ -256,6 +256,7 @@ Required output schema:
 def _existing_ai_infra_block(code_review: dict[str, Any]) -> str:
     """Extract existing AI/ML infra for cross-cutting bias-toward-reuse guidance."""
     from spec4.agentifier.tier_analyst import _existing_ai_context
+
     hint = _existing_ai_context(code_review)
     if not hint:
         return ""
@@ -275,11 +276,17 @@ def _build_user_content(input_obj: CrossCuttingInput) -> str:
     if input_obj.topic and input_obj.revision_instruction:
         prior = (input_obj.prior_decisions or {}).get(input_obj.topic, {})
         if prior.get("recommendation"):
-            parts.append(f"Previous recommendation for **{input_obj.topic}**: {prior['recommendation']}")
+            parts.append(
+                f"Previous recommendation for **{input_obj.topic}**: {prior['recommendation']}"
+            )
         parts.append(f"**Revision request:** {input_obj.revision_instruction}")
-        parts.append(f"Please revise the **{input_obj.topic}** recommendation accordingly.")
+        parts.append(
+            f"Please revise the **{input_obj.topic}** recommendation accordingly."
+        )
     else:
-        parts.append("Please produce cross-cutting recommendations for the requested topics.")
+        parts.append(
+            "Please produce cross-cutting recommendations for the requested topics."
+        )
     return "\n".join(parts)
 
 

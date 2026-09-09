@@ -229,16 +229,20 @@ class TestReselectionPoolRehydration:
             "linked_vision_features": [],
             "linked_existing_workflow": "",
         }
-        pool = _reselection_pool_from_features({"ai_features": [feat], "explicitly_rejected": []})
+        pool = _reselection_pool_from_features(
+            {"ai_features": [feat], "explicitly_rejected": []}
+        )
         assert pool[0].composed_under == ""
         assert pool[0].requires == []
 
     def test_both_edges_rehydrated_for_multiple_features(self) -> None:
-        af = self._af([
-            _feat("orch"),
-            _feat("m1", composed_under="orch"),
-            _feat("m2", composed_under="orch", requires=["m1"]),
-        ])
+        af = self._af(
+            [
+                _feat("orch"),
+                _feat("m1", composed_under="orch"),
+                _feat("m2", composed_under="orch", requires=["m1"]),
+            ]
+        )
         pool = _reselection_pool_from_features(af)
         by = {c.name: c for c in pool}
         assert by["orch"].composed_under == ""
@@ -257,7 +261,11 @@ class TestFeatureRelationshipLines:
         assert _feature_relationship_lines(feats) == []
 
     def test_composed_under_group_rendered(self) -> None:
-        feats = [_feat("orch"), _feat("m1", composed_under="orch"), _feat("m2", composed_under="orch")]
+        feats = [
+            _feat("orch"),
+            _feat("m1", composed_under="orch"),
+            _feat("m2", composed_under="orch"),
+        ]
         lines = _feature_relationship_lines(feats)
         block = "\n".join(lines)
         assert "composed_under" in block
@@ -302,10 +310,12 @@ class TestAiFeaturesForPhaserRelationships:
         assert "composed_under" not in result
 
     def test_block_present_when_edges_exist(self) -> None:
-        af = self._af([
-            _feat("orch"),
-            _feat("m", composed_under="orch"),
-        ])
+        af = self._af(
+            [
+                _feat("orch"),
+                _feat("m", composed_under="orch"),
+            ]
+        )
         result = _ai_features_for_phaser(af)
         assert "Feature relationships" in result
         assert "composed_under" in result

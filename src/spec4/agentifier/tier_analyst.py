@@ -205,16 +205,48 @@ class TierAnalystOutput:
     compared_to_next_tier_down: str
 
 
-_AI_INFRA_KEYWORDS = frozenset({
-    "openai", "anthropic", "langchain", "llamaindex", "llama_index",
-    "pinecone", "weaviate", "chroma", "chromadb", "qdrant", "milvus",
-    "cohere", "gemini", "mistral", "huggingface", "transformers",
-    "semantic_kernel", "autogen", "crewai", "haystack", "instructor",
-    "litellm", "guidance", "outlines", "marvin", "pydantic_ai",
-    "faiss", "pgvector", "sentence_transformers", "sentence-transformers",
-    "ollama", "groq", "vllm", "together", "fireworks", "replicate",
-    "openrouter", "bedrock",
-})
+_AI_INFRA_KEYWORDS = frozenset(
+    {
+        "openai",
+        "anthropic",
+        "langchain",
+        "llamaindex",
+        "llama_index",
+        "pinecone",
+        "weaviate",
+        "chroma",
+        "chromadb",
+        "qdrant",
+        "milvus",
+        "cohere",
+        "gemini",
+        "mistral",
+        "huggingface",
+        "transformers",
+        "semantic_kernel",
+        "autogen",
+        "crewai",
+        "haystack",
+        "instructor",
+        "litellm",
+        "guidance",
+        "outlines",
+        "marvin",
+        "pydantic_ai",
+        "faiss",
+        "pgvector",
+        "sentence_transformers",
+        "sentence-transformers",
+        "ollama",
+        "groq",
+        "vllm",
+        "together",
+        "fireworks",
+        "replicate",
+        "openrouter",
+        "bedrock",
+    }
+)
 
 
 def _existing_ai_context(code_review: dict[str, Any]) -> str:
@@ -225,7 +257,11 @@ def _existing_ai_context(code_review: dict[str, Any]) -> str:
     keyword scan is retained as a fallback and appended alongside — old
     artifacts and reviews without the section still surface what they can.
     """
-    cr = code_review.get("code_review", code_review) if isinstance(code_review, dict) else {}
+    cr = (
+        code_review.get("code_review", code_review)
+        if isinstance(code_review, dict)
+        else {}
+    )
     found: list[str] = []
     cap_lines: list[str] = []
     for c in cr.get("ai_capabilities") or []:
@@ -240,18 +276,24 @@ def _existing_ai_context(code_review: dict[str, Any]) -> str:
             line += f" ({c['location']})"
         cap_lines.append(line)
     if cap_lines:
-        found.append("Existing AI capabilities in the codebase:\n" + "\n".join(cap_lines))
+        found.append(
+            "Existing AI capabilities in the codebase:\n" + "\n".join(cap_lines)
+        )
     deps = cr.get("dependencies") or []
     ai_deps = [
-        d.get("name", "") for d in deps
-        if isinstance(d, dict) and any(kw in d.get("name", "").lower() for kw in _AI_INFRA_KEYWORDS)
+        d.get("name", "")
+        for d in deps
+        if isinstance(d, dict)
+        and any(kw in d.get("name", "").lower() for kw in _AI_INFRA_KEYWORDS)
     ]
     if ai_deps:
         found.append("AI/LLM dependencies already in place: " + ", ".join(ai_deps))
     frameworks = cr.get("frameworks") or []
     ai_fw = [
-        f.get("name", "") for f in frameworks
-        if isinstance(f, dict) and any(kw in f.get("name", "").lower() for kw in _AI_INFRA_KEYWORDS)
+        f.get("name", "")
+        for f in frameworks
+        if isinstance(f, dict)
+        and any(kw in f.get("name", "").lower() for kw in _AI_INFRA_KEYWORDS)
     ]
     if ai_fw:
         found.append("AI/LLM frameworks already in use: " + ", ".join(ai_fw))
@@ -342,19 +384,21 @@ class TierAnalystAgent:
         }
         # Conditional so greenfield prompts stay byte-identical.
         if candidate.linked_existing_workflow:
-            candidate_payload["linked_existing_workflow"] = candidate.linked_existing_workflow
+            candidate_payload["linked_existing_workflow"] = (
+                candidate.linked_existing_workflow
+            )
         candidate_text = json.dumps(candidate_payload, indent=2)
 
         ai_hint = _existing_ai_context(input.code_review) if input.code_review else ""
         brownfield_note = (
             f"\n\n**Existing AI infrastructure (bias toward reuse):**\n{ai_hint}"
-            if ai_hint else ""
+            if ai_hint
+            else ""
         )
         notes = [str(n).strip() for n in (input.guidance or []) if str(n).strip()]
         guidance_note = (
             "\n\n**Developer guidance (from the redraw request — weigh toward "
-            "simpler tiers where it applies):**\n"
-            + "\n".join(f"- {n}" for n in notes)
+            "simpler tiers where it applies):**\n" + "\n".join(f"- {n}" for n in notes)
             if notes
             else ""
         )

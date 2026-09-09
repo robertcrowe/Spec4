@@ -116,39 +116,65 @@ def _is_demonstrated(field: str, pattern: str) -> bool:
 # cannot drift into claiming a licence the prompt does not grant.
 _LICENSED: list[tuple[str, str, str]] = [
     # --- satisfies_nfr: the sentence names three blocks explicitly ---------
-    ("satisfies_nfr", "libraries[]",
-     "(on the library, infrastructure, or provider entry)"),
-    ("satisfies_nfr", "infrastructure.*",
-     "(on the library, infrastructure, or provider entry)"),
-    ("satisfies_nfr", "providers.*.capabilities[]",
-     "(on the library, infrastructure, or provider entry)"),
+    (
+        "satisfies_nfr",
+        "libraries[]",
+        "(on the library, infrastructure, or provider entry)",
+    ),
+    (
+        "satisfies_nfr",
+        "infrastructure.*",
+        "(on the library, infrastructure, or provider entry)",
+    ),
+    (
+        "satisfies_nfr",
+        "providers.*.capabilities[]",
+        "(on the library, infrastructure, or provider entry)",
+    ),
     # --- satisfies_nfr at both persistence levels (D-SC37) -----------------
-    ("satisfies_nfr", "persistence.*",
-     "`satisfies_nfr` sits at BOTH levels"),
-    ("satisfies_nfr", "persistence.*.collections[]",
-     "`satisfies_nfr` sits at BOTH levels"),
+    ("satisfies_nfr", "persistence.*", "`satisfies_nfr` sits at BOTH levels"),
+    (
+        "satisfies_nfr",
+        "persistence.*.collections[]",
+        "`satisfies_nfr` sits at BOTH levels",
+    ),
     # --- satisfies_infra: stores only (D-SC11c) ---------------------------
-    ("satisfies_infra", "persistence.*",
-     "that store's `satisfies_infra`"),
+    ("satisfies_infra", "persistence.*", "that store's `satisfies_infra`"),
     # --- serves_features --------------------------------------------------
-    ("serves_features", "libraries[]",
-     "no `serves_features` is attributable to no feature"),
-    ("serves_features", "providers.*.capabilities[]",
-     "only when that tier was chosen for"),
-    ("serves_features", "integrations[]",
-     "exactly as libraries are tagged"),
-    ("serves_features", "persistence.*.collections[]",
-     "Tag every collection with the `serves_features` it exists for"),
-    ("serves_features", "infrastructure.*",
-     "entry names the **product feature ids**"),
+    (
+        "serves_features",
+        "libraries[]",
+        "no `serves_features` is attributable to no feature",
+    ),
+    (
+        "serves_features",
+        "providers.*.capabilities[]",
+        "only when that tier was chosen for",
+    ),
+    ("serves_features", "integrations[]", "exactly as libraries are tagged"),
+    (
+        "serves_features",
+        "persistence.*.collections[]",
+        "Tag every collection with the `serves_features` it exists for",
+    ),
+    ("serves_features", "infrastructure.*", "entry names the **product feature ids**"),
     # --- serves_capabilities ----------------------------------------------
-    ("serves_capabilities", "libraries[]",
-     "**AI capability ids from the AI features spec** ONLY"),
-    ("serves_capabilities", "providers.*.capabilities[]",
-     "only when that tier was chosen for"),
+    (
+        "serves_capabilities",
+        "libraries[]",
+        "**AI capability ids from the AI features spec** ONLY",
+    ),
+    (
+        "serves_capabilities",
+        "providers.*.capabilities[]",
+        "only when that tier was chosen for",
+    ),
     # --- foundational: libraries only -------------------------------------
-    ("foundational", "libraries[]",
-     "`\"foundational\": true` and omit `serves_features`"),
+    (
+        "foundational",
+        "libraries[]",
+        '`"foundational": true` and omit `serves_features`',
+    ),
     # --- status (D-SC48): the three sites the draws evidence ---------------
     # Placement is evidenced, not assumed. `libraries[]` was invented twice on
     # Ragmeister (OpenTelemetry, Playwright) and dropped on Threadline;
@@ -158,34 +184,39 @@ _LICENSED: list[tuple[str, str, str]] = [
     # deliberately absent: neither draw shows provider conditionality, and the one
     # provider `note` was a scope restriction already carried by `role` and the
     # primary's `fallback` string.
-    ("status", "libraries[]",
-     "Use it whenever you would otherwise write"),
-    ("status", "persistence.*",
-     "A store or a collection that is not part of the MVP carries `status`"),
-    ("status", "persistence.*.collections[]",
-     "A store or a collection that is not part of the MVP carries `status`"),
+    ("status", "libraries[]", "Use it whenever you would otherwise write"),
+    (
+        "status",
+        "persistence.*",
+        "A store or a collection that is not part of the MVP carries `status`",
+    ),
+    (
+        "status",
+        "persistence.*.collections[]",
+        "A store or a collection that is not part of the MVP carries `status`",
+    ),
     # --- model_family (D-SC49) --------------------------------------------
-    ("model_family", "providers.*",
-     "the family this provider's models come from"),
+    ("model_family", "providers.*", "the family this provider's models come from"),
     # --- security.auth (D-SC53c): omittable, list-shaped, product ids ------
-    ("serves_features", "security.auth[]",
-     "different surfaces can authenticate differently"),
+    (
+        "serves_features",
+        "security.auth[]",
+        "different surfaces can authenticate differently",
+    ),
     # --- purpose on an entity-less collection (D-SC51) ---------------------
     # The garble's cause, not its symptom: `policy_audit_log` and `inquiry_log`
     # hold no domain entity, and with nowhere else to put the description the
     # model narrated into `entities` -- which then rendered one character at a
     # time. D-SC27 is the precedent for the field mattering less than the
     # sentence that names it.
-    ("purpose", "persistence.*.collections[]",
-     "Those take `purpose` — one line"),
+    ("purpose", "persistence.*.collections[]", "Those take `purpose` — one line"),
     # --- purpose on a store (D-SC60) ---------------------------------------
     # The store-level slot gap, one level up from D-SC51. The D-SC57 routing
     # paragraph already said "what a store or target is for is its `purpose`";
     # targets demonstrated it, stores did not, and on two of three visions
     # (Threadline, FareBox x2) the model generalised `purpose` up from the
     # collection level to record why a cache exists — read as undeclared.
-    ("purpose", "persistence.*",
-     "A store may also carry `purpose`"),
+    ("purpose", "persistence.*", "A store may also carry `purpose`"),
 ]
 
 
@@ -341,7 +372,8 @@ def test_every_project_specific_exemplar_id_is_domain_loaded() -> None:
     let the only true positive pass.
     """
     neutral = sorted(
-        i for i in _project_ids()
+        i
+        for i in _project_ids()
         if not any(n in i.lower() for n in _EXAMPLE_DOMAIN_NOUNS)
     )
     assert not neutral, (
@@ -355,6 +387,7 @@ def test_the_domain_loading_probe_can_actually_fail() -> None:
     """The noun list must not be so permissive that nothing could fail it."""
     assert not any(n in "SomeNeutralThing".lower() for n in _EXAMPLE_DOMAIN_NOUNS)
     assert any(n in "recipe_search" for n in _EXAMPLE_DOMAIN_NOUNS)
+
 
 # --- D-SC59: line continuations must not weld words together ------------------
 #
@@ -373,9 +406,13 @@ def test_the_domain_loading_probe_can_actually_fail() -> None:
 # Indented continuations are deliberately NOT flagged: the next line's indentation
 # supplies the separator, so they fold to a harmless double space.
 def _welded_folds() -> list[tuple[int, str]]:
-    src = Path(__file__).resolve().parents[1].joinpath(
-        "src/spec4/agents/stack_advisor.py"
-    ).read_text(encoding="utf-8")
+    src = (
+        Path(__file__)
+        .resolve()
+        .parents[1]
+        .joinpath("src/spec4/agents/stack_advisor.py")
+        .read_text(encoding="utf-8")
+    )
     raw = re.search(r'SYSTEM_PROMPT = """(.*?)"""', src, re.S).group(1)
     lines = raw.split("\n")
     out: list[tuple[int, str]] = []

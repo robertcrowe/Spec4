@@ -166,7 +166,7 @@ def test_extract_normalises_and_formatter_survives() -> None:
 
 
 def test_extract_still_rejects_a_non_stack_payload() -> None:
-    assert _extract_stack_json("```json\n{\"unrelated\": 1}\n```") is None
+    assert _extract_stack_json('```json\n{"unrelated": 1}\n```') is None
 
 
 # --- D-SC18a: state is committed only after the render succeeds -------------

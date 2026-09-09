@@ -179,6 +179,7 @@ class TestScoutAgentRun:
 
     def test_returns_scout_output(self) -> None:
         import asyncio
+
         mock_response = _make_mock_response(_SAMPLE_CANDIDATES_JSON)
         with patch(
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
@@ -193,6 +194,7 @@ class TestScoutAgentRun:
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
+
             asyncio.run(ScoutAgent().run(self._make_input()))
 
         call_kwargs = mock_llm.call_args[1]
@@ -207,6 +209,7 @@ class TestScoutAgentRun:
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
+
             asyncio.run(ScoutAgent().run(self._make_input(code_review=code_review)))
 
         call_kwargs = mock_llm.call_args[1]
@@ -220,6 +223,7 @@ class TestScoutAgentRun:
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
+
             asyncio.run(ScoutAgent().run(self._make_input(code_review=None)))
 
         call_kwargs = mock_llm.call_args[1]
@@ -229,6 +233,7 @@ class TestScoutAgentRun:
 
     def test_returns_empty_candidates_on_unparseable_response(self) -> None:
         import asyncio
+
         mock_response = _make_mock_response("I cannot find any candidates.")
         with patch(
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
@@ -239,6 +244,7 @@ class TestScoutAgentRun:
 
     def test_genuine_empty_array_reports_empty_outcome(self) -> None:
         import asyncio
+
         mock_response = _make_mock_response("[]")
         with patch(
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
@@ -255,6 +261,7 @@ class TestScoutAgentRun:
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
+
             asyncio.run(ScoutAgent().run(self._make_input()))
 
         call_kwargs = mock_llm.call_args[1]
@@ -267,6 +274,7 @@ class TestScoutAgentRun:
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
+
             asyncio.run(ScoutAgent().run(self._make_input()))
 
         call_kwargs = mock_llm.call_args[1]
@@ -280,6 +288,7 @@ class TestScoutAgentRun:
 
     def test_validates_input_type(self) -> None:
         import asyncio
+
         with pytest.raises(TypeError):
             asyncio.run(ScoutAgent().run("not a ScoutInput"))  # type: ignore[arg-type]
 
@@ -289,6 +298,7 @@ class TestScoutAgentRun:
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
+
             asyncio.run(ScoutAgent().run(self._make_input()))
 
         call_kwargs = mock_llm.call_args[1]
@@ -302,6 +312,7 @@ class TestScoutAgentRun:
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
         ) as mock_llm:
             import asyncio
+
             asyncio.run(ScoutAgent().run(scout_input))
 
         call_kwargs = mock_llm.call_args[1]
@@ -341,7 +352,9 @@ class TestBuildScoutSystemPrompt:
     def test_revision_addendum(self) -> None:
         prompt = _build_scout_system_prompt(False, True)
         assert "Revision mode" in prompt
-        assert "do not re-survey" in prompt.lower() or "not to re-survey" in prompt.lower()
+        assert (
+            "do not re-survey" in prompt.lower() or "not to re-survey" in prompt.lower()
+        )
 
     def test_brownfield_and_revision_compose(self) -> None:
         prompt = _build_scout_system_prompt(True, True)
@@ -385,6 +398,7 @@ class TestScoutAgentRevisionWiring:
 
     def test_revision_injects_block_and_addendum(self) -> None:
         import asyncio
+
         mock_response = _make_mock_response("[]")
         with patch(
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
@@ -397,6 +411,7 @@ class TestScoutAgentRevisionWiring:
 
     def test_no_revision_block_when_none(self) -> None:
         import asyncio
+
         mock_response = _make_mock_response("[]")
         with patch(
             "spec4.agentifier.scout.complete_stream", return_value=mock_response
@@ -405,6 +420,7 @@ class TestScoutAgentRevisionWiring:
         messages = mock_llm.call_args[1]["messages"]
         assert "Revision mode" not in messages[0]["content"]
         assert "REVISION MODE" not in messages[1]["content"]
+
 
 # ---------------------------------------------------------------------------
 # Guided redraw (D-TA7)
@@ -479,7 +495,9 @@ class TestScoutAgentGuidanceWiring:
         assert prompt.index("Revision mode") < prompt.index("Redraw mode")
 
     def test_defaults_to_none(self) -> None:
-        assert ScoutInput(vision=_SAMPLE_VISION, llm_config=_LLM_CONFIG).guidance is None
+        assert (
+            ScoutInput(vision=_SAMPLE_VISION, llm_config=_LLM_CONFIG).guidance is None
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +554,9 @@ class TestBrownfieldIsToldNotInferred:
         assert self._input().brownfield is False
 
     def test_a_code_review_does_not_flip_the_mode(self) -> None:
-        assert self._input(code_review={"is_software_project": True}).brownfield is False
+        assert (
+            self._input(code_review={"is_software_project": True}).brownfield is False
+        )
 
     def _system_prompt(self, scout_input: ScoutInput) -> str:
         import asyncio

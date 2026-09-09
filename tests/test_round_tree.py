@@ -93,9 +93,7 @@ def _by_path(lines: list[Any]) -> dict[str, Any]:
 
 
 class TestTheLaneTable:
-    def test_every_artifact_appears_exactly_once(
-        self, round_dir: pathlib.Path
-    ) -> None:
+    def test_every_artifact_appears_exactly_once(self, round_dir: pathlib.Path) -> None:
         paths = [line.path for line in round_tree_lines(round_dir, 0)]
         assert sorted(paths) == sorted(_ALL_ARTIFACTS)
         assert len(paths) == len(set(paths))
@@ -170,9 +168,7 @@ class TestPipelineOrder:
     ) -> None:
         assert round_tree_lines(round_dir, 0)[0].path == "code_review.json"
 
-    def test_the_record_of_the_round_comes_last(
-        self, round_dir: pathlib.Path
-    ) -> None:
+    def test_the_record_of_the_round_comes_last(self, round_dir: pathlib.Path) -> None:
         assert round_tree_lines(round_dir, 0)[-1].path == "usage.json"
 
 
@@ -282,7 +278,7 @@ class TestUsageIsNeverStale:
             if rel == "usage.json":
                 continue
             target = base / rel.rstrip("/")
-            for path in ([target] if target.is_file() else target.rglob("*")):
+            for path in [target] if target.is_file() else target.rglob("*"):
                 if path.is_file():
                     os.utime(path, (newer, newer))
 
@@ -312,9 +308,7 @@ class TestUsageIsNeverStale:
 
 
 class TestScope:
-    def test_another_rounds_files_do_not_appear(
-        self, round_dir: pathlib.Path
-    ) -> None:
+    def test_another_rounds_files_do_not_appear(self, round_dir: pathlib.Path) -> None:
         """A round 1 folder alongside round 0 changes nothing about round 0."""
         other = project_manager.ensure_version_dir(round_dir, 1)
         _write(other, "vision.json", 2_000_000)
@@ -444,9 +438,7 @@ class TestRendering:
             _round_tree(round_dir, 0)
         )
 
-    def test_the_heading_names_the_round_folder(
-        self, round_dir: pathlib.Path
-    ) -> None:
+    def test_the_heading_names_the_round_folder(self, round_dir: pathlib.Path) -> None:
         tree = _round_tree(round_dir, 3)
         assert ".spec4/v3/" in _text(tree)
 
@@ -463,16 +455,12 @@ class TestRendering:
         classes = _class_names(_round_tree(round_dir, 0))
         assert classes.count("mono") == len(_ALL_ARTIFACTS)
 
-    def test_each_line_carries_its_lane_class(
-        self, round_dir: pathlib.Path
-    ) -> None:
+    def test_each_line_carries_its_lane_class(self, round_dir: pathlib.Path) -> None:
         classes = _class_names(_round_tree(round_dir, 0))
         for path, lane in ARTIFACT_LANES.items():
             assert f"name lane-{lane}" in classes, path
 
-    def test_the_legend_names_all_three_lanes(
-        self, round_dir: pathlib.Path
-    ) -> None:
+    def test_the_legend_names_all_three_lanes(self, round_dir: pathlib.Path) -> None:
         tree = _round_tree(round_dir, 0)
         legend = next(
             node
@@ -771,9 +759,7 @@ def _pill_agents(component: Any) -> set[str]:
 
 
 class TestItClosesTheProjectView:
-    def test_the_tree_is_the_last_of_the_three(
-        self, round_dir: pathlib.Path
-    ) -> None:
+    def test_the_tree_is_the_last_of_the_three(self, round_dir: pathlib.Path) -> None:
         """D-LR11: the record is read after the controls, not before them.
 
         The tree is no longer the first element — the alerts still follow

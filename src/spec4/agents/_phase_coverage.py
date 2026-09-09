@@ -137,38 +137,42 @@ def _check_declared(
         introduced = [n for n, r in numbered.items() if r == "introduced"]
         earliest = min(numbered)
         if not introduced:
-            failures.append((
-                earliest,
-                [
-                    f"{key}: '{fid}' is declared only as 'extended' and never "
-                    "'introduced'. The phase that first builds it must "
-                    "declare role 'introduced'."
-                ],
-            ))
+            failures.append(
+                (
+                    earliest,
+                    [
+                        f"{key}: '{fid}' is declared only as 'extended' and never "
+                        "'introduced'. The phase that first builds it must "
+                        "declare role 'introduced'."
+                    ],
+                )
+            )
         elif len(introduced) > 1:
             where = ", ".join(str(n) for n in sorted(introduced))
-            failures.append((
-                min(introduced),
-                [
-                    f"{key}: '{fid}' is declared 'introduced' in more than one "
-                    f"phase (phases {where}). Exactly one phase introduces it."
-                ],
-            ))
+            failures.append(
+                (
+                    min(introduced),
+                    [
+                        f"{key}: '{fid}' is declared 'introduced' in more than one "
+                        f"phase (phases {where}). Exactly one phase introduces it."
+                    ],
+                )
+            )
         elif introduced[0] != earliest:
-            failures.append((
-                earliest,
-                [
-                    f"{key}: '{fid}' is declared 'introduced' in phase "
-                    f"{introduced[0]} but is already declared in earlier phase "
-                    f"{earliest}. The earliest phase to build it introduces it."
-                ],
-            ))
+            failures.append(
+                (
+                    earliest,
+                    [
+                        f"{key}: '{fid}' is declared 'introduced' in phase "
+                        f"{introduced[0]} but is already declared in earlier phase "
+                        f"{earliest}. The earliest phase to build it introduces it."
+                    ],
+                )
+            )
     return failures, declared
 
 
-def _first_phase(
-    declared: dict[str, dict[int | None, str]], fid: str
-) -> int | None:
+def _first_phase(declared: dict[str, dict[int | None, str]], fid: str) -> int | None:
     numbered = [n for n in declared.get(fid, {}) if isinstance(n, int)]
     return min(numbered) if numbered else None
 
@@ -229,15 +233,18 @@ def check_phase_coverage(
                     "by any phase — deferred."
                 )
         if missing:
-            failures.append((
-                None,
-                [
-                    "capabilities: these must be built by some phase but no "
-                    "phase declares them: " + "; ".join(sorted(missing))
-                    + ". Add each to the `capabilities` array of the phase "
-                    "that builds it."
-                ],
-            ))
+            failures.append(
+                (
+                    None,
+                    [
+                        "capabilities: these must be built by some phase but no "
+                        "phase declares them: "
+                        + "; ".join(sorted(missing))
+                        + ". Add each to the `capabilities` array of the phase "
+                        "that builds it."
+                    ],
+                )
+            )
 
         # infrastructure ordering (hard)
         for fid, node in by_id.items():
@@ -255,17 +262,19 @@ def check_phase_coverage(
                 if infra_phase > consumer_phase:
                     consumer_label = node.get("name") or fid
                     infra_label = req_node.get("name") or req_id
-                    failures.append((
-                        consumer_phase,
-                        [
-                            f"capabilities: phase {consumer_phase} builds "
-                            f"'{consumer_label}', which requires the "
-                            f"infrastructure '{infra_label}' — but that "
-                            f"substrate is not stood up until phase "
-                            f"{infra_phase}. Build infrastructure in the same "
-                            "phase as its first consumer, or earlier."
-                        ],
-                    ))
+                    failures.append(
+                        (
+                            consumer_phase,
+                            [
+                                f"capabilities: phase {consumer_phase} builds "
+                                f"'{consumer_label}', which requires the "
+                                f"infrastructure '{infra_label}' — but that "
+                                f"substrate is not stood up until phase "
+                                f"{infra_phase}. Build infrastructure in the same "
+                                "phase as its first consumer, or earlier."
+                            ],
+                        )
+                    )
 
     # ======================= product side (Brainstormer spine) ==============
     spine = [
@@ -289,17 +298,19 @@ def check_phase_coverage(
             label = f.get("name") or fid
             if fid in prod_declared:
                 if fid in excluded:
-                    failures.append((
-                        _first_phase(prod_declared, fid),
-                        [
-                            f"features: '{fid}' is excluded from this plan by "
-                            "the developer's Agentifier selection (its AI "
-                            "implementation was rejected) but a phase declares "
-                            "it. Remove the declaration — to include the "
-                            "feature, the developer must revisit the "
-                            "Agentifier selection."
-                        ],
-                    ))
+                    failures.append(
+                        (
+                            _first_phase(prod_declared, fid),
+                            [
+                                f"features: '{fid}' is excluded from this plan by "
+                                "the developer's Agentifier selection (its AI "
+                                "implementation was rejected) but a phase declares "
+                                "it. Remove the declaration — to include the "
+                                "feature, the developer must revisit the "
+                                "Agentifier selection."
+                            ],
+                        )
+                    )
                 continue
             if fid in excluded:
                 advisories.append(
@@ -310,16 +321,18 @@ def check_phase_coverage(
                 continue
             missing.append(f"{label} (id: {fid})")
         if missing:
-            failures.append((
-                None,
-                [
-                    "features: these product features must be built by some "
-                    "phase but no phase declares them: "
-                    + "; ".join(sorted(missing))
-                    + ". Add each to the `features` array of the phase that "
-                    "builds it."
-                ],
-            ))
+            failures.append(
+                (
+                    None,
+                    [
+                        "features: these product features must be built by some "
+                        "phase but no phase declares them: "
+                        + "; ".join(sorted(missing))
+                        + ". Add each to the `features` array of the phase that "
+                        "builds it."
+                    ],
+                )
+            )
 
         # product-dependency ordering (D-PH2f — advisory)
         for f in spine:

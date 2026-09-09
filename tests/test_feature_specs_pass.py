@@ -98,9 +98,7 @@ class TestVisionFeatures:
 
 class TestBuildFeatureSpecs:
     def test_scaffold_shape(self) -> None:
-        vision = _envelope(
-            [{"Checkout Flow": {"description": "Buy things."}}]
-        )
+        vision = _envelope([{"Checkout Flow": {"description": "Buy things."}}])
         fs = feature_speccer.build_feature_specs(vision)
         assert fs["version"] == feature_speccer.FEATURE_SPECS_VERSION
         assert fs["nfr_goals"] == []

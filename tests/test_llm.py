@@ -28,9 +28,7 @@ class TestBuildSystemPrompt:
 
     def test_addendum_added_for_either_provider(self) -> None:
         for provider in ("tavily", "exa"):
-            out = llm.build_system_prompt(
-                "BASE", llm.SearchConfig(provider, "k")
-            )
+            out = llm.build_system_prompt("BASE", llm.SearchConfig(provider, "k"))
             assert out.startswith("BASE")
             assert llm.WEB_SEARCH_ADDENDUM in out
 
@@ -65,9 +63,7 @@ class TestStreamTurn:
         messages: list[Any] = []
         with patch("spec4.llm.litellm.completion", return_value=iter(chunks)):
             output = "".join(
-                llm.stream_turn(
-                    "sys", messages, {"model": "m", "api_key": "k"}, None
-                )
+                llm.stream_turn("sys", messages, {"model": "m", "api_key": "k"}, None)
             )
         assert output == "Hello world"
 
@@ -75,11 +71,7 @@ class TestStreamTurn:
         chunks = [self._chunk("Hi"), self._chunk("", finish_reason="stop")]
         messages: list[Any] = []
         with patch("spec4.llm.litellm.completion", return_value=iter(chunks)):
-            list(
-                llm.stream_turn(
-                    "sys", messages, {"model": "m", "api_key": "k"}, None
-                )
-            )
+            list(llm.stream_turn("sys", messages, {"model": "m", "api_key": "k"}, None))
         assert messages[-1] == {"role": "assistant", "content": "Hi"}
 
     def test_no_tools_kwarg_when_no_tavily_key(self) -> None:
@@ -87,9 +79,7 @@ class TestStreamTurn:
         with patch(
             "spec4.llm.litellm.completion", return_value=iter(chunks)
         ) as mock_llm:
-            list(
-                llm.stream_turn("sys", [], {"model": "m", "api_key": "k"}, None)
-            )
+            list(llm.stream_turn("sys", [], {"model": "m", "api_key": "k"}, None))
         assert "tools" not in mock_llm.call_args[1]
 
     def test_tools_kwarg_present_when_tavily_key_given(self) -> None:
@@ -98,9 +88,7 @@ class TestStreamTurn:
             "spec4.llm.litellm.completion", return_value=iter(chunks)
         ) as mock_llm:
             list(
-                llm.stream_turn(
-                    "sys", [], {"model": "m", "api_key": "k"}, "tavily-key"
-                )
+                llm.stream_turn("sys", [], {"model": "m", "api_key": "k"}, "tavily-key")
             )
         assert mock_llm.call_args[1]["tools"] == [llm.WEB_SEARCH_TOOL]
 
@@ -177,11 +165,7 @@ class TestStreamTurn:
 
         with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             with patch("spec4.llm.search", return_value="hits") as mock_search:
-                list(
-                    llm.stream_turn(
-                        "sys", [], {"model": "m", "api_key": "k"}, cfg
-                    )
-                )
+                list(llm.stream_turn("sys", [], {"model": "m", "api_key": "k"}, cfg))
         mock_search.assert_called_once_with("dash docs", cfg)
 
     def test_search_config_enables_the_tool(self) -> None:
@@ -292,12 +276,7 @@ class TestStreamTurn:
 
     def test_history_has_tool_use_detects_both_shapes(self) -> None:
         assert llm._history_has_tool_use([]) is False
-        assert (
-            llm._history_has_tool_use(
-                [{"role": "user", "content": "hi"}]
-            )
-            is False
-        )
+        assert llm._history_has_tool_use([{"role": "user", "content": "hi"}]) is False
         # Tool-result message detected.
         assert (
             llm._history_has_tool_use(
@@ -343,9 +322,7 @@ class TestStreamTurn:
         with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             with patch("spec4.llm.search", return_value="results"):
                 chunks = list(
-                    llm.stream_turn(
-                        "sys", [], {"model": "m", "api_key": "k"}, "tv-key"
-                    )
+                    llm.stream_turn("sys", [], {"model": "m", "api_key": "k"}, "tv-key")
                 )
 
         combined = "".join(chunks)
@@ -374,11 +351,7 @@ class TestNoTemperature:
         with patch(
             "spec4.llm.litellm.completion", return_value=iter(self._chunks())
         ) as mock_llm:
-            list(
-                llm.stream_turn(
-                    "sys", [], {"model": "m", "api_key": "k"}, None
-                )
-            )
+            list(llm.stream_turn("sys", [], {"model": "m", "api_key": "k"}, None))
         assert "temperature" not in mock_llm.call_args[1]
 
     def test_no_temperature_for_a_named_agent(self) -> None:
@@ -476,9 +449,7 @@ class TestSupportsReasoningEffort:
 
     def test_an_unknown_model_is_unknown_not_unsupported(self) -> None:
         """LiteLLM returns None for a model it has no entry for."""
-        with patch(
-            "spec4.llm.litellm.get_supported_openai_params", return_value=None
-        ):
+        with patch("spec4.llm.litellm.get_supported_openai_params", return_value=None):
             assert llm.supports_reasoning_effort("totally/bogus") is None
 
     def test_returns_none_on_empty_model(self) -> None:
@@ -675,8 +646,7 @@ class TestEffortRejectionFallback:
             if len(calls) == 1:
                 raise LiteLLMBadRequestError(
                     message=(
-                        "This model does not support auto tool, please use "
-                        "tool_choice."
+                        "This model does not support auto tool, please use tool_choice."
                     ),
                     model="qwen",
                     llm_provider="openai",
@@ -779,8 +749,7 @@ class TestStreamTurnToolFallback:
             if call_count == 1:
                 raise LiteLLMBadRequestError(
                     message=(
-                        "This model does not support auto tool, please use "
-                        "tool_choice."
+                        "This model does not support auto tool, please use tool_choice."
                     ),
                     model="qwen",
                     llm_provider="openai",
@@ -814,11 +783,7 @@ class TestStreamTurnToolFallback:
             return iter(ok_chunks)
 
         with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
-            list(
-                llm.stream_turn(
-                    "sys", [], {"model": "m", "api_key": "k"}, "tv-key"
-                )
-            )
+            list(llm.stream_turn("sys", [], {"model": "m", "api_key": "k"}, "tv-key"))
 
         assert "tools" in call_args_list[0]
         assert "tools" not in call_args_list[1]
@@ -834,13 +799,12 @@ class TestStreamTurnToolFallback:
         with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             with pytest.raises(LiteLLMBadRequestError):
                 list(
-                    llm.stream_turn(
-                        "sys", [], {"model": "m", "api_key": "k"}, "tv-key"
-                    )
+                    llm.stream_turn("sys", [], {"model": "m", "api_key": "k"}, "tv-key")
                 )
 
     def test_no_fallback_when_no_tools_configured(self) -> None:
         """Without Tavily, tools=None — error should propagate normally."""
+
         def fake_completion(**kwargs: Any) -> Any:
             raise LiteLLMBadRequestError(
                 message="does not support auto tool",
@@ -850,11 +814,7 @@ class TestStreamTurnToolFallback:
 
         with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             with pytest.raises(LiteLLMBadRequestError):
-                list(
-                    llm.stream_turn(
-                        "sys", [], {"model": "m", "api_key": "k"}, None
-                    )
-                )
+                list(llm.stream_turn("sys", [], {"model": "m", "api_key": "k"}, None))
 
 
 class TestResponseFormatPassthrough:
@@ -890,11 +850,7 @@ class TestResponseFormatPassthrough:
         with patch(
             "spec4.llm.litellm.completion", return_value=iter(self._chunks())
         ) as mock_llm:
-            list(
-                llm.stream_turn(
-                    "sys", [], {"model": "m", "api_key": "k"}, None
-                )
-            )
+            list(llm.stream_turn("sys", [], {"model": "m", "api_key": "k"}, None))
         assert "response_format" not in mock_llm.call_args[1]
 
     def test_tools_suppressed_when_response_format_set(self) -> None:

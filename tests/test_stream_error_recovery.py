@@ -424,9 +424,7 @@ class TestRetryReplaysTheTurn:
             patch("spec4.callbacks.streaming.start", return_value="sid"),
         ):
             updated, _ = on_chat_retry(1, session)
-        assert not any(
-            "**Error:" in m["content"] for m in updated["messages"]
-        )
+        assert not any("**Error:" in m["content"] for m in updated["messages"])
 
     def test_noop_without_click(self) -> None:
         session = _session(_stream_error=True)
@@ -568,14 +566,11 @@ class TestRetryWithADifferentModel:
         opened = on_chat_retry_model(1, session)
         with patch.object(providers, "list_models", return_value=(["gpt-5"], "")):
             opened, _ = on_gate_connect(1, "OpenAI", "sk-new", opened, {})
-        with patch(
-            "spec4.llm_selection.probe_image_support", return_value=True
-        ), patch(
-            "spec4.llm_selection.probe_tool_support", return_value=tool_support
-        ), patch(
-            "spec4.callbacks._get_agent_gen", return_value=iter(["x"])
-        ) as gen, patch(
-            "spec4.callbacks.streaming.start", return_value="sid"
+        with (
+            patch("spec4.llm_selection.probe_image_support", return_value=True),
+            patch("spec4.llm_selection.probe_tool_support", return_value=tool_support),
+            patch("spec4.callbacks._get_agent_gen", return_value=iter(["x"])) as gen,
+            patch("spec4.callbacks.streaming.start", return_value="sid"),
         ):
             answered, poll = on_gate_continue(1, "gpt-5", None, opened)
         return {"session": answered, "poll": poll, "gen": gen}, answered
@@ -632,9 +627,10 @@ class TestRetryWithADifferentModel:
         opened = on_gate_chip(1, self._failed())
         with patch.object(providers, "list_models", return_value=(["gpt-5"], "")):
             opened, _ = on_gate_connect(1, "OpenAI", "sk-new", opened, {})
-        with patch(
-            "spec4.llm_selection.probe_image_support", return_value=True
-        ), patch("spec4.llm_selection.probe_tool_support", return_value=False):
+        with (
+            patch("spec4.llm_selection.probe_image_support", return_value=True),
+            patch("spec4.llm_selection.probe_tool_support", return_value=False),
+        ):
             answered, poll = on_gate_continue(1, "gpt-5", None, opened)
         assert answered["agent_llm"]["phaser"]["model"] == "gpt-5"
         assert answered.get("_stream_id") is None
@@ -654,9 +650,10 @@ class TestRetryWithADifferentModel:
                 }
             }
         )
-        with patch(
-            "spec4.callbacks._get_agent_gen", return_value=iter(["x"])
-        ) as gen, patch("spec4.callbacks.streaming.start", return_value="sid"):
+        with (
+            patch("spec4.callbacks._get_agent_gen", return_value=iter(["x"])) as gen,
+            patch("spec4.callbacks.streaming.start", return_value="sid"),
+        ):
             on_chat_retry(1, session)
         assert gen.call_args[0][0] == "plan it"
         assert llm_selection.resolve(gen.call_args[0][1], "phaser")["model"] == "gpt-5"

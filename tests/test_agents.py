@@ -185,11 +185,10 @@ class TestStalenessQuestion:
     completed, re-entering that agent must surface a revision question rather
     than silently replaying the now-outdated prior response."""
 
-    def _setup_stale(
-        self, tmp_path: Any, output_name: str, input_name: str
-    ) -> None:
+    def _setup_stale(self, tmp_path: Any, output_name: str, input_name: str) -> None:
         """Create output_name with old mtime and input_name with newer mtime."""
         import os
+
         v0 = tmp_path / ".spec4" / "v0"
         v0.mkdir(parents=True, exist_ok=True)
         for name, mtime in [(output_name, 1_000.0), (input_name, 2_000.0)]:
@@ -213,9 +212,7 @@ class TestStalenessQuestion:
             ],
         )
         with patch("spec4.llm.litellm.completion") as mock_llm:
-            output = collect(
-                stack_advisor.run(None, session, session["llm_config"])
-            )
+            output = collect(stack_advisor.run(None, session, session["llm_config"]))
         # No LLM call — the question is statically yielded.
         mock_llm.assert_not_called()
         assert "updated" in output.lower() or "revise" in output.lower()
@@ -226,6 +223,7 @@ class TestStalenessQuestion:
     def test_replay_path_runs_when_no_staleness(self, tmp_path: Any) -> None:
         # Output is newer than input → not stale → replay branch fires.
         import os
+
         v0 = tmp_path / ".spec4" / "v0"
         v0.mkdir(parents=True, exist_ok=True)
         (v0 / "vision.json").write_text("{}")
@@ -245,15 +243,11 @@ class TestStalenessQuestion:
             ],
         )
         with patch("spec4.llm.litellm.completion") as mock_llm:
-            output = collect(
-                stack_advisor.run(None, session, session["llm_config"])
-            )
+            output = collect(stack_advisor.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
         assert "Final stack JSON output." in output
 
-    def test_acknowledged_at_same_mtime_does_not_reask(
-        self, tmp_path: Any
-    ) -> None:
+    def test_acknowledged_at_same_mtime_does_not_reask(self, tmp_path: Any) -> None:
         self._setup_stale(tmp_path, "stack.json", "vision.json")
         session = make_session(
             active_agent="stack_advisor",
@@ -268,9 +262,7 @@ class TestStalenessQuestion:
             stack_advisor_stale_acknowledged={"vision": 2_000.0},
         )
         with patch("spec4.llm.litellm.completion") as mock_llm:
-            output = collect(
-                stack_advisor.run(None, session, session["llm_config"])
-            )
+            output = collect(stack_advisor.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
         # Replay branch fires — last assistant message comes back.
         assert "Last assistant message." in output
@@ -278,6 +270,7 @@ class TestStalenessQuestion:
     def test_input_updated_again_triggers_reask(self, tmp_path: Any) -> None:
         # Acknowledged at 2_000.0, but vision has since been updated to 3_000.0.
         import os
+
         v0 = tmp_path / ".spec4" / "v0"
         v0.mkdir(parents=True, exist_ok=True)
         (v0 / "stack.json").write_text("{}")
@@ -297,9 +290,7 @@ class TestStalenessQuestion:
             stack_advisor_stale_acknowledged={"vision": 2_000.0},
         )
         with patch("spec4.llm.litellm.completion") as mock_llm:
-            output = collect(
-                stack_advisor.run(None, session, session["llm_config"])
-            )
+            output = collect(stack_advisor.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
         # Re-asks because the mtime moved.
         assert "revise" in output.lower() or "updated" in output.lower()
@@ -383,9 +374,7 @@ class TestResumeSummary:
             session["brainstormer_messages"]
         )
         with patch("spec4.llm.litellm.completion") as mock_llm:
-            output = collect(
-                brainstormer.run(None, session, session["llm_config"])
-            )
+            output = collect(brainstormer.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
         assert "Vision" in output
         assert session.get("brainstormer_resumed") is not True
@@ -407,9 +396,7 @@ class TestResumeSummary:
             "**Recap:** We finalized your vision for App. **Next:** which "
             "section would you like to refine?"
         ):
-            output = collect(
-                brainstormer.run(None, session, session["llm_config"])
-            )
+            output = collect(brainstormer.run(None, session, session["llm_config"]))
         assert "Recap" in output
         assert session["brainstormer_resumed"] is True
 
@@ -418,9 +405,7 @@ class TestResumeSummary:
         # recap branch (which requires non-empty msgs).
         session = make_session(active_agent="brainstormer")
         with patch("spec4.llm.litellm.completion") as mock_llm:
-            output = collect(
-                brainstormer.run(None, session, session["llm_config"])
-            )
+            output = collect(brainstormer.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
         assert "Brainstormer" in output
         assert session.get("brainstormer_resumed") is not True
@@ -429,6 +414,7 @@ class TestResumeSummary:
         # Both staleness AND a fresh resume condition are present; the
         # staleness question must fire first (it's more important).
         import os
+
         v0 = tmp_path / ".spec4" / "v0"
         v0.mkdir(parents=True, exist_ok=True)
         for name, mtime in [("stack.json", 1_000.0), ("vision.json", 2_000.0)]:
@@ -442,9 +428,7 @@ class TestResumeSummary:
             stack_statement={"name": "App"},
         )
         with patch("spec4.llm.litellm.completion") as mock_llm:
-            output = collect(
-                stack_advisor.run(None, session, session["llm_config"])
-            )
+            output = collect(stack_advisor.run(None, session, session["llm_config"]))
         mock_llm.assert_not_called()
         assert "revise" in output.lower() or "updated" in output.lower()
         # Resume flag is NOT set — recap path didn't fire.
@@ -469,9 +453,7 @@ class TestOrphanTurnRecovery:
             ],
         )
         with mock_litellm_stream("Hi! Let's review your existing vision."):
-            output = collect(
-                brainstormer.run(None, session, session["llm_config"])
-            )
+            output = collect(brainstormer.run(None, session, session["llm_config"]))
 
         # The agent must have produced output (didn't silently return zero
         # chunks via a stale-replay path).
@@ -523,13 +505,12 @@ class TestOrphanTurnRecovery:
                     make_stream_chunk("", finish_reason="stop"),
                 ]
             )
-            collect(
-                brainstormer.run("new message", session, session["llm_config"])
-            )
+            collect(brainstormer.run("new message", session, session["llm_config"]))
 
         sent = mock_llm.call_args[1]["messages"]
         user_content = " ".join(
-            m["content"] for m in sent
+            m["content"]
+            for m in sent
             if m["role"] == "user" and isinstance(m["content"], str)
         )
         # The brownfield re-seed must include the existing vision so the
@@ -673,9 +654,7 @@ def _stack_revision_vision(
         },
         "rationale": "",
     }
-    return {
-        "vision_statement": {"name": "App", "revision_history": [entry]}
-    }
+    return {"vision_statement": {"name": "App", "revision_history": [entry]}}
 
 
 class TestStackAdvisorRevisionMode:
@@ -687,16 +666,18 @@ class TestStackAdvisorRevisionMode:
     # ----- revision_delta -----
 
     def test_delta_none_for_greenfield_vision(self) -> None:
-        assert stack_advisor.revision_delta(
-            {"vision_statement": {"name": "Fresh"}}
-        ) is None
+        assert (
+            stack_advisor.revision_delta({"vision_statement": {"name": "Fresh"}})
+            is None
+        )
 
     def test_delta_none_for_empty_or_missing(self) -> None:
         assert stack_advisor.revision_delta(None) is None
         assert stack_advisor.revision_delta({}) is None
-        assert stack_advisor.revision_delta(
-            {"vision_statement": {"revision_history": []}}
-        ) is None
+        assert (
+            stack_advisor.revision_delta({"vision_statement": {"revision_history": []}})
+            is None
+        )
         # Non-enveloped (inner-form) vision is not revision mode.
         assert stack_advisor.revision_delta({"name": "App"}) is None
 
@@ -705,8 +686,11 @@ class TestStackAdvisorRevisionMode:
             "vision_statement": {
                 "revision_history": [
                     {"version": 0, "goal": "first"},
-                    {"version": 1, "goal": "Add returns",
-                     "changes": {"added": ["Returns"]}},
+                    {
+                        "version": 1,
+                        "goal": "Add returns",
+                        "changes": {"added": ["Returns"]},
+                    },
                 ]
             }
         }
@@ -770,8 +754,13 @@ class TestStackAdvisorRevisionMode:
     ) -> None:
         wd = str(tmp_path)
         self._implement_prior_stack(
-            wd, {"stack_spec": {"name": "App", "libraries": {"backend": [
-                {"name": "FastAPI", "purpose": "API"}]}}}
+            wd,
+            {
+                "stack_spec": {
+                    "name": "App",
+                    "libraries": {"backend": [{"name": "FastAPI", "purpose": "API"}]},
+                }
+            },
         )
         session = make_session(
             active_agent="stack_advisor",
@@ -789,9 +778,7 @@ class TestStackAdvisorRevisionMode:
         assert "Subscriptions" in seed  # delta scoping note
         assert "Add billing" in seed
 
-    def test_prior_stack_without_delta_is_not_revision(
-        self, tmp_path: Any
-    ) -> None:
+    def test_prior_stack_without_delta_is_not_revision(self, tmp_path: Any) -> None:
         # Implemented prior stack exists, but the vision has no revision delta —
         # falls through to the brownfield code-review branch, not revision mode.
         wd = str(tmp_path)
@@ -929,9 +916,7 @@ class TestBrainstormerBranches:
         assert session["brainstormer_state"] == STATE_VISION_COMPLETE
 
     def test_y_shortform_shows_review(self) -> None:
-        vision = {
-            "vision_statement": {"name": "App", "vision": {"purpose": "x"}}
-        }
+        vision = {"vision_statement": {"name": "App", "vision": {"purpose": "x"}}}
         session = make_session(
             brainstormer_state=STATE_VISION_COMPLETE,
             vision_statement=vision,
@@ -951,9 +936,7 @@ class TestBrainstormerBranches:
         # A "yes" that confirms a pending revision — where the latest assistant
         # turn is a proposal, not the review offer — must reach the LLM, not be
         # hijacked into a review render.
-        vision = {
-            "vision_statement": {"name": "App", "vision": {"purpose": "x"}}
-        }
+        vision = {"vision_statement": {"name": "App", "vision": {"purpose": "x"}}}
         session = make_session(
             brainstormer_state=STATE_VISION_COMPLETE,
             vision_statement=vision,
@@ -973,9 +956,7 @@ class TestBrainstormerBranches:
     def test_question_after_offer_reaches_llm(self) -> None:
         # A non-affirmative reply to the offer (e.g. a question) is not a review
         # request and falls through to the LLM.
-        vision = {
-            "vision_statement": {"name": "App", "vision": {"purpose": "x"}}
-        }
+        vision = {"vision_statement": {"name": "App", "vision": {"purpose": "x"}}}
         session = make_session(
             brainstormer_state=STATE_VISION_COMPLETE,
             vision_statement=vision,
@@ -1005,9 +986,9 @@ class TestBrainstormerBranches:
                 {
                     "role": "assistant",
                     "content": (
-                        '```json\n'
+                        "```json\n"
                         '{"vision_statement": {"name": "App", "vision": "desc"}}\n'
-                        '```'
+                        "```"
                     ),
                 },
             ],
@@ -1018,13 +999,9 @@ class TestBrainstormerBranches:
             side_effect=AttributeError("'str' object has no attribute 'items'"),
         ):
             with mock_litellm_stream(
-                '```json\n'
-                '{"vision_statement": {"name": "App", "vision": "desc"}}\n'
-                '```'
+                '```json\n{"vision_statement": {"name": "App", "vision": "desc"}}\n```'
             ):
-                collect(
-                    brainstormer.run("yes", session, session["llm_config"])
-                )
+                collect(brainstormer.run("yes", session, session["llm_config"]))
         override = session.get("_display_override")
         assert override is not None
         assert "App" in override
@@ -1123,9 +1100,9 @@ class TestBrainstormerRevisionMode:
 
     def _implement(self, project_manager, wd: str, version: int, vision: dict) -> None:
         project_manager.save_vision(wd, vision, version)
-        project_manager.get_version_dir(wd, version).joinpath(
-            "IMPLEMENTED"
-        ).write_text("")
+        project_manager.get_version_dir(wd, version).joinpath("IMPLEMENTED").write_text(
+            ""
+        )
 
     # ----- pure merge -----
 
@@ -1199,9 +1176,7 @@ class TestBrainstormerRevisionMode:
 
     # ----- seed selection + end-to-end -----
 
-    def test_revision_seed_used_when_prior_vision_exists(
-        self, tmp_path: Any
-    ) -> None:
+    def test_revision_seed_used_when_prior_vision_exists(self, tmp_path: Any) -> None:
         from spec4 import project_manager
 
         wd = str(tmp_path)
@@ -1461,8 +1436,7 @@ class TestCodeScanner:
         # was generated from notes-as-string (single-char bullets).
         review = {"code_review": {"notes": "Directory is flat"}}
         stale_content = (
-            "**Code Review Complete**\n\n"
-            "**Notable Observations:**\n- D\n- i\n"
+            "**Code Review Complete**\n\n**Notable Observations:**\n- D\n- i\n"
         )
         session = make_session(
             code_review=review,
@@ -2013,7 +1987,9 @@ class TestPhaser:
 
         # Use actual newlines inside the JSON string values — the pathology
         # that strict json.loads rejects with "Invalid control character".
-        block = '```json\n' + """{
+        block = (
+            "```json\n"
+            + """{
   "phase_number": 1,
   "phase_title": "Steel Thread",
   "verification": "1. Run pytest
@@ -2021,7 +1997,9 @@ class TestPhaser:
 3. Confirm CI green",
   "risk_assessment": {"potential_bottlenecks": "1. Missing env vars
 2. Port conflicts", "mitigation_strategy": "Validate at startup."}
-}""" + '\n```'
+}"""
+            + "\n```"
+        )
         phases = _extract_phases(block)
         assert len(phases) == 1
         assert "\n" in phases[0]["verification"]
@@ -2031,12 +2009,7 @@ class TestPhaser:
 
         # The real pathology: model appends an extra } after the object,
         # which causes strict json.loads to raise "Extra data".
-        block = (
-            '```json\n'
-            '{"phase_number": 2, "phase_title": "Integration"}\n'
-            '}\n'
-            '```'
-        )
+        block = '```json\n{"phase_number": 2, "phase_title": "Integration"}\n}\n```'
         phases = _extract_phases(block)
         assert len(phases) == 1
 
@@ -2044,20 +2017,28 @@ class TestPhaser:
         from spec4.agents.phaser import _extract_phases
 
         # Two blocks each with both pathologies: literal newlines AND trailing }.
-        block1 = '```json\n' + """{
+        block1 = (
+            "```json\n"
+            + """{
   "phase_number": 1,
   "phase_title": "Phase One",
   "verification": "1. Run tests
 2. Check logs"
 }
-}""" + '\n```'
-        block2 = '```json\n' + """{
+}"""
+            + "\n```"
+        )
+        block2 = (
+            "```json\n"
+            + """{
   "phase_number": 2,
   "phase_title": "Phase Two",
   "verification": "1. Deploy
 2. Smoke test"
 }
-}""" + '\n```'
+}"""
+            + "\n```"
+        )
         phases = _extract_phases(block1 + "\n\n" + block2)
         assert len(phases) == 2
         assert phases[0]["phase_number"] == 1
@@ -2069,10 +2050,10 @@ class TestPhaser:
         # A phase whose instructions contain a fenced ```bash block inside
         # a string value. A ```json-fence regex would prematurely terminate.
         block = (
-            '```json\n'
+            "```json\n"
             '{"phase_number": 1, "phase_title": "Setup", '
             '"instructions": "Run:\\n```bash\\nuv sync\\n```\\nThen start."}\n'
-            '```'
+            "```"
         )
         phases = _extract_phases(block)
         assert len(phases) == 1
@@ -2087,7 +2068,7 @@ class TestPhaser:
             '```json\n{"phases": ['
             '{"phase_number": 1, "phase_title": "A"}, '
             '{"phase_number": 2, "phase_title": "B"}'
-            ']}\n```'
+            "]}\n```"
         )
         phases = _extract_phases(text)
         assert [p["phase_number"] for p in phases] == [1, 2]
@@ -2100,7 +2081,7 @@ class TestPhaser:
             '{"phase_number": 1, "phase_title": "A"}, '
             '{"phase_number": 2, "phase_title": "B"}, '
             '{"phase_number": 3, "phase_title": "C"}'
-            ']}}\n```'
+            "]}}\n```"
         )
         phases = _extract_phases(text)
         assert [p["phase_number"] for p in phases] == [1, 2, 3]
@@ -2271,7 +2252,8 @@ class TestPhaser:
 
         sent = mock_llm.call_args[1]["messages"]
         user_content = " ".join(
-            m["content"] for m in sent
+            m["content"]
+            for m in sent
             if m["role"] == "user" and isinstance(m["content"], str)
         )
         # The re-seeded user message must include vision/stack so the LLM
@@ -2284,9 +2266,7 @@ class TestPhaser:
         # message identity, not substring: the re-seeded context legitimately
         # contains the word (e.g. the stack digest's "approved-components
         # list"), but no user message may BE the stray reply.
-        assert all(
-            m["content"] != "approved" for m in sent if m["role"] == "user"
-        )
+        assert all(m["content"] != "approved" for m in sent if m["role"] == "user")
 
 
 # ---------------------------------------------------------------------------
@@ -2591,8 +2571,9 @@ class TestDeployerExistingPlanGuard:
             "## Deployment Steps\n\n### 1. Build image\n…"
         )
         with mock_litellm_stream(new_plan):
-            collect(deployer.run("use Cloud Run instead", session,
-                                 session["llm_config"]))
+            collect(
+                deployer.run("use Cloud Run instead", session, session["llm_config"])
+            )
         assert session["_deployer_plan_markdown"] == new_plan
         assert session["_deployer_pending_plan"] is True
         # State was already COMPLETE on entry but the agent does not "re-set"
@@ -2772,8 +2753,15 @@ class TestCodeReviewSchemaValidation:
         from spec4.agents._code_review_schema import validate_code_review
 
         models = (
-            "session", "jwt", "oauth", "sso",
-            "api_key", "basic", "mtls", "none", "other",
+            "session",
+            "jwt",
+            "oauth",
+            "sso",
+            "api_key",
+            "basic",
+            "mtls",
+            "none",
+            "other",
         )
         for model in models:
             data = {
@@ -3136,7 +3124,8 @@ class TestCodeScannerValidationRetry:
         msgs = session["code_scanner_messages"]
         # Synthesized retry user message present, mentioning validation.
         retry_msgs = [
-            m for m in msgs
+            m
+            for m in msgs
             if m["role"] == "user" and "failed schema validation" in m["content"]
         ]
         assert len(retry_msgs) == 1
@@ -3195,7 +3184,8 @@ class TestCodeScannerValidationRetry:
         # Retry exchange dropped — no leftover "failed schema validation"
         # user message clutters the conversation.
         retry_user = [
-            m for m in session["code_scanner_messages"]
+            m
+            for m in session["code_scanner_messages"]
             if m["role"] == "user" and "failed schema validation" in m["content"]
         ]
         assert retry_user == []
@@ -3221,11 +3211,12 @@ class TestCodeScannerValidationRetry:
             call_kwargs.append(kwargs)
             return iter(chunk_seqs.pop(0))
 
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ), patch(
-            "spec4.llm.litellm.get_supported_openai_params",
-            return_value=["temperature", "response_format"],
+        with (
+            patch("spec4.llm.litellm.completion", side_effect=fake_completion),
+            patch(
+                "spec4.llm.litellm.get_supported_openai_params",
+                return_value=["temperature", "response_format"],
+            ),
         ):
             collect(code_scanner.run("Confirm", session, session["llm_config"]))
 
@@ -3250,11 +3241,12 @@ class TestCodeScannerValidationRetry:
             call_kwargs.append(kwargs)
             return iter(chunk_seqs.pop(0))
 
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ), patch(
-            "spec4.llm.litellm.get_supported_openai_params",
-            return_value=["temperature"],  # no response_format
+        with (
+            patch("spec4.llm.litellm.completion", side_effect=fake_completion),
+            patch(
+                "spec4.llm.litellm.get_supported_openai_params",
+                return_value=["temperature"],  # no response_format
+            ),
         ):
             collect(code_scanner.run("Confirm", session, session["llm_config"]))
 
@@ -3282,11 +3274,12 @@ class TestCodeScannerValidationRetry:
         def fake_completion(**kwargs: Any) -> Any:
             return iter(chunk_seqs.pop(0))
 
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ), patch(
-            "spec4.llm.litellm.get_supported_openai_params",
-            return_value=["response_format"],
+        with (
+            patch("spec4.llm.litellm.completion", side_effect=fake_completion),
+            patch(
+                "spec4.llm.litellm.get_supported_openai_params",
+                return_value=["response_format"],
+            ),
         ):
             collect(code_scanner.run("Confirm", session, session["llm_config"]))
 
@@ -3332,25 +3325,19 @@ class TestCodeScannerUnparseableArtifact:
         def fake_completion(**kwargs: Any) -> Any:
             return iter(chunk_seqs.pop(0))
 
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ):
+        with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             output = collect(
                 code_scanner.run("looks good", session, session["llm_config"])
             )
         return session, output
 
     def test_truncated_block_is_retried(self) -> None:
-        session, _ = self._run(
-            self._truncated_review_text(), self._valid_review_text()
-        )
+        session, _ = self._run(self._truncated_review_text(), self._valid_review_text())
         assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
         assert session["code_review"]["code_review"]["schema_version"] == 1
 
     def test_retry_message_names_the_parse_failure(self) -> None:
-        session, _ = self._run(
-            self._truncated_review_text(), self._valid_review_text()
-        )
+        session, _ = self._run(self._truncated_review_text(), self._valid_review_text())
         retry_msgs = [
             m
             for m in session["code_scanner_messages"]
@@ -3461,9 +3448,7 @@ class TestStackAdvisorUnparseableArtifact:
     def _run(self, *replies: str) -> tuple[dict[str, Any], str, list[Any]]:
         session = self._session()
         fake_completion, calls = _reply_sequence(*replies)
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ):
+        with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             output = collect(
                 stack_advisor.run("looks good", session, session["llm_config"])
             )
@@ -3539,9 +3524,7 @@ class TestBrainstormerUnparseableArtifact:
     def _run(self, *replies: str) -> tuple[dict[str, Any], str, list[Any]]:
         session = self._session()
         fake_completion, calls = _reply_sequence(*replies)
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ):
+        with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             output = collect(
                 brainstormer.run("looks good", session, session["llm_config"])
             )
@@ -3653,9 +3636,7 @@ class TestPhaseSchema:
     def test_rejects_reference_missing_url(self) -> None:
         from spec4.agents._phase_schema import validate_phase
 
-        errors = validate_phase(
-            _valid_phase(references=[{"standard": "FastAPI"}])
-        )
+        errors = validate_phase(_valid_phase(references=[{"standard": "FastAPI"}]))
         assert any("url" in e for e in errors)
 
     def test_rejects_custom_top_level_key(self) -> None:
@@ -3699,8 +3680,9 @@ class TestPhaserValidationRetry:
         # Patch run_seam_check so its advisory extraction call doesn't inflate
         # the litellm.completion call_count (it is a separate code path tested
         # in tests/test_seam_check.py).
-        with mock_litellm_stream(text) as mock_llm, patch(
-            "spec4.agents.phaser.run_seam_check", return_value=""
+        with (
+            mock_litellm_stream(text) as mock_llm,
+            patch("spec4.agents.phaser.run_seam_check", return_value=""),
         ):
             collect(phaser.run("Approve", session, session["llm_config"]))
         assert mock_llm.call_count == 1
@@ -3779,11 +3761,12 @@ class TestPhaserValidationRetry:
             call_kwargs.append(kwargs)
             return iter(chunk_seqs.pop(0))
 
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ), patch(
-            "spec4.llm.litellm.get_supported_openai_params",
-            return_value=["temperature", "response_format"],
+        with (
+            patch("spec4.llm.litellm.completion", side_effect=fake_completion),
+            patch(
+                "spec4.llm.litellm.get_supported_openai_params",
+                return_value=["temperature", "response_format"],
+            ),
         ):
             collect(phaser.run("Approve", session, session["llm_config"]))
 
@@ -3887,9 +3870,10 @@ class TestPhaserStackAdditionCaptureAcrossTurn:
             # Post-search round: clean acknowledgment prose, no block.
             return iter(_chunkify_stream(post_search))
 
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ), patch("spec4.llm.search", return_value="results"):
+        with (
+            patch("spec4.llm.litellm.completion", side_effect=fake_completion),
+            patch("spec4.llm.search", return_value="results"),
+        ):
             collect(phaser.run("Approve", session, session["llm_config"]))
 
         # 1. The addition reaches the stack — the defect this fix closes: in a
@@ -4019,9 +4003,7 @@ class TestPhaseCompleteness:
         def fake_completion(**kwargs: Any) -> Any:
             return iter(chunk_seqs.pop(0))
 
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ):
+        with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             collect(phaser.run("Approve", session, session["llm_config"]))
 
         retry_msgs = [
@@ -4045,9 +4027,9 @@ class TestPhaseCompleteness:
             ],
         )
         incomplete = _phase_block(self._phase(2, 2, phase_title="Only second"))
-        complete = _phase_block(
-            self._phase(1, 2, phase_title="First")
-        ) + _phase_block(self._phase(2, 2, phase_title="Second"))
+        complete = _phase_block(self._phase(1, 2, phase_title="First")) + _phase_block(
+            self._phase(2, 2, phase_title="Second")
+        )
         chunk_seqs = [
             list(_chunkify_stream(incomplete)),
             list(_chunkify_stream(complete)),
@@ -4056,9 +4038,7 @@ class TestPhaseCompleteness:
         def fake_completion(**kwargs: Any) -> Any:
             return iter(chunk_seqs.pop(0))
 
-        with patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        ):
+        with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
             collect(phaser.run("Approve", session, session["llm_config"]))
 
         retry_msgs = [
@@ -4089,8 +4069,9 @@ class TestPhaserImplementedMarker:
             ]
         )
         text = _phase_block(self._phase(1, 2)) + _phase_block(self._phase(2, 2))
-        with mock_litellm_stream(text), patch(
-            "spec4.agents.phaser.run_seam_check", return_value=""
+        with (
+            mock_litellm_stream(text),
+            patch("spec4.agents.phaser.run_seam_check", return_value=""),
         ):
             collect(phaser.run("Approve", session, session["llm_config"]))
 
@@ -4111,12 +4092,11 @@ class TestPhaserImplementedMarker:
             ]
         )
         marker = ".spec4/v0/IMPLEMENTED"
-        p2 = self._phase(
-            2, 2, instructions=["Do the thing.", f"touch {marker}"]
-        )
+        p2 = self._phase(2, 2, instructions=["Do the thing.", f"touch {marker}"])
         text = _phase_block(self._phase(1, 2)) + _phase_block(p2)
-        with mock_litellm_stream(text), patch(
-            "spec4.agents.phaser.run_seam_check", return_value=""
+        with (
+            mock_litellm_stream(text),
+            patch("spec4.agents.phaser.run_seam_check", return_value=""),
         ):
             collect(phaser.run("Approve", session, session["llm_config"]))
 
@@ -4159,16 +4139,15 @@ class TestPhaserRevisionMode:
     # ----- revision_delta -----
 
     def test_delta_none_for_greenfield_vision(self) -> None:
-        assert phaser.revision_delta(
-            {"vision_statement": {"name": "Fresh"}}
-        ) is None
+        assert phaser.revision_delta({"vision_statement": {"name": "Fresh"}}) is None
 
     def test_delta_none_for_empty_or_missing(self) -> None:
         assert phaser.revision_delta(None) is None
         assert phaser.revision_delta({}) is None
-        assert phaser.revision_delta(
-            {"vision_statement": {"revision_history": []}}
-        ) is None
+        assert (
+            phaser.revision_delta({"vision_statement": {"revision_history": []}})
+            is None
+        )
         # Non-enveloped (inner-form) vision is not revision mode.
         assert phaser.revision_delta({"name": "App"}) is None
 
@@ -4177,8 +4156,11 @@ class TestPhaserRevisionMode:
             "vision_statement": {
                 "revision_history": [
                     {"version": 0, "goal": "first"},
-                    {"version": 1, "goal": "Add returns",
-                     "changes": {"added": ["Returns"]}},
+                    {
+                        "version": 1,
+                        "goal": "Add returns",
+                        "changes": {"added": ["Returns"]},
+                    },
                 ]
             }
         }
@@ -4266,9 +4248,7 @@ class TestPhaserRevisionMode:
         assert "ONLY this revision's new or changed surface" in seed
         assert "generate the full set of development phases" not in seed
 
-    def test_prior_round_without_delta_is_not_revision(
-        self, tmp_path: Any
-    ) -> None:
+    def test_prior_round_without_delta_is_not_revision(self, tmp_path: Any) -> None:
         # Implemented prior round exists, but the vision has no revision delta —
         # falls through to the brownfield code-review branch, not revision mode.
         wd = str(tmp_path)
@@ -4314,11 +4294,20 @@ class TestAiFeaturesForPhaserRevision:
     def _features(self) -> dict[str, Any]:
         return {
             "ai_features": [
-                {"name": "search", "tier": "rag", "phase_priority": "mvp",
-                 "purpose": "find", "introduced_in_version": 0},
-                {"name": "summarize", "tier": "single_call",
-                 "phase_priority": "mvp", "purpose": "tldr",
-                 "introduced_in_version": 1},
+                {
+                    "name": "search",
+                    "tier": "rag",
+                    "phase_priority": "mvp",
+                    "purpose": "find",
+                    "introduced_in_version": 0,
+                },
+                {
+                    "name": "summarize",
+                    "tier": "single_call",
+                    "phase_priority": "mvp",
+                    "purpose": "tldr",
+                    "introduced_in_version": 1,
+                },
             ]
         }
 
@@ -4437,16 +4426,15 @@ class TestDeployerRevisionMode:
     # ----- revision_delta -----
 
     def test_delta_none_for_greenfield_vision(self) -> None:
-        assert deployer.revision_delta(
-            {"vision_statement": {"name": "Fresh"}}
-        ) is None
+        assert deployer.revision_delta({"vision_statement": {"name": "Fresh"}}) is None
 
     def test_delta_none_for_empty_or_missing(self) -> None:
         assert deployer.revision_delta(None) is None
         assert deployer.revision_delta({}) is None
-        assert deployer.revision_delta(
-            {"vision_statement": {"revision_history": []}}
-        ) is None
+        assert (
+            deployer.revision_delta({"vision_statement": {"revision_history": []}})
+            is None
+        )
         # Non-enveloped (inner-form) vision is not revision mode.
         assert deployer.revision_delta({"name": "App"}) is None
 
@@ -4455,8 +4443,11 @@ class TestDeployerRevisionMode:
             "vision_statement": {
                 "revision_history": [
                     {"version": 0, "goal": "first"},
-                    {"version": 1, "goal": "Add billing",
-                     "changes": {"added": ["Subscriptions"]}},
+                    {
+                        "version": 1,
+                        "goal": "Add billing",
+                        "changes": {"added": ["Subscriptions"]},
+                    },
                 ]
             }
         }
@@ -4551,9 +4542,7 @@ class TestDeployerRevisionMode:
         assert "Provider:** Fly.io" in seed
         assert "carrying forward from the baseline above" in seed
         # Not the generic greenfield intro.
-        assert (
-            "then begin by asking which AI coding agent" not in seed
-        )
+        assert "then begin by asking which AI coding agent" not in seed
 
     def test_revision_seed_without_prior_plan_skipped_predecessor(
         self, tmp_path: Any
@@ -4591,10 +4580,8 @@ class TestDeployerRevisionMode:
         self._implement_prior_round(wd, with_plan=True)
         ai_features = {
             "ai_features": [
-                {"name": "Summarizer", "tier": "rag",
-                 "introduced_in_version": 0},
-                {"name": "Agent", "tier": "tool_agent",
-                 "introduced_in_version": 1},
+                {"name": "Summarizer", "tier": "rag", "introduced_in_version": 0},
+                {"name": "Agent", "tier": "tool_agent", "introduced_in_version": 1},
             ],
             "cross_cutting": {
                 "provider_strategy": {"recommendation": "Use one provider"}
@@ -4621,9 +4608,7 @@ class TestDeployerRevisionMode:
         assert "do NOT create phases" not in seed
         assert "Already-implemented AI features" not in seed
 
-    def test_prior_round_without_delta_is_not_revision(
-        self, tmp_path: Any
-    ) -> None:
+    def test_prior_round_without_delta_is_not_revision(self, tmp_path: Any) -> None:
         # Implemented prior round exists, but the vision has no revision delta —
         # falls through to the fresh greenfield seed, not revision mode.
         wd = str(tmp_path)
@@ -5123,9 +5108,7 @@ class TestPhaserCoverageEnforcement:
         def fake_completion(**kwargs: Any) -> Any:
             return iter(chunk_seqs.pop(0))
 
-        return patch(
-            "spec4.llm.litellm.completion", side_effect=fake_completion
-        )
+        return patch("spec4.llm.litellm.completion", side_effect=fake_completion)
 
     def _covered(self) -> str:
         return _phase_block(
@@ -5144,8 +5127,9 @@ class TestPhaserCoverageEnforcement:
             ]
         )
         session["ai_features"] = self._catalog()
-        with mock_litellm_stream(self._covered()), patch(
-            "spec4.agents.phaser.run_seam_check", return_value=""
+        with (
+            mock_litellm_stream(self._covered()),
+            patch("spec4.agents.phaser.run_seam_check", return_value=""),
         ):
             collect(phaser.run("Approve", session, session["llm_config"]))
         assert session["phaser_state"] == STATE_PHASES_COMPLETE
@@ -5165,8 +5149,9 @@ class TestPhaserCoverageEnforcement:
                 capabilities=[self._decl("vector_index")],
             )
         )
-        with self._two_turn_stream(bad, self._covered()), patch(
-            "spec4.agents.phaser.run_seam_check", return_value=""
+        with (
+            self._two_turn_stream(bad, self._covered()),
+            patch("spec4.agents.phaser.run_seam_check", return_value=""),
         ):
             collect(phaser.run("Approve", session, session["llm_config"]))
         assert session["phaser_state"] == STATE_PHASES_COMPLETE
@@ -5194,8 +5179,9 @@ class TestPhaserCoverageEnforcement:
                 capabilities=[self._decl("vector_index")],
             )
         )
-        with self._two_turn_stream(bad, self._covered()), patch(
-            "spec4.agents.phaser.run_seam_check", return_value=""
+        with (
+            self._two_turn_stream(bad, self._covered()),
+            patch("spec4.agents.phaser.run_seam_check", return_value=""),
         ):
             collect(phaser.run("Approve", session, session["llm_config"]))
         retry = [m for m in session["phaser_messages"] if m["role"] == "user"]
@@ -5209,17 +5195,20 @@ class TestPhaserCoverageEnforcement:
             ]
         )
         catalog = self._catalog()
-        catalog["ai_features"].append({
-            "id": "summarizer",
-            "name": "Summarizer",
-            "kind": "feature",
-            "tier": "single_call",
-            "phase_priority": "v2",
-            "requires": [],
-        })
+        catalog["ai_features"].append(
+            {
+                "id": "summarizer",
+                "name": "Summarizer",
+                "kind": "feature",
+                "tier": "single_call",
+                "phase_priority": "v2",
+                "requires": [],
+            }
+        )
         session["ai_features"] = catalog
-        with mock_litellm_stream(self._covered()), patch(
-            "spec4.agents.phaser.run_seam_check", return_value=""
+        with (
+            mock_litellm_stream(self._covered()),
+            patch("spec4.agents.phaser.run_seam_check", return_value=""),
         ):
             collect(phaser.run("Approve", session, session["llm_config"]))
         assert session["phaser_state"] == STATE_PHASES_COMPLETE
@@ -5233,8 +5222,9 @@ class TestPhaserCoverageEnforcement:
                 {"role": "assistant", "content": "draft"},
             ]
         )
-        with mock_litellm_stream(_phase_block(_valid_phase())), patch(
-            "spec4.agents.phaser.run_seam_check", return_value=""
+        with (
+            mock_litellm_stream(_phase_block(_valid_phase())),
+            patch("spec4.agents.phaser.run_seam_check", return_value=""),
         ):
             collect(phaser.run("Approve", session, session["llm_config"]))
         assert session["phaser_state"] == STATE_PHASES_COMPLETE

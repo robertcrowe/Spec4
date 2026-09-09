@@ -36,11 +36,18 @@ def _product_spec(name: str, **kw: Any) -> dict[str, Any]:
         "purpose": f"{name} purpose",
         "invocation": {"trigger": f"user does {name}"},
         "inputs": [
-            {"name": "query", "type": "text", "description": "the ask", "required": True}
+            {
+                "name": "query",
+                "type": "text",
+                "description": "the ask",
+                "required": True,
+            }
         ],
         "outputs": {"primary": f"{name} result", "format": "list", "schema_notes": ""},
         "success_criteria": [f"{name} works"],
-        "failure_modes": [{"mode": "empty", "likelihood": "low", "mitigation": "retry"}],
+        "failure_modes": [
+            {"mode": "empty", "likelihood": "low", "mitigation": "retry"}
+        ],
         "dependencies": [],
         "entities": ["Item"],
     }
@@ -48,7 +55,9 @@ def _product_spec(name: str, **kw: Any) -> dict[str, Any]:
     return base
 
 
-def _feature_specs(*features: dict[str, Any], nfr_goals: list[str] | None = None) -> dict[str, Any]:
+def _feature_specs(
+    *features: dict[str, Any], nfr_goals: list[str] | None = None
+) -> dict[str, Any]:
     return {
         "version": 1,
         "features": list(features),
@@ -183,7 +192,10 @@ class TestRenderGroundingForPrompt:
 
     def test_unresolved_not_shown_to_model(self) -> None:
         text = render_grounding_for_prompt(
-            {"served_features": [_product_spec("Alpha")], "unresolved_links": ["SECRET"]}
+            {
+                "served_features": [_product_spec("Alpha")],
+                "unresolved_links": ["SECRET"],
+            }
         )
         assert "SECRET" not in text
 
@@ -261,9 +273,7 @@ class TestFeatureSpecsForSession:
     def test_falls_back_to_disk(self) -> None:
         specs = _feature_specs(_product_spec("Alpha"))
         session = {"feature_specs": None, "working_dir": "/wd"}
-        with patch(
-            "spec4.project_manager.load_feature_specs", return_value=specs
-        ) as m:
+        with patch("spec4.project_manager.load_feature_specs", return_value=specs) as m:
             got = _feature_specs_for_session(session)
         m.assert_called_once_with("/wd")
         assert got is specs
@@ -280,7 +290,9 @@ class TestFeatureSpecsForSession:
 
     def test_existing_workflow_for_entry_found(self) -> None:
         cands = [
-            _candidate("ranker", [], linked_existing_workflow="regex ranking in views.py")
+            _candidate(
+                "ranker", [], linked_existing_workflow="regex ranking in views.py"
+            )
         ]
         assert (
             _existing_workflow_for_entry(_entry("ranker"), cands)
@@ -290,7 +302,9 @@ class TestFeatureSpecsForSession:
     def test_existing_workflow_for_entry_missing_returns_empty(self) -> None:
         assert _existing_workflow_for_entry(_entry("orphan"), []) == ""
         # A candidate without the key (or with None) degrades to "".
-        assert _existing_workflow_for_entry(_entry("ranker"), [{"name": "ranker"}]) == ""
+        assert (
+            _existing_workflow_for_entry(_entry("ranker"), [{"name": "ranker"}]) == ""
+        )
 
 
 # ---------------------------------------------------------------------------

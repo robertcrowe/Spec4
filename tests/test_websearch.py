@@ -249,9 +249,7 @@ class TestAgentWiring:
             ],
         )
         with (
-            patch.object(
-                brainstormer.llm, "build_system_prompt", return_value=""
-            ),
+            patch.object(brainstormer.llm, "build_system_prompt", return_value=""),
             patch.object(brainstormer.llm, "stream_turn", _stream),
         ):
             list(brainstormer.run("go", session, {"model": "x"}))

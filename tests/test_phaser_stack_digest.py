@@ -92,9 +92,7 @@ def test_claimed_and_unclaimed_goals_both_render() -> None:
     claimed_goal = "Lookups are fast."
     orphan_goal = "Users can send replies in-app."
     spec = {
-        "libraries": [
-            {"name": "Lib", "satisfies_nfr": [f"nfr_{slug(claimed_goal)}"]}
-        ]
+        "libraries": [{"name": "Lib", "satisfies_nfr": [f"nfr_{slug(claimed_goal)}"]}]
     }
     specs = {"features": [], "nfr_goals": [claimed_goal, orphan_goal]}
     out = _stack_digest_for_phaser(_wrap(spec), specs)
@@ -160,9 +158,7 @@ def test_exposure_renders_per_target() -> None:
 def test_absent_and_present_empty_security_read_as_no_auth() -> None:
     base = {"libraries": [{"name": "Lib", "serves_features": ["f"]}]}
     absent = _stack_digest_for_phaser(_wrap(dict(base)))
-    present_empty = _stack_digest_for_phaser(
-        _wrap({**base, "security": {"auth": []}})
-    )
+    present_empty = _stack_digest_for_phaser(_wrap({**base, "security": {"auth": []}}))
     for out in (absent, present_empty):
         assert "no accounts or authentication" in out
 

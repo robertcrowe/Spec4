@@ -127,9 +127,7 @@ class TestConnect:
 
     def test_validates_against_the_chosen_provider(self) -> None:
         (new_session, _, path), mock_validate = self._connect("Exa", "exa-abc")
-        mock_validate.assert_called_once_with(
-            websearch.SearchConfig("exa", "exa-abc")
-        )
+        mock_validate.assert_called_once_with(websearch.SearchConfig("exa", "exa-abc"))
         assert new_session["search_provider"] == "exa"
         assert new_session["search_api_key"] == "exa-abc"
         assert new_session["phase"] == "agent_select"
@@ -170,8 +168,10 @@ class TestConnect:
         # it here too so no stale credential lingers in the session at all.
         session = _session(tavily_api_key="tvly-old")
         (new_session, prefs, _), _ = self._connect(
-            "Exa", "exa-new", session=session, prefs={"save_prefs": True,
-                                                      "tavily_key": "tvly-old"}
+            "Exa",
+            "exa-new",
+            session=session,
+            prefs={"save_prefs": True, "tavily_key": "tvly-old"},
         )
         assert new_session["tavily_api_key"] is None
         assert prefs["tavily_key"] is None

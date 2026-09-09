@@ -107,7 +107,6 @@ def _surface(
     return f
 
 
-
 class TestAiFeaturesForDesigner:
     def test_empty_returns_empty_string(self) -> None:
         assert _ai_features_for_designer({}) == ""
@@ -230,6 +229,7 @@ class TestAiFeaturesForDesigner:
             {"ai_features": [_surface("s", escalation="route to human")]}
         )
         assert "Edge state to design for: route to human" in esc_only
+
 
 class TestSlimVisionFraming:
     def test_keeps_framing_drops_features_and_noise(self) -> None:

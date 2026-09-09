@@ -195,9 +195,10 @@ class TestStripNumbers:
         # _call() reports 100 in / 20 out per call.
         assert f"{_RUN_LABEL} $0.0025 · Tokens: 200 in / 40 out" in text
         assert "$0.0125" not in text
-        assert price_source_note(
-            project_manager.round_cost(tmp_path, 0)["cost_source"]
-        ) in text
+        assert (
+            price_source_note(project_manager.round_cost(tmp_path, 0)["cost_source"])
+            in text
+        )
         assert strip.id == "cost-summary-card"
 
     def test_it_mounts_all_three_lines(self, tmp_path: Path) -> None:
@@ -371,8 +372,7 @@ class TestPricingGaps:
         )
         assert f"{_RUN_LABEL} $0.0300 ·" in text
         assert (
-            "2 of 3 calls could not be priced and are excluded: "
-            "Deployer (gpt-4o-mini)"
+            "2 of 3 calls could not be priced and are excluded: Deployer (gpt-4o-mini)"
         ) in text
 
     def test_nothing_priced_reads_as_not_available(self, tmp_path: Path) -> None:

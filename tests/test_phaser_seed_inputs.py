@@ -56,9 +56,7 @@ def _seed_for(session: dict[str, Any]) -> str:
 _VISION = {"name": "FareBox", "vision": "fare calculator"}
 _STACK = {
     "stack_spec": {
-        "libraries": [
-            {"name": "React Hook Form", "serves_features": ["fare_lookup"]}
-        ]
+        "libraries": [{"name": "React Hook Form", "serves_features": ["fare_lookup"]}]
     }
 }
 _SPECS = {
@@ -99,16 +97,18 @@ def test_seed_carries_manifest_projection_when_manifest_on_disk(
     design = tmp_path / ".spec4" / "v0" / "design"
     design.mkdir(parents=True)
     (design / "manifest.json").write_text(
-        json.dumps({
-            "surfaces": [
-                {
-                    "name": "fare_lookup_form",
-                    "kind": "non_ai",
-                    "screen": "commuter_main",
-                    "implements_feature_ids": ["fare_lookup"],
-                }
-            ]
-        }),
+        json.dumps(
+            {
+                "surfaces": [
+                    {
+                        "name": "fare_lookup_form",
+                        "kind": "non_ai",
+                        "screen": "commuter_main",
+                        "implements_feature_ids": ["fare_lookup"],
+                    }
+                ]
+            }
+        ),
         encoding="utf-8",
     )
     session = _make_session(
@@ -145,6 +145,7 @@ def test_load_design_manifest_tolerates_bad_json(tmp_path: Path) -> None:
     assert load_design_manifest(tmp_path, 0) is None
     assert load_design_manifest(tmp_path, 1) is None  # missing version dir
 
+
 # --- D-PH2i: failure observability ------------------------------------------
 
 
@@ -174,8 +175,9 @@ def test_final_failure_message_carries_specifics(tmp_path: Path) -> None:
             {"role": "assistant", "content": "outline"},
         ],
     )
-    with patch("spec4.llm.stream_turn") as stream, patch(
-        "spec4.llm.supports_response_format", return_value=False
+    with (
+        patch("spec4.llm.stream_turn") as stream,
+        patch("spec4.llm.supports_response_format", return_value=False),
     ):
         # Both the visible emission and the silent retry return the same bad JSON.
         def fake_stream(system, messages, *a, **k):
@@ -190,6 +192,7 @@ def test_final_failure_message_carries_specifics(tmp_path: Path) -> None:
     # the fallback replaced the bad JSON as the last assistant message, so a
     # later "try again" turn sees the specifics
     assert session["phaser_messages"][-1]["content"] == fallback
+
 
 def test_silent_retry_yields_status_line_and_prompt_names_coordinators() -> None:
     """D-PH2l: the corrective retry announces itself in the visible stream.
@@ -208,9 +211,11 @@ def test_silent_retry_yields_status_line_and_prompt_names_coordinators() -> None
             {"role": "assistant", "content": "outline"},
         ],
     )
-    with patch("spec4.llm.stream_turn") as stream, patch(
-        "spec4.llm.supports_response_format", return_value=False
+    with (
+        patch("spec4.llm.stream_turn") as stream,
+        patch("spec4.llm.supports_response_format", return_value=False),
     ):
+
         def fake_stream(system, messages, *a, **k):
             messages.append({"role": "assistant", "content": bad_phase})
             return iter([bad_phase])
@@ -218,6 +223,7 @@ def test_silent_retry_yields_status_line_and_prompt_names_coordinators() -> None
         stream.side_effect = fake_stream
         visible = _collect(phaser.run("LGTM", session, session["llm_config"]))
     assert "Validating phase structure — re-emitting with corrections" in visible
+
 
 def test_seed_vision_block_states_supersession() -> None:
     """D-PH7a: the vision paste announces that later inputs supersede it.
@@ -280,8 +286,9 @@ def test_retry_drain_publishes_cumulative_received_count() -> None:
         # The drained retry body: content chunks the user must never see.
         return iter(["x"] * n_retry_chunks)
 
-    with patch("spec4.llm.stream_turn", side_effect=fake_stream), patch(
-        "spec4.llm.supports_response_format", return_value=False
+    with (
+        patch("spec4.llm.stream_turn", side_effect=fake_stream),
+        patch("spec4.llm.supports_response_format", return_value=False),
     ):
         visible = _collect(phaser.run("LGTM", session, session["llm_config"]))
     assert "Validating phase structure" in visible

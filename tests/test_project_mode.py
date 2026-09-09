@@ -79,9 +79,7 @@ class TestDirectoryHasContent:
     def test_empty_directory(self, tmp_path: pathlib.Path) -> None:
         assert project_manager.directory_has_content(tmp_path) is False
 
-    def test_spec4_bookkeeping_does_not_count(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_spec4_bookkeeping_does_not_count(self, tmp_path: pathlib.Path) -> None:
         """Counting our own directory would flag every project Spec4 touched."""
         (tmp_path / ".spec4" / "v0").mkdir(parents=True)
         (tmp_path / ".spec4" / "v0" / "vision.json").write_text("{}")
@@ -110,15 +108,11 @@ class TestDirectoryHasContent:
 
 
 class TestNeedsProjectMode:
-    def test_asked_when_directory_is_occupied(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_asked_when_directory_is_occupied(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
         assert project_manager.needs_project_mode(tmp_path, _default_session())
 
-    def test_not_asked_for_an_empty_directory(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_not_asked_for_an_empty_directory(self, tmp_path: pathlib.Path) -> None:
         assert not project_manager.needs_project_mode(tmp_path, _default_session())
 
     def test_not_asked_once_answered(self, tmp_path: pathlib.Path) -> None:
@@ -127,9 +121,7 @@ class TestNeedsProjectMode:
             session = {**_default_session(), "project_mode": mode}
             assert not project_manager.needs_project_mode(tmp_path, session)
 
-    def test_garbage_answer_is_not_an_answer(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_garbage_answer_is_not_an_answer(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
         session = {**_default_session(), "project_mode": "maybe"}
         assert project_manager.needs_project_mode(tmp_path, session)
@@ -165,9 +157,7 @@ class TestNeedsProjectMode:
 
 
 class TestAgentsGate:
-    def test_question_replaces_the_agent_list(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_question_replaces_the_agent_list(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
         ids = _ids(_agent_select_layout(_session(tmp_path)))
         assert "btn-project-mode-existing" in ids
@@ -176,42 +166,29 @@ class TestAgentsGate:
             isinstance(i, dict) and i.get("type") == "agent-pill" for i in ids
         )
 
-    def test_question_names_the_skeleton_case(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_question_names_the_skeleton_case(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
         text = _text(_agent_select_layout(_session(tmp_path)))
         assert "uv init" in text
 
-    def test_question_says_it_will_be_asked_again(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_question_says_it_will_be_asked_again(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
         text = _text(_agent_select_layout(_session(tmp_path)))
         assert "asked again" in text
 
-    def test_empty_directory_skips_the_question(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_empty_directory_skips_the_question(self, tmp_path: pathlib.Path) -> None:
         ids = _ids(_agent_select_layout(_session(tmp_path)))
         assert "btn-project-mode-existing" not in ids
-        assert any(
-            isinstance(i, dict) and i.get("type") == "agent-pill" for i in ids
-        )
+        assert any(isinstance(i, dict) and i.get("type") == "agent-pill" for i in ids)
 
-    def test_answering_reveals_the_agent_list(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_answering_reveals_the_agent_list(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
         for mode in (PROJECT_MODE_EXISTING, PROJECT_MODE_NEW):
-            layout = _agent_select_layout(
-                _session(tmp_path, project_mode=mode)
-            )
+            layout = _agent_select_layout(_session(tmp_path, project_mode=mode))
             ids = _ids(layout)
             assert "btn-project-mode-existing" not in ids
             pills = [
-                i for i in ids
-                if isinstance(i, dict) and i.get("type") == "agent-pill"
+                i for i in ids if isinstance(i, dict) and i.get("type") == "agent-pill"
             ]
             assert {p["agent"] for p in pills} >= {"code_scanner", "brainstormer"}
 
@@ -226,16 +203,12 @@ class TestGuidanceFollowsTheAnswer:
         assert "existing project here" in text
         assert "CodeScanner first" in text
 
-    def test_new_treats_files_as_scaffolding(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_new_treats_files_as_scaffolding(self, tmp_path: pathlib.Path) -> None:
         text = self._text_for(tmp_path, PROJECT_MODE_NEW)
         assert "scaffolding" in text
         assert "CodeScanner is optional" in text
 
-    def test_new_does_not_nudge_code_scanner(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_new_does_not_nudge_code_scanner(self, tmp_path: pathlib.Path) -> None:
         text = self._text_for(tmp_path, PROJECT_MODE_NEW)
         assert "CodeScanner first" not in text
 
@@ -301,9 +274,7 @@ class TestCallback:
 class TestDesignerFollowsTheAnswer:
     """D-PM1: "Modify existing" must not offer to reproduce a starter template."""
 
-    def _has_existing_ui(
-        self, tmp_path: pathlib.Path, mode: str | None
-    ) -> bool:
+    def _has_existing_ui(self, tmp_path: pathlib.Path, mode: str | None) -> bool:
         from spec4.layouts.designer import designer_layout
 
         (tmp_path / "index.html").write_text("<html><body>starter</body></html>")
@@ -317,14 +288,10 @@ class TestDesignerFollowsTheAnswer:
         assert stores, "designer-session-store not rendered"
         return bool(stores[0].data.get("_has_existing_ui"))
 
-    def test_new_project_ignores_scaffolding_ui(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_new_project_ignores_scaffolding_ui(self, tmp_path: pathlib.Path) -> None:
         assert self._has_existing_ui(tmp_path, PROJECT_MODE_NEW) is False
 
-    def test_existing_project_still_detects_ui(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_existing_project_still_detects_ui(self, tmp_path: pathlib.Path) -> None:
         assert self._has_existing_ui(tmp_path, PROJECT_MODE_EXISTING) is True
 
     def test_unanswered_behaves_as_before(self, tmp_path: pathlib.Path) -> None:
@@ -339,12 +306,11 @@ class TestDesignerFollowsTheAnswer:
         design_dir = tmp_path / ".spec4" / "v0" / "design"
         design_dir.mkdir(parents=True)
         (design_dir / "mock.html").write_text("<html>spec4 mock</html>")
-        session = _session(
-            tmp_path, project_mode=PROJECT_MODE_NEW, phase="designer"
-        )
+        session = _session(tmp_path, project_mode=PROJECT_MODE_NEW, phase="designer")
         layout = designer_layout(session)
         store = next(
-            c for c in _flatten(layout)
+            c
+            for c in _flatten(layout)
             if getattr(c, "id", None) == "designer-session-store"
         )
         assert store.data["_has_existing_ui"] is True

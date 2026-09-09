@@ -73,19 +73,13 @@ class TestCollectFiles:
 
     def test_skips_vendored_directories(self, tmp_path: pathlib.Path) -> None:
         root = pathlib.Path(_make_project(tmp_path))
-        rels = {
-            str(p.relative_to(root)) for p in code_scanner._collect_files(root)
-        }
+        rels = {str(p.relative_to(root)) for p in code_scanner._collect_files(root)}
         assert not any(r.startswith("node_modules") for r in rels)
 
-    def test_empty_directory_returns_empty_list(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_empty_directory_returns_empty_list(self, tmp_path: pathlib.Path) -> None:
         assert code_scanner._collect_files(tmp_path) == []
 
-    def test_context_accepts_a_precomputed_walk(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_context_accepts_a_precomputed_walk(self, tmp_path: pathlib.Path) -> None:
         # run() walks the tree itself to report the count, then hands the
         # result to the formatter — the tree must not be walked twice.
         root = pathlib.Path(_make_project(tmp_path))
@@ -109,9 +103,7 @@ class TestCollectFiles:
 
 
 class TestScanIsNarrated:
-    def test_first_chunk_arrives_before_the_walk(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_first_chunk_arrives_before_the_walk(self, tmp_path: pathlib.Path) -> None:
         """The intro must be yielded before the (slow) walk, not after it."""
         root = _make_project(tmp_path)
         session = _session(root)
@@ -123,42 +115,30 @@ class TestScanIsNarrated:
             return []
 
         with patch.object(code_scanner, "_collect_files", _slow_walk):
-            with patch.object(
-                code_scanner.llm, "stream_turn", _fake_stream("draft")
-            ):
+            with patch.object(code_scanner.llm, "stream_turn", _fake_stream("draft")):
                 for chunk in code_scanner.run(None, session, {"model": "m"}):
                     seen.append(chunk)
 
     def test_narration_names_the_directory(self, tmp_path: pathlib.Path) -> None:
         root = _make_project(tmp_path)
         session = _session(root)
-        with patch.object(
-            code_scanner.llm, "stream_turn", _fake_stream("draft")
-        ):
+        with patch.object(code_scanner.llm, "stream_turn", _fake_stream("draft")):
             out = "".join(code_scanner.run(None, session, {"model": "m"}))
         assert "Scanning" in out
         assert root in out
 
-    def test_narration_reports_the_file_count(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_narration_reports_the_file_count(self, tmp_path: pathlib.Path) -> None:
         root = _make_project(tmp_path)
         n = len(code_scanner._collect_files(pathlib.Path(root)))
         session = _session(root)
-        with patch.object(
-            code_scanner.llm, "stream_turn", _fake_stream("draft")
-        ):
+        with patch.object(code_scanner.llm, "stream_turn", _fake_stream("draft")):
             out = "".join(code_scanner.run(None, session, {"model": "m"}))
         assert f"**{n}** files" in out
 
-    def test_narration_closes_before_the_llm_text(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_narration_closes_before_the_llm_text(self, tmp_path: pathlib.Path) -> None:
         root = _make_project(tmp_path)
         session = _session(root)
-        with patch.object(
-            code_scanner.llm, "stream_turn", _fake_stream("DRAFT-BODY")
-        ):
+        with patch.object(code_scanner.llm, "stream_turn", _fake_stream("DRAFT-BODY")):
             out = "".join(code_scanner.run(None, session, {"model": "m"}))
         assert out.index("Scan complete") < out.index("DRAFT-BODY")
 
@@ -166,9 +146,7 @@ class TestScanIsNarrated:
         root = _make_project(tmp_path)
         session = _session(root)
         session["code_review"] = {"code_review": {"schema_version": 1}}
-        with patch.object(
-            code_scanner.llm, "stream_turn", _fake_stream("draft")
-        ):
+        with patch.object(code_scanner.llm, "stream_turn", _fake_stream("draft")):
             out = "".join(code_scanner.run(None, session, {"model": "m"}))
         assert "Re-scanning" in out
 
@@ -182,9 +160,7 @@ class TestScanIsNarrated:
             {"role": "user", "content": "seed"},
             {"role": "assistant", "content": "draft"},
         ]
-        with patch.object(
-            code_scanner.llm, "stream_turn", _fake_stream("reply")
-        ):
+        with patch.object(code_scanner.llm, "stream_turn", _fake_stream("reply")):
             out = "".join(
                 code_scanner.run("fix the UI section", session, {"model": "m"})
             )
@@ -210,21 +186,15 @@ class TestCharsTotal:
     def test_total_covers_the_whole_turn(self, tmp_path: pathlib.Path) -> None:
         root = _make_project(tmp_path)
         session = _session(root)
-        with patch.object(
-            code_scanner.llm, "stream_turn", _fake_stream("abc", "defg")
-        ):
+        with patch.object(code_scanner.llm, "stream_turn", _fake_stream("abc", "defg")):
             out = "".join(code_scanner.run(None, session, {"model": "m"}))
         # Narration + every streamed chunk, not just the LLM's output.
         assert session["_stream_received_chars"] == len(out)
 
-    def test_total_exceeds_the_llm_output_alone(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_total_exceeds_the_llm_output_alone(self, tmp_path: pathlib.Path) -> None:
         root = _make_project(tmp_path)
         session = _session(root)
-        with patch.object(
-            code_scanner.llm, "stream_turn", _fake_stream("draft")
-        ):
+        with patch.object(code_scanner.llm, "stream_turn", _fake_stream("draft")):
             list(code_scanner.run(None, session, {"model": "m"}))
         assert session["_stream_received_chars"] > len("draft")
 
@@ -235,16 +205,12 @@ class TestCharsTotal:
         root = _make_project(tmp_path)
         session = _session(root)
         seen: list[int] = []
-        with patch.object(
-            code_scanner.llm, "stream_turn", _fake_stream("a", "b", "c")
-        ):
+        with patch.object(code_scanner.llm, "stream_turn", _fake_stream("a", "b", "c")):
             for _ in code_scanner.run(None, session, {"model": "m"}):
                 seen.append(session.get("_stream_received_chars") or 0)
         assert seen == sorted(seen)
 
-    def test_total_climbs_through_the_retry_drain(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_total_climbs_through_the_retry_drain(self, tmp_path: pathlib.Path) -> None:
         """The retry yields nothing visible; the counter must still advance."""
         root = _make_project(tmp_path)
         session = _session(root)
@@ -305,9 +271,7 @@ def _progress_bar(session: dict[str, Any]) -> Any:
         for c in layout.children
         if getattr(c, "id", None) == "chat-progress-container"
     )
-    return next(
-        c for c in container.children if type(c).__name__ == "Progress"
-    )
+    return next(c for c in container.children if type(c).__name__ == "Progress")
 
 
 def _bar_children(session: dict[str, Any]) -> list[Any]:
@@ -539,9 +503,7 @@ class TestWaitIsNamed:
     def _narration(self, tmp_path: pathlib.Path, llm_config: dict[str, Any]) -> str:
         root = _make_project(tmp_path)
         session = _session(root)
-        with patch.object(
-            code_scanner.llm, "stream_turn", _fake_stream("BODY")
-        ):
+        with patch.object(code_scanner.llm, "stream_turn", _fake_stream("BODY")):
             out = "".join(code_scanner.run(None, session, llm_config))
         return out[: out.index("BODY")]
 
@@ -549,9 +511,7 @@ class TestWaitIsNamed:
         out = self._narration(tmp_path, {"model": "claude-opus-5"})
         assert "`claude-opus-5`" in out
 
-    def test_falls_back_when_no_model_configured(
-        self, tmp_path: pathlib.Path
-    ) -> None:
+    def test_falls_back_when_no_model_configured(self, tmp_path: pathlib.Path) -> None:
         out = self._narration(tmp_path, {})
         assert "the configured model" in out
 
@@ -559,9 +519,7 @@ class TestWaitIsNamed:
         root = _make_project(tmp_path)
         files = code_scanner._collect_files(pathlib.Path(root))
         seed = code_scanner._build_fresh_scan_seed(root, files)
-        system = code_scanner.llm.build_system_prompt(
-            code_scanner.SYSTEM_PROMPT, None
-        )
+        system = code_scanner.llm.build_system_prompt(code_scanner.SYSTEM_PROMPT, None)
         expected = code_scanner._approx_tokens(system) + code_scanner._approx_tokens(
             seed
         )

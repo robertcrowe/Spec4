@@ -28,9 +28,7 @@ def _card(*children: Any, **kwargs: Any) -> Any:
     """A bordered panel. ``p`` is overridable so the denser project-view frame
     can halve its padding without moving the setup wizard or the gate card."""
     padding = kwargs.pop("p", "md")
-    return dmc.Paper(
-        list(children), p=padding, radius="md", withBorder=True, **kwargs
-    )
+    return dmc.Paper(list(children), p=padding, radius="md", withBorder=True, **kwargs)
 
 
 def _error(msg: str) -> Any:
@@ -186,9 +184,7 @@ def price_source_note(source: Any) -> str:
     three levels of punctuation in one breath.
     """
     name = (
-        source
-        if isinstance(source, str) and source.strip()
-        else PRICE_SOURCE_FALLBACK
+        source if isinstance(source, str) and source.strip() else PRICE_SOURCE_FALLBACK
     )
     return f"Estimates from {name}. Your provider's billing is authoritative."
 

@@ -237,8 +237,7 @@ def _requires_pass(
                 if producer in carried_names:
                     continue  # already built; cannot invert
                 _log.warning(
-                    "Prioritizer: promoting producer %r from %r to %r — required "
-                    "by %r",
+                    "Prioritizer: promoting producer %r from %r to %r — required by %r",
                     producer,
                     by_name[producer]["phase_priority"],
                     f["phase_priority"],
@@ -382,9 +381,7 @@ def _parse_overlay(raw: str) -> tuple[dict[str, str], PrioritizerOutcome]:
         for name, value in data.items():
             if isinstance(value, str) and value in _RANK:
                 overlay[str(name)] = value
-        return overlay, (
-            PrioritizerOutcome.OK if overlay else PrioritizerOutcome.EMPTY
-        )
+        return overlay, (PrioritizerOutcome.OK if overlay else PrioritizerOutcome.EMPTY)
     return {}, PrioritizerOutcome.UNREADABLE
 
 

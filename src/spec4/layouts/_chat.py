@@ -157,6 +157,7 @@ _RUN_COMPLETE: dict[str, tuple[str, str]] = {
     "deployer": ("deployer_state", STATE_DEPLOYER_COMPLETE),
 }
 
+
 def _cost_summary(session: dict[str, Any]) -> Any | None:
     """The cost strip for the active agent, on the turn that ended its run.
 
@@ -537,9 +538,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
             buttons = [
                 token_counter,
                 _open_button("stack"),
-                dmc.Button(
-                    "Download stack.json", id="btn-dl-stack", variant="outline"
-                ),
+                dmc.Button("Download stack.json", id="btn-dl-stack", variant="outline"),
                 dmc.Button("Send to Phaser →", id="btn-stack-to-phaser"),
             ]
         else:
@@ -604,11 +603,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
     # mid-turn — the same guarantee it had inside the progress container.
     row = list(buttons)
     counter_at = next(
-        (
-            i
-            for i, b in enumerate(row)
-            if getattr(b, "id", None) == "chat-token-count"
-        ),
+        (i for i, b in enumerate(row) if getattr(b, "id", None) == "chat-token-count"),
         None,
     )
     row.insert(len(row) if counter_at is None else counter_at + 1, elapsed)
@@ -715,9 +710,7 @@ def _breadth_panel(session: dict[str, Any]) -> Any | None:
     submitted their selection. Returns None when inactive so the caller can
     omit it from the component tree.
     """
-    candidates: list[dict[str, str]] | None = session.get(
-        "agentifier_breadth_groups"
-    )
+    candidates: list[dict[str, str]] | None = session.get("agentifier_breadth_groups")
     if not candidates:
         return None
     if session.get("agentifier_breadth_chosen"):
@@ -866,9 +859,7 @@ def _chat_layout(
         not gate_open and (session.get("agent_llm_draft") or {}).get("agent") == active
     )
     gate = (
-        _llm_gate.gate_card(session, prefs, active)
-        if gate_open or chip_open
-        else None
+        _llm_gate.gate_card(session, prefs, active) if gate_open or chip_open else None
     )
 
     return html.Div(
@@ -979,11 +970,7 @@ def _chat_layout(
             # already asking the question.
             html.Div(
                 [
-                    *(
-                        []
-                        if gate_open
-                        else [_llm_gate.model_chip(session, active)]
-                    ),
+                    *([] if gate_open else [_llm_gate.model_chip(session, active)]),
                     dmc.Text(
                         session.get("_stream_status") or "",
                         id="chat-status-line",

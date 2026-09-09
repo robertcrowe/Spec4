@@ -27,13 +27,30 @@ _LLM_CONFIG = {"model": "gpt-4o-mini", "api_key": "sk-test"}
 _SAMPLE_SPEC = {
     "purpose": "Enable natural language restaurant search.",
     "invocation": {"trigger": "User submits a search query", "mode": "synchronous"},
-    "inputs": [{"name": "query", "type": "string", "description": "Search text", "required": True}],
-    "outputs": {"primary": "Restaurant list", "format": "JSON array", "schema_notes": None},
+    "inputs": [
+        {
+            "name": "query",
+            "type": "string",
+            "description": "Search text",
+            "required": True,
+        }
+    ],
+    "outputs": {
+        "primary": "Restaurant list",
+        "format": "JSON array",
+        "schema_notes": None,
+    },
     "decision_authority": "autonomous",
     "success_criteria": ["Top result matches user intent 85% of the time"],
-    "failure_modes": [{"mode": "Model hallucination", "likelihood": "low", "mitigation": "Filter"}],
+    "failure_modes": [
+        {"mode": "Model hallucination", "likelihood": "low", "mitigation": "Filter"}
+    ],
     "escalation": "Return empty results and log",
-    "eval_approach": {"offline": "Golden eval set", "online": "Click-through rate", "ground_truth": "Human labels"},
+    "eval_approach": {
+        "offline": "Golden eval set",
+        "online": "Click-through rate",
+        "ground_truth": "Human labels",
+    },
     "budgets": {"cost_per_call": "$0.002", "p95_latency": "800ms"},
     "privacy_safety": ["No PII stored"],
     "phase_priority": "mvp",
@@ -137,9 +154,15 @@ class TestSystemPromptTierAwareness:
     def _get_prompt(self, tier: str) -> str:
         tiers, mechanisms = load_patterns()
         tier_order = {
-            "deterministic": 1, "embeddings": 2, "single_call": 3, "rag": 4,
-            "tool_agent": 5, "chained_calls": 6, "planning_agent": 7,
-            "orchestrated_subagents": 8, "multi_agent_collaboration": 9,
+            "deterministic": 1,
+            "embeddings": 2,
+            "single_call": 3,
+            "rag": 4,
+            "tool_agent": 5,
+            "chained_calls": 6,
+            "planning_agent": 7,
+            "orchestrated_subagents": 8,
+            "multi_agent_collaboration": 9,
         }.get(tier, 3)
         tier_pattern = next((t for t in tiers if t.name == tier), None)
         return _build_system_prompt(tier, tier_order, tier_pattern, mechanisms)
@@ -262,6 +285,7 @@ class TestSystemPromptMechanismLibrary:
 class TestSpecDrafterAgentLlmCalls:
     def test_returns_async_generator(self) -> None:
         import inspect
+
         tiers, mechanisms = load_patterns()
         agent = SpecDrafterAgent()
         inp = _make_input()
@@ -439,7 +463,13 @@ class TestSpecDrafterAgentLlmCalls:
             return _gen()
 
         with patch("spec4.agentifier.spec_drafter.acomplete", new=_cap):
-            asyncio.run(_drain(_make_input("single_call", revision="Change phase_priority to steel_thread")))
+            asyncio.run(
+                _drain(
+                    _make_input(
+                        "single_call", revision="Change phase_priority to steel_thread"
+                    )
+                )
+            )
 
         user_msg = captured[0]["messages"][1]["content"]
         assert "Change phase_priority" in user_msg
@@ -473,16 +503,35 @@ class TestSpecDrafterAgentLlmCalls:
 class TestIsSpecConfirmed:
     @pytest.mark.parametrize(
         "text",
-        ["yes", "Yes", "YES", "y", "ok", "okay", "lgtm", "looks good",
-         "good", "next", "continue", "confirm", "done", "approved"],
+        [
+            "yes",
+            "Yes",
+            "YES",
+            "y",
+            "ok",
+            "okay",
+            "lgtm",
+            "looks good",
+            "good",
+            "next",
+            "continue",
+            "confirm",
+            "done",
+            "approved",
+        ],
     )
     def test_affirmative_words(self, text: str) -> None:
         assert _is_spec_confirmed(text) is True
 
     @pytest.mark.parametrize(
         "text",
-        ["no", "change the phase_priority", "actually revise the inputs",
-         "what does tool_agent mean", ""],
+        [
+            "no",
+            "change the phase_priority",
+            "actually revise the inputs",
+            "what does tool_agent mean",
+            "",
+        ],
     )
     def test_non_affirmative(self, text: str) -> None:
         assert _is_spec_confirmed(text) is False

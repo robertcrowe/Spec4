@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Generator
-from typing import Any
+from typing import Any, cast
 
 from spec4 import project_manager, llm, websearch
 from spec4.agents._utils import (
@@ -522,8 +522,11 @@ def build_readme_request(
     if delta:
         changes = delta.get("changes") or {}
         named: list[str] = []
-        for label, key in (("added", "added"), ("changed", "modified"),
-                           ("removed", "removed")):
+        for label, key in (
+            ("added", "added"),
+            ("changed", "modified"),
+            ("removed", "removed"),
+        ):
             vals = list(changes.get(key) or [])
             if vals:
                 named.append(f"{label} {', '.join(vals)}")
@@ -564,13 +567,34 @@ def run(
         lowered = user_input.lower()
         affirmative = any(
             w in lowered
-            for w in ("yes", "yeah", "yep", "yup", "sure", "ok", "okay",
-                      "go ahead", "proceed", "please", "create", "do it")
+            for w in (
+                "yes",
+                "yeah",
+                "yep",
+                "yup",
+                "sure",
+                "ok",
+                "okay",
+                "go ahead",
+                "proceed",
+                "please",
+                "create",
+                "do it",
+            )
         )
         negative = any(
             w in lowered
-            for w in ("no", "nope", "nah", "don't", "dont", "skip",
-                      "later", "cancel", "stop")
+            for w in (
+                "no",
+                "nope",
+                "nah",
+                "don't",
+                "dont",
+                "skip",
+                "later",
+                "cancel",
+                "stop",
+            )
         )
         if affirmative and not negative:
             session["_deployer_pending_readme_optin"] = False
@@ -607,7 +631,8 @@ def run(
             working_dir = session.get("working_dir")
             ai_features_block = (
                 _ai_features_for_deployer(ai_features, stack) + "\n"
-                if ai_features else ""
+                if ai_features
+                else ""
             )
 
             # Revision mode: a prior version of this project has already been
@@ -623,8 +648,7 @@ def run(
             is_revision = (
                 delta is not None
                 and working_dir is not None
-                and project_manager.latest_implemented_version(working_dir)
-                is not None
+                and project_manager.latest_implemented_version(working_dir) is not None
             )
 
             # Greenfield (no existing plan, not a revision): ask the standalone
@@ -651,7 +675,9 @@ def run(
 
             if session.get("_deployer_plan_existed"):
                 existing_plan = (
-                    project_manager.load_deployment_plan(session.get("working_dir"))
+                    project_manager.load_deployment_plan(
+                        cast(str, session.get("working_dir"))
+                    )
                     or ""
                 )
                 existing_plan_block = (
@@ -677,12 +703,14 @@ def run(
                     "1. Keep the existing plan as-is and ask follow-up questions about it.\n"
                     "2. Refine or update specific parts of the plan.\n"
                     "3. Start over and design a new deployment plan from scratch.\n\n"
-                    "End with \"Please select an option (answer with number and/or "
-                    "optional comments)\"."
+                    'End with "Please select an option (answer with number and/or '
+                    'optional comments)".'
                 )
             elif is_revision:
+                # is_revision implies working_dir is not None (see its definition).
                 prior_plan = (
-                    project_manager.load_prior_deployment_plan(working_dir) or ""
+                    project_manager.load_prior_deployment_plan(cast(str, working_dir))
+                    or ""
                 )
                 prior_plan_block = (
                     "Here is the deployment plan from the previous implemented "
@@ -708,7 +736,7 @@ def run(
                     "I am starting a REVISION round on an existing, already-implemented "
                     "and already-deployed version of this project. Operate in REVISION "
                     "mode.\n\n"
-                    f"{build_revision_note(delta)}\n\n"
+                    f"{build_revision_note(cast(dict[str, Any], delta))}\n\n"
                     f"{intro_line}"
                     "Then begin by asking which AI coding agent the developer plans to "
                     "use to implement this revision's phases. When you reach deployment "
@@ -732,19 +760,39 @@ def run(
             lowered = user_input.lower()
             affirmative = any(
                 w in lowered
-                for w in ("yes", "yeah", "yep", "yup", "sure", "ok", "okay",
-                          "go ahead", "proceed", "replace", "save", "confirm")
+                for w in (
+                    "yes",
+                    "yeah",
+                    "yep",
+                    "yup",
+                    "sure",
+                    "ok",
+                    "okay",
+                    "go ahead",
+                    "proceed",
+                    "replace",
+                    "save",
+                    "confirm",
+                )
             )
             negative = any(
                 w in lowered
-                for w in ("no", "nope", "nah", "don't", "dont", "keep",
-                          "cancel", "discard", "stop")
+                for w in (
+                    "no",
+                    "nope",
+                    "nah",
+                    "don't",
+                    "dont",
+                    "keep",
+                    "cancel",
+                    "discard",
+                    "stop",
+                )
             )
             if affirmative and not negative:
                 confirm_msg = (
                     "Your new deployment plan has been saved. "
-                    "You can download it using the button below."
-                    + _README_OFFER
+                    "You can download it using the button below." + _README_OFFER
                 )
                 messages.append({"role": "assistant", "content": confirm_msg})
                 session["deployer_state"] = STATE_DEPLOYER_COMPLETE
@@ -771,13 +819,34 @@ def run(
             lowered = user_input.lower()
             affirmative = any(
                 w in lowered
-                for w in ("yes", "yeah", "yep", "yup", "sure", "ok", "okay",
-                          "go ahead", "proceed", "please", "create", "do it")
+                for w in (
+                    "yes",
+                    "yeah",
+                    "yep",
+                    "yup",
+                    "sure",
+                    "ok",
+                    "okay",
+                    "go ahead",
+                    "proceed",
+                    "please",
+                    "create",
+                    "do it",
+                )
             )
             negative = any(
                 w in lowered
-                for w in ("no", "nope", "nah", "don't", "dont", "skip",
-                          "later", "cancel", "stop")
+                for w in (
+                    "no",
+                    "nope",
+                    "nah",
+                    "don't",
+                    "dont",
+                    "skip",
+                    "later",
+                    "cancel",
+                    "stop",
+                )
             )
             if negative and not affirmative:
                 decline_msg = (
@@ -813,7 +882,11 @@ def run(
     # Publish a running total instead; `_received` seeds that second stream.
     _received = yield from _stream_counting(
         llm.stream_turn(
-            system, messages, llm_config, search_cfg, agent_name="deployer",
+            system,
+            messages,
+            llm_config,
+            search_cfg,
+            agent_name="deployer",
             session=session,
         ),
         session,
@@ -864,7 +937,10 @@ def run(
                     )
                     yield from _stream_counting(
                         llm.stream_turn(
-                            system, messages, llm_config, search_cfg,
+                            system,
+                            messages,
+                            llm_config,
+                            search_cfg,
                             agent_name="deployer",
                             session=session,
                         ),

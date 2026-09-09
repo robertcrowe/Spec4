@@ -79,9 +79,7 @@ def test_provider_renders_model_family_role_and_tiers() -> None:
 
 
 def test_provider_credentials_env_is_surfaced() -> None:
-    stack = _stack(
-        OpenAI={"model_family": "GPT", "credentials_env": "OPENAI_API_KEY"}
-    )
+    stack = _stack(OpenAI={"model_family": "GPT", "credentials_env": "OPENAI_API_KEY"})
     out = _ai_features_for_deployer(_features(_node()), stack)
     assert "credentials (environment): OPENAI_API_KEY" in out
 

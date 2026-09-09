@@ -34,19 +34,21 @@ EXPECTED: dict[str, list[str]] = {
 
 # Ids that are cross_cutting concerns, not tier substrate — must never appear in
 # any tier's required_infrastructure (D-I7). A structural guard on the YAML.
-FORBIDDEN_CROSS_CUTTING = frozenset({
-    "provider",
-    "provider_strategy",
-    "model_access",
-    "model_provider",
-    "prompt_versioning",
-    "prompt_management",
-    "tool_protocol",
-    "mcp",
-    "observability",
-    "evaluation",
-    "guardrails",
-})
+FORBIDDEN_CROSS_CUTTING = frozenset(
+    {
+        "provider",
+        "provider_strategy",
+        "model_access",
+        "model_provider",
+        "prompt_versioning",
+        "prompt_management",
+        "tool_protocol",
+        "mcp",
+        "observability",
+        "evaluation",
+        "guardrails",
+    }
+)
 
 
 class TestRealRegistry:

@@ -75,22 +75,24 @@ _VISION = {
     }
 }
 
-_CANDIDATES_JSON = json.dumps([
-    {
-        "name": "smart_search",
-        "linked_vision_features": ["search"],
-        "scope": "feature",
-        "rough_description": "Replace manual keyword search with LLM-powered search.",
-        "linked_existing_workflow": "keyword-based SQL LIKE search in views.py",
-    },
-    {
-        "name": "review_summary",
-        "linked_vision_features": ["reviews"],
-        "scope": "sub_feature",
-        "rough_description": "Summarise customer reviews.",
-        "linked_existing_workflow": "",
-    },
-])
+_CANDIDATES_JSON = json.dumps(
+    [
+        {
+            "name": "smart_search",
+            "linked_vision_features": ["search"],
+            "scope": "feature",
+            "rough_description": "Replace manual keyword search with LLM-powered search.",
+            "linked_existing_workflow": "keyword-based SQL LIKE search in views.py",
+        },
+        {
+            "name": "review_summary",
+            "linked_vision_features": ["reviews"],
+            "scope": "sub_feature",
+            "rough_description": "Summarise customer reviews.",
+            "linked_existing_workflow": "",
+        },
+    ]
+)
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +115,10 @@ class TestScoutBrownfield:
 
         candidates, _ = _parse_candidates(_CANDIDATES_JSON)
         assert len(candidates) == 2
-        assert candidates[0].linked_existing_workflow == "keyword-based SQL LIKE search in views.py"
+        assert (
+            candidates[0].linked_existing_workflow
+            == "keyword-based SQL LIKE search in views.py"
+        )
         assert candidates[1].linked_existing_workflow == ""
 
     def _scout_system_prompt(self, **input_kwargs: Any) -> str:
@@ -126,14 +131,19 @@ class TestScoutBrownfield:
         from spec4.agentifier.scout import ScoutAgent
 
         import asyncio
+
         with patch(
             "spec4.agentifier.scout.complete_stream", side_effect=_mock_completion
         ):
-            result = asyncio.run(ScoutAgent().run(ScoutInput(
-                vision=_VISION,
-                llm_config=_LLM_CONFIG,
-                **input_kwargs,
-            )))
+            result = asyncio.run(
+                ScoutAgent().run(
+                    ScoutInput(
+                        vision=_VISION,
+                        llm_config=_LLM_CONFIG,
+                        **input_kwargs,
+                    )
+                )
+            )
         assert result.candidates
         assert captured_systems
         return captured_systems[0]
@@ -167,15 +177,20 @@ class TestScoutBrownfield:
         from spec4.agentifier.scout import ScoutAgent
 
         import asyncio
+
         with patch(
             "spec4.agentifier.scout.complete_stream", side_effect=_mock_completion
         ):
-            asyncio.run(ScoutAgent().run(ScoutInput(
-                vision=_VISION,
-                llm_config=_LLM_CONFIG,
-                code_review=_CODE_REVIEW_WITH_AI,
-                brownfield=False,
-            )))
+            asyncio.run(
+                ScoutAgent().run(
+                    ScoutInput(
+                        vision=_VISION,
+                        llm_config=_LLM_CONFIG,
+                        code_review=_CODE_REVIEW_WITH_AI,
+                        brownfield=False,
+                    )
+                )
+            )
         assert "code review" in captured[0].lower()
 
     def test_scout_uses_base_prompt_when_no_code_review(self) -> None:
@@ -189,7 +204,10 @@ class TestScoutBrownfield:
 
         scout = ScoutAgent()
         import asyncio
-        with patch("spec4.agentifier.scout.complete_stream", side_effect=_mock_completion):
+
+        with patch(
+            "spec4.agentifier.scout.complete_stream", side_effect=_mock_completion
+        ):
             asyncio.run(scout.run(ScoutInput(vision=_VISION, llm_config=_LLM_CONFIG)))
 
         assert "Brownfield mode" not in captured_systems[0]
@@ -203,7 +221,11 @@ class TestScoutBrownfield:
 class TestTierAnalystBrownfield:
     def test_existing_ai_context_extracts_deps(self) -> None:
         ctx = _existing_ai_context(_CODE_REVIEW_WITH_AI)
-        assert "openai" in ctx.lower() or "chromadb" in ctx.lower() or "langchain" in ctx.lower()
+        assert (
+            "openai" in ctx.lower()
+            or "chromadb" in ctx.lower()
+            or "langchain" in ctx.lower()
+        )
 
     def test_existing_ai_context_empty_for_no_ai(self) -> None:
         ctx = _existing_ai_context(_CODE_REVIEW_NO_AI)
@@ -236,7 +258,11 @@ class TestTierAnalystBrownfield:
     def test_existing_ai_context_combines_capabilities_and_deps(self) -> None:
         review = json.loads(json.dumps(_CODE_REVIEW_WITH_AI))
         review["code_review"]["ai_capabilities"] = [
-            {"name": "chromadb", "kind": "vector_store", "description": "Article retrieval"},
+            {
+                "name": "chromadb",
+                "kind": "vector_store",
+                "description": "Article retrieval",
+            },
         ]
         ctx = _existing_ai_context(review)
         # Both the first-class section and the keyword-scan fallback appear.
@@ -269,15 +295,21 @@ class TestTierAnalystBrownfield:
 
         def _mock_completion(**kwargs: Any) -> Any:
             captured_messages.append(kwargs["messages"])
-            return iter([json.dumps({
-                "recommended_tier": "rag",
-                "rationale": "Needs vector search given existing chromadb",
-                "risks_of_going_higher": [],
-                "risks_of_going_lower": ["loses semantic search"],
-                "borderline": False,
-                "borderline_seams": [],
-                "compared_to_next_tier_down": "embeddings would need manual retrieval",
-            })])
+            return iter(
+                [
+                    json.dumps(
+                        {
+                            "recommended_tier": "rag",
+                            "rationale": "Needs vector search given existing chromadb",
+                            "risks_of_going_higher": [],
+                            "risks_of_going_lower": ["loses semantic search"],
+                            "borderline": False,
+                            "borderline_seams": [],
+                            "compared_to_next_tier_down": "embeddings would need manual retrieval",
+                        }
+                    )
+                ]
+            )
 
         tiers, _ = load_patterns()
         cand = Candidate(
@@ -287,18 +319,28 @@ class TestTierAnalystBrownfield:
             rough_description="LLM-powered search.",
         )
         import asyncio
+
         agent = TierAnalystAgent()
-        with patch("spec4.agentifier.tier_analyst.complete_stream", side_effect=_mock_completion):
-            asyncio.run(agent.run(TierAnalystInput(
-                candidate=cand,
-                llm_config=_LLM_CONFIG,
-                tier_patterns=tiers,
-                code_review=_CODE_REVIEW_WITH_AI,
-            )))
+        with patch(
+            "spec4.agentifier.tier_analyst.complete_stream",
+            side_effect=_mock_completion,
+        ):
+            asyncio.run(
+                agent.run(
+                    TierAnalystInput(
+                        candidate=cand,
+                        llm_config=_LLM_CONFIG,
+                        tier_patterns=tiers,
+                        code_review=_CODE_REVIEW_WITH_AI,
+                    )
+                )
+            )
 
         assert captured_messages
         user_msg = captured_messages[0][1]["content"]
-        assert "existing AI" in user_msg or "chromadb" in user_msg or "openai" in user_msg
+        assert (
+            "existing AI" in user_msg or "chromadb" in user_msg or "openai" in user_msg
+        )
 
     def test_tier_analyst_no_hint_without_ai_infra(self) -> None:
         from spec4.agentifier.tier_analyst import TierAnalystAgent
@@ -308,15 +350,21 @@ class TestTierAnalystBrownfield:
 
         def _mock_completion(**kwargs: Any) -> Any:
             captured_messages.append(kwargs["messages"])
-            return iter([json.dumps({
-                "recommended_tier": "single_call",
-                "rationale": "Simple LLM call.",
-                "risks_of_going_higher": [],
-                "risks_of_going_lower": [],
-                "borderline": False,
-                "borderline_seams": [],
-                "compared_to_next_tier_down": "deterministic can't do NLU",
-            })])
+            return iter(
+                [
+                    json.dumps(
+                        {
+                            "recommended_tier": "single_call",
+                            "rationale": "Simple LLM call.",
+                            "risks_of_going_higher": [],
+                            "risks_of_going_lower": [],
+                            "borderline": False,
+                            "borderline_seams": [],
+                            "compared_to_next_tier_down": "deterministic can't do NLU",
+                        }
+                    )
+                ]
+            )
 
         tiers, _ = load_patterns()
         cand = Candidate(
@@ -326,14 +374,22 @@ class TestTierAnalystBrownfield:
             rough_description="NLP search.",
         )
         import asyncio
+
         agent = TierAnalystAgent()
-        with patch("spec4.agentifier.tier_analyst.complete_stream", side_effect=_mock_completion):
-            asyncio.run(agent.run(TierAnalystInput(
-                candidate=cand,
-                llm_config=_LLM_CONFIG,
-                tier_patterns=tiers,
-                code_review=_CODE_REVIEW_NO_AI,
-            )))
+        with patch(
+            "spec4.agentifier.tier_analyst.complete_stream",
+            side_effect=_mock_completion,
+        ):
+            asyncio.run(
+                agent.run(
+                    TierAnalystInput(
+                        candidate=cand,
+                        llm_config=_LLM_CONFIG,
+                        tier_patterns=tiers,
+                        code_review=_CODE_REVIEW_NO_AI,
+                    )
+                )
+            )
 
         user_msg = captured_messages[0][1]["content"]
         assert "existing AI infrastructure" not in user_msg
@@ -417,7 +473,12 @@ class TestOrchestratorBrownfieldSeed:
         from spec4.agentifier.tier_analyst import TierAnalystOutput
 
         candidates = [
-            Candidate(name="x", linked_vision_features=[], scope="feature", rough_description="y")
+            Candidate(
+                name="x",
+                linked_vision_features=[],
+                scope="feature",
+                rough_description="y",
+            )
         ]
         analyses = [
             TierAnalystOutput(
@@ -468,6 +529,7 @@ class TestCrossCuttingBrownfield:
             code_review=_CODE_REVIEW_WITH_AI,
         )
         import asyncio
+
         with patch(
             "spec4.agentifier.cross_cutting_analyst.acomplete",
             new=_mock_acompletion,
@@ -476,7 +538,9 @@ class TestCrossCuttingBrownfield:
 
         assert captured
         user_msg = captured[0][1]["content"]
-        assert "existing AI" in user_msg or "openai" in user_msg or "chromadb" in user_msg
+        assert (
+            "existing AI" in user_msg or "openai" in user_msg or "chromadb" in user_msg
+        )
 
 
 async def _drain_async(gen: Any) -> list[str]:
@@ -501,7 +565,12 @@ class TestBrownfieldSessionLoad:
         session["code_review"] = _CODE_REVIEW_WITH_AI
 
         candidates = [
-            Candidate(name="x", linked_vision_features=[], scope="feature", rough_description="y")
+            Candidate(
+                name="x",
+                linked_vision_features=[],
+                scope="feature",
+                rough_description="y",
+            )
         ]
         analyses = [
             TierAnalystOutput(

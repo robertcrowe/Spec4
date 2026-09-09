@@ -64,17 +64,13 @@ def _auth_exc() -> LiteLLMBadRequestError:
 class TestCompleteHelper:
     def test_never_sends_temperature(self) -> None:
         mock_resp = _make_response()
-        with patch(
-            "spec4.llm.litellm.completion", return_value=mock_resp
-        ) as mock_llm:
+        with patch("spec4.llm.litellm.completion", return_value=mock_resp) as mock_llm:
             complete(llm_config=_LLM_CONFIG, messages=[], agent_name="tier_analyst")
         assert "temperature" not in mock_llm.call_args[1]
 
     def test_llm_config_temperature_is_not_forwarded(self) -> None:
         mock_resp = _make_response()
-        with patch(
-            "spec4.llm.litellm.completion", return_value=mock_resp
-        ) as mock_llm:
+        with patch("spec4.llm.litellm.completion", return_value=mock_resp) as mock_llm:
             complete(
                 llm_config={**_LLM_CONFIG, "temperature": 0.9},
                 messages=[],
@@ -89,9 +85,7 @@ class TestCompleteHelper:
             side_effect=_temp_worded_exc(),
         ) as mock_llm:
             with pytest.raises(LiteLLMBadRequestError):
-                complete(
-                    llm_config=_LLM_CONFIG, messages=[], agent_name="tier_analyst"
-                )
+                complete(llm_config=_LLM_CONFIG, messages=[], agent_name="tier_analyst")
         assert mock_llm.call_count == 1
 
     def test_error_propagates(self) -> None:
@@ -100,28 +94,20 @@ class TestCompleteHelper:
             side_effect=_auth_exc(),
         ) as mock_llm:
             with pytest.raises(LiteLLMBadRequestError):
-                complete(
-                    llm_config=_LLM_CONFIG, messages=[], agent_name="tier_analyst"
-                )
+                complete(llm_config=_LLM_CONFIG, messages=[], agent_name="tier_analyst")
         assert mock_llm.call_count == 1
 
     def test_propagates_api_key(self) -> None:
         mock_resp = _make_response()
-        with patch(
-            "spec4.llm.litellm.completion", return_value=mock_resp
-        ) as mock_llm:
+        with patch("spec4.llm.litellm.completion", return_value=mock_resp) as mock_llm:
             complete(llm_config=_LLM_CONFIG, messages=[])
         assert mock_llm.call_args[1].get("api_key") == "sk-test"
 
     def test_propagates_api_base(self) -> None:
         mock_resp = _make_response()
-        with patch(
-            "spec4.llm.litellm.completion", return_value=mock_resp
-        ) as mock_llm:
+        with patch("spec4.llm.litellm.completion", return_value=mock_resp) as mock_llm:
             complete(llm_config=_LLM_CONFIG_WITH_BASE, messages=[])
-        assert (
-            mock_llm.call_args[1].get("api_base") == "https://custom.example.com/v1"
-        )
+        assert mock_llm.call_args[1].get("api_base") == "https://custom.example.com/v1"
 
     def test_aws_keys_forwarded(self) -> None:
         llm_config = {
@@ -132,9 +118,7 @@ class TestCompleteHelper:
             "aws_session_token": "TOKEN",
         }
         mock_resp = _make_response()
-        with patch(
-            "spec4.llm.litellm.completion", return_value=mock_resp
-        ) as mock_llm:
+        with patch("spec4.llm.litellm.completion", return_value=mock_resp) as mock_llm:
             complete(llm_config=llm_config, messages=[])
         kw = mock_llm.call_args[1]
         assert kw.get("aws_access_key_id") == "AKID"
@@ -144,9 +128,7 @@ class TestCompleteHelper:
 
     def test_extra_kwargs_forwarded(self) -> None:
         mock_resp = _make_response()
-        with patch(
-            "spec4.llm.litellm.completion", return_value=mock_resp
-        ) as mock_llm:
+        with patch("spec4.llm.litellm.completion", return_value=mock_resp) as mock_llm:
             complete(llm_config=_LLM_CONFIG, messages=[], stream=False)
         assert mock_llm.call_args[1].get("stream") is False
 
@@ -173,9 +155,7 @@ class TestCompleteStream:
         chunks = [_delta_chunk("a"), _delta_chunk("b"), _delta_chunk("c")]
         with patch("spec4.llm.litellm.completion", return_value=iter(chunks)):
             out = list(
-                complete_stream(
-                    llm_config=_LLM_CONFIG, messages=[], agent_name="scout"
-                )
+                complete_stream(llm_config=_LLM_CONFIG, messages=[], agent_name="scout")
             )
         assert out == ["a", "b", "c"]
 
@@ -191,25 +171,19 @@ class TestCompleteStream:
         assert out == ["x"]
 
     def test_sends_stream_true_and_default_timeout(self) -> None:
-        with patch(
-            "spec4.llm.litellm.completion", return_value=iter([])
-        ) as mock_llm:
+        with patch("spec4.llm.litellm.completion", return_value=iter([])) as mock_llm:
             list(complete_stream(llm_config=_LLM_CONFIG, messages=[]))
         kw = mock_llm.call_args[1]
         assert kw.get("stream") is True
         assert kw.get("timeout") is LLM_STREAM_TIMEOUT
 
     def test_timeout_override(self) -> None:
-        with patch(
-            "spec4.llm.litellm.completion", return_value=iter([])
-        ) as mock_llm:
+        with patch("spec4.llm.litellm.completion", return_value=iter([])) as mock_llm:
             list(complete_stream(llm_config=_LLM_CONFIG, messages=[], timeout=5.0))
         assert mock_llm.call_args[1].get("timeout") == 5.0
 
     def test_never_sends_temperature(self) -> None:
-        with patch(
-            "spec4.llm.litellm.completion", return_value=iter([])
-        ) as mock_llm:
+        with patch("spec4.llm.litellm.completion", return_value=iter([])) as mock_llm:
             list(
                 complete_stream(
                     llm_config={**_LLM_CONFIG, "temperature": 0.9}, messages=[]
@@ -219,9 +193,7 @@ class TestCompleteStream:
 
     def test_response_format_forwarded(self) -> None:
         fmt = {"type": "json_object"}
-        with patch(
-            "spec4.llm.litellm.completion", return_value=iter([])
-        ) as mock_llm:
+        with patch("spec4.llm.litellm.completion", return_value=iter([])) as mock_llm:
             list(
                 complete_stream(
                     llm_config=_LLM_CONFIG, messages=[], response_format=fmt
@@ -238,9 +210,7 @@ class TestCompleteStream:
             "aws_session_token": "TOKEN",
             "api_base": "https://custom.example.com/v1",
         }
-        with patch(
-            "spec4.llm.litellm.completion", return_value=iter([])
-        ) as mock_llm:
+        with patch("spec4.llm.litellm.completion", return_value=iter([])) as mock_llm:
             list(complete_stream(llm_config=llm_config, messages=[]))
         kw = mock_llm.call_args[1]
         assert kw.get("aws_access_key_id") == "AKID"
@@ -270,9 +240,7 @@ class TestCompleteStream:
         chunks = [_delta_chunk("a"), _delta_chunk("b")]
         with patch("spec4.llm.litellm.completion", return_value=iter(chunks)):
             list(
-                complete_stream(
-                    llm_config=_LLM_CONFIG, messages=[], agent_name="scout"
-                )
+                complete_stream(llm_config=_LLM_CONFIG, messages=[], agent_name="scout")
             )
         out = capsys.readouterr().out
         assert out.count("[llm-ttft] scout:") == 1
@@ -379,9 +347,7 @@ class TestStreamTurnErrors:
         with patch("spec4.llm.litellm.completion", side_effect=_completion):
             with pytest.raises(LiteLLMBadRequestError):
                 list(
-                    stream_turn(
-                        "sys", [], _LLM_CONFIG, None, agent_name="code_scanner"
-                    )
+                    stream_turn("sys", [], _LLM_CONFIG, None, agent_name="code_scanner")
                 )
         assert call_count == 1
 
@@ -392,9 +358,7 @@ class TestStreamTurnErrors:
         ):
             with pytest.raises(LiteLLMBadRequestError):
                 list(
-                    stream_turn(
-                        "sys", [], _LLM_CONFIG, None, agent_name="code_scanner"
-                    )
+                    stream_turn("sys", [], _LLM_CONFIG, None, agent_name="code_scanner")
                 )
 
 
@@ -473,9 +437,7 @@ class TestSubAgentPassesAgentName:
             return _gen()
 
         async def _run() -> None:
-            with patch(
-                "spec4.agentifier.spec_drafter.acomplete", new=_mock_acomplete
-            ):
+            with patch("spec4.agentifier.spec_drafter.acomplete", new=_mock_acomplete):
                 async for _ in SpecDrafterAgent().stream(inp):
                     pass
 
