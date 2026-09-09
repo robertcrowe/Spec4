@@ -4712,6 +4712,8 @@ also golden-pinned — `tests/golden/README.md` and `phase_*.md` must not move.
 | `agents/deployer.py` | `run` | C901, PLR0912, PLR0915 | ten-yield generator; every remaining branch guards a yield or a generator return, so further extraction needs sub-generators (backlog). **Sixth pre-approved noqa, added after the 5i measurement (37.5); granted under rule 12.** |
 | `agents/brainstormer.py` | `run` | C901, PLR0912 | six-yield generator; after the maximal build the surviving branches are five yield/return guards (staleness, resume, the seed chain's greeting arm, the review reply, the artifact re-ask) and nine entry guards with no extractable body (session-state presence, `user_input is None`, `msgs`, the four-arm seed selection, the review-request gate, two artifact-present checks). **Seventh pre-approved noqa; granted under rule 12 as amended (39.5).** |
 | `agents/code_scanner/__init__.py` | `run` | C901, PLR0912, PLR0915 | nine-yield generator; after the maximal build the surviving branches are five yield/return guards (staleness, resume, the re-entry gate, the missing-working-dir exit, the schema-retry re-ask) and seven entry guards with no extractable body (session-state presence, `user_input is None`, `msgs`, three artifact-present checks). **Eighth pre-approved noqa; granted under rule 12 as amended (39.5).** |
+| `agentifier/agentifier.py` | `_run_catalog_phase` | C901, PLR0912, PLR0915 | **24-yield** generator, the most yield-dense function in the repo; after the maximal build the surviving branches are yield/return guards on the Scout / Composer / Linker / TierAnalyst sub-agent turns and entry guards with no extractable body. **Ninth pre-approved noqa; rule 12 (41.2).** |
+| `agentifier/agentifier.py` | `_run_cross_cutting_phase` | C901, PLR0912, PLR0915 | 12-yield generator; surviving branches are yield/return guards on the per-topic turns and entry guards with no extractable body. **Tenth pre-approved noqa; rule 12 (41.2).** |
 
 Plus **12 `# noqa: PLR0913`** — arity cannot be reduced by extraction. Eight are
 arity-only (`_seed._call_scout` 7, `_reask.reask_for_artifact` 10,
@@ -4732,7 +4734,8 @@ into sub-generators driven by `yield from` is the real fix and is a redesign of 
 loop, not cleanup. Functions on this entry: **`deployer.run`** (measured in 37.5), **`brainstormer.run`** and
 **`code_scanner.run`** (measured in 39.2 and 40.1). `stack_advisor.run` and
 `designer.generate_mock_streaming` cleared under extraction and are **not** on this
-entry. `agentifier._run_catalog_phase` joins it only if rule 12 sends it here in 5k.
+entry. **`_run_catalog_phase`** and **`_run_cross_cutting_phase`** joined it in 5k (41.2).
+`_handle_cc_ff_review` cleared under extraction and is **not** on it.
 
 ### 27.5 — 5p, the cross-cutting sweep
 
@@ -6267,3 +6270,87 @@ measurement rather than a judgment call.
 | Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 -q` | `4256 passed, 1 skipped` (exit 0) |
+
+## 41. Phase 5k — `agentifier/agentifier.py`: the three phase runners
+
+Extract-only. Nine new helpers. Two rule-12 grants (27.4 entries nine and ten), one
+function cleared outright.
+
+### 41.1 Before and after
+
+| Function | C901 | Br | St | lines | → C901 | → Br | → St |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `_run_catalog_phase` | **38** | **41** | **230** | 621 | 33 **noqa** | 35 **noqa** | 171 **noqa** |
+| `_run_cross_cutting_phase` | **13** | **14** | **83** | 145 | 12 **noqa** | 13 **noqa** | 68 **noqa** |
+| `_handle_cc_ff_review` | — | — | **54** | 91 | — | — | **clear** |
+
+The file's finding count goes **7 → 0** (6 suppressed on two functions, 1 cleared).
+
+### 41.2 Rule 12 measurements
+
+| Function | planned | maximal | Disposition |
+|---|---|---|---|
+| `_run_catalog_phase` | C901 33 / Br 35 / St 171 | C901 **33** / Br 35 / St 164 | maximal buys 7 statements, no complexity → **planned landed**, noqa |
+| `_run_cross_cutting_phase` | C901 12 / Br 13 / St 68 | C901 **12** / Br 13 / St 68 | maximal buys nothing → **planned landed**, noqa |
+| `_handle_cc_ff_review` | St clear on one cut | not needed | **planned landed**, no noqa |
+
+`_run_catalog_phase` went 38 → 33 on four large yield-free extractions
+(`_catalog_scout_prep` 73 lines, `_catalog_breadth_intro` 47, `_catalog_apply_selection`
+40, `_catalog_finalize_breadth` 18) and 230 → 171 statements. The maximal build added a
+fifth (`_catalog_commit`) and moved C901 not at all. **At 24 yields it is the most
+yield-dense function in the repo** — every one of its 35 surviving branches either
+fronts a sub-agent turn that yields a banner and drains a stream, or is an entry guard
+choosing which turn body runs.
+
+### 41.3 The nine helpers
+
+**`_run_catalog_phase` (4).** `_catalog_scout_prep` (revision scope, project name, Scout
+banner, retry guidance), `_catalog_breadth_intro` (record the composed pool, build the
+breadth-selection intro), `_catalog_apply_selection` (close the developer's selection
+over the pool and split it), `_catalog_finalize_breadth` (persist analysed candidates,
+append the seed).
+
+**`_run_cross_cutting_phase` (4).** `_cc_store_analysis`, `_cc_record_decision`,
+`_cc_revise_input`, `_cc_apply_revision`.
+
+**`_handle_cc_ff_review` (1).** `_cc_ff_prepare` — the working copies of the analysis and
+decisions plus the pattern inputs. One cut took it under PLR0915.
+
+The plan (27.3) proposed `_catalog_step_<n>_<name>` per banner comment, with a
+tuple-or-dataclass decision for the locals crossing each boundary. **Neither was needed
+and no state object was built**: the function has no banner comments, and the four cuts
+that mattered are the yield-free spans *between* the sub-agent turns, each returning two
+to five values as a plain tuple. Rule 12's dataclass tripwire never fired.
+
+### 41.4 Coverage: 893 + 3 (rule 4, permitted case)
+
+One new site in 5k, bringing the running total to three:
+
+| Site | Block it calls |
+|---|---|
+| `agents/designer.py:738` | `_designer_accumulate_tool_calls(...)` (5j) |
+| `agents/designer.py:747` | `_designer_tool_call_followup(...)` (5j) |
+| `agentifier/agentifier.py:1315` | `_cc_store_analysis(...)`, inside the `if analysis is None:` first-pass branch |
+
+All three are **call statements at never-executed sites**. No other miss moved.
+
+### 41.5 Line accounting (rule 3)
+
+**857 non-blank lines** across the three functions; **848 verbatim**; 9 accounted: the
+two `def` lines now carrying noqas, and seven `ruff format` re-wraps after dedent (the
+`_guidance_notes` comprehension, the `_analyses_to_dicts(...)` call, and the
+`decisions[current_topic]` ternary). **No statement line is unaccounted for.**
+
+### 41.6 Statement counts (rule 4)
+
+Suite-wide **12263 → 12288, +25**: 9 new `def`s, 9 call/assignment sites, 7 `return`s.
+
+### 41.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 172.38s` (exit 0) |
+| Coverage | same run | `TOTAL 12288 stmts, 896 miss (893 + 3), 93%` |

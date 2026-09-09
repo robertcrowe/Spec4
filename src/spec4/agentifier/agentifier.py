@@ -997,15 +997,7 @@ def _handle_cc_ff_review(
         yield display
         return
 
-    analysis: dict[str, Any] = dict(
-        session.get("agentifier_cross_cutting_analysis") or {}
-    )
-    decisions: dict[str, Any] = dict(
-        session.get("agentifier_cross_cutting_decisions") or {}
-    )
-    _, mechanisms = load_patterns()
-    features = (session.get("ai_features") or {}).get("ai_features") or []
-    revised: list[str] = []
+    analysis, decisions, mechanisms, features, revised = _cc_ff_prepare(session)
     for topic, instruction in routed.items():
         if topic in SKIPPABLE_TOPICS and _is_skip(instruction):
             decisions[topic] = {}
@@ -1255,7 +1247,7 @@ def _handle_spec_ff_review(
 # ---------------------------------------------------------------------------
 
 
-def _run_cross_cutting_phase(
+def _run_cross_cutting_phase(  # noqa: C901, PLR0912, PLR0915  # 12-yield generator; the surviving branches are yield/return guards on the topic turns and entry guards with no extractable body (rule 12, CLEANUP_INVENTORY.md 27.4)
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
@@ -1320,10 +1312,7 @@ def _run_cross_cutting_phase(
             session["_display_override"] = err
             yield err
             return
-        session["agentifier_cross_cutting_topics"] = topics
-        session["agentifier_cross_cutting_analysis"] = analysis
-        session["agentifier_cross_cutting_index"] = 0
-        session["agentifier_cross_cutting_decisions"] = {}
+        _cc_store_analysis(session, topics, analysis)
 
     topics = session.get("agentifier_cross_cutting_topics") or list(
         CROSS_CUTTING_TOPICS
@@ -1348,16 +1337,7 @@ def _run_cross_cutting_phase(
         _is_skip(user_input) and current_topic in SKIPPABLE_TOPICS
     ):
         # Record the decision for this topic (empty dict when skipped), then advance.
-        skipped = current_topic in SKIPPABLE_TOPICS and _is_skip(user_input)
-        decisions: dict[str, Any] = dict(
-            session.get("agentifier_cross_cutting_decisions") or {}
-        )
-        decisions[current_topic] = (
-            {} if skipped else (analysis.get(current_topic) or {})
-        )
-        session["agentifier_cross_cutting_decisions"] = decisions
-        index += 1
-        session["agentifier_cross_cutting_index"] = index
+        index = _cc_record_decision(session, analysis, index, current_topic, user_input)
 
         if index >= len(topics):
             # All topics reviewed — transition to priority tagging
@@ -1371,18 +1351,7 @@ def _run_cross_cutting_phase(
         )
     else:
         # Revision — re-run analyst for this topic only
-        _, mechanisms = load_patterns()
-        features = (session.get("ai_features") or {}).get("ai_features") or []
-        prior = session.get("agentifier_cross_cutting_decisions") or {}
-        cc_input = CrossCuttingInput(
-            ai_features=features,
-            mechanism_patterns=mechanisms,
-            llm_config=llm_config,
-            topic=current_topic,
-            revision_instruction=user_input,
-            prior_decisions=prior,
-            code_review=session.get("code_review"),
-        )
+        cc_input = _cc_revise_input(session, current_topic, user_input, llm_config)
         yield f"\n\nRevising **{current_topic}**…\n\n"
         set_status(session, f"Revising cross-cutting topic: {current_topic}…")
         try:
@@ -1399,11 +1368,7 @@ def _run_cross_cutting_phase(
             yield err
             return
         revised = _extract_cross_cutting_analysis(raw)
-        if revised and current_topic in revised:
-            merged = dict(analysis)
-            merged[current_topic] = revised[current_topic]
-            session["agentifier_cross_cutting_analysis"] = merged
-            analysis = merged
+        analysis = _cc_apply_revision(session, revised, current_topic, analysis)
 
         display = _format_cross_cutting_topic(
             current_topic, index, analysis, len(topics)
@@ -1651,7 +1616,7 @@ def _reselection_pool_from_features(ai_features: dict[str, Any]) -> list[Candida
 # ---------------------------------------------------------------------------
 
 
-def _run_catalog_phase(
+def _run_catalog_phase(  # noqa: C901, PLR0912, PLR0915  # 24-yield generator; the surviving branches are yield/return guards on the sub-agent turns and entry guards with no extractable body (rule 12, CLEANUP_INVENTORY.md 27.4)
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
@@ -1713,78 +1678,8 @@ def _run_catalog_phase(
             # stamp. In that case carried-forward is simply empty. Greenfield
             # discovery is untouched (delta is None, or no implemented predecessor
             # → not a revision).
-            working_dir = session.get("working_dir")
-            _delta = _revision_delta(vision)
-            _prior_v = (
-                project_manager.latest_implemented_version(working_dir)
-                if working_dir and _delta
-                else None
-            )
-            _prior_ai = (
-                project_manager.load_prior_ai_features(working_dir)
-                if working_dir and _prior_v is not None
-                else None
-            )
-            _scout_revision: dict[str, Any] | None = None
-            if _delta and working_dir and _prior_v is not None:
-                _carried = list((_prior_ai or {}).get("ai_features") or [])
-                _cur_v = project_manager.resolve_phase_version(
-                    working_dir, project_manager.session_is_brownfield(session)
-                )[0]
-                session["agentifier_revision"] = True
-                session["agentifier_carried_forward"] = _carried
-                session["agentifier_revision_version"] = _cur_v
-                session["agentifier_revision_prior_version"] = _prior_v
-                session["agentifier_revision_delta"] = _delta
-                session["agentifier_revision_cross_cutting"] = dict(
-                    (_prior_ai or {}).get("cross_cutting") or {}
-                )
-                _scout_revision = {
-                    "goal": _delta.get("goal", ""),
-                    "changes": dict(_delta.get("changes") or {}),
-                    "existing_ai_features": [
-                        {
-                            "name": f.get("name", ""),
-                            "linked_vision_features": list(
-                                f.get("linked_vision_features") or []
-                            ),
-                        }
-                        for f in _carried
-                    ],
-                }
-
-            # --- Progress: Scout -----------------------------------------------
-            _vs = vision.get("vision_statement") if isinstance(vision, dict) else vision
-            _project_name = (_vs.get("name", "") if isinstance(_vs, dict) else "") or ""
-            _project_note = f" for **{_project_name}**" if _project_name else ""
-
-            # D-TA7: a guided redraw carries the developer's notes (and the
-            # set they rejected) into Scout. Written by on_breadth_try_again
-            # after the reset; None for a first draw or a plain Try Again.
-            _guidance = session.get("agentifier_retry_guidance") or None
-            _guidance_notes = [
-                str(n).strip()
-                for n in ((_guidance or {}).get("notes") or [])
-                if str(n).strip()
-            ]
-            if _guidance is not None and not _guidance_notes:
-                _guidance = None
-            _guidance_line = (
-                f"Applying your guidance: _{_guidance_notes[-1]}_\n\n"
-                if _guidance_notes
-                else ""
-            )
-            _scout_banner = (
-                f"### Scout\n\n"
-                f"Scanning your vision{_project_note} for AI/LLM integration opportunities…\n\n"
-                f"{_guidance_line}"
-                f"Scout reads your vision statement and identifies every place where an LLM, "
-                f"embedding model, or AI agent could add meaningful value. "
-                f"It maps each candidate back to the vision features that motivated it, "
-                f"and — on brownfield projects — notes which existing workflows it would replace.\n\n"
-                f"_This can take from a few seconds to a few minutes on large "
-                f"brownfield projects — the character counter below shows live "
-                f"progress._\n\n"
+            _scout_revision, _project_name, _scout_banner, _guidance = (
+                _catalog_scout_prep(session, vision)
             )
             pre_stream_chars += len(_scout_banner)
             yield _scout_banner
@@ -2009,53 +1904,9 @@ def _run_catalog_phase(
             # D-AT3: fold the drained total back into the turn's running count.
             pre_stream_chars = _drained_total()
 
-            _log_composition(_input_candidates, composed)
-
-            candidates = composed.candidates
-            session["agentifier_compositions"] = [
-                {
-                    "coordinator": comp.coordinator,
-                    "members": comp.members,
-                    "head_present": comp.head_present,
-                    "synthesized": comp.synthesized,
-                }
-                for comp in composed.compositions
-            ]
-
-            _merge_summary = ""
-            if composed.compositions:
-                _merge_summary = _format_composition_summary(composed.compositions)
-
-            n_cands = len(candidates)
-
-            # Any non-empty pool goes through the breadth panel so the developer
-            # chooses which candidates to include — any, all, or none. (The
-            # zero-candidate case is handled earlier.) The panel shows regardless
-            # of pool size, and Tier Analyst runs on the survivors in the
-            # breadth-selection turn.
-            session["agentifier_scout_pool"] = _candidates_to_dicts(candidates)
-            session["agentifier_breadth_chosen"] = False
-            # New panel instance: the live-lock intent store keys off this nonce,
-            # so a fresh panel starts from an empty developer intent.
-            session["agentifier_breadth_nonce"] = uuid.uuid4().hex
-            session["agentifier_breadth_groups"] = _breadth_candidates(candidates)
-
-            _project_note_b = f" for **{_project_name}**" if _project_name else ""
-            intro = (
-                f"Scout surfaced **{n_cands} AI "
-                f"opportunit{'y' if n_cands == 1 else 'ies'}{_project_note_b}**."
-                f" Select which features to include below — choose any, all, or none."
-                f" Nothing is pre-selected."
+            intro = _catalog_breadth_intro(
+                session, composed, _input_candidates, _project_name, candidates
             )
-            if _merge_summary:
-                intro = _merge_summary + "\n\n---\n\n" + intro
-            # Approaches overview goes on top — the first conversational thing the
-            # developer sees after Scout→Composer, ahead of the merge
-            # summary and the breadth-selection prompt.  Stored in the breadth intro
-            # so it also shows on the breadth-question replay path.
-            intro = _APPROACHES_OVERVIEW + "\n\n---\n\n" + intro
-            session["agentifier_breadth_intro"] = intro
-            session["_display_override"] = intro
             yield intro
             return  # wait for developer's breadth selection
         else:
@@ -2082,46 +1933,9 @@ def _run_catalog_phase(
         # --- Breadth selection turn ---------------------------------------------
         # agentifier_breadth_selection is set by the checkbox callback before
         # calling _get_agent_gen; user_input is a human-readable summary only.
-        pool = _candidates_from_dicts(session["agentifier_scout_pool"])
-        selected_names = session.get("agentifier_breadth_selection") or []
-        session["agentifier_breadth_chosen"] = True
-
-        # Panel closure: resolve the developer's checked set under the requires
-        # (auto-select producers) and coordinator (>=2 members -> on) rules to a
-        # fixpoint. Authoritative and idempotent — it also repairs a raw
-        # selection that somehow bypassed the panel's live lock.
-        closure = close_selection(pool, selected_names)
-        selected_set = closure.selected
-        survivors = [c for c in pool if c.name in selected_set]
-        rejected = [c for c in pool if c.name not in selected_set]
-
-        session["agentifier_explicitly_rejected"] = [
-            {
-                "name": c.name,
-                "rough_description": c.rough_description,
-                # A coordinator only reaches here when closure turned it off
-                # (< 2 selected members and not required); everything else the
-                # developer left unchecked.
-                "reason": (
-                    "closure_coordinator_off"
-                    if c.name in closure.coordinators
-                    else "deselected_by_user"
-                ),
-            }
-            for c in rejected
-        ]
-
-        # Re-selection: preserve still-selected features verbatim; only newly
-        # checked (previously-rejected) features need tier review + spec drafting.
-        reselection = bool(session.get("agentifier_reselection"))
-        if reselection:
-            preserved_map = session.get("agentifier_preserved_features") or {}
-            session["agentifier_preserved_selected"] = [
-                preserved_map[c.name] for c in survivors if c.name in preserved_map
-            ]
-            to_analyze = [c for c in survivors if c.name not in preserved_map]
-        else:
-            to_analyze = survivors
+        pool, survivors, rejected, to_analyze, reselection = _catalog_apply_selection(
+            session
+        )
 
         if not survivors:
             # Zero-selection path: persist empty artifact and complete.
@@ -2222,24 +2036,7 @@ def _run_catalog_phase(
         yield _done_line
         set_status(session, "Preparing your feature briefing…")
 
-        session["agentifier_candidates"] = _candidates_to_dicts(to_analyze)
-        session["agentifier_analyses"] = _analyses_to_dicts(
-            breadth_analyses, to_analyze
-        )
-
-        # The developer's answer, never the presence of a scan: CodeScanner run
-        # over a greenfield skeleton must not make the orchestrator open with
-        # "this is a BROWNFIELD project".
-        brownfield = project_manager.session_is_brownfield(session)
-        _rev_goal = (
-            (session.get("agentifier_revision_delta") or {}).get("goal", "")
-            if session.get("agentifier_revision")
-            else ""
-        )
-        seed = _build_seed_message(
-            to_analyze, breadth_analyses, brownfield=brownfield, revision_goal=_rev_goal
-        )
-        msgs.append({"role": "user", "content": seed})
+        _catalog_finalize_breadth(session, to_analyze, breadth_analyses, msgs)
 
     else:
         msgs.append({"role": "user", "content": user_input})
@@ -2305,6 +2102,214 @@ def _run_catalog_phase(
         _assistant_text = last_assistant_text(msgs)
         if _assistant_text:
             session["_display_override"] = _assistant_text
+
+
+def _catalog_scout_prep(
+    session: dict[str, Any], vision: dict[str, Any]
+) -> tuple[dict[str, Any] | None, str, str, Any]:
+    """Revision scope, project name, Scout banner and retry guidance for a fresh turn."""
+    working_dir = session.get("working_dir")
+    _delta = _revision_delta(vision)
+    _prior_v = (
+        project_manager.latest_implemented_version(working_dir)
+        if working_dir and _delta
+        else None
+    )
+    _prior_ai = (
+        project_manager.load_prior_ai_features(working_dir)
+        if working_dir and _prior_v is not None
+        else None
+    )
+    _scout_revision: dict[str, Any] | None = None
+    if _delta and working_dir and _prior_v is not None:
+        _carried = list((_prior_ai or {}).get("ai_features") or [])
+        _cur_v = project_manager.resolve_phase_version(
+            working_dir, project_manager.session_is_brownfield(session)
+        )[0]
+        session["agentifier_revision"] = True
+        session["agentifier_carried_forward"] = _carried
+        session["agentifier_revision_version"] = _cur_v
+        session["agentifier_revision_prior_version"] = _prior_v
+        session["agentifier_revision_delta"] = _delta
+        session["agentifier_revision_cross_cutting"] = dict(
+            (_prior_ai or {}).get("cross_cutting") or {}
+        )
+        _scout_revision = {
+            "goal": _delta.get("goal", ""),
+            "changes": dict(_delta.get("changes") or {}),
+            "existing_ai_features": [
+                {
+                    "name": f.get("name", ""),
+                    "linked_vision_features": list(
+                        f.get("linked_vision_features") or []
+                    ),
+                }
+                for f in _carried
+            ],
+        }
+
+    # --- Progress: Scout -----------------------------------------------
+    _vs = vision.get("vision_statement") if isinstance(vision, dict) else vision
+    _project_name = (_vs.get("name", "") if isinstance(_vs, dict) else "") or ""
+    _project_note = f" for **{_project_name}**" if _project_name else ""
+
+    # D-TA7: a guided redraw carries the developer's notes (and the
+    # set they rejected) into Scout. Written by on_breadth_try_again
+    # after the reset; None for a first draw or a plain Try Again.
+    _guidance = session.get("agentifier_retry_guidance") or None
+    _guidance_notes = [
+        str(n).strip() for n in ((_guidance or {}).get("notes") or []) if str(n).strip()
+    ]
+    if _guidance is not None and not _guidance_notes:
+        _guidance = None
+    _guidance_line = (
+        f"Applying your guidance: _{_guidance_notes[-1]}_\n\n"
+        if _guidance_notes
+        else ""
+    )
+    _scout_banner = (
+        f"### Scout\n\n"
+        f"Scanning your vision{_project_note} for AI/LLM integration opportunities…\n\n"
+        f"{_guidance_line}"
+        f"Scout reads your vision statement and identifies every place where an LLM, "
+        f"embedding model, or AI agent could add meaningful value. "
+        f"It maps each candidate back to the vision features that motivated it, "
+        f"and — on brownfield projects — notes which existing workflows it would replace.\n\n"
+        f"_This can take from a few seconds to a few minutes on large "
+        f"brownfield projects — the character counter below shows live "
+        f"progress._\n\n"
+    )
+    return _scout_revision, _project_name, _scout_banner, _guidance
+
+
+def _catalog_breadth_intro(
+    session: dict[str, Any],
+    composed: Any,
+    _input_candidates: list[Any],
+    _project_name: str,
+    candidates: list[Any],
+) -> str:
+    """Record the composed pool and build the breadth-selection introduction."""
+    _log_composition(_input_candidates, composed)
+
+    candidates = composed.candidates
+    session["agentifier_compositions"] = [
+        {
+            "coordinator": comp.coordinator,
+            "members": comp.members,
+            "head_present": comp.head_present,
+            "synthesized": comp.synthesized,
+        }
+        for comp in composed.compositions
+    ]
+
+    _merge_summary = ""
+    if composed.compositions:
+        _merge_summary = _format_composition_summary(composed.compositions)
+
+    n_cands = len(candidates)
+
+    # Any non-empty pool goes through the breadth panel so the developer
+    # chooses which candidates to include — any, all, or none. (The
+    # zero-candidate case is handled earlier.) The panel shows regardless
+    # of pool size, and Tier Analyst runs on the survivors in the
+    # breadth-selection turn.
+    session["agentifier_scout_pool"] = _candidates_to_dicts(candidates)
+    session["agentifier_breadth_chosen"] = False
+    # New panel instance: the live-lock intent store keys off this nonce,
+    # so a fresh panel starts from an empty developer intent.
+    session["agentifier_breadth_nonce"] = uuid.uuid4().hex
+    session["agentifier_breadth_groups"] = _breadth_candidates(candidates)
+
+    _project_note_b = f" for **{_project_name}**" if _project_name else ""
+    intro = (
+        f"Scout surfaced **{n_cands} AI "
+        f"opportunit{'y' if n_cands == 1 else 'ies'}{_project_note_b}**."
+        f" Select which features to include below — choose any, all, or none."
+        f" Nothing is pre-selected."
+    )
+    if _merge_summary:
+        intro = _merge_summary + "\n\n---\n\n" + intro
+    # Approaches overview goes on top — the first conversational thing the
+    # developer sees after Scout→Composer, ahead of the merge
+    # summary and the breadth-selection prompt.  Stored in the breadth intro
+    # so it also shows on the breadth-question replay path.
+    intro = _APPROACHES_OVERVIEW + "\n\n---\n\n" + intro
+    session["agentifier_breadth_intro"] = intro
+    session["_display_override"] = intro
+    return intro
+
+
+def _catalog_apply_selection(
+    session: dict[str, Any],
+) -> tuple[list[Any], list[Any], list[Any], list[Any], bool]:
+    """Close the developer's breadth selection over the pool and split it."""
+    pool = _candidates_from_dicts(session["agentifier_scout_pool"])
+    selected_names = session.get("agentifier_breadth_selection") or []
+    session["agentifier_breadth_chosen"] = True
+
+    # Panel closure: resolve the developer's checked set under the requires
+    # (auto-select producers) and coordinator (>=2 members -> on) rules to a
+    # fixpoint. Authoritative and idempotent — it also repairs a raw
+    # selection that somehow bypassed the panel's live lock.
+    closure = close_selection(pool, selected_names)
+    selected_set = closure.selected
+    survivors = [c for c in pool if c.name in selected_set]
+    rejected = [c for c in pool if c.name not in selected_set]
+
+    session["agentifier_explicitly_rejected"] = [
+        {
+            "name": c.name,
+            "rough_description": c.rough_description,
+            # A coordinator only reaches here when closure turned it off
+            # (< 2 selected members and not required); everything else the
+            # developer left unchecked.
+            "reason": (
+                "closure_coordinator_off"
+                if c.name in closure.coordinators
+                else "deselected_by_user"
+            ),
+        }
+        for c in rejected
+    ]
+
+    # Re-selection: preserve still-selected features verbatim; only newly
+    # checked (previously-rejected) features need tier review + spec drafting.
+    reselection = bool(session.get("agentifier_reselection"))
+    if reselection:
+        preserved_map = session.get("agentifier_preserved_features") or {}
+        session["agentifier_preserved_selected"] = [
+            preserved_map[c.name] for c in survivors if c.name in preserved_map
+        ]
+        to_analyze = [c for c in survivors if c.name not in preserved_map]
+    else:
+        to_analyze = survivors
+    return pool, survivors, rejected, to_analyze, reselection
+
+
+def _catalog_finalize_breadth(
+    session: dict[str, Any],
+    to_analyze: list[Any],
+    breadth_analyses: list[Any],
+    msgs: list[dict[str, Any]],
+) -> None:
+    """Persist the analysed candidates and append the catalog seed."""
+    session["agentifier_candidates"] = _candidates_to_dicts(to_analyze)
+    session["agentifier_analyses"] = _analyses_to_dicts(breadth_analyses, to_analyze)
+
+    # The developer's answer, never the presence of a scan: CodeScanner run
+    # over a greenfield skeleton must not make the orchestrator open with
+    # "this is a BROWNFIELD project".
+    brownfield = project_manager.session_is_brownfield(session)
+    _rev_goal = (
+        (session.get("agentifier_revision_delta") or {}).get("goal", "")
+        if session.get("agentifier_revision")
+        else ""
+    )
+    seed = _build_seed_message(
+        to_analyze, breadth_analyses, brownfield=brownfield, revision_goal=_rev_goal
+    )
+    msgs.append({"role": "user", "content": seed})
 
 
 # ---------------------------------------------------------------------------
@@ -2521,3 +2526,82 @@ def run(
         yield from _run_priority_phase(user_input, session, llm_config)
     else:
         yield from _handle_reentry(user_input, session, llm_config)
+
+
+def _cc_ff_prepare(
+    session: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], Any, Any, list[str]]:
+    """Working copies of the analysis and decisions, plus the pattern inputs."""
+    analysis: dict[str, Any] = dict(
+        session.get("agentifier_cross_cutting_analysis") or {}
+    )
+    decisions: dict[str, Any] = dict(
+        session.get("agentifier_cross_cutting_decisions") or {}
+    )
+    _, mechanisms = load_patterns()
+    features = (session.get("ai_features") or {}).get("ai_features") or []
+    revised: list[str] = []
+    return analysis, decisions, mechanisms, features, revised
+
+
+def _cc_store_analysis(
+    session: dict[str, Any], topics: list[str], analysis: dict[str, Any]
+) -> None:
+    """Store the first cross-cutting analysis and reset the topic cursor."""
+    session["agentifier_cross_cutting_topics"] = topics
+    session["agentifier_cross_cutting_analysis"] = analysis
+    session["agentifier_cross_cutting_index"] = 0
+    session["agentifier_cross_cutting_decisions"] = {}
+
+
+def _cc_record_decision(
+    session: dict[str, Any],
+    analysis: dict[str, Any],
+    index: int,
+    current_topic: str,
+    user_input: str,
+) -> int:
+    """Record the developer's decision on the current topic and advance."""
+    skipped = current_topic in SKIPPABLE_TOPICS and _is_skip(user_input)
+    decisions: dict[str, Any] = dict(
+        session.get("agentifier_cross_cutting_decisions") or {}
+    )
+    decisions[current_topic] = {} if skipped else (analysis.get(current_topic) or {})
+    session["agentifier_cross_cutting_decisions"] = decisions
+    index += 1
+    session["agentifier_cross_cutting_index"] = index
+    return index
+
+
+def _cc_revise_input(
+    session: dict[str, Any],
+    current_topic: str,
+    user_input: str,
+    llm_config: dict[str, Any],
+) -> Any:
+    """The revision input for one cross-cutting topic."""
+    _, mechanisms = load_patterns()
+    features = (session.get("ai_features") or {}).get("ai_features") or []
+    prior = session.get("agentifier_cross_cutting_decisions") or {}
+    cc_input = CrossCuttingInput(
+        ai_features=features,
+        mechanism_patterns=mechanisms,
+        llm_config=llm_config,
+        topic=current_topic,
+        revision_instruction=user_input,
+        prior_decisions=prior,
+        code_review=session.get("code_review"),
+    )
+    return cc_input
+
+
+def _cc_apply_revision(
+    session: dict[str, Any], revised: Any, current_topic: str, analysis: dict[str, Any]
+) -> dict[str, Any]:
+    """Fold a revised topic back into the stored analysis."""
+    if revised and current_topic in revised:
+        merged = dict(analysis)
+        merged[current_topic] = revised[current_topic]
+        session["agentifier_cross_cutting_analysis"] = merged
+        analysis = merged
+    return analysis
