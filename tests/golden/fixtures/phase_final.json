@@ -1,0 +1,24 @@
+{
+  "phase_number": 2,
+  "total_phases": 2,
+  "phase_title": "Polish & offline",
+  "phase_summary": "Ship the UI and the offline path.",
+  "features": [
+    {
+      "id": "thread_summarization",
+      "role": "extended",
+      "scope_note": ""
+    }
+  ],
+  "capabilities": [],
+  "tech_stack_spec": {
+    "dependencies": [],
+    "configurations": ""
+  },
+  "instructions": [
+    "Add the history panel."
+  ],
+  "risk_assessment": {},
+  "verification": "Run the e2e suite.",
+  "references": []
+}

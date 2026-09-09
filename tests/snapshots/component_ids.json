@@ -1,0 +1,1294 @@
+{
+  "working_dir": {
+    "ids": [
+      "btn-create-folder",
+      "btn-dir-select",
+      "btn-dir-up",
+      "dir-path-input",
+      "new-folder-name"
+    ],
+    "pattern_types": [
+      "subdir-btn"
+    ]
+  },
+  "working_dir: unopenable remembered directory": {
+    "ids": [
+      "btn-create-folder",
+      "btn-dir-select",
+      "btn-dir-up",
+      "dir-path-input",
+      "new-folder-name"
+    ],
+    "pattern_types": [
+      "subdir-btn"
+    ]
+  },
+  "working_dir: browsing a directory": {
+    "ids": [
+      "btn-create-folder",
+      "btn-dir-select",
+      "btn-dir-up",
+      "dir-path-input",
+      "new-folder-name"
+    ],
+    "pattern_types": [
+      "subdir-btn"
+    ]
+  },
+  "setup: provider": {
+    "ids": [
+      "btn-setup-clear",
+      "btn-setup-connect",
+      "setup-api-key",
+      "setup-api-key-hint",
+      "setup-provider",
+      "setup-save-prefs"
+    ],
+    "pattern_types": []
+  },
+  "setup: provider, with error": {
+    "ids": [
+      "btn-setup-clear",
+      "btn-setup-connect",
+      "setup-api-key",
+      "setup-api-key-hint",
+      "setup-provider",
+      "setup-save-prefs"
+    ],
+    "pattern_types": []
+  },
+  "setup: model": {
+    "ids": [
+      "btn-setup-back-provider",
+      "btn-setup-model-continue",
+      "setup-effort",
+      "setup-model",
+      "setup-probe-progress-container"
+    ],
+    "pattern_types": []
+  },
+  "setup: web search": {
+    "ids": [
+      "btn-setup-back-model",
+      "btn-setup-search-connect",
+      "btn-setup-search-skip",
+      "setup-search-hint",
+      "setup-search-key",
+      "setup-search-provider"
+    ],
+    "pattern_types": []
+  },
+  "setup: web search, probes answered": {
+    "ids": [
+      "btn-setup-back-model",
+      "btn-setup-search-connect",
+      "btn-setup-search-skip",
+      "setup-search-hint",
+      "setup-search-key",
+      "setup-search-provider"
+    ],
+    "pattern_types": []
+  },
+  "project_mode question": {
+    "ids": [
+      "btn-project-mode-existing",
+      "btn-project-mode-new"
+    ],
+    "pattern_types": []
+  },
+  "project view: greenfield": {
+    "ids": [
+      "agent-row-agentifier",
+      "agent-row-brainstormer",
+      "agent-row-code_scanner",
+      "agent-row-deployer",
+      "agent-row-designer",
+      "agent-row-phaser",
+      "agent-row-stack_advisor",
+      "agent-rows",
+      "agent-rows-body",
+      "round-cost",
+      "round-cost-line",
+      "round-cost-note",
+      "round-cost-unpriced",
+      "round-tree",
+      "round-tree-head",
+      "round-tree-legend",
+      "round-tree-list"
+    ],
+    "pattern_types": [
+      "agent-pill",
+      "round-tree-line"
+    ]
+  },
+  "project view: greenfield, with error": {
+    "ids": [
+      "agent-row-agentifier",
+      "agent-row-brainstormer",
+      "agent-row-code_scanner",
+      "agent-row-deployer",
+      "agent-row-designer",
+      "agent-row-phaser",
+      "agent-row-stack_advisor",
+      "agent-rows",
+      "agent-rows-body",
+      "round-cost",
+      "round-cost-line",
+      "round-cost-note",
+      "round-cost-unpriced",
+      "round-tree",
+      "round-tree-head",
+      "round-tree-legend",
+      "round-tree-list"
+    ],
+    "pattern_types": [
+      "agent-pill",
+      "round-tree-line"
+    ]
+  },
+  "project view: brownfield": {
+    "ids": [
+      "agent-row-agentifier",
+      "agent-row-brainstormer",
+      "agent-row-code_scanner",
+      "agent-row-deployer",
+      "agent-row-designer",
+      "agent-row-phaser",
+      "agent-row-stack_advisor",
+      "agent-rows",
+      "agent-rows-body",
+      "round-cost",
+      "round-cost-line",
+      "round-cost-note",
+      "round-cost-unpriced",
+      "round-tree",
+      "round-tree-head",
+      "round-tree-legend",
+      "round-tree-list"
+    ],
+    "pattern_types": [
+      "agent-pill",
+      "round-tree-line"
+    ]
+  },
+  "project view: brownfield, pinned round": {
+    "ids": [
+      "agent-row-agentifier",
+      "agent-row-brainstormer",
+      "agent-row-code_scanner",
+      "agent-row-deployer",
+      "agent-row-designer",
+      "agent-row-phaser",
+      "agent-row-stack_advisor",
+      "agent-rows",
+      "agent-rows-body",
+      "round-cost",
+      "round-cost-line",
+      "round-cost-note",
+      "round-cost-unpriced",
+      "round-tree",
+      "round-tree-head",
+      "round-tree-legend",
+      "round-tree-list"
+    ],
+    "pattern_types": [
+      "agent-pill",
+      "round-tree-line"
+    ]
+  },
+  "chat code_scanner: gate": {
+    "ids": [
+      "btn-agent-llm-default",
+      "btn-agent-llm-pick",
+      "btn-chat-submit",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat code_scanner: opening": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-submit",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat code_scanner: streaming": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-submit",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat code_scanner: complete": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-submit",
+      "btn-dl-review",
+      "btn-open-review",
+      "btn-rescan-project",
+      "btn-review-to-brainstormer",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat code_scanner: retry panel": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-retry",
+      "btn-chat-retry-model",
+      "btn-chat-submit",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat brainstormer: gate": {
+    "ids": [
+      "btn-agent-llm-default",
+      "btn-agent-llm-pick",
+      "btn-chat-submit",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat brainstormer: opening": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-submit",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat brainstormer: streaming": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-submit",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat brainstormer: complete": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-brainstormer-to-agentifier",
+      "btn-brainstormer-to-designer",
+      "btn-chat-submit",
+      "btn-dl-vision",
+      "btn-open-vision",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat brainstormer: retry panel": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-retry",
+      "btn-chat-retry-model",
+      "btn-chat-submit",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat agentifier: gate": {
+    "ids": [
+      "btn-agent-llm-default",
+      "btn-agent-llm-pick",
+      "btn-chat-submit",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat agentifier: opening": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-submit",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat agentifier: streaming": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-submit",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat agentifier: complete": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-agentifier-to-designer",
+      "btn-chat-submit",
+      "btn-dl-features",
+      "btn-open-features",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat agentifier: retry panel": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-retry",
+      "btn-chat-retry-model",
+      "btn-chat-submit",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat stack_advisor: gate": {
+    "ids": [
+      "btn-agent-llm-default",
+      "btn-agent-llm-pick",
+      "btn-chat-fast-forward",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat stack_advisor: opening": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-fast-forward",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat stack_advisor: streaming": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-fast-forward",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat stack_advisor: complete": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-submit",
+      "btn-dl-stack",
+      "btn-open-stack",
+      "btn-stack-to-phaser",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat stack_advisor: retry panel": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-fast-forward",
+      "btn-chat-retry",
+      "btn-chat-retry-model",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat phaser: gate": {
+    "ids": [
+      "btn-agent-llm-default",
+      "btn-agent-llm-pick",
+      "btn-chat-fast-forward",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat phaser: opening": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-fast-forward",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat phaser: streaming": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-fast-forward",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat phaser: complete": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-submit",
+      "btn-dl-phases",
+      "btn-open-phases",
+      "btn-phaser-to-deployer",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat phaser: retry panel": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-fast-forward",
+      "btn-chat-retry",
+      "btn-chat-retry-model",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat deployer: gate": {
+    "ids": [
+      "btn-agent-llm-default",
+      "btn-agent-llm-pick",
+      "btn-chat-fast-forward",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat deployer: opening": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-fast-forward",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat deployer: streaming": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-fast-forward",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat deployer: complete": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-submit",
+      "btn-deployer-new-project",
+      "btn-dl-deployment",
+      "btn-open-deployment",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat deployer: retry panel": {
+    "ids": [
+      "btn-agent-llm-chip",
+      "btn-chat-fast-forward",
+      "btn-chat-retry",
+      "btn-chat-retry-model",
+      "btn-chat-submit",
+      "btn-ff-info",
+      "chat-elapsed",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "chat-token-count",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "ff-info-modal",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill"
+    ]
+  },
+  "chat agentifier: breadth panel": {
+    "ids": [
+      "breadth-checkbox-group",
+      "breadth-retry-input",
+      "btn-agent-llm-chip",
+      "btn-breadth-submit",
+      "btn-breadth-try-again",
+      "btn-chat-submit",
+      "chat-input",
+      "chat-progress-container",
+      "chat-scroll-area",
+      "chat-status-line",
+      "dl-code-review",
+      "dl-deployment",
+      "dl-features",
+      "dl-phases",
+      "dl-stack",
+      "dl-vision",
+      "init-turn-interval"
+    ],
+    "pattern_types": [
+      "agent-pill",
+      "breadth-cb"
+    ]
+  },
+  "designer: gate": {
+    "ids": [
+      "btn-agent-llm-default",
+      "btn-agent-llm-pick"
+    ],
+    "pattern_types": []
+  },
+  "designer: wizard": {
+    "ids": [
+      "designer-autoretry-interval",
+      "designer-session-store",
+      "designer-step-content",
+      "designer-stepper",
+      "mock-stream-buffer",
+      "mock-stream-interval"
+    ],
+    "pattern_types": []
+  },
+  "designer: wizard, brownfield": {
+    "ids": [
+      "designer-autoretry-interval",
+      "designer-session-store",
+      "designer-step-content",
+      "designer-stepper",
+      "mock-stream-buffer",
+      "mock-stream-interval"
+    ],
+    "pattern_types": []
+  },
+  "designer: wizard, no project": {
+    "ids": [
+      "designer-autoretry-interval",
+      "designer-session-store",
+      "designer-step-content",
+      "designer-stepper",
+      "mock-stream-buffer",
+      "mock-stream-interval"
+    ],
+    "pattern_types": []
+  },
+  "designer: step 1": {
+    "ids": [
+      "btn-designer-add-gui",
+      "btn-designer-skip-1"
+    ],
+    "pattern_types": []
+  },
+  "designer: step 2": {
+    "ids": [
+      "btn-designer-create-new",
+      "btn-designer-modify-existing",
+      "btn-designer-skip-2"
+    ],
+    "pattern_types": []
+  },
+  "designer: step 2 (no existing ui)": {
+    "ids": [
+      "btn-designer-create-new",
+      "btn-designer-modify-existing",
+      "btn-designer-skip-2"
+    ],
+    "pattern_types": []
+  },
+  "designer: step 2 (revision)": {
+    "ids": [
+      "btn-designer-carry-forward",
+      "btn-designer-create-new",
+      "btn-designer-modify-existing",
+      "btn-designer-skip-2"
+    ],
+    "pattern_types": []
+  },
+  "designer: step 3": {
+    "ids": [
+      "btn-designer-preferences-next",
+      "btn-designer-step-back",
+      "designer-preference-input"
+    ],
+    "pattern_types": []
+  },
+  "designer: step 4": {
+    "ids": [
+      "btn-designer-generate-mock",
+      "btn-designer-step-back",
+      "designer-screenshot-upload"
+    ],
+    "pattern_types": [
+      "designer-screenshot-annotation",
+      "designer-screenshot-delete"
+    ]
+  },
+  "designer: step 4 (no image support)": {
+    "ids": [
+      "btn-designer-generate-mock",
+      "btn-designer-step-back"
+    ],
+    "pattern_types": [
+      "designer-screenshot-annotation",
+      "designer-screenshot-delete"
+    ]
+  },
+  "designer: step 5": {
+    "ids": [
+      "mock-progress",
+      "mock-token-count"
+    ],
+    "pattern_types": []
+  },
+  "designer: step 5 (error)": {
+    "ids": [
+      "btn-designer-retry",
+      "btn-designer-retry-model",
+      "mock-progress",
+      "mock-token-count"
+    ],
+    "pattern_types": []
+  },
+  "designer: step 6": {
+    "ids": [
+      "btn-designer-approve",
+      "btn-designer-refine",
+      "btn-designer-start-over",
+      "mock-fullscreen-btn",
+      "mock-iframe"
+    ],
+    "pattern_types": []
+  },
+  "designer: step 6 (finalized)": {
+    "ids": [
+      "btn-designer-continue-stack",
+      "btn-designer-refine",
+      "btn-designer-start-over",
+      "mock-fullscreen-btn",
+      "mock-iframe"
+    ],
+    "pattern_types": []
+  },
+  "designer: step 6 (stale)": {
+    "ids": [
+      "btn-designer-approve",
+      "btn-designer-refine",
+      "btn-designer-revise-stale",
+      "btn-designer-start-over",
+      "mock-fullscreen-btn",
+      "mock-iframe"
+    ],
+    "pattern_types": []
+  },
+  "designer: step 7": {
+    "ids": [
+      "btn-designer-refine-cancel",
+      "btn-designer-regenerate",
+      "designer-refine-input",
+      "designer-refine-upload",
+      "mock-fullscreen-btn",
+      "mock-iframe"
+    ],
+    "pattern_types": [
+      "designer-refine-annotation",
+      "designer-refine-image-delete"
+    ]
+  },
+  "designer: step 7 (no image support)": {
+    "ids": [
+      "btn-designer-refine-cancel",
+      "btn-designer-regenerate",
+      "designer-refine-input",
+      "designer-refine-upload",
+      "mock-fullscreen-btn",
+      "mock-iframe"
+    ],
+    "pattern_types": [
+      "designer-refine-annotation",
+      "designer-refine-image-delete"
+    ]
+  },
+  "artifacts: no project": {
+    "ids": [
+      "artifact-download",
+      "artifact-download-btn",
+      "artifact-mock-store",
+      "artifact-round-select",
+      "artifact-view-content",
+      "artifact-view-content-body",
+      "artifact-view-header",
+      "artifact-view-root",
+      "artifact-view-sidebar",
+      "artifact-view-tree",
+      "artifact-view-tree-head",
+      "artifact-view-tree-legend",
+      "artifact-view-tree-list"
+    ],
+    "pattern_types": [
+      "round-tree-line"
+    ]
+  },
+  "artifacts: project, no rounds": {
+    "ids": [
+      "artifact-download",
+      "artifact-download-btn",
+      "artifact-mock-store",
+      "artifact-round-select",
+      "artifact-view-content",
+      "artifact-view-content-body",
+      "artifact-view-header",
+      "artifact-view-root",
+      "artifact-view-sidebar",
+      "artifact-view-tree",
+      "artifact-view-tree-head",
+      "artifact-view-tree-legend",
+      "artifact-view-tree-list"
+    ],
+    "pattern_types": [
+      "round-tree-line"
+    ]
+  },
+  "artifacts: round, nothing selected": {
+    "ids": [
+      "artifact-download",
+      "artifact-download-btn",
+      "artifact-mock-store",
+      "artifact-round-select",
+      "artifact-view-content",
+      "artifact-view-content-body",
+      "artifact-view-header",
+      "artifact-view-root",
+      "artifact-view-sidebar",
+      "artifact-view-tree",
+      "artifact-view-tree-head",
+      "artifact-view-tree-legend",
+      "artifact-view-tree-list"
+    ],
+    "pattern_types": [
+      "artifact-round",
+      "round-tree-line"
+    ]
+  },
+  "artifacts: file selected": {
+    "ids": [
+      "artifact-download",
+      "artifact-download-btn",
+      "artifact-mock-store",
+      "artifact-round-select",
+      "artifact-view-content",
+      "artifact-view-content-body",
+      "artifact-view-header",
+      "artifact-view-root",
+      "artifact-view-scroll",
+      "artifact-view-sidebar",
+      "artifact-view-tree",
+      "artifact-view-tree-head",
+      "artifact-view-tree-legend",
+      "artifact-view-tree-list"
+    ],
+    "pattern_types": [
+      "artifact-round",
+      "round-tree-line"
+    ]
+  },
+  "artifacts: mock selected": {
+    "ids": [
+      "artifact-download",
+      "artifact-download-btn",
+      "artifact-mock-store",
+      "artifact-open-rendered-btn",
+      "artifact-round-select",
+      "artifact-view-content",
+      "artifact-view-content-body",
+      "artifact-view-header",
+      "artifact-view-root",
+      "artifact-view-scroll",
+      "artifact-view-sidebar",
+      "artifact-view-tree",
+      "artifact-view-tree-head",
+      "artifact-view-tree-legend",
+      "artifact-view-tree-list"
+    ],
+    "pattern_types": [
+      "artifact-round",
+      "round-tree-line"
+    ]
+  },
+  "artifacts: missing file selected": {
+    "ids": [
+      "artifact-download",
+      "artifact-download-btn",
+      "artifact-mock-store",
+      "artifact-round-select",
+      "artifact-view-content",
+      "artifact-view-content-body",
+      "artifact-view-header",
+      "artifact-view-root",
+      "artifact-view-sidebar",
+      "artifact-view-tree",
+      "artifact-view-tree-head",
+      "artifact-view-tree-legend",
+      "artifact-view-tree-list"
+    ],
+    "pattern_types": [
+      "artifact-round",
+      "round-tree-line"
+    ]
+  },
+  "artifacts: rejected path": {
+    "ids": [
+      "artifact-download",
+      "artifact-download-btn",
+      "artifact-mock-store",
+      "artifact-round-select",
+      "artifact-view-content",
+      "artifact-view-content-body",
+      "artifact-view-header",
+      "artifact-view-root",
+      "artifact-view-sidebar",
+      "artifact-view-tree",
+      "artifact-view-tree-head",
+      "artifact-view-tree-legend",
+      "artifact-view-tree-list"
+    ],
+    "pattern_types": [
+      "artifact-round",
+      "round-tree-line"
+    ]
+  },
+  "status bar": {
+    "ids": [
+      "btn-status-bar-model",
+      "status-bar",
+      "status-bar-context",
+      "status-bar-nav-artifacts",
+      "status-bar-nav-docs",
+      "status-bar-nav-project",
+      "status-bar-nav-settings",
+      "status-bar-version"
+    ],
+    "pattern_types": []
+  },
+  "status bar: context filled": {
+    "ids": [
+      "btn-status-bar-dir",
+      "btn-status-bar-model"
+    ],
+    "pattern_types": []
+  },
+  "status bar: context empty": {
+    "ids": [
+      "btn-status-bar-model"
+    ],
+    "pattern_types": []
+  }
+}

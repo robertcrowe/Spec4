@@ -1,0 +1,220 @@
+{
+  "code_review": {
+    "is_software_project": true,
+    "project_type": "web app",
+    "existing_self_description": {
+      "text": "A Dash app for planning.",
+      "source": "README.md"
+    },
+    "architecture": {
+      "pattern": "monolith",
+      "summary": "one Flask process"
+    },
+    "languages": [
+      {
+        "name": "Python",
+        "source": "pyproject.toml"
+      },
+      "JavaScript"
+    ],
+    "frameworks": [
+      "Dash"
+    ],
+    "protocols_implemented": [
+      {
+        "name": "MCP",
+        "version": "2025-06",
+        "location": "src/mcp"
+      },
+      {
+        "name": "A2A"
+      },
+      "plain text"
+    ],
+    "runtime_versions": {
+      "python": "3.12",
+      "node": "20",
+      "_ignored": "x",
+      "empty": ""
+    },
+    "build_system": {
+      "tool": "uv",
+      "manifest": "pyproject.toml",
+      "build_backend": "uv_build"
+    },
+    "dependencies": [
+      {
+        "name": "dash",
+        "purpose": "UI",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "litellm"
+      },
+      "requests"
+    ],
+    "commands": {
+      "build": "uv build",
+      "test": "uv run pytest",
+      "lint": "",
+      "run": "spec4"
+    },
+    "entrypoints": {
+      "main": "src/spec4/app.py",
+      "cli_script": "spec4",
+      "ui_root": ""
+    },
+    "directory_map": [
+      {
+        "path": "src/spec4",
+        "role": "package"
+      },
+      {
+        "role": "no path"
+      },
+      "docs/"
+    ],
+    "persistence": {
+      "databases": [
+        {
+          "engine": "SQLite",
+          "role": "cache"
+        },
+        {
+          "engine": "Postgres"
+        },
+        "bad"
+      ],
+      "orm": {
+        "name": "SQLAlchemy"
+      },
+      "migration_tool": {
+        "name": "alembic"
+      },
+      "migrations_path": "migrations/"
+    },
+    "env_vars": [
+      {
+        "name": "OPENAI_API_KEY",
+        "purpose": "LLM access",
+        "required": true
+      },
+      {
+        "name": "DASH_DEBUG",
+        "required": false
+      },
+      {
+        "name": "PORT"
+      },
+      {
+        "purpose": "nameless"
+      },
+      "RAW_STRING"
+    ],
+    "deployment": {
+      "containerization": {
+        "tool": "Docker",
+        "dockerfile_path": "Dockerfile",
+        "compose_path": "compose.yml",
+        "base_image": "python:3.12-slim"
+      },
+      "orchestration": {
+        "tool": "Kubernetes",
+        "manifests_path": "k8s/"
+      },
+      "paas": {
+        "platform": "Fly.io",
+        "config_path": "fly.toml"
+      },
+      "iac": {
+        "tool": "Terraform",
+        "path": "infra/"
+      }
+    },
+    "api_surface": [
+      {
+        "protocol": "HTTP",
+        "path_or_method": "/api/plan",
+        "handler": "plan_view",
+        "summary": "creates a plan"
+      },
+      {
+        "protocol": "gRPC"
+      },
+      "raw"
+    ],
+    "auth": {
+      "model": "session",
+      "provider": "self",
+      "library": "flask-login"
+    },
+    "ai_capabilities": [
+      {
+        "name": "summariser",
+        "kind": "llm",
+        "description": "summarises threads",
+        "location": "src/ai.py"
+      },
+      {
+        "name": "nameless-kind"
+      },
+      "raw"
+    ],
+    "ui_summary": {
+      "has_ui": true,
+      "kind": "SPA",
+      "framework": "Dash",
+      "styling": "CSS"
+    },
+    "coding_style": {
+      "formatter": {
+        "value": "ruff",
+        "source": "pyproject.toml"
+      },
+      "line_length": {
+        "value": 88,
+        "inferred_from": "ruff config"
+      },
+      "naming_conventions": {
+        "functions": {
+          "value": "snake_case"
+        },
+        "classes": "PascalCase"
+      },
+      "docstrings": "Google style"
+    },
+    "notes": {
+      "test_coverage": {
+        "has_tests": true,
+        "framework": "pytest",
+        "covered_modules": [
+          "app"
+        ],
+        "uncovered_modules": [
+          "cli"
+        ]
+      },
+      "ci_cd": {
+        "present": true,
+        "path": ".github/workflows/ci.yml"
+      },
+      "incomplete_or_dead_code": [
+        "old_view() is unused"
+      ],
+      "change_risks": [
+        {
+          "area": "app.py",
+          "risk": "import order is load-bearing",
+          "mitigation_hint": "keep the noqa"
+        },
+        "a bare risk"
+      ],
+      "security_observations": [
+        "secrets read from env"
+      ],
+      "other_notes": [
+        "README is stale"
+      ]
+    }
+  }
+}

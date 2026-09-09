@@ -1,0 +1,5 @@
+{
+  "name": "smart_search",
+  "tier_decision": "agentic",
+  "tier": "single_call"
+}

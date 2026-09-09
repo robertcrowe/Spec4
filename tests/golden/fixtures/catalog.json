@@ -1,0 +1,25 @@
+{
+  "ai_catalog": [
+    {
+      "name": "smart_search",
+      "scope": "feature",
+      "tier_recommendation": "agentic",
+      "tier_decision": "agentic",
+      "tier_decision_rationale": "Short."
+    },
+    {
+      "name": "summariser",
+      "tier_recommendation": "single_call",
+      "tier_decision": "agentic",
+      "tier_decision_rationale": "A long rationale that runs well past the sixty character limit and must be truncated."
+    },
+    {
+      "name": "classifier",
+      "tier_recommendation": "single_call",
+      "tier_decision": "single_call"
+    },
+    {
+      "tier_recommendation": "none"
+    }
+  ]
+}

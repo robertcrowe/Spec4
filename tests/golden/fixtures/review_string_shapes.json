@@ -1,0 +1,17 @@
+{
+  "code_review": {
+    "project_type": "CLI tool",
+    "existing_self_description": "A small tool.",
+    "architecture": "single script",
+    "languages": "Python",
+    "frameworks": "click",
+    "build_system": "make",
+    "ui_summary": {
+      "has_ui": false
+    },
+    "coding_style": {
+      "formatter": "black"
+    },
+    "notes": "Directory is flat, no CI found"
+  }
+}

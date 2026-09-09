@@ -1,0 +1,52 @@
+{
+  "vision_statement": {
+    "name": "Chrome & Carbon",
+    "vision": {
+      "purpose": "Help riders choose the right bike.",
+      "ui_surface": "mobile web",
+      "target_audience": [
+        "commuters",
+        "bike shops"
+      ],
+      "key_features_mvp": [
+        {
+          "AI Recommendations": {
+            "description": "Suggests a bike from answers.",
+            "example": "..."
+          }
+        },
+        {
+          "name": "User Reviews",
+          "description": "Verified purchase reviews."
+        },
+        "Comparison Table",
+        {
+          "Multi Word_Key": "plain string value"
+        }
+      ],
+      "differentiators": [
+        "Fit-first, not brand-first"
+      ],
+      "future_enhancements": [
+        "Predictive AI",
+        {
+          "name": "Shop Integration",
+          "description": "Inventory sync."
+        }
+      ],
+      "monetization": {
+        "current": "Affiliate links",
+        "future_options": [
+          "Shop subscriptions",
+          "Featured listings"
+        ]
+      },
+      "references": [
+        {
+          "standard": "WCAG 2.2",
+          "url": "https://www.w3.org/TR/WCAG22/"
+        }
+      ]
+    }
+  }
+}

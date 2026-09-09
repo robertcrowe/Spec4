@@ -70,7 +70,7 @@ Not used: radon (duplicates `C90`), pylint (overlaps ruff), pydeps/grimp (import
 
 ### Phase 1 — Regression safety net for the untested UI layer
 
-**Purpose:** `app.py`, `layouts/`, `callbacks`, and `streaming.py` are at 0% coverage. Everything later that touches them needs a tripwire first.
+**Purpose:** `app.py`, `layouts/`, `callbacks`, and `streaming.py` have behavioural coverage (Phase 0 measured 89%, 90–100%, 74–77%, 90%) but no *contract* tests: nothing fails when a component id, a frozen artifact format, a renderer's output, or the contents of a module-level state container changes without breaking a behaviour. Phases 2–5 change exactly those things, so the contracts get pinned first. Phase 1 adds tests only.
 
 - **Layout render smoke tests:** for every public layout function in `layouts/`, a test that calls it with a representative session fixture and asserts it returns a Dash component tree without raising. One parametrized test, not one test per screen.
 - **Component-id contract snapshot:** walk every rendered layout, collect the set of string ids and pattern-matching id `type`s, and assert equality against a checked-in snapshot file. This makes rule 4 mechanically enforced. `tests/test_callback_co_presence.py` already covers callbacks-to-components; this covers the inverse direction.
@@ -81,7 +81,7 @@ Not used: radon (duplicates `C90`), pylint (overlaps ruff), pydeps/grimp (import
 - **Streaming state containers:** the characterization test asserts on the contents of `_STREAMS`, `_USAGE_RECORDS`, and `_MOCK_BUFFERS` at each transition, not only on the transition sequence. Phase 3 will move these; the test is what proves the move preserved behavior.
 
 **Model/effort:** Opus 5, plan mode, high. Getting fixtures right for Dash layouts is fiddly; a wrong fixture gives a false sense of safety.
-**Gate addition:** coverage on `layouts/`, `callbacks`, `streaming.py` is no longer 0%; the new numbers become the baseline for later phases.
+**Gate addition:** the per-module coverage numbers after this phase become the UI baseline for later phases. The layout tests call private `_*_layout` functions directly; when Phase 4 splits `layouts/`, that test file is a required edit in the same sub-phase.
 
 ### Phase 2 — Dead code and unused files
 
@@ -187,7 +187,7 @@ anything deferred, and the gate results. Stop and wait for review.
 |---|---|---|---|
 | 0 | Baseline + inventory, no changes | none | Sonnet 5, auto |
 | 0.5 | Format, mypy, failing test (three commits) | low | Sonnet 5, auto |
-| 1 | Safety net for UI/streaming + renderer goldens | low–med | Opus 5, plan, high |
+| 1 | Contract tests: id snapshot, goldens, state containers | low–med | Opus 5, plan, high |
 | 2 | Dead code + orphan files | low | Sonnet 5, auto |
 | 3 | Module state → explicit (8 items, single phase) | **high** | Opus 5, plan, ultrathink |
 | 4 | Large-file splits (one per sub-phase) | med | Opus 5, plan, high |

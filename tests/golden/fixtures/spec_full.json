@@ -1,0 +1,69 @@
+{
+  "purpose": "Answer policy questions with citations.",
+  "invocation": [
+    "user asks in chat",
+    "nightly digest"
+  ],
+  "inputs": [
+    {
+      "name": "question",
+      "type": "text"
+    },
+    {
+      "name": "policy_set",
+      "type": "ids"
+    }
+  ],
+  "outputs": "answer with citations",
+  "decision_authority": {
+    "autonomous": [
+      "cite"
+    ],
+    "escalates": [
+      "refuse"
+    ],
+    "never": []
+  },
+  "success_criteria": [
+    "citation resolves",
+    "answer under 200 words"
+  ],
+  "failure_modes": [],
+  "escalation": {},
+  "eval_approach": {
+    "offline": "golden set",
+    "online": [
+      "thumbs",
+      "latency"
+    ],
+    "skipped": null
+  },
+  "budgets": {
+    "cost_usd_per_call": 0.02,
+    "latency_p95_s": 4
+  },
+  "privacy_safety": "Redact PII before the call.",
+  "knowledge_sources": [
+    "policy library",
+    "glossary"
+  ],
+  "tool_access": [
+    {
+      "tool": "search_policies",
+      "scope": "read"
+    }
+  ],
+  "topology": "single agent with retrieval tool",
+  "mechanisms": [
+    {
+      "name": "RAG",
+      "rationale": "grounding"
+    },
+    "reranking"
+  ],
+  "references": [
+    "https://example.com/rag"
+  ],
+  "phase_priority": "mvp",
+  "unknown_key": "never rendered"
+}

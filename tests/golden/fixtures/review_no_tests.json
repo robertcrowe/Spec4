@@ -1,0 +1,17 @@
+{
+  "code_review": {
+    "notes": {
+      "test_coverage": {
+        "has_tests": false
+      },
+      "ci_cd": {
+        "present": false
+      },
+      "change_risks": [
+        {
+          "risk": "no area given"
+        }
+      ]
+    }
+  }
+}

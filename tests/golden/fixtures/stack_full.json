@@ -1,0 +1,220 @@
+{
+  "stack_spec": {
+    "name": "Ragmeister",
+    "description": "A policy Q&A service with retrieval over an internal library.",
+    "languages": [
+      {
+        "name": "Python",
+        "version": "3.12",
+        "role": "backend",
+        "notes": "typed"
+      },
+      {
+        "name": "TypeScript",
+        "version": "5.4"
+      },
+      "SQL"
+    ],
+    "deployment": {
+      "targets": [
+        {
+          "name": "api",
+          "kind": "container",
+          "runtime": "Fly.io",
+          "regions": [
+            "iad",
+            "ams"
+          ]
+        },
+        {
+          "name": "web",
+          "kind": "static"
+        },
+        "worker"
+      ],
+      "strategy": "blue-green",
+      "secrets": {
+        "manager": "1Password",
+        "rotation_days": 90
+      }
+    },
+    "providers": {
+      "OpenAI": {
+        "capabilities": [
+          {
+            "tier": "single_call",
+            "capability_class": "fast cheap model",
+            "role": "primary",
+            "models": [
+              "gpt-5-mini"
+            ]
+          },
+          {
+            "tier": "agentic",
+            "capability_class": "reasoning model"
+          },
+          "embeddings"
+        ],
+        "credentials_env": "OPENAI_API_KEY",
+        "fallback": "Claude"
+      },
+      "Anthropic": "fallback only"
+    },
+    "integrations": [
+      {
+        "name": "Stripe",
+        "purpose": "billing",
+        "auth": "api key",
+        "webhooks": true
+      },
+      {
+        "name": "Slack"
+      },
+      "PagerDuty"
+    ],
+    "libraries": {
+      "backend": [
+        {
+          "name": "FastAPI",
+          "purpose": "HTTP API",
+          "language": "Python",
+          "category": "web",
+          "serves_features": [
+            "policy_qa"
+          ],
+          "satisfies_nfr": [
+            "nfr_fast_"
+          ]
+        },
+        {
+          "name": "pgvector"
+        },
+        "httpx"
+      ],
+      "frontend": "React (pinned by the design)",
+      "deferred": []
+    },
+    "persistence": {
+      "primary_store": {
+        "choice": "PostgreSQL 16",
+        "purpose": "system of record",
+        "durability": "source of truth",
+        "serves_features": [
+          "policy_qa",
+          "policy_library_management"
+        ],
+        "satisfies_nfr": "nfr_durable_",
+        "backup": {
+          "cadence": "daily",
+          "retention_days": 30
+        },
+        "collections": [
+          {
+            "name": "policy_audit_log",
+            "entities": "Policy change history",
+            "serves_features": "policy_library_management"
+          },
+          {
+            "name": "policies",
+            "entities": [
+              "Policy",
+              "PolicyVersion"
+            ],
+            "purpose": "current text",
+            "serves_features": [
+              "policy_qa"
+            ],
+            "indexes": [
+              "policy_id"
+            ]
+          },
+          "sessions"
+        ]
+      },
+      "cache": {
+        "choice": "Redis",
+        "ttl_seconds": 300
+      },
+      "blob": "S3"
+    },
+    "infrastructure": {
+      "queue": {
+        "choice": "Redis Streams",
+        "serves_capabilities": [
+          "summariser"
+        ],
+        "satisfies_infra": [
+          "async_jobs"
+        ],
+        "consumers": 2
+      },
+      "search": {
+        "provider": "pgvector"
+      },
+      "cdn": "Cloudflare"
+    },
+    "ai_conventions": {
+      "prompt_storage": "prompts/ as versioned markdown",
+      "evals": [
+        "golden set",
+        "LLM judge"
+      ],
+      "guardrails": {
+        "pii": "redact before send",
+        "max_tokens": 4000
+      }
+    },
+    "project_structure": [
+      {
+        "path": "src/api",
+        "purpose": "FastAPI app",
+        "owner": "backend"
+      },
+      {
+        "path": "src/web"
+      },
+      "tests/"
+    ],
+    "coding_style": {
+      "formatter": "ruff format",
+      "line_length": 88,
+      "naming": {
+        "functions": "snake_case",
+        "classes": "PascalCase"
+      },
+      "strict_typing": true
+    },
+    "additional_decisions": [
+      {
+        "name": "monorepo",
+        "value": true,
+        "description": "One repo, two packages.",
+        "revisit": "after MVP"
+      },
+      {
+        "name": "no ORM"
+      },
+      "Feature flags via env vars"
+    ],
+    "references": [
+      {
+        "standard": "OWASP ASVS",
+        "url": "https://owasp.org/asvs"
+      },
+      {
+        "standard": "PEP 8"
+      }
+    ],
+    "unknown_block": {
+      "vendor": "acme",
+      "notes": [
+        "a",
+        "b"
+      ],
+      "nested": {
+        "deep": 1
+      }
+    },
+    "status": "ratified"
+  }
+}

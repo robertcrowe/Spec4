@@ -1,0 +1,16 @@
+{
+  "feature_specs": {
+    "features": [],
+    "nfr_goals": []
+  },
+  "stack": {
+    "stack_spec": {
+      "libraries": [
+        {
+          "name": "Playwright",
+          "status": "deferred"
+        }
+      ]
+    }
+  }
+}

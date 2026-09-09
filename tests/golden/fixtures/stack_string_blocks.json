@@ -1,0 +1,23 @@
+{
+  "stack_spec": {
+    "name": "Sketch",
+    "persistence": "SQLite for now",
+    "infrastructure": "single VM",
+    "ai_conventions": "prompts live in code",
+    "project_structure": "flat src/",
+    "coding_style": "PEP 8",
+    "providers": "OpenAI only",
+    "libraries": [
+      "requests",
+      {
+        "name": "click",
+        "purpose": "CLI"
+      }
+    ],
+    "integrations": {
+      "name": "Slack",
+      "purpose": "alerts"
+    },
+    "additional_decisions": "ship weekly"
+  }
+}

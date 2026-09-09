@@ -1,0 +1,148 @@
+{
+  "ai_features": {
+    "ai_features": [
+      {
+        "id": "thread_summarization",
+        "name": "Thread Summarization",
+        "purpose": "Summarize threads with AI.",
+        "tier_decision": "single_call",
+        "invocation": "on demand",
+        "inputs": [
+          "raw thread"
+        ],
+        "outputs": [
+          "summary"
+        ],
+        "success_criteria": [
+          "summary matches thread"
+        ],
+        "failure_modes": [
+          "hallucinated participants"
+        ],
+        "vision_grounding": {
+          "served_features": [
+            {
+              "id": "thread_summarization"
+            },
+            {
+              "id": "other_feature"
+            }
+          ]
+        }
+      }
+    ],
+    "cross_cutting": {
+      "observability": {
+        "recommendation": "Trace every call."
+      },
+      "provider_strategy": {
+        "recommendation": "Must not render."
+      },
+      "evaluation": {
+        "recommendation": "Keep a golden set."
+      }
+    }
+  },
+  "feature_specs": {
+    "features": [
+      {
+        "id": "thread_summarization",
+        "name": "Thread Summarization",
+        "purpose": "Users get a summary of a pasted thread.",
+        "user_stories": [
+          "As a user I paste a thread and read a summary."
+        ],
+        "success_criteria": [
+          "Summary matches thread"
+        ],
+        "dependencies": [
+          "auth"
+        ],
+        "entities": [
+          "EmailThread",
+          "Summary"
+        ]
+      }
+    ],
+    "nfr_goals": [
+      "Summaries are fast.",
+      "Works offline."
+    ]
+  },
+  "manifest": {
+    "surfaces": [
+      {
+        "name": "summary_view",
+        "kind": "ai",
+        "screen": "main",
+        "implements_feature_ids": [
+          "thread_summarization"
+        ],
+        "catalog_surface_id": "thread_summarization",
+        "inputs": [
+          {
+            "name": "raw_thread"
+          }
+        ],
+        "reads": [
+          "EmailThread"
+        ],
+        "writes": [
+          "Summary"
+        ]
+      },
+      {
+        "name": "history_panel",
+        "kind": "non_ai",
+        "screen": "main",
+        "implements_feature_ids": [
+          "thread_summarization"
+        ]
+      },
+      {
+        "name": "unrelated",
+        "kind": "non_ai",
+        "screen": "main",
+        "implements_feature_ids": [
+          "other_feature"
+        ]
+      }
+    ]
+  },
+  "stack": {
+    "stack_spec": {
+      "libraries": [
+        {
+          "name": "FastAPI"
+        },
+        {
+          "name": "litellm",
+          "purpose": "LLM calls",
+          "serves_capabilities": [
+            "thread_summarization"
+          ],
+          "satisfies_nfr": [
+            "nfr_summaries_are_fast_"
+          ]
+        },
+        {
+          "name": "React Hook Form",
+          "purpose": "Form state",
+          "serves_features": [
+            "thread_summarization"
+          ]
+        },
+        {
+          "name": "vite-plugin-pwa",
+          "satisfies_nfr": [
+            "nfr_works_offline_"
+          ]
+        },
+        {
+          "name": "Playwright",
+          "status": "deferred"
+        }
+      ]
+    }
+  }
+}

@@ -951,7 +951,7 @@ Module-level containers: 67 UPPERCASE containers (dicts, lists, sets, frozensets
 
 Also import-built but never mutated afterwards: `callbacks/__init__.py:2411 OPEN_ARTIFACT_CALLBACKS` (dict of registered callbacks, keyed for tests), `layouts/_chat.py:291 CHAT_ARTIFACTS`, and the `__all__` lists.
 
-Phase 3 scope, then, is items 1–5 (four containers, three locks, one dict cache) plus the `lru_cache`. Item 1 is the only one with a plausible concurrency gap (unlocked `_STREAMS[stream_id]["text"] +=` on the worker thread while `get_stream` reads under the lock on another); it is not a bug report because CPython's dict/str semantics make the observed effect at worst a stale read, but it should be looked at when the state moves.
+Phase 3 scope, then, is items 1–5 (four containers, three locks, one dict cache) plus the `lru_cache`. **Phase 1 (2026-09-08):** items 1, 2 and 5 are now pinned transition-by-transition by `tests/test_streaming_characterization.py`; see §12.2 for what the move must preserve and §12.4 items 8–12 for the oddities observed. Item 1 is the only one with a plausible concurrency gap (unlocked `_STREAMS[stream_id]["text"] +=` on the worker thread while `get_stream` reads under the lock on another); it is not a bug report because CPython's dict/str semantics make the observed effect at worst a stale read, but it should be looked at when the state moves.
 
 ## 9. Test inventory
 
@@ -1106,8 +1106,8 @@ Observations for Phase 6:
 - Phase 2: `dash-iconify` removal from `[project.dependencies]` + mypy override; `download_button_id`; `CODE_REVIEW_SCHEMA_VERSION`; the `valid_tier_names` parameter; `PatternBase`/`PriorityEdits` visibility; the 15 public zero-importer names in §7; the 22 test-side vulture lines.
 - Phase 3: the eight items in §8.
 - Phase 4: break the `layouts` ↔ `layouts._chat` cycle; decide the fate of `session.py` as the UI/agent hinge; write the import-assertion test (§6.3); split the eight files over 1,300 lines.
-- Phase 5: the 61 C901 functions, starting with the table in §5.1; the 26 small SIM/B hits.
-- Phase 6: consolidate `test_deployer_*` / `test_phaser_*` / `test_stack_*`; split `test_agents.py`; run `--durations`; the 162 test-side ARG hits are not targets.
+- Phase 5: the 61 C901 functions, starting with the table in §5.1; the 26 small SIM/B hits; the renderer/artifact cosmetics in §12.4 items 1–7 (goldens in `tests/golden/` pin the current output, so each fix is a deliberate golden update).
+- Phase 6: consolidate `test_deployer_*` / `test_phaser_*` / `test_stack_*`; split `test_agents.py`; run `--durations`; the 162 test-side ARG hits are not targets; the screen-registry overlap in §12.5.
 - Phase 7: rewrite `tests/README.md`; rerun every command in this file and diff against the numbers here.
 
 ## Appendix A. Commands used
@@ -1126,3 +1126,117 @@ uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B --output-format con
 ```
 
 The file-size table, import graph, cross-reference and test inventory were produced by throwaway `ast`-based scripts run from the session scratchpad; they are not part of the repo.
+
+
+## 12. Phase 1 report — regression safety net for the UI layer
+
+Recorded 2026-09-08 on branch `look-rework`. Tests only: nothing under `src/` changed, `pyproject.toml` is untouched, no existing test file was edited. Nothing was written under `.spec4/`, `.venv/` or `.git/`, and no git command was run.
+
+**Premise correction.** The plan's Phase 1 text says `app.py`, `layouts/`, `callbacks` and `streaming.py` are at 0%. §1.3 and §9.1 already showed that to be stale (89%, 90–100%, 74–77%, 90%). Phase 1 therefore added *contract* tests — an id snapshot, goldens, and container-contents characterization — rather than first-time coverage. The per-module numbers below are the Phase 1 baseline for Rule 6 regardless.
+
+### 12.1 Files added
+
+| Path | Purpose |
+|---|---|
+| `tests/_golden.py` | `assert_golden(name, text)` and `load_fixture(name)`. Goldens live in `tests/golden/`, fixtures in `tests/golden/fixtures/`. `SPEC4_UPDATE_GOLDENS=1` rewrites goldens; otherwise a mismatch fails with a unified diff. |
+| `tests/test_layout_contract.py` | 74 tests. A registry of 72 screens built by calling every public layout function directly (`_working_dir_layout`, `_setup_layout` ×5, `_agent_select_layout` ×5, `_chat_layout` ×31 across the six chat agents, `designer_layout` ×4 plus the seven `_stepN_content` builders ×14, `_artifact_view_layout` ×7, `_status_bar`/`_status_context` ×3). **Smoke:** each returns a Dash component tree and `to_plotly_json()` serialises it. **Snapshot:** per screen, the sorted string ids and pattern-matching id `type`s equal `tests/snapshots/component_ids.json` (`SPEC4_UPDATE_SNAPSHOTS=1` regenerates). This is Rule 4 for component ids, enforced in the direction `test_callback_co_presence.py` does not cover. |
+| `tests/snapshots/component_ids.json` | The checked-in id contract: 72 screens, reviewed by eye — every id is recognisable from `src/spec4/layouts/`. |
+| `tests/test_app_import_smoke.py` | 2 tests. A subprocess whose *first* import is `spec4.app` (D-LR1 exercised as at startup) reports: `LITELLM_LOG=ERROR` set, `litellm.suppress_debug_info` True, both callback modules imported, the callback registry populated with `render_page`'s output present, `app.layout` a `MantineProvider`, the `page-content` slot carrying `disable_n_clicks=True`; and `main()` with `--version` prints `spec4 <__version__>` and exits 0. |
+| `tests/test_streaming_characterization.py` | 16 tests over the three Phase 3 containers, asserting **contents** at each transition (see 12.2). |
+| `tests/test_project_manager_golden.py` | 17 tests. `render_phase_markdown` with and without a context against `phase_full.md` / `phase_final.md` / `phase_full_no_context.md` / `phase_minimal.md`; frontmatter round-trip through `parse_phase_markdown`; frontmatter format (`json.dumps(indent=2, ensure_ascii=False)`); `save_phases` file set, stale-file removal, `IMPLEMENTED` marker untouched, unchanged re-save keeps mtime; `save_readme` footer exactly once, idempotent re-save, mid-document footer moved to the end, footer-only and empty inputs; `load_existing_readme`. The `phase_context.json` fixture drives every branch of `_phase_spec_preamble`, `_phase_stack_lines` and `_phase_nfr_lines` (known and unknown product/capability ids, plain and catalog-backed surfaces, dependency and entities lines, the served-features relation, cross-cutting with the excluded `provider_strategy`, global-NFR-in-final-phase). |
+| `tests/test_renderer_goldens.py` | 22 tests. Goldens for all five renderers: `_format_stack_as_text` (full, minimal, bare-string blocks, non-dict input, `stack`/bare-key aliases), `_format_review_as_text` (full v1 schema, string-shaped fields, `is_software_project: false` ×4 variants, typed notes with no tests/no CI, empty input), `_format_vision_as_text` (full, vision-as-string, no name + string monetization, review footer), `_format_catalog_as_text` (mixed decisions and a >60-char rationale, empty, missing key), `_format_spec_as_text` (every `_field` shape, `tier` fallback). |
+| `tests/golden/*.md` (25 files), `tests/golden/fixtures/*.json` (20 files) | The pinned outputs and their inputs. |
+
+Total: 131 new tests, all deterministic (the streaming module was run repeatedly with no flake; its generators are gated on `threading.Event`s, not sleeps).
+
+### 12.2 What the streaming characterization pins (Phase 3 must keep every line)
+
+`streaming._STREAMS`
+- `start()` inserts exactly `{"text": "", "done": False, "session": <the same dict object>, "error": False, "finalised": False}` before the worker yields; `get()` returns that object by identity.
+- `text` accumulates chunk by chunk with `done` still False; on exhaustion `done` flips True, `error` stays False, `finalised` stays False.
+- `claim_finalise` is True once then False; it does not evict. A missing id is False.
+- The next `start()` evicts every `done` entry and only those; a live entry survives a second `start()`.
+- `pop()` removes and returns; a second `pop`/`get` is None.
+- An exception after partial output leaves `text == partial + _format_error(exc)` and `error True` (both the JSON-bodied litellm shape and a plain `RuntimeError`).
+- Agent writes to the session dict (`_stream_status`, `_stream_received_chars`) are visible through `entry["session"]` — the poll's channel.
+
+`llm._USAGE_RECORDS` (through a real `stream_turn` with `litellm.completion` patched, and the real `on_stream_poll` done branch)
+- One record per call with exactly these 16 keys: `timestamp, agent, model, provider, effort, streamed, duration_s, prompt_tokens, completion_tokens, total_tokens, cached_tokens, cache_creation_input_tokens, cache_read_input_tokens, computed_cost_usd, usage_missing, error`.
+- The first done-poll drains the sink to `[]`, writes `.spec4/v0/usage.json` (greenfield pins round **0**), returns `_stream_id None`, `_stream_error None`, `_turn_usage == {"agent","input":120,"output":30,"calls":1,"missing":0}`, interval 0; the entry stays in `_STREAMS` with `finalised True`.
+- The second done-poll returns an `==` store, drains nothing, and leaves `usage.json` byte-identical.
+- A call with no usage is still recorded (`usage_missing True`, token fields None, `error` carried).
+- An error stream finalises with `_stream_error True` and a zero-call turn summary.
+
+`callbacks.designer._MOCK_BUFFERS` (through the real `_start_gen` with `generate_mock_streaming` patched)
+- `_start_gen` inserts exactly `{"done": False, "stop": Event(unset), "text": "", "expected_chars": 70000}` and returns a step-5 store with `_gen_id`; the buffer returned is `{"tokens": 0, "progress": 0, "error": None}`.
+- Mid-stream poll: `(progress buffer, no_update, no_update)` with `progress == min(99, tokens*100//expected)` — **0 for a short stream**.
+- On `__DONE__`: the worker sets `final_html`, `done True`, and saves `design/mock.html` under the session-pinned version.
+- Step-5 poll: `(final_buf + {"complete": store6}, store6, no_update)`, `delivered` increments each tick, buffer kept; identical payload on every tick.
+- Poll with the store off step 5: `(final_buf, no_update, True)` and the buffer is popped; a poll for a gone id is `(no_update, no_update, True)`.
+- `__GENERATION_ERROR__: bad` → `({"error": "bad"}, no_update, True)`, popped. No HTML document → the worker appends the "did not return a valid HTML document" sentinel and the poll reports it.
+- A stopped stream with no sentinel → `done True`, no `final_html`, poll pops and disables.
+- A new `_start_gen` pops the previous gen's entry and sets its `stop` event; the orphaned worker finishes without writing back.
+- `delivered > _MAX_DELIVERY_TICKS` → the "Refresh the page" error, popped.
+
+### 12.3 Coverage after Phase 1 (`uv run pytest --cov=spec4`)
+
+The four UI targets (Phase 1 baseline; Rule 6 ratchets against the last column from here):
+
+| Module | Stmts | Miss | Phase 0 | Phase 1 |
+|---|---:|---:|---:|---:|
+| `src/spec4/app.py` | 72 | 8 | 89% | **89%** |
+| `src/spec4/callbacks/__init__.py` | 681 | 157 | 77% | **77%** |
+| `src/spec4/callbacks/designer.py` | 427 | 109 | 74% | **74%** |
+| `src/spec4/layouts/__init__.py` | 70 | 3 | 90% | **96%** |
+| `src/spec4/layouts/_agent_rows.py` | 86 | 3 | 97% | **97%** |
+| `src/spec4/layouts/_artifact_view.py` | 196 | 7 | 96% | **96%** |
+| `src/spec4/layouts/_chat.py` | 181 | 2 | 99% | **99%** |
+| `src/spec4/layouts/_llm_gate.py` | 55 | 0 | 100% | **100%** |
+| `src/spec4/layouts/_round_cost.py` | 70 | 0 | 100% | **100%** |
+| `src/spec4/layouts/_round_tree.py` | 113 | 0 | 100% | **100%** |
+| `src/spec4/layouts/_setup.py` | 70 | 1 | 97% | **99%** |
+| `src/spec4/layouts/_shared.py` | 83 | 0 | 100% | **100%** |
+| `src/spec4/layouts/_status_bar.py` | 45 | 0 | 100% | **100%** |
+| `src/spec4/layouts/designer.py` | 159 | 12 | 92% | **92%** |
+| `src/spec4/streaming.py` | 192 | 18 | 90% | **91%** |
+
+No non-UI module dropped below its §1.3 figure. Modules that moved: `agentifier/agentifier.py` 88→89, `agents/brainstormer.py` 91→97, `agents/code_scanner.py` 89→97, `agents/stack_advisor.py` 91→98, `feature_specs.py` 76→77, `layouts/__init__.py` 90→96, `layouts/_setup.py` 97→99, `project_manager.py` 96→97, `streaming.py` 90→91. Everything else is unchanged. **TOTAL 91% → 92%.**
+
+Pinned-function line coverage, measured from the full suite: `_format_stack_as_text` (935–1171), `_format_review_as_text` (1089–1251), `_format_empty_review`, `_render_typed_notes`, `_format_vision_as_text` (504–574), `_format_catalog_as_text` (737–753), `_format_spec_as_text` (794–872), `_phase_spec_preamble` (468–654), `_phase_stack_lines`, `_phase_nfr_lines`, `render_phase_markdown`, `save_phases`, `_with_readme_attribution` — **no unhit lines in any of them.** Phase 5 can decompose against the goldens with nothing unmeasured.
+
+Other numbers for later phases: the subprocess import registers **92 callbacks** in `GLOBAL_CALLBACK_MAP` (Phase 2 must not change this; the smoke test asserts only `> 0`). The full suite is 4249 passed + 1 skipped in ~176 s; the three browser E2E modules ran.
+
+### 12.4 Oddities captured as-is (not fixed; candidates for later phases)
+
+Renderer and artifact output (visible in the goldens):
+1. `phase_full.md`: the AI-capability block renders `**Inputs**` and `**Failure modes**` headings with empty bodies when `ai_features[].inputs` / `failure_modes` are lists of strings — `feature_specs.render_feature_block` evidently expects another shape. The product-feature block renders its `success_criteria` list fine. Phase 5 (`feature_specs.render_feature_block`).
+2. `phase_full.md`: in the UI-surfaces block, the sentence "The following surface(s) realize…" follows a list item with no blank line, so Markdown reads it as a lazy continuation of the bullet. Cosmetic; Phase 5.
+3. `phase_*.md`: two blank lines between the NFR block and `## References` (`_phase_nfr_lines` ends with `""` and `render_phase_markdown` appends another). Cosmetic; Phase 5.
+4. `render_stack_full.md`: a library category whose list is empty (`"deferred": []`) still emits its `*Deferred:*` heading; a category given as a string renders as `*Frontend:*` / `- Frontend: …` (label doubled). The top-level fall-through (`_render_rest(ss, _TOP_LEVEL_HANDLED, …)`) is emitted after `**References:**` and the closing `---` is glued to its last line with no blank line. All in `_format_stack_as_text`; Phase 5.
+5. `render_review_full.md`: a `directory_map` entry with no `path` renders as the Python repr `{'role': 'no path'}`; an `api_surface` entry renders `— → \`handler\`` (dash then arrow). `code_scanner._format_review_as_text`; Phase 5.
+6. `render_catalog.md`: an entry with no `name`/`tier_decision` renders `|  | none |  (mismatch) |`. Phase 5, or a schema question.
+7. `agentifier.py:800–801`: `_format_spec_as_text` has its docstring twice (two identical string literals). Phase 5.
+
+State containers (add to §8):
+8. `streaming.py:242/251/252`: the worker thread's `_STREAMS[stream_id]["text"] += chunk` and `["error"] = True` run **without** `_lock`, while `get()` and `claim_finalise()` take it. Observed effect is at worst a stale read; noted again here because the characterization test now reads `entry["text"]` from the test thread exactly this way. Phase 3.
+9. `streaming.pop` has no production caller (`on_stream_poll` reads and never pops); `tests/test_callbacks_stream_poll.py` patches it. Phase 2 candidate once Phase 3 has decided the container's API.
+10. `_STREAMS[id]["session"]` is the live session dict by identity — agents mutate it and the poll reads those mutations. The move in Phase 3 must keep the reference, not copy.
+11. `_MOCK_BUFFERS`: the `expected_chars` denominator makes `progress` an integer percent floored to 0 for the first ~700 characters; and the acknowledged-delivery pop depends on the *browser's* store State moving off step 5, which the test drives by hand. Both by design (comments in `on_mock_stream_poll`); recorded so Phase 3 does not "fix" them.
+12. `resolve_phase_version` pins round **0** for a greenfield project with no rounds on disk, so the first `usage.json` lands in `.spec4/v0/`. Documented in the function; recorded because it surprised the test author.
+
+### 12.5 Deferred
+
+- Phase 6: `tests/test_layout_contract.py`'s screen registry overlaps `tests/test_callback_co_presence.py::_phase_screens` (same sessions, different assertions); consolidate into one shared screen registry then. `TestMockBuffers` in the new streaming module overlaps `tests/test_designer.py::TestMockDeliveryAck` for the ack/valve branches.
+- Phase 6: `tests/_golden.py` could absorb the per-file golden idioms if more goldens appear.
+- Phase 7: `tests/README.md` is still stale (§9.1) and now also omits the golden/snapshot mechanism and the two env vars.
+- Not touched, per Rule 7: none of the items in §11.
+
+### 12.6 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `186 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 60 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4249 passed, 1 skipped in 172.63s (0:02:52)` (exit 0) |
+| Coverage | same run | `TOTAL                                           11684    894    92%` |
