@@ -4802,3 +4802,107 @@ Suite-wide statements **11878 → 11906, +28**: 14 new `def` lines + 12 new spin
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 171.13s` (exit 0) |
 | Coverage | same run | `TOTAL 11906 stmts, 893 miss, 92%` |
+
+## 29. Phase 5b — `_review_render.py`: four renderers decomposed into 23 helpers
+
+`src/spec4/agents/code_scanner/_review_render.py`, plus a one-line docstring correction
+in the package `__init__.py`. Extract-only. No other file changed.
+
+### 29.1 Before and after
+
+| Function | C901 | PLR0912 | PLR0915 | lines | → C901 | → lines |
+|---|---:|---:|---:|---:|---:|---:|
+| `_format_review_as_text` | **41** | **44** | **128** | 149 | 3 | 36 |
+| `_render_typed_notes` | **21** | **23** | **57** | 62 | 1 | 7 |
+| `_render_persistence` | **12** | — | — | 29 | 8 | 20 |
+| `_render_deployment` | **11** | — | — | 47 | 4 | 13 |
+
+The file's C901/PLR0912/PLR0915 finding count goes **9 → 0**. Largest function in the
+file is now `_render_api_surface` (24 lines), which was already there and already clean.
+
+### 29.2 The 23 helpers
+
+**From `_format_review_as_text` (12).** The spine is now the `code_review` unwrap, the
+not-a-software-project early return, the `**Code Review Complete**` header, the
+`project_type` line, twenty calls and the frozen Continue-to-Brainstormer footer:
+`_render_self_description`, `_render_architecture`,
+`_render_languages_and_frameworks`, `_render_protocols`, `_render_runtime_versions`,
+`_render_build_system`, `_render_dependencies`, `_render_commands`,
+`_render_entrypoints`, `_render_directory_map`, `_render_ui_summary`, `_render_notes`.
+
+**From `_render_persistence` (1).** `_database_parts(dbs) -> list[str]` — the
+`engine (role)` loop, per 27.3. The `if db_parts:` guard and the `bits.append` stay in
+the parent, because they are the parent's join, not the loop's.
+
+**From `_render_deployment` (4).** `_deployment_container_bits`,
+`_deployment_orchestration_bits`, `_deployment_paas_bits`, `_deployment_iac_bits` —
+one per independent block, each taking `(deployment, bits)` and appending as before.
+
+**From `_render_typed_notes` (6).** `_render_note_test_coverage`, `_render_note_ci_cd`,
+`_render_note_dead_code`, `_render_note_change_risks`, `_render_note_security`,
+`_render_note_other` — one per note type, per 27.3.
+
+All twelve `_format_review_as_text` helpers and all six note helpers take
+`(value, lines)`, the shape the file's seven pre-existing section renderers already use
+(`_render_env_vars`, `_render_api_surface`, `_render_auth`, …), so the new code is
+indistinguishable in shape from the old. `_render_languages_and_frameworks` is the one
+exception, taking `(langs, frameworks, lines)` because its block reads two keys.
+
+No name was added to `__all__`; the package re-exports only `_format_review_as_text`,
+which keeps its name and signature.
+
+### 29.3 Line accounting (rule 3)
+
+| Function | old non-blank | verbatim | accounted otherwise |
+|---|---:|---:|---:|
+| `_format_review_as_text` | 149 | 136 | 13 |
+| `_render_typed_notes` | 62 | 56 | 6 |
+| `_render_persistence` | 29 | 29 | 0 |
+| `_render_deployment` | 47 | 47 | 0 |
+
+The 19 lines "accounted otherwise" are all the same single pattern: a block's opening
+`x = <expr>` assignment folded into the call argument, which is what taking
+`(value, lines)` rather than `(cr, lines)` means. **Every one of the 19 right-hand-side
+expressions was checked to survive verbatim in the new file** — `cr.get("architecture")`,
+`cr.get("dependencies", [])`, `notes.get("change_risks") or []` and so on, including the
+`or []` defaults and the two-argument `cr.get(k, [])` forms. Nothing else changed:
+no reorder, no changed conditional, no re-flowed string.
+
+**No statement line is unaccounted for.**
+
+### 29.4 Statement counts add up (rule 4)
+
+Suite-wide statements **11906 → 11934, +28**: 23 new `def` lines + 23 new call
+statements + 1 `return db_parts` − 19 folded assignments. Misses held at **893**.
+
+### 29.5 Verification beyond the gate
+
+- **`tests/test_renderer_goldens.py` passes unmodified** — 22 tests, `TestReviewRenderer`
+  among them, against `render_review_full.md`, `render_review_strings.md`, the four
+  `render_review_empty*.md`, `render_review_no_tests.md` and `render_review_skeleton.md`.
+- No test file was edited (rule 2). 5b touches neither layouts nor callbacks, so the id
+  snapshot and the 92-callback registry are untouched by construction; both suites pass
+  in the full run.
+- The frozen Continue-to-Brainstormer footer and every `**Header:**` literal moved
+  verbatim or stayed in the spine (rule 5).
+
+### 29.6 The one edit outside the target file
+
+`src/spec4/agents/code_scanner/__init__.py` line 14 described `_review_render` as
+holding "``_format_review_as_text`` and the seven section renderers". There are now 25.
+Changed to "and its section renderers" — a count that cannot go stale again. Docstring
+only; no code, no import, no `__all__` entry.
+
+### 29.7 Deferred / not acted on
+
+- Nothing. 5b needed no `# noqa`.
+
+### 29.8 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 170.08s` (exit 0) |
+| Coverage | same run | `TOTAL 11934 stmts, 893 miss, 93%` |

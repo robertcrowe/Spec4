@@ -106,8 +106,44 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
 
     if "project_type" in cr:
         lines.append(f"**Project Type:** {cr['project_type']}\n")
+    _render_self_description(cr.get("existing_self_description"), lines)
+    _render_architecture(cr.get("architecture"), lines)
+    _render_languages_and_frameworks(
+        cr.get("languages", []), cr.get("frameworks", []), lines
+    )
+    _render_protocols(cr.get("protocols_implemented"), lines)
+    _render_runtime_versions(cr.get("runtime_versions"), lines)
+    _render_build_system(cr.get("build_system"), lines)
+    _render_dependencies(cr.get("dependencies", []), lines)
+    _render_commands(cr.get("commands"), lines)
+    _render_entrypoints(cr.get("entrypoints"), lines)
+    _render_directory_map(cr.get("directory_map"), lines)
 
-    self_desc = cr.get("existing_self_description")
+    _render_persistence(cr.get("persistence"), lines)
+    _render_env_vars(cr.get("env_vars"), lines)
+    _render_deployment(cr.get("deployment"), lines)
+    _render_api_surface(cr.get("api_surface"), lines)
+    _render_auth(cr.get("auth"), lines)
+    _render_ai_capabilities(cr.get("ai_capabilities"), lines)
+
+    _render_ui_summary(cr.get("ui_summary"), lines)
+
+    render_coding_style(
+        _normalize_style_for_renderer(cr.get("coding_style", {})), lines
+    )
+
+    _render_notes(cr.get("notes"), lines)
+
+    lines.append(
+        "---\n\n"
+        "We've finished the code review, so now you're ready to move on to creating "
+        "a vision. Please click on the **Continue to Brainstormer** button below."
+    )
+    return "\n".join(lines)
+
+
+def _render_self_description(self_desc: Any, lines: list[str]) -> None:
+    """The ``existing_self_description`` line, dict- or string-shaped."""
     if isinstance(self_desc, dict) and self_desc.get("text"):
         src = self_desc.get("source", "")
         suffix = f" _(from {src})_" if src else ""
@@ -115,7 +151,9 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
     elif isinstance(self_desc, str) and self_desc:
         lines.append(f"**Existing self-description:** {self_desc}\n")
 
-    arch = cr.get("architecture")
+
+def _render_architecture(arch: Any, lines: list[str]) -> None:
+    """The ``architecture`` line, dict- or string-shaped."""
     if isinstance(arch, dict):
         summary = arch.get("summary", "")
         pattern = arch.get("pattern", "")
@@ -125,8 +163,11 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
     elif isinstance(arch, str) and arch:
         lines.append(f"**Architecture:** {arch}\n")
 
-    langs = cr.get("languages", [])
-    frameworks = cr.get("frameworks", [])
+
+def _render_languages_and_frameworks(
+    langs: Any, frameworks: Any, lines: list[str]
+) -> None:
+    """The combined ``languages`` / ``frameworks`` line."""
     parts: list[str] = []
     for item in langs if isinstance(langs, list) else []:
         parts.append(_name_label(item))
@@ -139,7 +180,9 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
     if parts:
         lines.append(f"**Languages & Frameworks:** {', '.join(parts)}\n")
 
-    protocols = cr.get("protocols_implemented")
+
+def _render_protocols(protocols: Any, lines: list[str]) -> None:
+    """The ``protocols_implemented`` list."""
     if isinstance(protocols, list) and protocols:
         lines.append("**Protocols Implemented:**")
         for proto in protocols:
@@ -154,13 +197,17 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
                 lines.append(f"- {proto}")
         lines.append("")
 
-    runtime = cr.get("runtime_versions")
+
+def _render_runtime_versions(runtime: Any, lines: list[str]) -> None:
+    """The ``runtime_versions`` map, private keys skipped."""
     if isinstance(runtime, dict) and runtime:
         items = [f"{k}: {v}" for k, v in runtime.items() if not k.startswith("_") and v]
         if items:
             lines.append(f"**Runtime versions:** {', '.join(items)}\n")
 
-    build = cr.get("build_system")
+
+def _render_build_system(build: Any, lines: list[str]) -> None:
+    """The ``build_system`` line, dict- or string-shaped."""
     if isinstance(build, dict):
         tool = build.get("tool", "")
         manifest = build.get("manifest", "")
@@ -172,7 +219,9 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
     elif isinstance(build, str) and build:
         lines.append(f"**Build System:** {build}\n")
 
-    raw_deps = cr.get("dependencies", [])
+
+def _render_dependencies(raw_deps: Any, lines: list[str]) -> None:
+    """The ``dependencies`` list."""
     deps: list[Any] = raw_deps if isinstance(raw_deps, list) else []
     if deps:
         lines.append("**Dependencies:**")
@@ -190,7 +239,9 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
                 lines.append(f"- {d}")
         lines.append("")
 
-    commands = cr.get("commands")
+
+def _render_commands(commands: Any, lines: list[str]) -> None:
+    """The ``commands`` map, in the fixed key order."""
     if isinstance(commands, dict) and commands:
         lines.append("**Commands:**")
         for key in ("build", "test", "lint", "typecheck", "run", "dev", "deploy"):
@@ -198,7 +249,9 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
                 lines.append(f"- {key}: `{commands[key]}`")
         lines.append("")
 
-    entrypoints = cr.get("entrypoints")
+
+def _render_entrypoints(entrypoints: Any, lines: list[str]) -> None:
+    """The ``entrypoints`` map, in the fixed key order."""
     if isinstance(entrypoints, dict) and entrypoints:
         lines.append("**Entrypoints:**")
         for key in ("main", "wsgi_app", "cli_script", "dev_server", "ui_root"):
@@ -206,7 +259,9 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
                 lines.append(f"- {key.replace('_', ' ')}: `{entrypoints[key]}`")
         lines.append("")
 
-    dmap = cr.get("directory_map")
+
+def _render_directory_map(dmap: Any, lines: list[str]) -> None:
+    """The ``directory_map`` list of path/role entries."""
     if isinstance(dmap, list) and dmap:
         lines.append("**Directory Map:**")
         for entry in dmap:
@@ -221,14 +276,9 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
                 lines.append(f"- {entry}")
         lines.append("")
 
-    _render_persistence(cr.get("persistence"), lines)
-    _render_env_vars(cr.get("env_vars"), lines)
-    _render_deployment(cr.get("deployment"), lines)
-    _render_api_surface(cr.get("api_surface"), lines)
-    _render_auth(cr.get("auth"), lines)
-    _render_ai_capabilities(cr.get("ai_capabilities"), lines)
 
-    ui = cr.get("ui_summary")
+def _render_ui_summary(ui: Any, lines: list[str]) -> None:
+    """The ``ui_summary`` line."""
     if isinstance(ui, dict) and ui:
         has_ui = ui.get("has_ui")
         if has_ui is False:
@@ -242,11 +292,9 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
                 f"**UI:** {' · '.join(bits)}\n" if bits else "**UI:** present\n"
             )
 
-    render_coding_style(
-        _normalize_style_for_renderer(cr.get("coding_style", {})), lines
-    )
 
-    notes = cr.get("notes")
+def _render_notes(notes: Any, lines: list[str]) -> None:
+    """Typed notes when the shape is a dict, else the flat list."""
     if isinstance(notes, dict):
         _render_typed_notes(notes, lines)
     else:
@@ -257,13 +305,6 @@ def _format_review_as_text(review: dict[str, Any]) -> str:
                 lines.append(f"- {note}")
             lines.append("")
 
-    lines.append(
-        "---\n\n"
-        "We've finished the code review, so now you're ready to move on to creating "
-        "a vision. Please click on the **Continue to Brainstormer** button below."
-    )
-    return "\n".join(lines)
-
 
 def _render_persistence(persistence: Any, lines: list[str]) -> None:
     if not isinstance(persistence, dict) or not persistence:
@@ -271,16 +312,7 @@ def _render_persistence(persistence: Any, lines: list[str]) -> None:
     bits: list[str] = []
     dbs = persistence.get("databases") or []
     if isinstance(dbs, list) and dbs:
-        db_parts: list[str] = []
-        for db in dbs:
-            if not isinstance(db, dict):
-                continue
-            engine = db.get("engine", "")
-            role = db.get("role", "")
-            if engine and role:
-                db_parts.append(f"{engine} ({role})")
-            elif engine:
-                db_parts.append(engine)
+        db_parts = _database_parts(dbs)
         if db_parts:
             bits.append(f"databases: {', '.join(db_parts)}")
     orm = persistence.get("orm")
@@ -294,6 +326,21 @@ def _render_persistence(persistence: Any, lines: list[str]) -> None:
         bits.append(f"migrations path: `{mig_path}`")
     if bits:
         lines.append(f"**Persistence:** {' · '.join(bits)}\n")
+
+
+def _database_parts(dbs: list[Any]) -> list[str]:
+    """The ``engine (role)`` parts of the ``databases`` list."""
+    db_parts: list[str] = []
+    for db in dbs:
+        if not isinstance(db, dict):
+            continue
+        engine = db.get("engine", "")
+        role = db.get("role", "")
+        if engine and role:
+            db_parts.append(f"{engine} ({role})")
+        elif engine:
+            db_parts.append(engine)
+    return db_parts
 
 
 def _render_env_vars(env_vars: Any, lines: list[str]) -> None:
@@ -325,6 +372,19 @@ def _render_deployment(deployment: Any, lines: list[str]) -> None:
     if not isinstance(deployment, dict) or not deployment:
         return
     bits: list[str] = []
+    _deployment_container_bits(deployment, bits)
+    _deployment_orchestration_bits(deployment, bits)
+    _deployment_paas_bits(deployment, bits)
+    _deployment_iac_bits(deployment, bits)
+    if bits:
+        lines.append("**Deployment:**")
+        for bit in bits:
+            lines.append(f"- {bit}")
+        lines.append("")
+
+
+def _deployment_container_bits(deployment: dict[str, Any], bits: list[str]) -> None:
+    """Append the ``containerization`` bit of a deployment block."""
     container = deployment.get("containerization")
     if isinstance(container, dict) and container:
         tool = container.get("tool", "")
@@ -342,6 +402,10 @@ def _render_deployment(deployment: Any, lines: list[str]) -> None:
         ]
         head = tool or "container"
         bits.append(f"{head} ({', '.join(sub_bits)})" if sub_bits else head)
+
+
+def _deployment_orchestration_bits(deployment: dict[str, Any], bits: list[str]) -> None:
+    """Append the ``orchestration`` bit of a deployment block."""
     orch = deployment.get("orchestration")
     if isinstance(orch, dict) and orch:
         tool = orch.get("tool", "")
@@ -349,6 +413,10 @@ def _render_deployment(deployment: Any, lines: list[str]) -> None:
         suffix = f" — `{manifests}`" if manifests else ""
         if tool:
             bits.append(f"orchestration: {tool}{suffix}")
+
+
+def _deployment_paas_bits(deployment: dict[str, Any], bits: list[str]) -> None:
+    """Append the ``paas`` bit of a deployment block."""
     paas = deployment.get("paas")
     if isinstance(paas, dict) and paas:
         platform = paas.get("platform", "")
@@ -356,6 +424,10 @@ def _render_deployment(deployment: Any, lines: list[str]) -> None:
         suffix = f" — `{config}`" if config else ""
         if platform:
             bits.append(f"PaaS: {platform}{suffix}")
+
+
+def _deployment_iac_bits(deployment: dict[str, Any], bits: list[str]) -> None:
+    """Append the ``iac`` bit of a deployment block."""
     iac = deployment.get("iac")
     if isinstance(iac, dict) and iac:
         tool = iac.get("tool", "")
@@ -363,11 +435,6 @@ def _render_deployment(deployment: Any, lines: list[str]) -> None:
         suffix = f" — `{path}`" if path else ""
         if tool:
             bits.append(f"IaC: {tool}{suffix}")
-    if bits:
-        lines.append("**Deployment:**")
-        for bit in bits:
-            lines.append(f"- {bit}")
-        lines.append("")
 
 
 def _render_api_surface(api_surface: Any, lines: list[str]) -> None:
@@ -433,7 +500,16 @@ def _render_ai_capabilities(ai_caps: Any, lines: list[str]) -> None:
 
 
 def _render_typed_notes(notes: dict[str, Any], lines: list[str]) -> None:
-    tc = notes.get("test_coverage")
+    _render_note_test_coverage(notes.get("test_coverage"), lines)
+    _render_note_ci_cd(notes.get("ci_cd"), lines)
+    _render_note_dead_code(notes.get("incomplete_or_dead_code") or [], lines)
+    _render_note_change_risks(notes.get("change_risks") or [], lines)
+    _render_note_security(notes.get("security_observations") or [], lines)
+    _render_note_other(notes.get("other_notes") or [], lines)
+
+
+def _render_note_test_coverage(tc: Any, lines: list[str]) -> None:
+    """The ``test_coverage`` note block."""
     if isinstance(tc, dict):
         bits: list[str] = []
         if tc.get("has_tests") is False:
@@ -455,7 +531,9 @@ def _render_typed_notes(notes: dict[str, Any], lines: list[str]) -> None:
         if bits:
             lines.append(f"**Test Coverage:** {' · '.join(bits)}\n")
 
-    ci = notes.get("ci_cd")
+
+def _render_note_ci_cd(ci: Any, lines: list[str]) -> None:
+    """The ``ci_cd`` note block."""
     if isinstance(ci, dict):
         if ci.get("present"):
             path = ci.get("path") or ci.get("type") or "detected"
@@ -463,14 +541,18 @@ def _render_typed_notes(notes: dict[str, Any], lines: list[str]) -> None:
         elif ci.get("present") is False:
             lines.append("**CI/CD:** none detected\n")
 
-    dead = notes.get("incomplete_or_dead_code") or []
+
+def _render_note_dead_code(dead: Any, lines: list[str]) -> None:
+    """The ``incomplete_or_dead_code`` note block."""
     if isinstance(dead, list) and dead:
         lines.append("**Incomplete or Dead Code:**")
         for item in dead:
             lines.append(f"- {item}")
         lines.append("")
 
-    risks = notes.get("change_risks") or []
+
+def _render_note_change_risks(risks: Any, lines: list[str]) -> None:
+    """The ``change_risks`` note block."""
     if isinstance(risks, list) and risks:
         lines.append("**Change Risks:**")
         for risk in risks:
@@ -486,14 +568,18 @@ def _render_typed_notes(notes: dict[str, Any], lines: list[str]) -> None:
                 lines.append(f"- {risk}")
         lines.append("")
 
-    sec = notes.get("security_observations") or []
+
+def _render_note_security(sec: Any, lines: list[str]) -> None:
+    """The ``security_observations`` note block."""
     if isinstance(sec, list) and sec:
         lines.append("**Security Observations:**")
         for item in sec:
             lines.append(f"- {item}")
         lines.append("")
 
-    other = notes.get("other_notes") or []
+
+def _render_note_other(other: Any, lines: list[str]) -> None:
+    """The ``other_notes`` note block."""
     if isinstance(other, list) and other:
         lines.append("**Other Notes:**")
         for note in other:

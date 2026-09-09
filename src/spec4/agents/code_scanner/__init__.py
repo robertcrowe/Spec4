@@ -11,7 +11,7 @@ self-contained concerns into siblings, one module each:
   block the seeds carry, and the size budgets that bound both.
 * :mod:`spec4.agents.code_scanner._prompt` -- the frozen ``SYSTEM_PROMPT``.
 * :mod:`spec4.agents.code_scanner._review_render` --
-  ``_format_review_as_text`` and the seven section renderers.
+  ``_format_review_as_text`` and its section renderers.
 
 The import path ``spec4.agents.code_scanner`` is unchanged. Phase 4j then
 moved every importer onto the owning module and dropped the re-exports
