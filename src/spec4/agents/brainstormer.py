@@ -660,7 +660,7 @@ def _rehydrate_vision_from_disk(session: dict[str, Any]) -> None:
         session["feature_specs"] = None
 
 
-def run(
+def run(  # noqa: C901, PLR0912  # six-yield generator; the surviving branches are five yield/return guards and nine entry guards with no extractable body (rule 12, CLEANUP_INVENTORY.md 27.4)
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],

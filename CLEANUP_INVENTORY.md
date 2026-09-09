@@ -4313,13 +4313,19 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
     memory — every remaining non-yield body extracted as well — and measure it. Then:
 
     - **If the maximal build reduces C901, land the maximal build.**
-    - **If it does not**, and every remaining branch guards a `yield` or a generator
-      `return`, then `# noqa: C901, PLR0912, PLR0915` is **pre-approved** with the
+    - **If it does not**, and every remaining branch guards a `yield`, a generator
+      `return`, **or is an entry guard on the turn** — a branch that decides whether or
+      which turn body runs (session-state presence, seed-arm selection, artifact-present
+      checks) and **contains no extractable body of its own** — then
+      `# noqa: C901, PLR0912, PLR0915` is **pre-approved** with the
       measured reason *"ten-yield generator; every remaining branch guards a yield or a
       generator return, so further extraction needs sub-generators (backlog)"* (with the
       yield count corrected per function). **Land the planned cuts, not the maximal
       build**, and add the function to the shared backlog entry for the `yield from`
       conversion.
+
+    The maximal-build measurement is **required first**; the noqa covers only what
+    survives it, and **the reason names which kind each surviving branch is**.
 
     **Report the measurement either way** — both builds' C901 / PLR0912 / PLR0915, in
     the sub-phase report. This covers `deployer.run` (5i), and `brainstormer.run`,
@@ -4704,6 +4710,8 @@ also golden-pinned — `tests/golden/README.md` and `phase_*.md` must not move.
 | `agents/feature_speccer.py` | `_validate_dependencies` | C901 | single DFS back-edge pruning; the WHITE/GRAY/BLACK colour invariant spans the whole function, so any split leaves a helper callable at only one point in the traversal |
 | `project_manager.py` | `_artifact_button_state` | C901 | the branches are the documented artifact button state machine |
 | `agents/deployer.py` | `run` | C901, PLR0912, PLR0915 | ten-yield generator; every remaining branch guards a yield or a generator return, so further extraction needs sub-generators (backlog). **Sixth pre-approved noqa, added after the 5i measurement (37.5); granted under rule 12.** |
+| `agents/brainstormer.py` | `run` | C901, PLR0912 | six-yield generator; after the maximal build the surviving branches are five yield/return guards (staleness, resume, the seed chain's greeting arm, the review reply, the artifact re-ask) and nine entry guards with no extractable body (session-state presence, `user_input is None`, `msgs`, the four-arm seed selection, the review-request gate, two artifact-present checks). **Seventh pre-approved noqa; granted under rule 12 as amended (39.5).** |
+| `agents/code_scanner/__init__.py` | `run` | C901, PLR0912, PLR0915 | nine-yield generator; after the maximal build the surviving branches are five yield/return guards (staleness, resume, the re-entry gate, the missing-working-dir exit, the schema-retry re-ask) and seven entry guards with no extractable body (session-state presence, `user_input is None`, `msgs`, three artifact-present checks). **Eighth pre-approved noqa; granted under rule 12 as amended (39.5).** |
 
 Plus **12 `# noqa: PLR0913`** — arity cannot be reduced by extraction. Eight are
 arity-only (`_seed._call_scout` 7, `_reask.reask_for_artifact` 10,
@@ -4721,9 +4729,10 @@ change, not cleanup — log under *Bugs found (not fixed)* / backlog.
 that is a long generator carries its complexity in branches that each guard a `yield` or
 a generator `return`, so extraction cannot reduce it (rule 12). Converting those branches
 into sub-generators driven by `yield from` is the real fix and is a redesign of the turn
-loop, not cleanup. Functions on this entry: `deployer.run` (measured in 37.5), plus any
-of `brainstormer.run`, `stack_advisor.run`, `code_scanner.run` and
-`agentifier._run_catalog_phase` that rule 12 sends here in 5j and 5k.
+loop, not cleanup. Functions on this entry: **`deployer.run`** (measured in 37.5), **`brainstormer.run`** and
+**`code_scanner.run`** (measured in 39.2 and 40.1). `stack_advisor.run` and
+`designer.generate_mock_streaming` cleared under extraction and are **not** on this
+entry. `agentifier._run_catalog_phase` joins it only if rule 12 sends it here in 5k.
 
 ### 27.5 — 5p, the cross-cutting sweep
 
@@ -6207,3 +6216,54 @@ Suite-wide **12214 → 12263, +49**: 21 new `def`s, 21 new call/assignment sites
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 171.62s` (exit 0) |
 | Coverage | same run | `TOTAL 12263 stmts, 895 miss, 93%` |
+
+## 40. Phase 5j (continued) — rule 12 amended; `brainstormer.run` and `code_scanner.run` granted
+
+### 40.1 The required maximal-build measurement
+
+Rule 12 as amended requires the maximal build **before** the noqa. For both functions the
+maximal build **is** the landed build — there is nothing left to extract:
+
+| Function | landed | maximal | what remains |
+|---|---|---|---|
+| `brainstormer.run` | C901 14 / Br 16 | C901 14 / Br 16 | `if vision is None and suppressed_as_artifact(...)` (holds a `yield from`), and three single statements |
+| `code_scanner.run` | C901 12 / Br 13 / St 59 | C901 12 / Br 13 / St 59 | `if review is None and not errors and suppressed_as_artifact(...)`, whose body is one `errors = [...]` assignment behind a comment |
+
+Extracting either removes **zero** branches. Both were inspected statement by statement
+after 5j's cuts; no block with a body of its own survives.
+
+### 40.2 Branch classification (what the reasons name)
+
+**`brainstormer.run` — 5 yield/return guards, 9 entry guards.**
+Yield/return: the staleness question, the resume summary, the seed chain's greeting arm,
+the review-request reply, the artifact re-ask. Entry guards with no extractable body:
+`if "brainstormer_messages" not in session:`, `if user_input is None:` / `else`,
+`if msgs:` / `else`, the four-arm seed selection, the review-request gate, and the two
+artifact-present checks (`if vision is None:`, `if vision:`).
+
+**`code_scanner.run` — 5 yield/return guards, 7 entry guards.**
+Yield/return: staleness, resume, the re-entry gate, the missing-working-dir exit, the
+schema-retry re-ask. Entry guards: `if "code_scanner_messages" not in session:`,
+`if user_input is None:` / `else`, `if msgs:` / `else`, and the three artifact-present
+checks.
+
+### 40.3 What this closes
+
+`src/spec4/agents/**` is now **entirely clean** for C90 / PLR0912 / PLR0913 / PLR0915 —
+every finding either decomposed or carrying one of the eight pre-approved noqas. 5p can
+promote `C90` and `PLR` without tripping on `agents/`.
+
+All three granted generators (`deployer.run`, `brainstormer.run`, `code_scanner.run`)
+are on the sub-generator backlog entry in 27.4. `stack_advisor.run` and
+`designer.generate_mock_streaming` cleared under extraction and are **not** on it — the
+same shape does not always reach the same verdict, which is why rule 12 requires the
+measurement rather than a judgment call.
+
+### 40.4 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 -q` | `4256 passed, 1 skipped` (exit 0) |

@@ -157,7 +157,7 @@ def _build_update_scan_seed(
     )
 
 
-def run(
+def run(  # noqa: C901, PLR0912, PLR0915  # nine-yield generator; the surviving branches are five yield/return guards and seven entry guards with no extractable body (rule 12, CLEANUP_INVENTORY.md 27.4)
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
