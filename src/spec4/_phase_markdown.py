@@ -72,6 +72,55 @@ def _phase_spec_preamble(
     stack↔feature linkage, say — can be added without re-breaking every caller.
     Returns ``[]`` when the phase declares no features or no catalog is supplied.
     """
+    feature_decls, capability_decls = _phase_declarations(phase)
+    if not feature_decls and not capability_decls:
+        return []
+
+    ai_index = spec_index((context or {}).get("ai_features"))
+    product_index = _product_spec_index(context)
+    declared_feature_ids = {str(d.get("id")) for d in feature_decls if d.get("id")}
+    declared_capability_ids = {
+        str(d.get("id")) for d in capability_decls if d.get("id")
+    }
+
+    product_blocks = _product_feature_blocks(feature_decls, product_index)
+    surface_blocks = _ui_surface_blocks(
+        context, declared_feature_ids, declared_capability_ids
+    )
+    ai_blocks = _ai_capability_blocks(capability_decls, ai_index, declared_feature_ids)
+
+    if not product_blocks and not surface_blocks and not ai_blocks:
+        return []
+
+    lines = [
+        "## Feature Specifications",
+        "",
+        "These specifications are authoritative for this phase. Implement to "
+        "them; the instructions below tell you how and in what order.",
+        "",
+        *product_blocks,
+        *surface_blocks,
+        *ai_blocks,
+    ]
+    # Project-wide AI decisions, rendered only where AI capabilities are
+    # actually being built (D-PH5 gate — cross-cutting is catalog-level
+    # guidance and has no place in a product-only phase). `provider_strategy`
+    # is excluded — StackAdvisor's `tech_stack_spec` above is the ratified
+    # stack authority and must not be contradicted here.
+    if ai_blocks:
+        lines.extend(
+            render_cross_cutting(
+                (context or {}).get("ai_features", {}).get("cross_cutting"),
+                exclude=PHASE_EXCLUDED_CROSS_CUTTING,
+            )
+        )
+    return lines
+
+
+def _phase_declarations(
+    phase: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The phase's two declaration arrays, product features and capabilities."""
     # D-PH2/D-PH5a: two declaration arrays, two spec altitudes, each attached
     # from its own source. `features[]` attaches the Brainstormer behavioural
     # spec (what the product feature is and when it is done); `capabilities[]`
@@ -94,33 +143,36 @@ def _phase_spec_preamble(
         )
         if isinstance(d, dict)
     ]
-    if not feature_decls and not capability_decls:
-        return []
+    return feature_decls, capability_decls
 
-    ai_index = spec_index((context or {}).get("ai_features"))
+
+def _product_spec_index(context: dict[str, Any] | None) -> dict[str, Any]:
+    """Product feature specs from ``context``, keyed by id."""
     product_index = {
         str(f["id"]): f
         for f in (((context or {}).get("feature_specs") or {}).get("features") or [])
         if isinstance(f, dict) and f.get("id")
     }
-    declared_feature_ids = {str(d.get("id")) for d in feature_decls if d.get("id")}
-    declared_capability_ids = {
-        str(d.get("id")) for d in capability_decls if d.get("id")
-    }
+    return product_index
 
-    def _decl_heading(name: str, altitude: str, decl: dict[str, Any]) -> list[str]:
-        role = str(decl.get("role") or "").strip()
-        heading = f"### {name} — {altitude}"
-        if role:
-            heading += f" — {role} in this phase"
-        lines = [heading, ""]
-        scope_note = str(decl.get("scope_note") or "").strip()
-        if scope_note:
-            lines.append(f"*Scope for this phase: {scope_note}*")
-            lines.append("")
-        return lines
 
-    # --- product feature blocks (D-PH5a) -----------------------------------
+def _decl_heading(name: str, altitude: str, decl: dict[str, Any]) -> list[str]:
+    role = str(decl.get("role") or "").strip()
+    heading = f"### {name} — {altitude}"
+    if role:
+        heading += f" — {role} in this phase"
+    lines = [heading, ""]
+    scope_note = str(decl.get("scope_note") or "").strip()
+    if scope_note:
+        lines.append(f"*Scope for this phase: {scope_note}*")
+        lines.append("")
+    return lines
+
+
+def _product_feature_blocks(
+    feature_decls: list[dict[str, Any]], product_index: dict[str, Any]
+) -> list[str]:
+    """Product feature blocks (D-PH5a), one per resolvable declaration."""
     product_blocks: list[str] = []
     for decl in feature_decls:
         feature = product_index.get(str(decl.get("id") or ""))
@@ -149,8 +201,15 @@ def _phase_spec_preamble(
         if entities:
             product_blocks.append(f"- entities: {', '.join(entities)}")
         product_blocks.append("")
+    return product_blocks
 
-    # --- UI surfaces block (D-PH5b/c) ---------------------------------------
+
+def _ui_surface_blocks(
+    context: dict[str, Any] | None,
+    declared_feature_ids: set[str],
+    declared_capability_ids: set[str],
+) -> list[str]:
+    """UI surfaces block (D-PH5b/c), grouped by realized catalog surface."""
     surface_blocks: list[str] = []
     attached = surfaces_for_declarations(
         (context or {}).get("manifest"),
@@ -178,8 +237,15 @@ def _phase_spec_preamble(
             for rec in recs:
                 surface_blocks.extend(surface_detail_lines(rec["surface"]))
         surface_blocks.append("")
+    return surface_blocks
 
-    # --- AI capability blocks (existing altitude, serves-relation stated) ---
+
+def _ai_capability_blocks(
+    capability_decls: list[dict[str, Any]],
+    ai_index: dict[str, Any],
+    declared_feature_ids: set[str],
+) -> list[str]:
+    """AI capability blocks at the existing altitude, serves-relation stated."""
     ai_blocks: list[str] = []
     for decl in capability_decls:
         feature = ai_index.get(str(decl.get("id") or ""))
@@ -204,33 +270,7 @@ def _phase_spec_preamble(
             )
             ai_blocks.append("")
         ai_blocks.extend(render_feature_block(feature, fields=PHASE_SPEC_FIELDS))
-
-    if not product_blocks and not surface_blocks and not ai_blocks:
-        return []
-
-    lines = [
-        "## Feature Specifications",
-        "",
-        "These specifications are authoritative for this phase. Implement to "
-        "them; the instructions below tell you how and in what order.",
-        "",
-        *product_blocks,
-        *surface_blocks,
-        *ai_blocks,
-    ]
-    # Project-wide AI decisions, rendered only where AI capabilities are
-    # actually being built (D-PH5 gate — cross-cutting is catalog-level
-    # guidance and has no place in a product-only phase). `provider_strategy`
-    # is excluded — StackAdvisor's `tech_stack_spec` above is the ratified
-    # stack authority and must not be contradicted here.
-    if ai_blocks:
-        lines.extend(
-            render_cross_cutting(
-                (context or {}).get("ai_features", {}).get("cross_cutting"),
-                exclude=PHASE_EXCLUDED_CROSS_CUTTING,
-            )
-        )
-    return lines
+    return ai_blocks
 
 
 def _declared_ids(phase: dict[str, Any], key: str) -> set[str]:
@@ -372,6 +412,23 @@ def render_phase_markdown(
         "",
     ]
     lines.extend(_phase_spec_preamble(phase, context))
+    _render_tech_stack_section(phase, context, deps, configs, lines)
+    _render_instructions_section(instructions, lines)
+    _render_risk_section(bottlenecks, mitigation, lines)
+    _render_verification_section(phase, context, verification, lines)
+    _render_references_section(references, lines)
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_tech_stack_section(
+    phase: dict[str, Any],
+    context: dict[str, Any] | None,
+    deps: Any,
+    configs: Any,
+    lines: list[str],
+) -> None:
+    """The ``## Tech Stack`` section: dependencies, configurations, stack routing."""
     lines.extend(
         [
             "## Tech Stack",
@@ -387,11 +444,19 @@ def render_phase_markdown(
         lines.append(f"**Configurations:** {configs}")
         lines.append("")
     lines.extend(_phase_stack_lines(phase, context))
+
+
+def _render_instructions_section(instructions: Any, lines: list[str]) -> None:
+    """The ``## Instructions`` numbered list."""
     lines.append("## Instructions")
     lines.append("")
     for idx, step in enumerate(instructions, start=1):
         lines.append(f"{idx}. {step}")
     lines.append("")
+
+
+def _render_risk_section(bottlenecks: Any, mitigation: Any, lines: list[str]) -> None:
+    """The ``## Risk Assessment`` section."""
     lines.append("## Risk Assessment")
     lines.append("")
     if bottlenecks:
@@ -404,11 +469,24 @@ def render_phase_markdown(
         lines.append("")
         lines.append(mitigation)
         lines.append("")
+
+
+def _render_verification_section(
+    phase: dict[str, Any],
+    context: dict[str, Any] | None,
+    verification: Any,
+    lines: list[str],
+) -> None:
+    """The ``## Verification`` section and the NFR lines that follow it."""
     lines.append("## Verification")
     lines.append("")
     lines.append(verification)
     lines.extend(_phase_nfr_lines(phase, context))
     lines.append("")
+
+
+def _render_references_section(references: Any, lines: list[str]) -> None:
+    """The ``## References`` section."""
     if references:
         lines.append("## References")
         lines.append("")
@@ -420,8 +498,6 @@ def render_phase_markdown(
             elif standard:
                 lines.append(f"- {standard}")
         lines.append("")
-
-    return "\n".join(lines).rstrip() + "\n"
 
 
 def parse_phase_markdown(text: str) -> dict[str, Any] | None:

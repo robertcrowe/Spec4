@@ -5068,3 +5068,115 @@ calls. Misses held at **893**.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 171.00s` (exit 0) |
 | Coverage | same run | `TOTAL 11954 stmts, 893 miss, 93%` |
+
+## 32. Phase 5e — `_phase_markdown.py`: the preamble and the phase body decomposed
+
+`src/spec4/_phase_markdown.py` only. Extract-only. No other file changed. This is the
+fifth golden-pinned surface — pinned through `project_manager`, not through
+`test_renderer_goldens.py`.
+
+### 32.1 Before and after
+
+| | C901 | PLR0912 | PLR0915 | non-blank lines |
+|---|---:|---:|---:|---:|
+| `_phase_spec_preamble` before | **20** | **17** | **65** | 176 |
+| `_phase_spec_preamble` after | 4 | — | — | 55 |
+| `render_phase_markdown` before | — | — | **58** | 85 |
+| `render_phase_markdown` after | — | — | 25 | 47 |
+
+The file's C901/PLR0912/PLR0915 finding count goes **4 → 0**.
+
+### 32.2 From `_phase_spec_preamble` (6)
+
+| Helper | What |
+|---|---|
+| `_phase_declarations(phase)` | the two declaration arrays and the `legacy` era detection |
+| `_product_spec_index(context)` | product feature specs from `context`, keyed by id |
+| `_decl_heading(name, altitude, decl)` | **promoted**, not new — see below |
+| `_product_feature_blocks(feature_decls, product_index)` | the D-PH5a blocks |
+| `_ui_surface_blocks(context, declared_feature_ids, declared_capability_ids)` | the D-PH5b/c block |
+| `_ai_capability_blocks(capability_decls, ai_index, declared_feature_ids)` | the AI-altitude blocks |
+
+`_decl_heading` was a nested closure. As in 5d, ruff counts a nested `def` toward its
+enclosing function, so it had to leave `_phase_spec_preamble` for the spine to come
+under threshold. Unlike 5d's `_field`, it captured nothing — it already read only its
+three parameters — so the promotion is a straight move with **no signature change and
+no call-site change**.
+
+The three block builders each open with the accumulator declaration the block already
+had (`product_blocks: list[str] = []` and so on) and close with `return <that list>`;
+the spine binds the result to the same name it used before. The two
+`declared_*_ids` set comprehensions stay inline in the spine, verbatim — lifting the
+two into one shared helper would be duplicate-removal, which is **5p's** call, not 5e's
+(rule 7).
+
+The spine keeps the 25-line docstring, the early `return []`, the `ai_index` lookup, the
+two id comprehensions, three calls, the second `return []` guard, the
+`## Feature Specifications` assembly and the D-PH5 `if ai_blocks:` cross-cutting gate.
+
+### 32.3 From `render_phase_markdown` (5)
+
+`_render_tech_stack_section`, `_render_instructions_section`, `_render_risk_section`,
+`_render_verification_section`, `_render_references_section` — one per `##` heading, in
+document order. The spine keeps `json.dumps` frontmatter assembly, the thirteen local
+reads, the opening `lines` list (frontmatter fence, `# Phase N of M`, summary), the
+`_phase_spec_preamble` extend, the five calls and the trailing
+`"\n".join(lines).rstrip() + "\n"`.
+
+Frontmatter shape and the `---` fences are untouched (rule 4).
+
+### 32.4 Line accounting (rule 3)
+
+| Function | old non-blank | verbatim | accounted otherwise |
+|---|---:|---:|---:|
+| `_phase_spec_preamble` | 176 | 173 | 3 |
+| `render_phase_markdown` | 85 | 85 | 0 |
+
+The three are the `# --- product feature blocks (D-PH5a) ---`,
+`# --- UI surfaces block (D-PH5b/c) ---` and
+`# --- AI capability blocks ... ---` banner comments, each folded into the docstring of
+the helper cut at that banner — the disposition rule 3 names. Every other line,
+including all seven D-PH/D-PS rationale comment blocks, is verbatim.
+
+**No statement line is unaccounted for.**
+
+### 32.5 Statement counts add up (rule 4)
+
+The file's own statements **205 → 230, +25**, and the suite-wide total moved
+**11954 → 11979, +25** — so **no other module's statement count changed**. By kind:
+
+| Kind | Δ | Why |
+|---|---:|---|
+| `def` | +10 | 5 section renderers, 3 block builders, `_phase_declarations`, `_product_spec_index` (`_decl_heading` moved, so it is not new) |
+| `return` | +5 | one per new value-returning helper |
+| call statement | +5 | the five `_render_*_section(...)` calls |
+| assignment | +5 | the five spine bindings that replaced inlined blocks |
+
+Misses held at **893**.
+
+### 32.6 Verification beyond the gate
+
+- **`tests/test_project_manager_golden.py` passes unmodified** — 17 tests against
+  `phase_full.md`, `phase_full_no_context.md`, `phase_minimal.md`, `phase_final.md`,
+  `README.md` and `README_moved_footer.md`, including
+  `test_frontmatter_round_trips_the_phase_verbatim` and
+  `test_frontmatter_is_indented_json_with_unicode_kept`.
+- `render_phase_markdown` and `parse_phase_markdown` keep their names and signatures;
+  both importers (`project_manager.py:75`, `_artifacts.py:26`) are untouched.
+- No test file was edited (rule 2). Neither layouts nor callbacks are touched.
+
+### 32.7 Deferred / not acted on
+
+- The two identical `{str(d.get("id")) for d in X if d.get("id")}` comprehensions in
+  `_phase_spec_preamble` are left inline. Lifting them is duplicate-removal — **5p(a)**.
+- No `# noqa` was needed.
+
+### 32.8 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 169.22s` (exit 0) |
+| Coverage | same run | `TOTAL 11979 stmts, 893 miss, 93%` |
