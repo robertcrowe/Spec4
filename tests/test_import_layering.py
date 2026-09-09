@@ -41,14 +41,13 @@ _DASH_SIDE = ("spec4.layouts", "spec4.callbacks", "spec4.app", "spec4.session")
 # `spec4.app_constants` is not part of the `spec4.app` layer, and a module that
 # becomes a package in a later sub-phase is still matched by its own name.
 #
-# Rule 4's scope. A private callback sub-module must reach shared helpers
-# through `spec4.callbacks._shared`, never through the package `__init__` that
-# imports it for registration — the layouts/_chat cycle must not reappear one
-# directory over. No module matches this today (`callbacks/` holds only
-# `__init__.py` and `designer.py`); it starts biting when Phase 4g creates the
-# sub-modules, which is the point of writing it now. Phase 4h widens it to all
-# of `spec4.callbacks.` once `designer` is a package too.
-_CALLBACKS_PRIVATE = "spec4.callbacks._"
+# Rule 4's scope. A callbacks sub-module must reach shared helpers through
+# `spec4.callbacks._shared`, never through the package `__init__` that imports
+# it for registration — the layouts/_chat cycle must not reappear one directory
+# over. Phase 4g created the four private siblings the rule was written for;
+# Phase 4h widened it from `spec4.callbacks._` to all of `spec4.callbacks.`,
+# so the `designer` package and its own sub-modules are covered by it too.
+_CALLBACKS_PRIVATE = "spec4.callbacks."
 
 
 def _is_spec4(name: str) -> bool:

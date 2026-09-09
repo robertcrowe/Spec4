@@ -817,8 +817,8 @@ class TestCapturePassesPlanningContext:
             captured["kwargs"] = kwargs
             return {}, {}, False
 
-        monkeypatch.setattr(dmod, "_start_gen", fake_start_gen)
-        monkeypatch.setattr(dmod, "ctx", _Ctx("btn-designer-modify-existing"))
+        monkeypatch.setattr(dmod._wizard, "_start_gen", fake_start_gen)
+        monkeypatch.setattr(dmod._wizard, "ctx", _Ctx("btn-designer-modify-existing"))
         dmod.on_designer_step2_choice(1, None, store or {"step": 2}, session, True)
         return captured
 
@@ -874,7 +874,7 @@ class TestCapturePassesPlanningContext:
     def test_create_new_does_not_generate(self, monkeypatch) -> None:
         from spec4.callbacks import designer as dmod
 
-        monkeypatch.setattr(dmod, "ctx", _Ctx("btn-designer-create-new"))
+        monkeypatch.setattr(dmod._wizard, "ctx", _Ctx("btn-designer-create-new"))
         out = dmod.on_designer_step2_choice(None, 1, {"step": 2}, {}, True)
         assert out[0]["step"] == 3
 
@@ -915,7 +915,7 @@ class TestRetryReproducesTheDraw:
             captured["kwargs"] = kwargs
             return {}, {}, False
 
-        monkeypatch.setattr(dmod, "_start_gen", fake_start_gen)
+        monkeypatch.setattr(dmod._refine, "_start_gen", fake_start_gen)
         monkeypatch.setattr(dmod.project_manager, "load_ai_features", lambda wd: None)
         monkeypatch.setattr(dmod.project_manager, "load_feature_specs", lambda wd: None)
         dmod.on_designer_retry(1, store, session, True)
@@ -972,7 +972,7 @@ class TestRetryReproducesTheDraw:
 
     def test_create_new_clears_a_stale_capture_flag(self, monkeypatch) -> None:
         dmod = _dmod()
-        monkeypatch.setattr(dmod, "ctx", _Ctx("btn-designer-create-new"))
+        monkeypatch.setattr(dmod._wizard, "ctx", _Ctx("btn-designer-create-new"))
         out = dmod.on_designer_step2_choice(
             None, 1, {"step": 2, "_capture_mode": True}, {}, True
         )
@@ -1063,7 +1063,9 @@ class TestRefineImageAnnotations:
     ) -> None:
         dmod = _dmod()
         monkeypatch.setattr(
-            dmod, "ctx", _Ctx({"type": "designer-refine-image-delete", "index": 1})
+            dmod._refine,
+            "ctx",
+            _Ctx({"type": "designer-refine-image-delete", "index": 1}),
         )
         store = {
             "step": 7,
@@ -1112,7 +1114,7 @@ class TestRegeneratePassesRefineImageAnnotations:
             captured["store"] = store_arg
             return {}, {}, False
 
-        monkeypatch.setattr(dmod, "_start_gen", fake_start_gen)
+        monkeypatch.setattr(dmod._refine, "_start_gen", fake_start_gen)
         store = {
             "step": 7,
             "preference_text": "",
@@ -1166,7 +1168,7 @@ class TestRegenerateSourcesCatalogFromDisk:
             captured["pc"] = planning_context
             return {}, {}, False
 
-        monkeypatch.setattr(dmod, "_start_gen", fake_start_gen)
+        monkeypatch.setattr(dmod._refine, "_start_gen", fake_start_gen)
         dmod.on_designer_regenerate(1, "AI features changed", [], store, session, True)
         return captured["pc"]
 
@@ -1636,7 +1638,7 @@ class TestGenerationSavesToPinnedVersion:
         project_manager.get_version_dir(str(tmp_path), 2).mkdir(parents=True)
         html = "<!DOCTYPE html><html><body>x</body></html>"
         monkeypatch.setattr(
-            dmod,
+            dmod._mock_gen,
             "generate_mock_streaming",
             lambda *a, **kw: iter([html + "__DONE__"]),
         )
@@ -1678,7 +1680,9 @@ class TestStartGenCleansUpPriorBuffer:
             "stop": stop_ev,
             "text": "",
         }
-        monkeypatch.setattr(dmod, "generate_mock_streaming", lambda *a, **kw: iter(()))
+        monkeypatch.setattr(
+            dmod._mock_gen, "generate_mock_streaming", lambda *a, **kw: iter(())
+        )
         store, _, _ = dmod._start_gen(
             {"_gen_id": "old-gen"}, None, "m", "key", None, False
         )
@@ -1745,7 +1749,9 @@ class TestProgressBarSizing:
     ) -> None:
         dmod = _dmod()
         self._implement_prior(tmp_path)
-        monkeypatch.setattr(dmod, "generate_mock_streaming", lambda *a, **kw: iter(()))
+        monkeypatch.setattr(
+            dmod._mock_gen, "generate_mock_streaming", lambda *a, **kw: iter(())
+        )
         store, _, _ = dmod._start_gen({}, str(tmp_path), "m", "key", None, False)
         gen_id = store["_gen_id"]
         try:
@@ -1817,7 +1823,7 @@ class TestGenerationThreadResilience:
         def boom(*args: Any, **kwargs: Any) -> Any:
             raise RuntimeError("exploded before streaming")
 
-        monkeypatch.setattr(dmod, "generate_mock_streaming", boom)
+        monkeypatch.setattr(dmod._mock_gen, "generate_mock_streaming", boom)
         store, _, _ = dmod._start_gen({}, None, "m", "key", None, False)
         gen_id = store["_gen_id"]
         try:
@@ -1849,7 +1855,7 @@ class TestGenerationThreadResilience:
         def raise_oserror(*args: Any, **kwargs: Any) -> Any:
             raise OSError("filesystem gone")
 
-        monkeypatch.setattr(dmod, "generate_mock_streaming", fake_stream)
+        monkeypatch.setattr(dmod._mock_gen, "generate_mock_streaming", fake_stream)
         monkeypatch.setattr(dmod.project_manager, "active_version", raise_oserror)
         store, _, _ = dmod._start_gen({}, str(tmp_path), "m", "key", None, False)
         gen_id = store["_gen_id"]
@@ -2102,7 +2108,7 @@ class TestDesignerRetryWithADifferentModel:
         """Left behind, a later render would resurrect a handled error."""
         dmod = _dmod()
         answered, _ = self._round_trip()
-        with patch.object(dmod, "_start_gen", return_value=({}, {}, False)):
+        with patch.object(dmod._refine, "_start_gen", return_value=({}, {}, False)):
             *_, cleared = dmod.on_designer_retry(1, self._STORE, answered, True)
         assert cleared["_designer_failed_draw"] is None
 
@@ -2231,7 +2237,7 @@ class TestDesignerAutoRetry:
         answered = self._choose()
         store = _component(designer_layout(answered, {}), "designer-session-store").data
         with patch.object(
-            dmod, "_start_gen", return_value=({"step": 5}, {"tokens": 0}, False)
+            dmod._refine, "_start_gen", return_value=({"step": 5}, {"tokens": 0}, False)
         ) as start:
             dmod.on_designer_auto_retry(1, store, answered, True)
         assert start.called
@@ -2245,7 +2251,7 @@ class TestDesignerAutoRetry:
         answered = self._choose()
         store = _component(designer_layout(answered, {}), "designer-session-store").data
         with patch.object(
-            dmod, "_start_gen", return_value=({"step": 5}, {"tokens": 0}, False)
+            dmod._refine, "_start_gen", return_value=({"step": 5}, {"tokens": 0}, False)
         ):
             *_, cleared = dmod.on_designer_auto_retry(1, store, answered, True)
         assert cleared["_designer_failed_draw"] is None
@@ -2259,7 +2265,7 @@ class TestDesignerAutoRetry:
         `.get(key, {})` default would never be reached. Found by dispatching the
         interval against a running server."""
         dmod = _dmod()
-        with patch.object(dmod, "_start_gen") as start:
+        with patch.object(dmod._refine, "_start_gen") as start:
             result = dmod.on_designer_auto_retry(1, self._STORE, self._session(), True)
         start.assert_not_called()
         assert all(r is no_update for r in result)
@@ -2269,7 +2275,7 @@ class TestDesignerAutoRetry:
         session = self._session(
             _designer_failed_draw={"error": "boom", "preference_text": ""}
         )
-        with patch.object(dmod, "_start_gen") as start:
+        with patch.object(dmod._refine, "_start_gen") as start:
             result = dmod.on_designer_auto_retry(1, self._STORE, session, True)
         start.assert_not_called()
         assert all(r is no_update for r in result)

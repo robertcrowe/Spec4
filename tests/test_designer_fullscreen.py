@@ -97,7 +97,7 @@ class TestBrownfieldEntryPoint:
                 "spec4.callbacks.designer.project_manager.load_prior_mock",
                 return_value=_MOCK,
             ),
-            patch("spec4.callbacks.designer.revision_delta", return_value=None),
+            patch("spec4.callbacks.designer._wizard.revision_delta", return_value=None),
         ):
             store = on_designer_carry_forward(1, {"step": 2}, session)
         assert store["step"] == 7

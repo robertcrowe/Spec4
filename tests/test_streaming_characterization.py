@@ -397,7 +397,7 @@ class TestMockBuffers:
         store: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         monkeypatch.setattr(
-            dmod, "generate_mock_streaming", lambda *a, **kw: gated.gen()
+            dmod._mock_gen, "generate_mock_streaming", lambda *a, **kw: gated.gen()
         )
         new_store, buffer, disabled = dmod._start_gen(
             store or {},

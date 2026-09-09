@@ -3123,3 +3123,286 @@ line is inside an existing test. `211 files already formatted` is §21.7's 207
 plus four new modules; `84 source files` is mypy's 80 by the same arithmetic.
 Statements rose 11825 → 11853 (+28, the façade's imports and `__all__`) and
 misses held at 893, so no per-module floor moved.
+
+## 23. Phase 4h — `callbacks/designer.py` split into the package `callbacks/designer/`
+
+Recorded 2026-09-09 on branch `look-rework`. One file under `src/` deleted and
+four created; **four test files edited — one patch target in three of them, and
+the scheduled one-constant widening in `tests/test_import_layering.py`.**
+`pyproject.toml` is untouched, `src/spec4/app.py` is untouched, and no assertion,
+fixture or callback import moved in any test. Nothing was written under
+`.spec4/`, `.venv/` or `.git/`, and no git command was run beyond
+`git show HEAD:…`, `git diff`, `git status` and `git ls-files`, all read-only.
+
+Like 4c–4e and unlike 4f/4g this is a **package conversion**, which §15.3 chose
+for the reason 4c did: the import path `spec4.callbacks.designer` is the string
+`app.py:75` and eight test modules already use, and it survives unchanged.
+
+### 23.1 Line counts
+
+| File | Lines | Was |
+|---|---:|---:|
+| `callbacks/designer/__init__.py` (façade) | 364 | 1399 |
+| `callbacks/designer/_mock_gen.py` | 422 | — |
+| `callbacks/designer/_wizard.py` | 412 | — |
+| `callbacks/designer/_refine.py` | 398 | — |
+| **total** | **1596** | **1399** |
+
+The +197 is compatibility layer and prose: the façade's 40-name `__all__` and its
+three sibling import blocks, four module docstrings, and the import header each
+new module needs. No definition grew or shrank by a line — every one moved
+byte-for-byte (§23.4) — and **no function body changed** apart from the one
+rename §23.2 describes.
+
+### 23.2 The names moved to each
+
+All 38 top-level definitions are accounted for: 36 moved, 2 stayed. One name
+changed spelling, `_MOCK_BUFFERS` → `MOCK_BUFFERS`, and only inside `_mock_gen`
+(see below); nothing else was renamed, dropped or added.
+
+**`_mock_gen.py`** — the generation core (12 names, **0 callbacks**): `logger`,
+`_DEV_MODE`, `MOCK_BUFFERS`, `_MAX_HTML_BYTES`, `_DEFAULT_EXPECTED_CHARS`,
+`_MAX_DELIVERY_TICKS`, `_llm_params`, `_planning_ctx`, `_extract_html`,
+`_persist_manifest`, `_expected_stream_chars`, `_start_gen` (with its `_run`
+worker). `_llm_params` and `_planning_ctx` are here rather than beside either
+set of callbacks because both `_wizard` and `_refine` call them: they are a
+draw's *inputs*, and putting them in either module would make one leaf import
+the other. `logger` keeps the `logging.getLogger(__name__)` idiom, so its name
+becomes `spec4.callbacks.designer._mock_gen` — a child of the old logger, so any
+handler or level set on `spec4.callbacks.designer` still applies to it, and
+nothing in `src/`, `tests/` or the docs names either string.
+
+**`_wizard.py`** — the wizard's own steps (14 names, 13 callbacks):
+`on_designer_add_gui`, `_skip_to_stack_advisor`, `on_designer_skip_1`,
+`on_designer_skip_2`, `on_designer_step2_choice`, `on_designer_carry_forward`,
+`on_designer_preferences_next`, `on_designer_screenshot_upload`,
+`on_designer_screenshot_delete`, `on_designer_generate_mock`,
+`on_designer_approve`, `on_designer_continue_stack`, `on_designer_step_back`,
+`on_designer_start_over`. Two of them start a draw — the "Modify existing"
+capture and Generate — and both go through `_mock_gen._start_gen`.
+
+**`_refine.py`** — everything downstream of a finished or failed draw (10 names,
+9 callbacks): `on_designer_refine`, `on_designer_refine_cancel`,
+`on_designer_refine_upload`, `on_designer_refine_image_delete`,
+`on_designer_regenerate`, `on_designer_revise_stale`, `on_designer_retry_model`,
+`_rerun_failed_draw`, `on_designer_retry`, `on_designer_auto_retry`. It carries
+the one `spec4.callbacks._shared` edge 4g created (`_open_pick_fields`, read by
+`on_designer_retry_model`).
+
+**Stayed in `__init__.py`** (2 names, 2 callbacks) — `render_designer_step` and
+`on_mock_stream_poll`: the two callbacks that drive the wizard *shell* rather
+than one screen's buttons. Both are store-driven rather than button-driven
+(`designer-session-store` / `mock-stream-buffer` / `mock-stream-interval`), one
+paints whichever step the store names and the other feeds it while a draw runs
+and delivers the finished mock in-band. §15.3 did not place
+`render_designer_step`; it renders steps 1–7, so it is not "steps 1–4", and
+keeping it here also leaves `tests/test_agent_llm_selection.py` — which patches
+`spec4.callbacks.designer.ctx` around it — untouched.
+
+**The one rename.** §15.3 requires `callbacks.designer._MOCK_BUFFERS` to be the
+same dict object as `_mock_gen.MOCK_BUFFERS`. `_mock_gen` therefore defines it
+public (it is that module's cross-module surface), which renames its 5
+references inside `_mock_gen` — the annotated assignment, three uses in
+`_start_gen`/`_run`, and one mention in a comment. The two modules that had it
+under the old spelling keep their bodies unchanged by importing it as
+`MOCK_BUFFERS as _MOCK_BUFFERS`: the façade (for `on_mock_stream_poll`) and
+`_wizard` (for `on_designer_start_over`). One dict, three names;
+`designer._MOCK_BUFFERS is designer._mock_gen.MOCK_BUFFERS` is asserted in
+§23.4.
+
+**Dropped from the façade: 21 imported names, 0 definitions.** `ALL`,
+`DesignerSession`, `_default_designer_session`, `_open_pick_fields`,
+`build_revision_note`, `collect_ui_source_files`, `enrich_manifest`,
+`extract_manifest`, `generate_mock_streaming`, `llm`, `logging`, `os`,
+`pathlib`, `re`, `revision_delta`, `save_manifest`, `save_mock`, `save_session`,
+`uuid`, `validate_manifest`, `websearch` — each now lives on the module that
+uses it, 4g §22.2's precedent. **21 imported names are kept**, including two
+that nothing in the façade uses: `project_manager` and `threading`, which stay
+bound because tests reach them *through this module* to patch them
+(`monkeypatch.setattr(dmod.project_manager, …)` ×6, `dmod.threading` ×1, and
+`patch("spec4.callbacks.designer.project_manager.load_prior_mock")`). Patching
+an attribute *on a module object* takes effect for every importer, so those
+seven sites keep working from here and needed no edit; they are in `__all__`,
+which is what keeps `F401` and `no_implicit_reexport` happy about them.
+
+`generate_mock_streaming` and `revision_delta` were deliberately **not** kept
+for the same convenience: they are functions, so a patch aimed at the façade
+would rebind only the façade's name and silently stop taking effect. Dropped,
+the same patch fails loudly with `AttributeError` — which is exactly how two of
+the sites in §23.5 were found.
+
+### 23.3 Rule 4, widened, and the resulting import graph
+
+`tests/test_import_layering.py`'s `_CALLBACKS_PRIVATE` went from
+`"spec4.callbacks._"` to `"spec4.callbacks."` — the one-underscore tightening
+§15.2 scheduled for 4h — plus the comment above it, which described the rule as
+not yet biting and named this widening as still to come. That is the whole edit
+to the file; the rule body, the guards and the other six tests are unchanged and
+pass.
+
+The rule now matches **8** modules instead of 4: `callbacks/_artifacts`,
+`_chat`, `_setup`, `_shared` and, new, `designer`, `designer._mock_gen`,
+`designer._wizard`, `designer._refine`. None has an edge to the
+`spec4.callbacks` package:
+
+- `designer` → `designer._mock_gen`, `designer._wizard`, `designer._refine`
+- `designer._wizard` → `designer._mock_gen`
+- `designer._refine` → `designer._mock_gen`, `callbacks._shared`
+- `designer._mock_gen` → nothing under `spec4.callbacks` at all
+
+so the package's internal graph is a two-level tree with no cycle, and the
+`layouts` ↔ `layouts._chat` shape §15.2 was written against is not recreated.
+Outside `callbacks/`, the four modules import `spec4.llm`, `llm_selection`,
+`project_manager`, `websearch`, `agents._manifest`, `agents.designer` and
+`layouts.designer` — every edge pointing away from the Dash side's top, so rules
+1–3 are untouched (7 tests pass).
+
+### 23.4 Verification beyond the gate
+
+- **Byte-for-byte.** Every non-blank line of the `HEAD` blob was looked for
+  verbatim in the four new files, after `ruff format` ran: **1279 of 1285
+  matched**. The six that did not are the five `_MOCK_BUFFERS` → `MOCK_BUFFERS`
+  lines of §23.2 and one line of the old import header
+  (`        _default_designer_session,`, now a single-line import in `_wizard`).
+  Nothing else moved by a character. `ruff format` reported "4 files
+  reformatted" on the first pass and the diff was **blank lines only** — the
+  two-line separators between the blocks the splitter had stripped.
+- **Attribute surface: 38 of 38 resolve.** Every one of the old module's 38
+  top-level definitions resolves on `spec4.callbacks.designer`, checked by
+  importing it and `hasattr`-ing every name the old AST defined;
+  `set(__all__)` is exactly that set plus `project_manager` and `threading`.
+  `designer._MOCK_BUFFERS is designer._mock_gen.MOCK_BUFFERS`,
+  `designer.project_manager is spec4.project_manager`,
+  `designer.threading is threading`, `designer.ctx is dash.ctx`. The 21 dropped
+  names were grepped across `src/`, `tests/`, `evals/` and `scripts/` as
+  `spec4.callbacks.designer.<name>`, `from spec4.callbacks.designer import
+  <name>` and `dmod.<name>` — one hit, `revision_delta`, which is in §23.5.
+- **Registration, counted per module.** Static `@callback` decorators:
+  `__init__` 2, `_mock_gen` 0, `_wizard` 13, `_refine` 9 = **24**, the count
+  §22.4 attributes to `designer`. Importing the package registers 24 (90 with
+  `spec4.callbacks`'s 66), and `spec4.app` adds its 2.
+- **Statement counts add up.** `coverage`'s parser on the `HEAD` blob: 427
+  statements. The four files now: 77 + 131 + 125 + 116 = **449**, +22. The
+  suite-wide total moved 11853 → 11875, also +22, so **no other module's
+  statement count changed** and the +22 is entirely import headers and `__all__`.
+- **Coverage attribution, not coverage loss.** The four files together are
+  449 stmts / 109 miss, against 427 / 109 for the single pre-split file — the
+  same 109 missed statements, redistributed (façade 91%, `_mock_gen` 88%,
+  `_refine` 80%, `_wizard` 50%). Suite-wide misses unchanged at **893**, so no
+  per-module floor moved.
+- **§15.5 invariants.** `dash._callback.GLOBAL_CALLBACK_MAP` holds **92** after a
+  fresh `spec4.app` import in a clean interpreter.
+  `tests/test_layout_contract.py` was **not** edited;
+  `tests/test_streaming_characterization.py` was edited on one line and the
+  reason is §23.5. They pass alongside `tests/test_callback_co_presence.py`,
+  `tests/test_app_import_smoke.py`, `tests/test_designer*.py`,
+  `tests/test_agent_llm_selection.py` and `tests/test_import_layering.py`:
+  598 tests.
+
+### 23.5 The forced edits outside `src/`, and the one that breaks §15.5
+
+Same failure mode as 4g §22.5, one directory down: `patch` rebinds a name in
+*one* module's namespace, and a moved function reads its own. A re-export shares
+a **value**, not a **binding** — which is why the `_MOCK_BUFFERS` dict survives
+the move untouched by 20 test sites while a patched *function* does not survive
+it at all.
+
+| Target | Sites | Failure if left | Now |
+|---|---:|---|---|
+| `setattr/patch.object(dmod, "_start_gen")` | 9 | loud (the real draw runs, `captured` stays empty) | `dmod._wizard` (1) / `dmod._refine` (8) |
+| `setattr(dmod, "generate_mock_streaming")` | 5 | loud (`AttributeError`) | `dmod._mock_gen` |
+| `setattr/patch.object(dmod, "ctx")` | 4 | loud (`MissingCallbackContextException`) | `dmod._wizard` (3) / `dmod._refine` (1) |
+| `patch("spec4.callbacks.designer.revision_delta")` | 1 | loud (`AttributeError`) | `…designer._wizard.revision_delta` |
+
+That is 18 sites in `tests/test_designer.py` and 1 in
+`tests/test_designer_fullscreen.py` — **24 insertions / 18 deletions**, the
+extra 6 being `ruff format` re-wrapping five calls the longer targets pushed
+past 88 columns. Every other designer patch site kept working and was left
+alone: the seven `dmod.project_manager` / `dmod.threading` ones (module objects,
+§23.2), and the four `ctx` ones aimed at `render_designer_step` and
+`on_mock_stream_poll`, which stayed in the façade.
+
+**The §15.5 breach: one line of `tests/test_streaming_characterization.py`.**
+Its `TestMockBuffers._start` does
+`monkeypatch.setattr(dmod, "generate_mock_streaming", …)` and then calls
+`dmod._start_gen(...)`. Once `_start_gen`'s worker lives in `_mock_gen` there is
+no arrangement of re-exports that keeps that patch effective — a function
+re-export shares the value, and the worker reads its own module's globals — so
+the real LLM call would run and the test would time out waiting for a chunk.
+The alternatives were to leave `_start_gen` in the façade (which puts
+`_wizard` and `_refine` back to importing the package that imports them: exactly
+the cycle rule 4 exists to prevent, and it was just widened to cover them), or
+not to split at all. Robert was asked and chose the third: retarget that one
+`monkeypatch.setattr` to `dmod._mock_gen` — **1 insertion / 1 deletion**, no
+other line of the file touched. The state-container assertions the file exists
+for — `_MOCK_BUFFERS` contents at every transition, `_DEFAULT_EXPECTED_CHARS`,
+`_MAX_DELIVERY_TICKS`, the poll's return shapes — are unchanged and still run
+through `spec4.callbacks.designer`, because the dict *is* the same object.
+
+**Grep was not enough to find the sites.** Three of the 20 are multi-line calls
+(`monkeypatch.setattr(\n    dmod,\n    "generate_mock_streaming",` and two
+`patch.object(\n    dmod, "_start_gen", return_value=…`) that a line-oriented
+grep for `dmod, "` cannot see; they were found by the suite failing and then, to
+be sure nothing silent was left, by an `ast` walk over all of `tests/` for every
+`setattr` / `patch` / `patch.object` call whose first argument mentions
+`designer`. That walk is what the "sites" column above counts.
+
+Checked and **not** forced: `pyproject.toml` (ruff selects only `E,F`;
+`callbacks/` has no per-file-ignore to widen, and unlike 4c no new module needs
+one — nothing here is a frozen prompt), `src/spec4/app.py` (rule 5 / D-LR1:
+`import spec4.callbacks.designer` resolves to the package with the import
+unchanged), `src/spec4/callbacks/__init__.py` (it never imported `designer`),
+`tests/test_agent_llm_selection.py` and `tests/test_designer_wizard_register.py`
+(the first patches `spec4.callbacks.designer.ctx` around `render_designer_step`,
+which stayed; the second parses source with `rglob("*.py")` over a directory and
+so reads the new files as they are), `tests/test_designer.py:1870`'s
+`from spec4.callbacks.designer import _extract_html` and every other
+`from spec4.callbacks.designer import <callback>` (re-exported), `README.md` and
+`CLAUDE.md` (neither names the file).
+
+### 23.6 Deferred / not acted on
+
+- **`vulture_whitelist.py:86`'s `# src/spec4/callbacks/designer.py` section
+  comment now names a file that does not exist.** The 24 names under it are bare
+  and still correct — no name moved spelling — but they live in three modules
+  now. A comment-only edit, and it belongs with Phase 7's regeneration or 4j,
+  exactly as 4g logged the same staleness for `callbacks/__init__.py`.
+- **4g2 — split `_chat.py` into `_gate.py` and `_nav.py`** — added to §15.3 by
+  Robert during 4g, still pending. 4h neither touched it nor changed its shape;
+  at 345 statements `callbacks/_chat.py` is now the largest module in
+  `callbacks/` by some distance.
+- **Phase 5 findings, logged not fixed.** `_start_gen` (197 lines, with its
+  `_run` worker) and `on_mock_stream_poll` (150) are the two large functions the
+  split moved without shrinking; nothing else in the package exceeds 66 lines
+  (`on_designer_regenerate`).
+  `on_mock_stream_poll`'s three-part docstring is load-bearing behaviour
+  documentation and moved with it intact.
+- **The façade's re-exports are 4j's to trim.** Of the 40 `__all__` entries, the
+  internals `_skip_to_stack_advisor`, `_rerun_failed_draw`, `_persist_manifest`,
+  `_planning_ctx`, `_llm_params`, `_MAX_HTML_BYTES`, `logger`, `_DEV_MODE` and
+  `_extract_html` exist to preserve the pre-split attribute surface;
+  `_extract_html`, `_persist_manifest`, `_start_gen`, `_expected_stream_chars`,
+  `_MOCK_BUFFERS`, `_DEFAULT_EXPECTED_CHARS` and `_MAX_DELIVERY_TICKS` are read
+  from outside today, the rest are candidates once 4j confirms it. Logged as
+  Phase 2-style candidates, not deleted.
+- **§17.5's `_AGENT_SIDE` gap and §21.6's blocked fifth rule are unchanged.**
+  4h adds nothing to either; both remain 4j's.
+- Nothing new for *Bugs found (not fixed)*.
+
+### 23.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Layering | `uv run pytest tests/test_import_layering.py -q` | `7 passed` (exit 0) |
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `214 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 87 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 172.05s (0:02:52)` (exit 0) |
+| Coverage | same run | `TOTAL 11875 stmts, 893 miss, 92%` |
+
+Test count is unchanged at 4256 — 4h adds no test and removes none; every edited
+line is a patch target inside an existing test. `214 files already formatted` is
+§22.7's 211 plus three net new files (one deleted, four created); `87 source
+files` is mypy's 84 by the same arithmetic. Statements rose 11853 → 11875 (+22,
+the four import headers and `__all__`) and misses held at **893**, so no
+per-module floor moved.
