@@ -512,19 +512,45 @@ def _format_vision_as_text(
     v: dict[str, Any] = raw_v if isinstance(raw_v, dict) else {}
     lines: list[str] = []
 
+    _render_vision_header(vs, lines)
+    _render_vision_purpose(raw_v, v, lines)
+    _render_ui_surface(v, lines)
+    _render_target_audience(v, lines)
+    _render_key_features(v, lines)
+    _render_differentiators(v, lines)
+    _render_future_enhancements(v, lines)
+    _render_monetization(v, lines)
+
+    render_references(v.get("references", []), lines)
+
+    lines.append(footer)
+    return "\n".join(lines)
+
+
+def _render_vision_header(vs: dict[str, Any], lines: list[str]) -> None:
+    """The ``**Vision Statement**`` heading, named or bare."""
     name = vs.get("name", "")
     lines.append(
         f"**Vision Statement: {name}**\n" if name else "**Vision Statement**\n"
     )
 
+
+def _render_vision_purpose(raw_v: Any, v: dict[str, Any], lines: list[str]) -> None:
+    """The vision line: a bare string vision, else the ``purpose`` field."""
     if isinstance(raw_v, str):
         lines.append(f"**Vision:** {raw_v}\n")
     elif "purpose" in v:
         lines.append(f"**Purpose:** {v['purpose']}\n")
 
+
+def _render_ui_surface(v: dict[str, Any], lines: list[str]) -> None:
+    """The ``ui_surface`` line."""
     if "ui_surface" in v:
         lines.append(f"**UI Surface:** {v['ui_surface']}\n")
 
+
+def _render_target_audience(v: dict[str, Any], lines: list[str]) -> None:
+    """The ``target_audience`` list."""
     audience: list[str] = v.get("target_audience", [])
     if audience:
         lines.append("**Target Audience:**")
@@ -532,6 +558,9 @@ def _format_vision_as_text(
             lines.append(f"- {item}")
         lines.append("")
 
+
+def _render_key_features(v: dict[str, Any], lines: list[str]) -> None:
+    """The ``key_features_mvp`` list."""
     features: list[Any] = v.get("key_features_mvp", [])
     if features:
         lines.append("**Core Features (MVP):**")
@@ -539,6 +568,9 @@ def _format_vision_as_text(
             _render_feature_item(feat, lines)
         lines.append("")
 
+
+def _render_differentiators(v: dict[str, Any], lines: list[str]) -> None:
+    """The ``differentiators`` list."""
     differentiators: list[str] = v.get("differentiators", [])
     if differentiators:
         lines.append("**Differentiators:**")
@@ -546,6 +578,9 @@ def _format_vision_as_text(
             lines.append(f"- {item}")
         lines.append("")
 
+
+def _render_future_enhancements(v: dict[str, Any], lines: list[str]) -> None:
+    """The ``future_enhancements`` list."""
     future: list[Any] = v.get("future_enhancements", [])
     if future:
         lines.append("**Future Enhancements:**")
@@ -553,6 +588,9 @@ def _format_vision_as_text(
             _render_feature_item(feat, lines)
         lines.append("")
 
+
+def _render_monetization(v: dict[str, Any], lines: list[str]) -> None:
+    """The ``monetization`` block, string- or dict-shaped."""
     raw_monetization = v.get("monetization", {})
     monetization: dict[str, Any] = (
         raw_monetization if isinstance(raw_monetization, dict) else {}
@@ -569,11 +607,6 @@ def _format_vision_as_text(
         for opt in future_opts:
             lines.append(f"- Future: {opt}")
         lines.append("")
-
-    render_references(v.get("references", []), lines)
-
-    lines.append(footer)
-    return "\n".join(lines)
 
 
 def _vision_fallback_display(vision: dict[str, Any]) -> str:

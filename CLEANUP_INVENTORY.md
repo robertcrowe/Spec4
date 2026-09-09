@@ -4906,3 +4906,78 @@ only; no code, no import, no `__all__` entry.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 170.08s` (exit 0) |
 | Coverage | same run | `TOTAL 11934 stmts, 893 miss, 93%` |
+
+## 30. Phase 5c — `_format_vision_as_text` decomposed into 8 section renderers
+
+`src/spec4/agents/brainstormer.py` only. Extract-only. No other file changed.
+
+### 30.1 Before and after
+
+| | C901 | PLR0912 | non-blank lines |
+|---|---:|---:|---:|
+| `_format_vision_as_text` before | **16** | **15** | 61 |
+| `_format_vision_as_text` after | 2 | — | 18 |
+
+The spine is now the `vision_statement` / `vision` unwrap (including the
+`isinstance(raw_v, dict)` guard that keeps a string vision working), `lines = []`,
+eight calls, `render_references` and the footer.
+
+`brainstormer.py` still reports `run` at C901 20 / PLR0912 22 / PLR0915 79. That is
+**5j's** target, untouched here (rule 7).
+
+### 30.2 The 8 helpers, in call order
+
+| Helper | Block | Lines |
+|---|---|---:|
+| `_render_vision_header(vs, lines)` | the `**Vision Statement**` heading | 6 |
+| `_render_vision_purpose(raw_v, v, lines)` | bare-string vision, else `purpose` | 6 |
+| `_render_ui_surface(v, lines)` | `ui_surface` | 4 |
+| `_render_target_audience(v, lines)` | `target_audience` | 8 |
+| `_render_key_features(v, lines)` | `key_features_mvp` | 8 |
+| `_render_differentiators(v, lines)` | `differentiators` | 8 |
+| `_render_future_enhancements(v, lines)` | `future_enhancements` | 8 |
+| `_render_monetization(v, lines)` | `monetization`, string- or dict-shaped | 18 |
+
+Seven take `(v, lines)` — `v` is the value every block reads, so this is the
+`_render_x(value, lines)` shape the file already uses for `_render_feature_item` and
+`render_references`. Two exceptions, both forced by what the block actually reads:
+`_render_vision_header` takes `vs` (the name lives on the outer statement, not on `v`),
+and `_render_vision_purpose` takes `(raw_v, v)` because its `isinstance(raw_v, str)`
+branch is what makes a string-shaped vision render at all.
+
+### 30.3 Line accounting (rule 3)
+
+61 non-blank lines in the old `_format_vision_as_text`. **All 61 appear verbatim** in
+the new code — no re-wrap, no folded assignment, nothing to explain. The eight calls run
+in the order the eight blocks ran; `render_references` and `lines.append(footer)` are
+still the last two statements of the spine.
+
+### 30.4 Statement counts add up (rule 4)
+
+Suite-wide statements **11934 → 11950, +16**: 8 new `def` lines + 8 new calls. Misses
+held at **893**.
+
+### 30.5 Verification beyond the gate
+
+- **`tests/test_renderer_goldens.py` passes unmodified** — `TestVisionRenderer`'s four
+  tests against `render_vision_full.md`, `render_vision_strings.md`,
+  `render_vision_no_name.md` and `render_vision_review_footer.md`. The last of those
+  drives the `footer` parameter, which the spine still threads to `lines.append(footer)`.
+- No test file was edited (rule 2). Neither layouts nor callbacks are touched, so the id
+  snapshot and the 92-callback registry are untouched by construction.
+- `_VISION_TRANSITION` and every `**Header:**` literal moved verbatim (rule 5).
+
+### 30.6 Deferred / not acted on
+
+- `brainstormer.run` (C901 20 / PLR0912 22 / PLR0915 79, 227 lines) — **5j**.
+- No `# noqa` was needed.
+
+### 30.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 169.51s` (exit 0) |
+| Coverage | same run | `TOTAL 11950 stmts, 893 miss, 93%` |
