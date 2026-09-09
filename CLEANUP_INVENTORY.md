@@ -2397,3 +2397,216 @@ already formatted` is §18.7's 198 plus four new modules minus the deleted one;
 `74 source files` is mypy's 71 by the same arithmetic. Statements rose
 11781 → 11792 (+11, the façade's imports and `__all__`) and misses held at 893,
 so no per-module floor moved.
+
+## 20. Phase 4e — `agents/phaser.py` split into the package `agents/phaser/`
+
+Recorded 2026-09-08 on branch `look-rework`. One module became a four-file
+package; **no importer anywhere changed, no test file was edited, and
+`pyproject.toml` is untouched** — the first package sub-phase to need no edit at
+all outside `src/spec4/agents/phaser/`. Nothing was written under `.spec4/`,
+`.venv/` or `.git/`, and no git command that mutates the repo was run.
+
+The third sub-phase to use the **package** form, following 4c and 4d exactly.
+`phaser.py` was deleted and `phaser/` created in its place, so the import path
+`spec4.agents.phaser` — the string `session.py:8,475` dispatches through, that
+`tests/test_agents.py`, `tests/test_stack_additions.py`,
+`tests/test_stream_status.py`, `tests/test_agent_llm_selection.py` and
+`evals/phaser/` use — is unchanged, and `from spec4.agents import phaser` still
+binds the same name to the same qualified module.
+
+### 20.1 Line counts of the four resulting files
+
+| File | Lines | Owns |
+|---|---:|---|
+| `agents/phaser/__init__.py` | 579 | façade + the agent turn loop: `run`, the seeds, the retry protocol, the re-exports and `__all__` |
+| `agents/phaser/_prompt.py` | 552 | the frozen `SYSTEM_PROMPT` and nothing else |
+| `agents/phaser/_phase_extract.py` | 261 | the JSON walk, both extractors, truncation/schema/completeness checks, the display renderer |
+| `agents/phaser/_revision.py` | 90 | the design-mock note, the revision delta and its phase-scoping note |
+| **total** | **1482** | was **1378** in one file (+104: four docstrings, four import blocks, the façade's re-export block and `__all__`) |
+
+As in 4c and 4d the largest file in the package is now the prompt, which is
+data. The largest *code* file is the façade at 579 lines, of which `run` is 493
+— and per §15.3 `run` stays whole; shrinking it is Phase 5's job, now with the
+prompt, the extractors and the revision helpers out of the file.
+
+### 20.2 The names moved to each
+
+All 12 top-level names are accounted for: 11 moved, 1 stayed. Nothing was
+dropped, added, renamed or defined twice — **no name changed spelling in 4e**,
+as in 4b, 4c and 4d. §15.4's decision 2 (public names plus underscore aliases)
+was 4a-specific and does not apply: the split creates **zero cross-module
+references between the three new siblings**. `_phase_extract` and `_revision` do
+not import each other, neither imports `_prompt`, and none imports the façade.
+
+**`_prompt.py`** — the frozen prompt (1): `SYSTEM_PROMPT`.
+
+**`_phase_extract.py`** — reply text → validated phase list (7):
+`_objects_with_key`, `_extract_and_strip_stack_additions`, `_extract_phases`,
+`_appears_truncated`, `_extract_and_validate_phases`,
+`_phase_completeness_failure`, `_format_phases_for_display`.
+
+`_format_phases_for_display` is the one placement §15.3's three-word summaries
+did not decide. It is neither extraction nor revision: it renders the extracted
+list as Markdown. It went here because it is the tail of the same pipeline —
+its argument is exactly `_extract_and_validate_phases`'s first return value, and
+`run` calls the two within four lines of each other — and because the
+alternative (leaving a three-line pure renderer in the façade) would have put
+the only non-turn-loop function back in the file the split exists to thin. Its
+one dependency, `project_manager.render_phase_markdown`, is the sole reason
+`_phase_extract` imports `project_manager`; that edge already existed in the
+pre-split module.
+
+**`_revision.py`** — deterministic seed material (3): `_load_phaser_design_note`,
+`revision_delta`, `build_revision_note`.
+
+`_load_phaser_design_note` is grouped with the revision pair, rather than left
+beside the seeds it feeds, because §15.3 assigns "design note" to `_revision`
+and because all three share the same shape: pure, deterministic reads of input
+that exists before the model is called, returning a bracketed note the seed
+builder concatenates. It is also the only filesystem read in the package.
+`revision_delta` and `build_revision_note` are the only public names in the
+package besides `run`; `test_agents.py` reaches `_load_phaser_design_note`
+through the façade at lines 2314-2333.
+
+**`__init__.py`** — stayed (1): `run`. Everything `run` does is the turn loop:
+the staleness/replay branch, the four seed variants, the stream, the
+stack-addition strip, the validation-retry drain (D-PH9), the seam check and
+coverage advisories, and the commit tail.
+
+`validate_phase` is re-exported from the façade without being used there. It was
+an attribute of the pre-split module, the code that used it
+(`_extract_and_validate_phases`) moved to a sibling, and listing it in `__all__`
+keeps `spec4.agents.phaser.validate_phase` resolving exactly as before (and
+keeps ruff from reading it as a dead import). Logged as a 4j candidate in §20.6.
+
+### 20.3 The resulting import graph
+
+```
+_prompt   _revision      _phase_extract → spec4.project_manager,
+     \        |          /                spec4.agents._phase_schema
+      \       |         /
+       phaser/__init__  (façade + run)
+           → spec4.{project_manager, llm, websearch}, spec4.agents._utils,
+             spec4.agents._phase_coverage, spec4.agents._phase_schema,
+             spec4.agents._seam_check, spec4.app_constants
+```
+
+Acyclic; `_prompt` imports nothing at all and `_revision` imports only stdlib.
+Every edge stays inside `spec4`, and the three new modules all match the
+`spec4.agents` prefix already in `_AGENT_SIDE`, so §15.2's four rules cover them
+without a change — the package-conversion case §15.2 anticipated, now exercised
+a third time. `tests/test_import_layering.py` was not edited and all 7 tests
+pass.
+
+No module in the package imports `layouts`, `callbacks`, `app` or `session`.
+
+### 20.4 How "no logic changes" was verified
+
+- **AST equality per definition.** All 12 top-level definitions were re-parsed
+  from their new home and `ast.dump`-compared against the same definition in
+  `HEAD:src/spec4/agents/phaser.py`: **12 matched exactly, 0 differing,
+  0 missing, 0 added, 0 renamed, 0 defined twice.** Definition order inside each
+  new file is the pre-split order untouched.
+- **`SYSTEM_PROMPT` byte-for-byte.** Compared as raw text (not AST), from
+  `SYSTEM_PROMPT = """\` through its closing `"""`, old file vs `_prompt.py`:
+  **identical, 32,614 characters.** It is the only string constant that moved,
+  so rule 4's "every string that ends up in an LLM prompt" is closed by that one
+  comparison.
+- **Attribute surface: 34 of the pre-split module's 36 attributes resolve.** The
+  36 are the 12 definitions plus every name the old import block bound. The two
+  that do not are `re` and `Path` — stdlib module objects that were imported
+  only for code that moved (`re.sub` in `_extract_and_strip_stack_additions`,
+  the `Path` annotation on `_load_phaser_design_note`), and that now live on the
+  sibling that needs them. Nothing in `src/`, `tests/`, `evals/` or `scripts/`
+  writes `phaser.re`, `phaser.Path`, or imports either name from the module —
+  grepped, zero hits. Every *`spec4`* name is preserved, which is why
+  `validate_phase` is re-exported (§20.2) rather than dropped with them; 4c set
+  the precedent for dropping a moved import from the façade
+  (`_render_coding_style`, §18) and 4d for keeping one (`_extract_json_block`,
+  §19.2), and 4e keeps the spec4 ones and drops the two stdlib ones.
+- **Both patch targets still bind what `run` reads.** `run_seam_check` is
+  imported into `__init__.py` as a bare global, so
+  `patch("spec4.agents.phaser.run_seam_check", …)` (8 sites in
+  `tests/test_agents.py`) still intercepts the call `run` makes; and `llm` is
+  still imported there, so `patch("spec4.agents.phaser.llm.stream_turn", …)`
+  (`tests/integration/test_pipeline_greenfield.py:202,289`) reaches the same
+  object. Both files pass unedited.
+- **§15.5 invariants.** `dash._callback.GLOBAL_CALLBACK_MAP` still holds **92**
+  callbacks after a fresh `spec4.app` import; `tests/test_streaming_characterization.py`
+  and `tests/test_layout_contract.py` were not edited.
+- **Formatting.** `ruff format` touched the two new sibling modules once, adding
+  a single blank line each after the import block (two lines before the first
+  `def`). Diffed before/after: **the only change in either file is that blank
+  line** — no code line moved, so the byte-for-byte claim survives the
+  formatter. Re-verified by re-running the AST comparison after formatting.
+- **Coverage attribution, not coverage loss.** The four files together are
+  313 stmts / 8 miss / 97%, against 301 / 8 / 97% for the single pre-split file.
+  Same 8 missed lines; the +12 statements are the façade's imports and `__all__`.
+  Suite-wide misses unchanged at 893.
+
+### 20.5 No forced edit outside `src/`
+
+Unlike 4c (a ruff glob in `pyproject.toml`) and 4d (a filesystem path in
+`test_stack_exemplar_demonstrates_linkage.py`), 4e forced nothing outside the
+package. Checked explicitly:
+
+- **No test reads `phaser.py` off disk.** The only prompt-source-reading test is
+  `test_stack_exemplar_demonstrates_linkage.py`, and it reads StackAdvisor's
+  prompt, not Phaser's. Grepped for `phaser.py` and `agents/phaser` across all
+  of `src/`, `tests/`, `evals/` and `scripts/`: zero path references.
+- **`pyproject.toml` needed no change.** 4c already widened the ruff
+  per-file-ignore to `"src/spec4/agents/**/*.py"`, which covers the nested
+  `_prompt.py`; `uv run ruff check src/ tests/` passes with the frozen prompt's
+  long lines in place.
+- Every `phaser.<name>` reference in the repo resolves through the façade, so no
+  import statement anywhere changed.
+
+### 20.6 Deferred / not acted on
+
+- **`run` is 493 lines** (§5.1 lists it at C901 33, the repo's fourth worst
+  function, with 148 statements and 37 branches).
+  4e moved everything around it; it did not shrink it, per §15.3's "`run` stays
+  whole — shrinking it is Phase 5". It is now the only function in
+  `__init__.py`, which is what this sub-phase was for.
+- **§17.5's `_AGENT_SIDE` gap is still open.** 4b's four flat siblings
+  (`spec4._paths`, `spec4._artifacts`, `spec4._phase_markdown`, `spec4._usage`)
+  remain outside the layering contract's agent-side prefix set. As in 4c and 4d,
+  a package under `spec4.agents` is already covered by the existing prefix, so
+  4e did not force it either; under rule 7 it stays a four-string edit to
+  `tests/test_import_layering.py` for **4j**.
+- **`README.md:226`'s project-structure tree still lists `agents/phaser.py`**,
+  alongside the `agents/code_scanner.py` and `agents/stack_advisor.py` entries
+  §18.6 and §19.6 already flagged. Phase 7 owns the tree; three lines, one edit.
+  `tests/README.md:12` also lists `spec4/agents/phaser.py` with stale line
+  numbers — already flagged for Phase 7 at §11 and line 1092.
+- **4j owns the importer cleanup for this package.** There are no aliases to
+  retire. The candidates: nothing outside the package imports or reaches
+  `_objects_with_key`, `_extract_and_validate_phases`, `_format_phases_for_display`
+  or `validate_phase` by name, so those four `__all__` entries exist only to
+  preserve the pre-split attribute surface and can be trimmed once 4j confirms
+  it. The names that *are* reached from outside — `run`, `_extract_phases`,
+  `_extract_and_strip_stack_additions`, `_appears_truncated`,
+  `_load_phaser_design_note`, `_phase_completeness_failure` (all from `tests/`;
+  all by direct `from spec4.agents.phaser import …` except `_appears_truncated`,
+  which `test_phaser_seed_inputs.py:155,156,162` reaches as an attribute on the
+  façade — as it does `SYSTEM_PROMPT` at :201,247), plus the two public ones
+  (`revision_delta`, `build_revision_note`) and `SYSTEM_PROMPT` — stay. Logged
+  as Phase 2-style candidates, not deleted.
+- Nothing new for *Bugs found (not fixed)*.
+
+### 20.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Layering | `uv run pytest tests/test_import_layering.py -q` | `7 passed` (exit 0) |
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `204 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 77 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 163.71s (0:02:43)` (exit 0) |
+| Coverage | same run | `TOTAL 11804 stmts, 893 miss, 92%` |
+
+Test count is unchanged at 4256 — 4e adds no test and removes none. `204 files
+already formatted` is §19.7's 201 plus four new modules minus the deleted one;
+`77 source files` is mypy's 74 by the same arithmetic. Statements rose
+11792 → 11804 (+12, the façade's imports and `__all__`) and misses held at 893,
+so no per-module floor moved.
