@@ -142,7 +142,7 @@ class TestItRendersExactlyTheSevenAgents:
         list does not. This is the drift the phase's mitigation names, and a
         test listing the seven current names would not catch it.
         """
-        import spec4.layouts._chat as chat
+        import spec4.layouts._chat_status as chat
 
         monkeypatch.setattr(chat, "AGENT_KEYS", (*AGENT_KEYS, "auditor"))
         monkeypatch.setattr(
@@ -306,7 +306,7 @@ class TestItIsTheSharedRendererAndNothingMoved:
         The renderer is replaced with a sentinel: a chat frame that still drew
         its own labels would return the real row and never notice.
         """
-        import spec4.layouts._chat as chat
+        import spec4.layouts._chat_status as chat
 
         seen: dict[str, Any] = {}
 

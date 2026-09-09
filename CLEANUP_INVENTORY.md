@@ -1105,7 +1105,7 @@ Observations for Phase 6:
 - Resolved before Phase 2: `.coverage` is untracked (commit `f859376`) and listed in `.gitignore`; the pytest rewrite-in-place no longer dirties the tree.
 - Phase 2: `dash-iconify` removal from `[project.dependencies]` + mypy override; `download_button_id`; `CODE_REVIEW_SCHEMA_VERSION`; the `valid_tier_names` parameter; `PatternBase`/`PriorityEdits` visibility; the 15 public zero-importer names in §7; the 22 test-side vulture lines.
 - ~~Phase 3: the eight items in §8.~~ **Done (2026-09-08), §14.** All eight are category (a); the one (c) found was `version_check._reset_cache`, which moved to a fixture.
-- Phase 4: break the `layouts` ↔ `layouts._chat` cycle (scheduled: sub-phase 4f, §15.3); ~~decide the fate of `session.py` as the UI/agent hinge~~ **decided (2026-09-08, §15.3): keep it, not a Phase 4 split — its issue is layering, not size**; ~~write the import-assertion test (§6.3)~~ **done (2026-09-08), `tests/test_import_layering.py`, §15**; split the eight files over 1,300 lines (order proposed in §15.3, starting at 4a).
+- Phase 4: ~~break the `layouts` ↔ `layouts._chat` cycle~~ **done (2026-09-08), §21** — the package import in `_chat.py` became a sibling import of `_llm_gate`; the whole of `src/spec4/` is now acyclic; ~~decide the fate of `session.py` as the UI/agent hinge~~ **decided (2026-09-08, §15.3): keep it, not a Phase 4 split — its issue is layering, not size**; ~~write the import-assertion test (§6.3)~~ **done (2026-09-08), `tests/test_import_layering.py`, §15**; split the eight files over 1,300 lines (order proposed in §15.3, starting at 4a).
 - Phase 5: the 61 C901 functions, starting with the table in §5.1; the 26 small SIM/B hits; the remaining renderer/artifact cosmetics in §12.4 (items 2, 3, 6, 7 and the open halves of 4 and 5) (goldens in `tests/golden/` pin the current output, so each fix is a deliberate golden update).
 - Phase 6: consolidate `test_deployer_*` / `test_phaser_*` / `test_stack_*`; split `test_agents.py`; run `--durations`; the 162 test-side ARG hits are not targets; the screen-registry overlap in §12.5.
 - Phase 7: rewrite `tests/README.md`; rerun every command in this file and diff against the numbers here.
@@ -2610,3 +2610,227 @@ already formatted` is §19.7's 201 plus four new modules minus the deleted one;
 `77 source files` is mypy's 74 by the same arithmetic. Statements rose
 11792 → 11804 (+12, the façade's imports and `__all__`) and misses held at 893,
 so no per-module floor moved.
+
+## 21. Phase 4f — `layouts/_chat.py` split into three siblings, and the cycle closed
+
+Recorded 2026-09-08 on branch `look-rework`. Four files under `src/spec4/layouts/`
+changed or added; **one test file edited — two import paths in
+`tests/test_chat_pill_bar.py`, the edit §15.3's 4f entry anticipated and the task
+permitted.** No other importer anywhere changed, `pyproject.toml` is untouched.
+Nothing was written under `.spec4/`, `.venv/` or `.git/`, and no git command was
+run.
+
+Unlike 4c–4e, this is a **flat sibling split, not a package conversion** — the
+`_prompt.py` collision that forced packages under `agents/` has no analogue here,
+`layouts/` is already a package, and `_chat_status` / `_chat_actions` /
+`_chat_panels` are the names §15.3 proposed.
+
+### 21.1 Line counts
+
+| File | Lines | Before |
+|---|---:|---:|
+| `_chat.py` (façade) | 260 | 997 |
+| `_chat_status.py` | 148 | — |
+| `_chat_actions.py` | 455 | — |
+| `_chat_panels.py` | 289 | — |
+| **total** | **1152** | **997** |
+
+The +155 is compatibility layer and prose: the façade's three import blocks and
+24-name `__all__`, four module docstrings, and the import header each new module
+needs. No definition grew or shrank by a line — every one moved byte-for-byte
+(§21.4), and the only body edit in the whole sub-phase is the three call sites
+the cycle fix required (§21.3).
+
+### 21.2 The names moved to each
+
+All 24 top-level definitions are accounted for: 23 moved, 1 stayed. Nothing was
+dropped, added, or renamed — **no name changed spelling in 4f**, as in 4b–4e.
+§15.4's decision 2 (public names plus underscore aliases) was 4a-specific and
+does not apply: the split creates **zero cross-module private references between
+the three new siblings** — none of them imports either of the others, and none
+imports the façade. The only private imports are the façade's own re-exports,
+which is the same shape 4b–4e shipped.
+
+**`_chat_status.py`** — the strip above the transcript (6): `_PILL_BASE`,
+`_PILL_ACTIVE`, `_PILL_DONE`, `_PILL_UNREACHABLE`, `_completed_agents`,
+`_agent_status_bar`. The 11-line comment block above the four `_PILL_*`
+constants moved with them.
+
+**`_chat_actions.py`** — the action row and the ids its controls carry (13):
+`_TOKEN_COUNTER_AGENTS`, `_streamed_token_count`, `_token_count_text`,
+`_NO_TOKEN_COUNT`, `_NO_CALLS_RECORDED`, `_turn_token_text`, `CHAT_ARTIFACTS`,
+`DOWNLOAD_BTN_PREFIX`, `OPEN_BTN_PREFIX`, `open_button_id`, `_open_button`,
+`_ff_controls`, `_chat_action_buttons`. The four token/counter helpers are here
+rather than in `_chat_status` because `_chat_action_buttons` is their only
+caller — the counter is a component *of* the row, and §15.3's "the strip above
+the transcript" is the pill bar, which reads none of them. The banner comment
+"Downloadable artifacts, and the Open control beside each Download" moved with
+its block, as did the 38-line D-AR1/D-LR8 comment above `_chat_action_buttons`.
+
+**`_chat_panels.py`** — the optional blocks between transcript and composer (4):
+`_RUN_COMPLETE`, `_cost_summary`, `_retry_panel`, `_breadth_panel`.
+§15.3's three-word summary for this module names only the last two; `_cost_summary`
+(and the `_RUN_COMPLETE` table only it reads) is placed here because it has the
+identical contract — `(session) -> Any | None`, `None` when inactive, spliced by
+the frame with `*([x] if x is not None else [])` — and because the task's
+"`_chat.py` keeps `_chat_layout` and the re-exports" leaves it nowhere else to
+go. It is the one placement in 4f not spelled out in advance.
+
+**Stayed in `_chat.py`** (1): `_chat_layout`. It is the one function that
+assembles the three into a screen and belongs to none of them.
+
+**Dropped from the façade: 22 imported names, 0 definitions.** They are names
+`_chat.py` imported for code that moved, and each now lives on the sibling that
+uses it: `AGENT_KEYS`, `PHASES_DIR`, the six `STATE_*_COMPLETE` constants, the
+four `STEP_*` constants, `StepEntry`, `step_modifier_class`, `step_row`,
+`_validate_agent_preconditions`, `project_manager`, `llm_selection`,
+`run_cost_strip`, `close_selection`, `pool_from_dicts`, and `_llm_gate` itself.
+4c set the precedent for dropping a moved import from the façade
+(`_render_coding_style`, §18) and 4e for dropping two (`re`, `Path`, §20.4).
+Two of the 22 are reached by name from outside — `AGENT_KEYS` and `step_row`,
+both monkeypatched — and that is the whole of the test edit (§21.5).
+`AGENT_DISPLAY_NAMES` and `PROGRESS_CLASS_NAMES` are *not* in the 22:
+`_chat_layout` still reads both, so they stay bound on the façade.
+
+### 21.3 The cycle, and what replaced it
+
+§6.1's one cycle was a single line: `_chat.py:19`, `from spec4.layouts import
+_llm_gate`, against `layouts/__init__.py:42`'s import of `_chat`. It is now
+
+```python
+from spec4.layouts._llm_gate import gate_card, is_open, model_chip
+```
+
+and the three call sites lost their module prefix — `_llm_gate.is_open(…)` →
+`is_open(…)`, and likewise `gate_card` and `model_chip`. That is the **only**
+change to a function body in this sub-phase; diffed against `HEAD`,
+`_chat_layout` differs in exactly those three lines plus the one expression
+`ruff format` re-joined once `_llm_gate.` no longer pushed it over 88 columns.
+
+Rebuilding §6's edge set with the same `ast` walk afterwards: **`src/spec4/` is
+now acyclic — zero cycles across all 80 modules**, counting lazy imports.
+`spec4.layouts._chat` no longer has an edge to `spec4.layouts` at all, and the
+three new siblings add none: `_chat_status` → `_agent_rows`, `_shared`,
+`app_constants`, `project_manager`, `session`; `_chat_actions` →
+`app_constants`, `_round_tree`; `_chat_panels` → `app_constants`,
+`panel_closure`, `_round_cost`, `llm_selection`.
+
+`tests/test_import_layering.py` passes unedited (7 tests). It has no cycle rule
+— §15.2's four rules are about layer direction — so the acyclicity above is
+asserted here by measurement, not by the suite. Making it a fifth rule is
+**deferred**, and §21.6 says why it cannot be added today.
+
+### 21.4 Verification beyond the gate
+
+- **Byte-for-byte.** Every moved block was compared as raw text against the
+  `HEAD` blob at its original line range: `_chat_status.py` = old lines 36–50,
+  53–82, 85–144; `_chat_actions.py` = old lines 196–620 (one contiguous run —
+  the token helpers and the artifact/action block were already adjacent);
+  `_chat_panels.py` = old lines 147–193, 623–699, 702–830. All three matched
+  exactly, **after** `ruff format` ran. The formatter reported "1 file
+  reformatted, 3 files left unchanged" — the one file is the façade, for the
+  expression named in §21.3.
+- **Statement counts add up.** `coverage`'s own parser on the `HEAD` blob:
+  179 statements. The four files now: 23 + 34 + 100 + 43 = **200**, +21. The
+  suite-wide total moved 11804 → 11825, also +21, so **no other module's
+  statement count changed** and the +21 is entirely the façade's imports and
+  `__all__`.
+- **Coverage attribution, not coverage loss.** The four files together are
+  200 stmts / 1 miss / 99.5%, against 179 / 1 for the single pre-split file.
+  The one missed line is the same one: the empty-`messages` `return 0` in
+  `_streamed_token_count` (old `_chat.py:213`, now `_chat_actions.py:58`).
+  Suite-wide misses unchanged at **893**, so no per-module floor moved.
+- **Attribute surface: 24 of the pre-split module's 24 definitions resolve** on
+  `spec4.layouts._chat`, checked by importing it and `hasattr`-ing every
+  top-level name the old AST defined. The 22 that do not are the imports of
+  §21.2; grepped across `src/`, `tests/`, `evals/` and `scripts/` for every one
+  of them as `_chat.<name>` or `from spec4.layouts._chat import <name>` — two
+  hits, both the monkeypatch sites of §21.5, zero elsewhere.
+- **No importer changed.** The 18 names reached from outside the module
+  (`src/spec4/layouts/__init__.py`, `src/spec4/callbacks/__init__.py`, and 17
+  test modules) all resolve through the façade's `__all__`; `mypy --strict`
+  implies `no_implicit_reexport`, so that list is load-bearing rather than
+  decorative, exactly as in 4b.
+- **§15.5 invariants.** `dash._callback.GLOBAL_CALLBACK_MAP` still holds **92**
+  callbacks after a fresh `spec4.app` import; `tests/test_streaming_characterization.py`
+  and `tests/test_layout_contract.py` were **not** edited, and
+  `tests/test_layout_contract.py` (with the component-id snapshot it checks),
+  `tests/test_callback_co_presence.py`, `tests/test_chat_open_links.py` and
+  `tests/test_visual_register.py` pass unmodified — 175 tests.
+
+### 21.5 The one forced edit outside `src/`
+
+`tests/test_chat_pill_bar.py`, two lines, both the same statement:
+
+```
+-        import spec4.layouts._chat as chat
++        import spec4.layouts._chat_status as chat
+```
+
+at `:145` and `:309`. Both tests monkeypatch a *module global* that
+`_agent_status_bar` reads — `AGENT_KEYS` and `AGENT_DISPLAY_NAMES` in the first
+(the bar must walk the tuple rather than carry its own list), `step_row` in the
+second (the bar must go through the shared renderer, D-LR9) — so the patch has
+to land on the module the function now lives in. Nothing else in the file
+changed: the top-level `from spec4.layouts._chat import _PILL_*,
+_agent_status_bar` still resolves through the façade and was left alone, no
+assertion moved, and the local alias stays `chat` so the diff is the import path
+and nothing more. This is the "if a layout test needs an import path change"
+case the task named, and §15.3 anticipated for 4f.
+
+Checked and *not* forced: `pyproject.toml` (`layouts/` has no per-file-ignore to
+widen — and no new file needs one), `README.md:240` (the tree names `layouts/`
+as a directory, not its modules, so unlike 4c/4d/4e it does not go stale), and
+`tests/README.md` (no `_chat` entry). No test reads `_chat.py` off disk.
+
+### 21.6 Deferred / not acted on
+
+- **A fifth layering rule — "no module under `spec4.layouts.*` imports the
+  `spec4.layouts` package" — cannot be added yet.** One edge is left:
+  `layouts/designer.py:11`, `from spec4.layouts import _llm_gate`, the same
+  spelling 4f just removed from `_chat.py`. It is **not** a cycle today
+  (`layouts/__init__.py` does not import `designer`), which is why 4f did not
+  touch it under rule 7 — but it is the one line standing between the package
+  and a mechanically-enforced acyclicity. One-line change plus one rule, and it
+  belongs with `layouts/designer.py`'s own sub-phase or with **4j**. This is the
+  `layouts` analogue of §15.2's rule 4, which does the same job for `callbacks/`
+  from 4g.
+- **§17.5's `_AGENT_SIDE` gap is still open.** 4b's four flat siblings
+  (`spec4._paths`, `spec4._artifacts`, `spec4._phase_markdown`, `spec4._usage`)
+  remain outside the layering contract's agent-side prefix set — unchanged by
+  4f, which added no module under `spec4.agents`. Still a four-string edit to
+  `tests/test_import_layering.py` for **4j**.
+- **`_chat_action_buttons` is 215 lines** and is the sub-phase's largest moved
+  definition: six near-identical `elif active == …` arms, each rebuilding the
+  same `token_counter` `dmc.Text`. That is a Phase 5 finding (`C901`/`PLR0912`
+  shaped), logged not fixed — 4f moved it, it did not shrink it, exactly as
+  §15.3 says of `phaser.run`. It is now the only large function in its module.
+- **4j owns the importer cleanup for this façade.** There are no aliases to
+  retire. Two `src/` importers could move to the owning module —
+  `src/spec4/callbacks/__init__.py:30` (`CHAT_ARTIFACTS`, `OPEN_BTN_PREFIX`,
+  `open_button_id` → `_chat_actions`) and `src/spec4/layouts/__init__.py:42`
+  (`_agent_status_bar` → `_chat_status`, `_chat_action_buttons` →
+  `_chat_actions`) — and 17 test modules likewise. `_completed_agents`,
+  `_open_button`, `_ff_controls`, `_RUN_COMPLETE`, `_NO_TOKEN_COUNT` and
+  `_NO_CALLS_RECORDED` have no reader outside their own module at all, so those
+  six `__all__` entries exist only to preserve the pre-split attribute surface
+  and can be trimmed once 4j confirms it. Logged as Phase 2-style candidates,
+  not deleted.
+- Nothing new for *Bugs found (not fixed)*.
+
+### 21.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Layering | `uv run pytest tests/test_import_layering.py -q` | `7 passed` (exit 0) |
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `207 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 80 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 164.63s (0:02:44)` (exit 0) |
+| Coverage | same run | `TOTAL 11825 stmts, 893 miss, 92%` |
+
+Test count is unchanged at 4256 — 4f adds no test and removes none; the two
+edited lines are inside two existing tests. `207 files already formatted` is
+§20.7's 204 plus three new modules; `80 source files` is mypy's 77 by the same
+arithmetic. Statements rose 11804 → 11825 (+21, the façade's imports and
+`__all__`) and misses held at 893, so no per-module floor moved.
