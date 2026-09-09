@@ -410,7 +410,7 @@ def _welded_folds() -> list[tuple[int, str]]:
         Path(__file__)
         .resolve()
         .parents[1]
-        .joinpath("src/spec4/agents/stack_advisor.py")
+        .joinpath("src/spec4/agents/stack_advisor/_prompt.py")
         .read_text(encoding="utf-8")
     )
     raw = re.search(r'SYSTEM_PROMPT = """(.*?)"""', src, re.S).group(1)

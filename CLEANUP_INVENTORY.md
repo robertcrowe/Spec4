@@ -2183,3 +2183,217 @@ already formatted` is §17.6's 195 plus four new modules minus the deleted one;
 `71 source files` is mypy's 68 by the same arithmetic. Statements rose
 11771 → 11781 (+10, the façade's imports and `__all__`) and misses held at 893,
 so no per-module floor moved.
+
+## 19. Phase 4d — `agents/stack_advisor.py` split into the package `agents/stack_advisor/`
+
+Recorded 2026-09-08 on branch `look-rework`. One module became a four-file
+package; **no importer anywhere changed** and `pyproject.toml` is untouched.
+One test file changed by one line, and that line is a filesystem path, not an
+import — see §19.5. Nothing was written under `.spec4/`, `.venv/` or `.git/`,
+and no git command that mutates the repo was run.
+
+The second sub-phase to use the **package** form, following 4c exactly.
+`stack_advisor.py` was deleted and `stack_advisor/` created in its place, so the
+import path `spec4.agents.stack_advisor` — the string `session.py`'s dispatch,
+`test_agents.py`, `test_stack_shape_resilience.py`, `test_stack_persistence_block.py`,
+`test_stack_render_totality.py`, `test_stack_output_rendering.py`,
+`test_renderer_goldens.py`, `test_cross_cutting_relocation.py`,
+`test_stream_status.py`, `test_pipeline_greenfield.py` and five `evals/stack_advisor/`
+harnesses all use — is unchanged, and `from spec4.agents import stack_advisor`
+still binds the same name to the same qualified module.
+
+### 19.1 Line counts of the four resulting files
+
+| File | Lines | Owns |
+|---|---:|---|
+| `agents/stack_advisor/__init__.py` | 321 | façade + the agent turn loop: `run`, the four seeds, the re-exports and `__all__` |
+| `agents/stack_advisor/_prompt.py` | 641 | the frozen `SYSTEM_PROMPT` and nothing else |
+| `agents/stack_advisor/_render.py` | 423 | `_format_stack_as_text` + the two fall-through renderers + the id/coercion helpers |
+| `agents/stack_advisor/_stack_shape.py` | 172 | revision delta and note, shape normalisation, JSON extraction |
+| **total** | **1557** | was **1432** in one file (+125: four docstrings, four import blocks, the façade's re-export block and `__all__`) |
+
+As in 4c the largest file in the package is now the prompt, which is data. The
+largest *code* file is 423 lines, down from 1432 — and `_render.py` is exactly
+the file Phase 5 opens with, now isolated from the prompt, the seeds and the
+turn loop.
+
+### 19.2 The names moved to each
+
+All 19 top-level names are accounted for: 18 moved, 1 stayed. Nothing was
+dropped, added, or renamed — **no name changed spelling in 4d**, as in 4b and 4c.
+§15.4's decision 2 (public names plus underscore aliases) was 4a-specific and
+does not apply: the split creates **zero cross-module private references between
+the three new siblings**. `_stack_shape` and `_render` do not import each other,
+and neither imports the façade. Each has exactly one pre-existing private import
+from `spec4.agents._utils` — `_extract_json_block` and `_render_references`
+respectively — and both travelled with the function that already used them, so
+the plan's "no cross-module private imports" rule is satisfied without a rename.
+
+**`_prompt.py`** — the frozen prompt (1): `SYSTEM_PROMPT`.
+
+**`_stack_shape.py`** — reply → walkable `stack_spec` (5): `revision_delta`,
+`build_revision_note`, `_keyed_from_list`, `_normalise_stack_shape`,
+`_extract_stack_json`.
+
+`revision_delta` and `build_revision_note` are here rather than beside `run`
+because §15.3 assigns "revision note" to `_stack_shape`: both are deterministic
+reads of the vision's Brainstormer-stamped `revision_history`, they call nothing
+in the turn loop, and `run` reaches them the same way it reaches
+`_extract_stack_json`. They are the only two public names in the package besides
+`run`, and `test_agents.py:670-740` reaches both as `stack_advisor.<name>`
+through the façade.
+
+**`_render.py`** — `stack_spec` → transcript text (12): `_as_list`, `_as_ids`,
+`_scalar_text`, `_label`, `_ID_KEYS`, `_ID_LABELS`, `_render_any`,
+`_render_rest`, `_render_entry_links`, `_format_stack_as_text`,
+`_TOP_LEVEL_HANDLED`, `_render_library_entries`. Definition order inside the
+file is the pre-split order untouched, including `_TOP_LEVEL_HANDLED` and
+`_render_library_entries` sitting *after* the function that reads them — both
+are resolved at call time, and reordering them would not have been a byte-for-byte
+move.
+
+**`__init__.py`** — stayed (1): `run`. Everything `run` does is the turn loop:
+the staleness/resume/replay branch, the four seed variants, the stream, the
+artifact re-ask, and the D-SC18a render-before-commit tail.
+
+Two `_utils` names are re-exported from the façade without being used there —
+`_extract_json_block` and `_render_references`. They were attributes of the
+pre-split module, the code that used them moved to a sibling, and listing them
+in `__all__` keeps `spec4.agents.stack_advisor.<name>` resolving exactly as
+before (and keeps ruff from reading them as dead imports). Logged as 4j
+candidates in §19.6.
+
+### 19.3 The resulting import graph
+
+```
+_prompt   _stack_shape → spec4.agents._utils (_extract_json_block)
+     \         |
+      \        |         _render → spec4.agents._utils (_render_references)
+       \       |        /
+        stack_advisor/__init__  (façade + run)
+                → spec4.{project_manager, llm, websearch}, spec4.agents._utils,
+                  spec4.app_constants
+```
+
+Acyclic; `_prompt` imports nothing at all, and the three siblings have no edge
+to each other or to the façade. Every edge stays inside `spec4`, and the three
+new modules all match the `spec4.agents` prefix already in `_AGENT_SIDE`, so
+§15.2's four rules cover them without a change — the package-conversion case
+§15.2 anticipated and 4c first exercised. `tests/test_import_layering.py` was not
+edited and all 7 tests pass.
+
+No module in the package imports `layouts`, `callbacks`, `app` or `session`.
+
+### 19.4 How "no logic changes" was verified
+
+- **AST equality per definition.** All 19 top-level definitions were re-parsed
+  from their new home and `ast.dump`-compared against the same definition in
+  `HEAD:src/spec4/agents/stack_advisor.py`: **19 matched exactly, 0 missing,
+  0 added, 0 renamed, 0 defined twice.**
+- **`SYSTEM_PROMPT` byte-for-byte.** Compared as raw text (not AST), from
+  `SYSTEM_PROMPT = """\` through its closing `"""`, old file vs `_prompt.py`:
+  **identical, 46,476 characters.** It is the only string constant that moved,
+  so rule 4's "every string that ends up in an LLM prompt" is closed by that one
+  comparison. `test_stack_exemplar_demonstrates_linkage.py` (49 tests, all of
+  them prompt-text assertions) and `test_cross_cutting_relocation.py` agree.
+- **Attribute surface.** All **44** attributes of the pre-split module — the 19
+  definitions plus every name its import block bound — were enumerated from
+  `HEAD` and resolved against the imported package: **all 44 resolve.** Every
+  `stack_advisor.<name>` reference in `src/`, `tests/`, `evals/` and `scripts/`
+  was then enumerated and resolved the same way: `run`, `revision_delta`,
+  `build_revision_note`, `_format_stack_as_text` and `llm` — **all resolve.**
+  (The only unresolved matches are `stack_advisor.click`, `.locator`,
+  `.wait_for_url`, `.wait_for_selector` and `.eval_on_selector_all` in
+  `tests/integration/test_chat_frame_e2e.py`, where `stack_advisor` is a
+  Playwright `Page` fixture, not this module.)
+- **The two patch targets still bind what `run` reads.** `llm` is still imported
+  into `__init__.py`, so `patch("spec4.agents.stack_advisor.llm.stream_turn")`
+  (`test_pipeline_greenfield.py:190,267`) reaches the same object; and
+  `_format_stack_as_text` is imported into `__init__.py` as a bare global, so
+  `patch.object(stack_advisor, "_format_stack_as_text", …)`
+  (`test_stack_shape_resilience.py:197,209`) still intercepts the call `run`
+  makes. Both test files pass unedited.
+- **§15.5 invariants.** `dash._callback.GLOBAL_CALLBACK_MAP` still holds **92**
+  callbacks after a fresh `spec4.app` import; `tests/test_streaming_characterization.py`
+  and `tests/test_layout_contract.py` were not edited.
+- **`tests/test_renderer_goldens.py` passes unmodified** — 22 passed. It imports
+  `_format_stack_as_text` from `spec4.agents.stack_advisor` by name, through the
+  re-export, and every golden byte matches.
+- **Coverage attribution, not coverage loss.** The four files together are
+  412 stmts / 8 miss / 98%, against 401 / 8 / 98% for the single pre-split file.
+  Same 8 missed lines; the +11 statements are the façade's imports and `__all__`.
+  Suite-wide misses unchanged at 893.
+
+### 19.5 The one forced edit outside `src/`, and why
+
+`tests/test_stack_exemplar_demonstrates_linkage.py`, one line:
+
+```
+-        .joinpath("src/spec4/agents/stack_advisor.py")
++        .joinpath("src/spec4/agents/stack_advisor/_prompt.py")
+```
+
+`_welded_folds()` does not import the prompt — it reads the *source file* off
+disk and regexes `SYSTEM_PROMPT = """(.*?)"""` out of it, so that it can see the
+backslash line-continuations as written rather than the folded string. A path,
+not an import: the split moved the file, so the path had to follow or the test
+raised `FileNotFoundError` (it did, once, before the edit). The regex, the
+assertions and every other line of the file are untouched, and it passes 49/49
+against `_prompt.py` — which is the same argument as §18.5's ruff-glob change:
+a mechanical consequence of the file moving, not a change of scope.
+
+No other test, and no file under `src/`, references a `stack_advisor` path or
+import that the split invalidated. **`pyproject.toml` needed no change** — 4c
+already widened the ruff per-file-ignore to `"src/spec4/agents/**/*.py"`, which
+covers the nested `_prompt.py`. Verified both directions: it passes
+`uv run ruff check --select E501 …` under the project config, and the same file
+under `ruff check --isolated --select E501 --line-length 88` reports
+`Found 208 errors`.
+
+### 19.6 Deferred / not acted on
+
+- **`_format_stack_as_text` is 239 lines** (C901 61, §5.1's worst function in the
+  repo) **and `run` is 219.** 4d moved them; it did not shrink them. Decomposing
+  `_format_stack_as_text` is Phase 5's opening move and is now a single-file job
+  in `_render.py`, which is what §15.3 wanted from this sub-phase.
+- **§17.5's `_AGENT_SIDE` gap is still open.** 4b's four flat siblings
+  (`spec4._paths`, `spec4._artifacts`, `spec4._phase_markdown`, `spec4._usage`)
+  remain outside the layering contract's agent-side prefix set. §18.6 offered
+  4d or 4j as its home; 4d did not force it — a package under `spec4.agents` is
+  already covered by the existing prefix, exactly as in 4c — so under rule 7 it
+  stays a four-string edit to `tests/test_import_layering.py` for **4j**.
+- **Two documentation references to the deleted filename.** `README.md:225`'s
+  project-structure tree still lists `agents/stack_advisor.py` (it also still
+  lists `agents/code_scanner.py` from 4c), and `agents/_feature_context.py:183`'s
+  docstring points at ``stack_advisor.py``. Phase 7 owns the README tree; the
+  docstring is a 4j-or-Phase-7 one-word fix. Neither is load-bearing.
+- **4j owns the importer cleanup for this package.** There are no aliases to
+  retire. The candidates: nothing outside the package imports or reaches
+  `_as_ids`, `_as_list`, `_scalar_text`, `_label`, `_ID_KEYS`, `_ID_LABELS`,
+  `_render_any`, `_render_rest`, `_render_entry_links`, `_render_library_entries`,
+  `_TOP_LEVEL_HANDLED`, `_keyed_from_list`, `_extract_json_block` or
+  `_render_references` by name, so those 14 `__all__` entries exist only to
+  preserve the pre-split attribute surface and can be trimmed once 4j confirms
+  it. The five names that *are* reached from outside — `SYSTEM_PROMPT`,
+  `_format_stack_as_text`, `_extract_stack_json`, `_normalise_stack_shape`,
+  `run` — plus the two public ones reached by attribute (`revision_delta`,
+  `build_revision_note`) stay. Logged as Phase 2-style candidates, not deleted.
+- Nothing new for *Bugs found (not fixed)*.
+
+### 19.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Layering | `uv run pytest tests/test_import_layering.py -q` | `7 passed` (exit 0) |
+| Goldens | `uv run pytest tests/test_renderer_goldens.py -q` | `22 passed` (exit 0) |
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `201 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 74 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 167.28s (0:02:47)` (exit 0) |
+| Coverage | same run | `TOTAL 11792 stmts, 893 miss, 92%` |
+
+Test count is unchanged at 4256 — 4d adds no test and removes none. `201 files
+already formatted` is §18.7's 198 plus four new modules minus the deleted one;
+`74 source files` is mypy's 71 by the same arithmetic. Statements rose
+11781 → 11792 (+11, the façade's imports and `__all__`) and misses held at 893,
+so no per-module floor moved.
