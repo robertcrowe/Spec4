@@ -6069,3 +6069,141 @@ cover an unused-read, so this went through the ordinary revert-and-retry.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 175.31s` (exit 0) |
 | Coverage | same run | `TOTAL 12214 stmts, 893 miss, 93%` |
+
+## 39. Phase 5j — `agents/` orchestrators II: four files, 21 helpers, two functions left over threshold
+
+`designer.py`, `brainstormer.py`, `stack_advisor/__init__.py`,
+`code_scanner/__init__.py`. Extract-only. Rule 12 applied to all four `run`-shaped
+functions; **it resolved two of them and left two unresolved** — see 39.5, which is the
+finding.
+
+### 39.1 Before and after
+
+| File | Function | C901 | Br | St | → C901 | → Br | → St |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `designer.py` | `build_mock_prompt` | **16** | **16** | — | **clear** | — | — |
+| `designer.py` | `generate_mock_streaming` | **22** | **21** | **65** | **clear** | **clear** | **clear** |
+| `stack_advisor/__init__.py` | `run` | **12** | **14** | **59** | **clear** | **clear** | **clear** |
+| `code_scanner/__init__.py` | `run` | **14** | **16** | **71** | 12 | 13 | 59 |
+| `brainstormer.py` | `run` | **20** | **22** | **79** | 14 | 16 | **clear** |
+
+21 new module-level helpers: 8 in `designer.py`, 7 in `brainstormer.py`, 4 in
+`code_scanner`, 2 in `stack_advisor`.
+
+### 39.2 Rule 12 measurements
+
+| Function | planned | maximal | Disposition |
+|---|---|---|---|
+| `generate_mock_streaming` | C901 16 | **C901 clear** | maximal reduces → **maximal landed** |
+| `code_scanner.run` | C901 12 / Br 13 / St 59 | C901 12 / Br 13 / St 57 | maximal buys 2 statements, no complexity → **planned landed** |
+| `brainstormer.run` | C901 14 | (planned is maximal) | **landed**, still over |
+| `stack_advisor.run` | clear on the planned two cuts | not needed | **planned landed** |
+
+`generate_mock_streaming` is the case rule 12 was written to catch going the *other*
+way: its `while True:` retry loop looked yield-bound, but extracting the streamed
+tool-call accumulator (`_designer_accumulate_tool_calls`, 12 lines, 7 branches) took it
+from C901 16 to clear. Measuring beat assuming.
+
+### 39.3 The 21 helpers
+
+**`designer.py` (8).** `build_mock_prompt` → `_mock_existing_html_part`,
+`_mock_planning_parts`, `_mock_preference_and_screenshots`, `_mock_source_snippets`,
+`_mock_manifest_text`. `generate_mock_streaming` → `_designer_llm_config`,
+`_designer_accumulate_tool_calls`, `_designer_tool_call_followup`.
+
+**`brainstormer.py` (7).** `_brainstormer_seed_context`, the three seed arms
+(`_brainstormer_seed_from_vision`, `_brainstormer_seed_from_prior`,
+`_brainstormer_seed_from_review`), `_brainstormer_review_text`,
+`_brainstormer_reask_abandoned`, `_brainstormer_commit`.
+
+**`stack_advisor` (2).** `_stack_seed_message` (119 lines of seed assembly, entirely
+yield-free), `_stack_commit`.
+
+**`code_scanner` (4).** `_scanner_seed`, `_scanner_retry_prompt`,
+`_scanner_reask_failed`, `_scanner_commit`.
+
+Both `designer.py` PLR0913 signatures (13 and 6 arguments) carry the pre-approved arity
+noqa from 27.4, appended to the existing `def` line per rule 10.
+
+Rule 9: `generate_mock_streaming`'s `while True:` keeps its `break`, and the
+`continue` at the end of the tool-call branch stays in the caller's loop — the helper
+holds only the yield-free body above it. **No `continue` → `return` rewrite in 5j.**
+
+### 39.4 Coverage: 893 + 2 (rule 4, permitted case)
+
+| Site | Block it calls |
+|---|---|
+| `agents/designer.py:738` | `_designer_accumulate_tool_calls(...)`, inside `if tc_deltas:` |
+| `agents/designer.py:747` | `_designer_tool_call_followup(...)`, inside `if tool_call_acc:` |
+
+Both are **call statements at never-executed sites** — the two tool-call branches of the
+mock-generation stream are not exercised by the suite. That is exactly the case the
+amended rule 4 permits: the helper bodies were already missed, and the only new miss is
+the call statement. No other miss moved. The Phase 6 report re-baselines.
+
+Neither extraction was avoidable by preferring a covered-path block: they are the two
+that take `generate_mock_streaming` under threshold, and rule 4 explicitly forbids
+reaching for a noqa to dodge the count.
+
+### 39.5 Two functions remain over threshold, and rule 12 does not cover them
+
+| Function | after | why it is stuck |
+|---|---|---|
+| `brainstormer.run` | C901 14 / Br 16 | 4-arm seed chain whose `else` yields a greeting and returns; 5 guards that each front a yield+return |
+| `code_scanner.run` | C901 12 / Br 13 / St 59 | 4 guards fronting yield+return, plus a scan narration of interleaved yields with almost no extractable block between them |
+
+Rule 12 grants its noqa only when **both** conditions hold: the maximal build does not
+reduce C901 **and** every remaining branch guards a `yield` or a generator `return`.
+
+- `brainstormer.run` fails the second condition: `if "brainstormer_messages" not in
+  session:`, the three seed arms and the final `if vision:` guard no yield.
+- `code_scanner.run` fails the second condition too, for the same kind of branch, and
+  its maximal build does not reduce C901 either.
+
+So neither gets a noqa, and neither reaches threshold. **This matters for 5p**: the
+permanent ruff config is still `select = ["E", "F"]`, so C901 is not in the gate today —
+which is why `uv run ruff check src/ tests/` passes with both functions at 12 and 14.
+**The moment 5p promotes `C90` and `PLR`, these two fail.** 5p cannot complete without a
+decision on them.
+
+Three options, recorded here rather than chosen unilaterally: extend rule 12's second
+condition to "every remaining branch guards a yield, a generator return, **or is an
+entry guard on a generator turn**"; grant these two functions the same noqa explicitly
+as 27.4 entries seven and eight; or convert both to sub-generators under the existing
+backlog entry alongside `deployer.run`.
+
+### 39.6 Line accounting (rule 3)
+
+**856 non-blank lines** across the five functions; **831 verbatim**; 25 accounted:
+
+| Function | nb | verbatim | other |
+|---|---:|---:|---:|
+| `build_mock_prompt` | 96 | 95 | 1 — the `def` line, now carrying the arity noqa |
+| `generate_mock_streaming` | 139 | 138 | 1 — same |
+| `brainstormer.run` | 227 | 210 | 17 |
+| `stack_advisor.run` | 208 | 202 | 6 |
+| `code_scanner.run` | 186 | 186 | 0 |
+
+`brainstormer.run`'s 17: the `vision`/`prior_vision`/`code_review`/`code_review_block`
+reads now returned as a tuple from `_brainstormer_seed_context` and unpacked at the call
+site (4 + the unpack), the three seed-arm bodies' call lines, and `ruff format` re-wraps
+of the `msgs.append(...)` calls after dedent. `stack_advisor.run`'s 6: the
+`messages.append({"role": "user", "content": seed})` line, now taking
+`_stack_seed_message(session)` as its content expression, plus five re-wraps.
+
+**No statement line is unaccounted for.**
+
+### 39.7 Statement counts (rule 4)
+
+Suite-wide **12214 → 12263, +49**: 21 new `def`s, 21 new call/assignment sites, 7 new
+`return`s. Misses **895 = 893 + 2**, both accounted in 39.4.
+
+### 39.8 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 171.62s` (exit 0) |
+| Coverage | same run | `TOTAL 12263 stmts, 895 miss, 93%` |

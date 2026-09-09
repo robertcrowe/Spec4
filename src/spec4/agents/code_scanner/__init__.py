@@ -249,11 +249,7 @@ def run(
             pre_stream_chars += len(count_line)
             yield count_line
 
-            if existing_review is not None:
-                seed = _build_update_scan_seed(working_dir, existing_review, all_files)
-            else:
-                seed = _build_fresh_scan_seed(working_dir, all_files)
-            msgs.append({"role": "user", "content": seed})
+            seed = _scanner_seed(msgs, working_dir, existing_review, all_files)
 
             # D-SC-P2: what follows is a single completion call, and the wait
             # before its first token is dominated by prefill over this request.
@@ -309,10 +305,9 @@ def run(
         # surfacing the specific errors back to the model. On providers
         # that support it, force json_object mode so the retry response
         # is pure JSON instead of prose-wrapped re-explanation.
-        retry_user_msg = format_validation_errors_for_retry(errors)
-        response_format: dict[str, Any] | None = None
-        if llm.supports_response_format(llm_config.get("model", "")):
-            response_format = {"type": "json_object"}
+        retry_user_msg, response_format = _scanner_retry_prompt(
+            msgs, errors, llm_config
+        )
         # The re-ask drains silently — its body is raw or fenced JSON the user
         # should never see — while publishing the running char total so the
         # counter does not freeze for its duration (D-SC-P1 / D-PH9).
@@ -332,26 +327,66 @@ def run(
         )
         review, _ = _extract_and_validate_review(last_assistant_text(msgs))
         if review is None:
-            # Retry failed too. Drop the synthesized correction exchange so the
-            # chat history does not carry a dead-end user turn, surface a brief
-            # recoverable message in place of the bad JSON, and leave
-            # code_scanner_state untouched so the user can re-engage by chatting.
-            abandon_reask(
-                msgs,
-                retry_user_msg,
-                "I tried to emit the structured review but it didn't pass "
-                "validation. Please point me to the section to correct, "
-                "or reply 'try again' and I'll re-emit it.",
-                session,
-            )
+            _scanner_reask_failed(session, msgs, retry_user_msg)
 
     if review:
         # D-SC18a: render before committing state — the COMPLETE flag gates the
         # save in session.py, so a formatter failure after it persists the output
         # of a crashed turn. See the stack_advisor note for the observed case.
-        display = _format_review_as_text(review)
-        session["code_scanner_state"] = STATE_REVIEW_COMPLETE
-        session["code_review"] = review
-        msgs[-1]["content"] = display
-        session["_display_override"] = display
-        session["code_scanner_artifact_msg_count"] = len(msgs)
+        _scanner_commit(session, msgs, review)
+
+
+def _scanner_seed(
+    msgs: list[dict[str, Any]],
+    working_dir: Any,
+    existing_review: Any,
+    all_files: list[Any],
+) -> str:
+    """Build and append the scan seed; re-scan variant when a prior review exists."""
+    if existing_review is not None:
+        seed = _build_update_scan_seed(working_dir, existing_review, all_files)
+    else:
+        seed = _build_fresh_scan_seed(working_dir, all_files)
+    msgs.append({"role": "user", "content": seed})
+    return seed
+
+
+def _scanner_retry_prompt(
+    msgs: list[dict[str, Any]], errors: list[Any], llm_config: dict[str, Any]
+) -> tuple[str, dict[str, Any] | None]:
+    """The retry message and response format for a schema-failed review."""
+    retry_user_msg = format_validation_errors_for_retry(errors)
+    response_format: dict[str, Any] | None = None
+    if llm.supports_response_format(llm_config.get("model", "")):
+        response_format = {"type": "json_object"}
+    return retry_user_msg, response_format
+
+
+def _scanner_reask_failed(
+    session: dict[str, Any], msgs: list[dict[str, Any]], retry_user_msg: str
+) -> None:
+    """The re-ask also failed: surface a recoverable message."""
+    # Retry failed too. Drop the synthesized correction exchange so the
+    # chat history does not carry a dead-end user turn, surface a brief
+    # recoverable message in place of the bad JSON, and leave
+    # code_scanner_state untouched so the user can re-engage by chatting.
+    abandon_reask(
+        msgs,
+        retry_user_msg,
+        "I tried to emit the structured review but it didn't pass "
+        "validation. Please point me to the section to correct, "
+        "or reply 'try again' and I'll re-emit it.",
+        session,
+    )
+
+
+def _scanner_commit(
+    session: dict[str, Any], msgs: list[dict[str, Any]], review: dict[str, Any]
+) -> None:
+    """Render first, then commit the review to the session."""
+    display = _format_review_as_text(review)
+    session["code_scanner_state"] = STATE_REVIEW_COMPLETE
+    session["code_review"] = review
+    msgs[-1]["content"] = display
+    session["_display_override"] = display
+    session["code_scanner_artifact_msg_count"] = len(msgs)

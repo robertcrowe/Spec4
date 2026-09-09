@@ -395,7 +395,7 @@ _MANIFEST_REFINE_NOTE = (
 )
 
 
-def build_mock_prompt(
+def build_mock_prompt(  # noqa: PLR0913  # the mock-generation contract, shared verbatim with callbacks/designer/_mock_gen.py
     session: DesignerSession,
     ui_source_snippets: list[str],
     image_support: bool,
@@ -406,6 +406,35 @@ def build_mock_prompt(
     """Construct the LiteLLM messages list for mock generation or refinement."""
     parts: list[dict[str, object]] = []
 
+    _mock_existing_html_part(parts, existing_html)
+    _mock_planning_parts(parts, planning_context)
+    _mock_preference_and_screenshots(parts, session, image_support)
+    _mock_source_snippets(parts, existing_html, ui_source_snippets, capture_mode)
+    if existing_html:
+        instruction = _HTML_REFINEMENT_INSTRUCTION
+        system = _SYSTEM_PROMPT_REFINE
+    elif capture_mode:
+        instruction = _HTML_CAPTURE_INSTRUCTION
+        system = _SYSTEM_PROMPT_CAPTURE
+    else:
+        instruction = _HTML_INSTRUCTION
+        system = _SYSTEM_PROMPT
+    parts.append({"type": "text", "text": instruction})
+    # Every draw is manifest-bearing (D-DM9). The mode-specific note comes
+    # after the shared schema; a refine is a refine even if the flag is set.
+    manifest_text = _MANIFEST_INSTRUCTION
+    manifest_text = _mock_manifest_text(existing_html, capture_mode)
+    parts.append({"type": "text", "text": manifest_text})
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": parts},
+    ]
+
+
+def _mock_existing_html_part(
+    parts: list[dict[str, object]], existing_html: str | None
+) -> None:
+    """The existing-mock part, on a refine draw."""
     if existing_html:
         parts.append(
             {
@@ -418,6 +447,12 @@ def build_mock_prompt(
                 ),
             }
         )
+
+
+def _mock_planning_parts(
+    parts: list[dict[str, object]], planning_context: dict[str, Any] | None
+) -> None:
+    """Vision, feature-spec and AI-feature planning parts."""
     if planning_context and planning_context.get("vision_statement"):
         from spec4.agents._feature_context import slim_vision_framing
 
@@ -458,12 +493,26 @@ def build_mock_prompt(
                 }
             )
 
+
+def _mock_preference_and_screenshots(
+    parts: list[dict[str, object]], session: DesignerSession, image_support: bool
+) -> None:
+    """The developer's preference text and any screenshots."""
     if session["preference_text"]:
         parts.append({"type": "text", "text": session["preference_text"]})
     if image_support and session["screenshots"]:
         for shot in session["screenshots"]:
             parts.append({"type": "image_url", "image_url": {"url": shot["data"]}})
             parts.append({"type": "text", "text": f"Note: {shot['annotation']}"})
+
+
+def _mock_source_snippets(
+    parts: list[dict[str, object]],
+    existing_html: str | None,
+    ui_source_snippets: list[str],
+    capture_mode: bool,
+) -> None:
+    """UI source snippets, on a first draw only."""
     if not existing_html and ui_source_snippets:
         combined = "\n\n".join(
             f"--- UI Source Snippet ---\n{s}" for s in ui_source_snippets
@@ -474,28 +523,89 @@ def build_mock_prompt(
             else "Existing UI code for reference (use as starting point):\n\n"
         )
         parts.append({"type": "text", "text": label + combined})
-    if existing_html:
-        instruction = _HTML_REFINEMENT_INSTRUCTION
-        system = _SYSTEM_PROMPT_REFINE
-    elif capture_mode:
-        instruction = _HTML_CAPTURE_INSTRUCTION
-        system = _SYSTEM_PROMPT_CAPTURE
-    else:
-        instruction = _HTML_INSTRUCTION
-        system = _SYSTEM_PROMPT
-    parts.append({"type": "text", "text": instruction})
-    # Every draw is manifest-bearing (D-DM9). The mode-specific note comes
-    # after the shared schema; a refine is a refine even if the flag is set.
+
+
+def _mock_manifest_text(existing_html: str | None, capture_mode: bool) -> str:
+    """The manifest instruction plus its mode-specific note (D-DM9)."""
     manifest_text = _MANIFEST_INSTRUCTION
     if existing_html:
         manifest_text += _MANIFEST_REFINE_NOTE
     elif capture_mode:
         manifest_text += _MANIFEST_CAPTURE_NOTE
-    parts.append({"type": "text", "text": manifest_text})
-    return [
-        {"role": "system", "content": system},
-        {"role": "user", "content": parts},
-    ]
+    return manifest_text
+
+
+def _designer_tool_call_followup(
+    messages: list[dict[str, Any]],
+    tool_call_acc: dict[int, dict[str, str]],
+    full_text: str,
+    search_config: Any,
+) -> None:
+    """Append the assistant tool_calls turn and each tool result."""
+    messages.append(
+        {
+            "role": "assistant",
+            "content": full_text or None,
+            "tool_calls": [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tc["name"],
+                        "arguments": tc["arguments"],
+                    },
+                }
+                for tc in tool_call_acc.values()
+            ],
+        }
+    )
+    for tc in tool_call_acc.values():
+        logger.debug("Tool call: %s args=%s", tc["name"], tc["arguments"])
+        if tc["name"] == "web_search":
+            try:
+                query = json.loads(tc["arguments"]).get("query", "")
+            except (json.JSONDecodeError, KeyError):
+                query = tc["arguments"]
+            logger.debug("Web search: %r", query)
+            result = web_search(query, search_config)
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": result,
+                }
+            )
+
+
+def _designer_accumulate_tool_calls(
+    tool_call_acc: dict[int, dict[str, str]], tc_deltas: Any
+) -> None:
+    """Accumulate streamed tool-call deltas by index."""
+    for tc in tc_deltas:
+        i = tc.index
+        if i not in tool_call_acc:
+            tool_call_acc[i] = {"id": "", "name": "", "arguments": ""}
+        if tc.id:
+            tool_call_acc[i]["id"] = tc.id
+        if tc.function:
+            if tc.function.name:
+                tool_call_acc[i]["name"] += tc.function.name
+            if tc.function.arguments:
+                tool_call_acc[i]["arguments"] += tc.function.arguments
+
+
+def _designer_llm_config(
+    model: str, effort: Any, api_key: Any, api_base: Any, extra_kwargs: Any
+) -> dict[str, Any]:
+    """The per-attempt LiteLLM config for a mock draw."""
+    llm_config: dict[str, Any] = {"model": model, "effort": effort}
+    if api_key:
+        llm_config["api_key"] = api_key
+    if api_base is not None:
+        llm_config["api_base"] = api_base
+    if extra_kwargs:
+        llm_config.update(extra_kwargs)
+    return llm_config
 
 
 _UI_EXTENSIONS: frozenset[str] = frozenset(
@@ -542,7 +652,7 @@ def collect_ui_source_files(project_root: Path) -> list[str]:
     return result
 
 
-def generate_mock_streaming(
+def generate_mock_streaming(  # noqa: PLR0913  # the mock-generation contract, shared verbatim with callbacks/designer/_mock_gen.py
     session: DesignerSession,
     model: str,
     api_key: str,
@@ -576,13 +686,9 @@ def generate_mock_streaming(
             # uses, so the omit-effort-on-"default" rule, `drop_params` and the
             # refused-level retry are shared with the chat agents instead of
             # being restated here and left to drift.
-            llm_config: dict[str, Any] = {"model": model, "effort": effort}
-            if api_key:
-                llm_config["api_key"] = api_key
-            if api_base is not None:
-                llm_config["api_base"] = api_base
-            if extra_kwargs:
-                llm_config.update(extra_kwargs)
+            llm_config = _designer_llm_config(
+                model, effort, api_key, api_base, extra_kwargs
+            )
             extra: dict[str, Any] = {"tools": tools} if tools else {}
 
             # Routed through spec4.llm so the mock draw is captured in the
@@ -629,17 +735,7 @@ def generate_mock_streaming(
                     yield content
 
                 if tc_deltas:
-                    for tc in tc_deltas:
-                        i = tc.index
-                        if i not in tool_call_acc:
-                            tool_call_acc[i] = {"id": "", "name": "", "arguments": ""}
-                        if tc.id:
-                            tool_call_acc[i]["id"] = tc.id
-                        if tc.function:
-                            if tc.function.name:
-                                tool_call_acc[i]["name"] += tc.function.name
-                            if tc.function.arguments:
-                                tool_call_acc[i]["arguments"] += tc.function.arguments
+                    _designer_accumulate_tool_calls(tool_call_acc, tc_deltas)
 
             logger.debug(
                 "Iteration complete — %d chunks, finish_reason=%s",
@@ -648,39 +744,9 @@ def generate_mock_streaming(
             )
 
             if tool_call_acc:
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": full_text or None,
-                        "tool_calls": [
-                            {
-                                "id": tc["id"],
-                                "type": "function",
-                                "function": {
-                                    "name": tc["name"],
-                                    "arguments": tc["arguments"],
-                                },
-                            }
-                            for tc in tool_call_acc.values()
-                        ],
-                    }
+                _designer_tool_call_followup(
+                    messages, tool_call_acc, full_text, search_config
                 )
-                for tc in tool_call_acc.values():
-                    logger.debug("Tool call: %s args=%s", tc["name"], tc["arguments"])
-                    if tc["name"] == "web_search":
-                        try:
-                            query = json.loads(tc["arguments"]).get("query", "")
-                        except (json.JSONDecodeError, KeyError):
-                            query = tc["arguments"]
-                        logger.debug("Web search: %r", query)
-                        result = web_search(query, search_config)
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tc["id"],
-                                "content": result,
-                            }
-                        )
                 continue
 
             break

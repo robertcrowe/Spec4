@@ -690,93 +690,16 @@ def run(
                 return
             # Resume summary injected — fall through to LLM call.
         else:
-            vision = session.get("vision_statement")
-            code_review = session.get("code_review")
-            working_dir = session.get("working_dir")
-            prior_vision = (
-                project_manager.load_prior_vision(working_dir) if working_dir else None
-            )
-
-            code_review_block = (
-                f"\n\nFor context, here is a code review of the existing project:\n\n"
-                f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
-                "Within the review, treat structured fields (`commands`, "
-                "`entrypoints`, `ui_summary`, `runtime_versions`, "
-                "`protocols_implemented`, `existing_self_description`) as "
-                "authoritative facts about the project. The `notes` block is "
-                "typed observations — respect `notes.change_risks` and "
-                "`notes.incomplete_or_dead_code` when asking about future "
-                "features.\n"
-                if code_review
-                else ""
+            vision, prior_vision, code_review, code_review_block = (
+                _brainstormer_seed_context(session)
             )
 
             if vision:
-                # Brownfield update mode: present the existing vision and ask for changes
-                vision_text = json.dumps(vision, indent=2)
-                msgs.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            f"I have an existing vision statement from a previous planning "
-                            f"session:{code_review_block}\n\n"
-                            f"```json\n{vision_text}\n```\n\n"
-                            "Please introduce yourself as Brainstormer, then present this existing "
-                            "vision to me as a clear, readable summary. Ask me to review it and "
-                            "describe the changes I would like to make, then work through my "
-                            "requested changes one at a time. When I confirm I am satisfied, "
-                            "generate an updated vision statement."
-                        ),
-                    }
-                )
-                # Fall through to LLM call below
+                _brainstormer_seed_from_vision(msgs, vision, code_review_block)
             elif prior_vision is not None:
-                # Revision mode: a previous version of this project has been
-                # implemented. Build the next version as a delta against the
-                # established identity rather than rebuilding a vision from
-                # scratch (the greenfield topic sequence).
-                prior_text = json.dumps(prior_vision, indent=2)
-                msgs.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "I am starting a new REVISION round on an existing, "
-                            "already-implemented version of this project. Operate "
-                            f"in REVISION mode.{code_review_block}\n\n"
-                            "Here is the vision from the previous implemented "
-                            "version, as read-only reference for the project's "
-                            "established identity and its prior feature set:\n\n"
-                            f"```json\n{prior_text}\n```\n\n"
-                            "Please introduce yourself as Brainstormer, state the "
-                            "project's established identity (its name and purpose) "
-                            "and a one-line summary of what is already built, then "
-                            "ask what the goal of this revision is and what I want "
-                            "to add, change, or remove. Do not re-ask the project "
-                            "name or re-derive the whole vision. Work through the "
-                            "requested changes one at a time. When I confirm, "
-                            "generate the updated full vision statement plus this "
-                            "round's revision block."
-                        ),
-                    }
-                )
-                # Fall through to LLM call below
+                _brainstormer_seed_from_prior(msgs, prior_vision, code_review_block)
             elif code_review:
-                # Existing project with code review but no vision yet
-                msgs.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            "I have an existing software project that I'd like to create a vision "
-                            "statement for. Here is a code review of the existing project:\n\n"
-                            f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
-                            "Please introduce yourself as Brainstormer. Briefly describe what you "
-                            "understand about this project from the code review, then begin your "
-                            "usual question-by-question process to develop the vision statement. "
-                            "Use the code review as context to inform your questions."
-                        ),
-                    }
-                )
-                # Fall through to LLM call below
+                _brainstormer_seed_from_review(msgs, code_review)
             else:
                 # Fresh start: static greeting
                 yield (
@@ -790,12 +713,7 @@ def run(
         if _is_review_request(user_input, session, msgs):
             vision = session.get("vision_statement")
             if vision:
-                try:
-                    review = _format_vision_as_text(
-                        vision, footer=_VISION_REVIEW_FOOTER
-                    )
-                except Exception:
-                    review = _vision_fallback_display(vision)
+                review = _brainstormer_review_text(vision)
                 yield review
                 return
         msgs.append({"role": "user", "content": user_input})
@@ -826,11 +744,6 @@ def run(
     raw_reply = last_assistant_text(msgs)
     vision = _extract_vision_json(raw_reply)
     if vision is None and suppressed_as_artifact(raw_reply):
-        # D-BR-P3 (the D-SC-P3 fix, applied here): a reply that opened with a
-        # fence was suppressed on its way to the screen, so an unreadable vision
-        # block ends the turn with an empty bubble, no VISION_COMPLETE, and no
-        # vision.json — indistinguishable to the developer from the app hanging.
-        # Re-ask once, then explain rather than finishing silently.
         correction = artifact_reask_prompt("vision statement")
         yield from reask_for_artifact(
             system=system,
@@ -845,53 +758,175 @@ def run(
         )
         vision = _extract_vision_json(last_assistant_text(msgs))
         if vision is None:
-            abandon_reask(
-                msgs, correction, artifact_fallback("vision statement"), session
-            )
+            _brainstormer_reask_abandoned(session, msgs, correction)
     if vision:
-        working_dir = session.get("working_dir")
-        prior_vision = (
-            project_manager.load_prior_vision(working_dir) if working_dir else None
+        _brainstormer_commit(session, msgs, vision, llm_config)
+
+
+def _brainstormer_seed_context(session: dict[str, Any]) -> tuple[Any, Any, Any, str]:
+    """The vision, prior vision, code review and its rendered block."""
+    vision = session.get("vision_statement")
+    code_review = session.get("code_review")
+    working_dir = session.get("working_dir")
+    prior_vision = (
+        project_manager.load_prior_vision(working_dir) if working_dir else None
+    )
+
+    code_review_block = (
+        f"\n\nFor context, here is a code review of the existing project:\n\n"
+        f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
+        "Within the review, treat structured fields (`commands`, "
+        "`entrypoints`, `ui_summary`, `runtime_versions`, "
+        "`protocols_implemented`, `existing_self_description`) as "
+        "authoritative facts about the project. The `notes` block is "
+        "typed observations — respect `notes.change_risks` and "
+        "`notes.incomplete_or_dead_code` when asking about future "
+        "features.\n"
+        if code_review
+        else ""
+    )
+    return vision, prior_vision, code_review, code_review_block
+
+
+def _brainstormer_seed_from_vision(
+    msgs: list[dict[str, Any]], vision: Any, code_review_block: str
+) -> None:
+    """Seed from an existing vision statement."""
+    vision_text = json.dumps(vision, indent=2)
+    msgs.append(
+        {
+            "role": "user",
+            "content": (
+                f"I have an existing vision statement from a previous planning "
+                f"session:{code_review_block}\n\n"
+                f"```json\n{vision_text}\n```\n\n"
+                "Please introduce yourself as Brainstormer, then present this existing "
+                "vision to me as a clear, readable summary. Ask me to review it and "
+                "describe the changes I would like to make, then work through my "
+                "requested changes one at a time. When I confirm I am satisfied, "
+                "generate an updated vision statement."
+            ),
+        }
+    )
+
+
+def _brainstormer_seed_from_prior(
+    msgs: list[dict[str, Any]], prior_vision: Any, code_review_block: str
+) -> None:
+    """Seed from the prior round's vision (revision entry)."""
+    prior_text = json.dumps(prior_vision, indent=2)
+    msgs.append(
+        {
+            "role": "user",
+            "content": (
+                "I am starting a new REVISION round on an existing, "
+                "already-implemented version of this project. Operate "
+                f"in REVISION mode.{code_review_block}\n\n"
+                "Here is the vision from the previous implemented "
+                "version, as read-only reference for the project's "
+                "established identity and its prior feature set:\n\n"
+                f"```json\n{prior_text}\n```\n\n"
+                "Please introduce yourself as Brainstormer, state the "
+                "project's established identity (its name and purpose) "
+                "and a one-line summary of what is already built, then "
+                "ask what the goal of this revision is and what I want "
+                "to add, change, or remove. Do not re-ask the project "
+                "name or re-derive the whole vision. Work through the "
+                "requested changes one at a time. When I confirm, "
+                "generate the updated full vision statement plus this "
+                "round's revision block."
+            ),
+        }
+    )
+
+
+def _brainstormer_seed_from_review(
+    msgs: list[dict[str, Any]], code_review: Any
+) -> None:
+    """Seed from a code review with no vision yet."""
+    # Existing project with code review but no vision yet
+    msgs.append(
+        {
+            "role": "user",
+            "content": (
+                "I have an existing software project that I'd like to create a vision "
+                "statement for. Here is a code review of the existing project:\n\n"
+                f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
+                "Please introduce yourself as Brainstormer. Briefly describe what you "
+                "understand about this project from the code review, then begin your "
+                "usual question-by-question process to develop the vision statement. "
+                "Use the code review as context to inform your questions."
+            ),
+        }
+    )
+
+
+def _brainstormer_review_text(vision: Any) -> str:
+    """Render the vision for a review request, falling back on any error."""
+    try:
+        review = _format_vision_as_text(vision, footer=_VISION_REVIEW_FOOTER)
+    except Exception:
+        review = _vision_fallback_display(vision)
+    return review
+
+
+def _brainstormer_reask_abandoned(
+    session: dict[str, Any], msgs: list[dict[str, Any]], correction: str
+) -> None:
+    """The re-ask produced no vision either; abandon it."""
+    abandon_reask(msgs, correction, artifact_fallback("vision statement"), session)
+
+
+def _brainstormer_commit(
+    session: dict[str, Any],
+    msgs: list[dict[str, Any]],
+    vision: dict[str, Any],
+    llm_config: dict[str, Any],
+) -> None:
+    """Assign feature ids, build the specs and commit the vision to the session."""
+    working_dir = session.get("working_dir")
+    prior_vision = (
+        project_manager.load_prior_vision(working_dir) if working_dir else None
+    )
+    if working_dir and prior_vision is not None:
+        # Revision round: deterministically fold this round's delta into the
+        # accumulating revision_history. Code owns the version integers.
+        version = project_manager.resolve_phase_version(
+            working_dir, project_manager.session_is_brownfield(session)
+        )[0]
+        based_on = project_manager.latest_implemented_version(working_dir)
+        vision = _apply_revision_history(
+            vision,
+            prior_vision,
+            session.get("vision_statement"),
+            version,
+            based_on if based_on is not None else 0,
         )
-        if working_dir and prior_vision is not None:
-            # Revision round: deterministically fold this round's delta into the
-            # accumulating revision_history. Code owns the version integers.
-            version = project_manager.resolve_phase_version(
-                working_dir, project_manager.session_is_brownfield(session)
-            )[0]
-            based_on = project_manager.latest_implemented_version(working_dir)
-            vision = _apply_revision_history(
-                vision,
-                prior_vision,
-                session.get("vision_statement"),
-                version,
-                based_on if based_on is not None else 0,
+    vision = _assign_feature_ids(vision)
+    session["brainstormer_state"] = STATE_VISION_COMPLETE
+    session["vision_statement"] = vision
+    session["feature_specs"] = feature_speccer.build_feature_specs(
+        vision, llm_config, session
+    )
+    session["brainstormer_stale_acknowledged"] = {}
+    footer_included = False
+    try:
+        display = _format_vision_as_text(vision, footer="")
+    except Exception as exc:
+        if _DEV_MODE:
+            print(
+                f"[brainstormer] _format_vision_as_text failed: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
             )
-        vision = _assign_feature_ids(vision)
-        session["brainstormer_state"] = STATE_VISION_COMPLETE
-        session["vision_statement"] = vision
-        session["feature_specs"] = feature_speccer.build_feature_specs(
-            vision, llm_config, session
-        )
-        session["brainstormer_stale_acknowledged"] = {}
-        footer_included = False
-        try:
-            display = _format_vision_as_text(vision, footer="")
-        except Exception as exc:
-            if _DEV_MODE:
-                print(
-                    f"[brainstormer] _format_vision_as_text failed: "
-                    f"{type(exc).__name__}: {exc}",
-                    flush=True,
-                )
-                traceback.print_exc()
-            display = _vision_fallback_display(vision)
-            footer_included = True
-        specs_display = feature_speccer.render_feature_specs(session["feature_specs"])
-        if specs_display:
-            display = f"{display}\n\n{specs_display}"
-        if not footer_included:
-            display = f"{display}\n\n{_VISION_TRANSITION}"
-        msgs[-1]["content"] = display
-        session["_display_override"] = display
-        session["brainstormer_artifact_msg_count"] = len(msgs)
+            traceback.print_exc()
+        display = _vision_fallback_display(vision)
+        footer_included = True
+    specs_display = feature_speccer.render_feature_specs(session["feature_specs"])
+    if specs_display:
+        display = f"{display}\n\n{specs_display}"
+    if not footer_included:
+        display = f"{display}\n\n{_VISION_TRANSITION}"
+    msgs[-1]["content"] = display
+    session["_display_override"] = display
+    session["brainstormer_artifact_msg_count"] = len(msgs)

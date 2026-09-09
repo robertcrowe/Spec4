@@ -103,127 +103,7 @@ def run(
             # Resume summary injected — fall through to LLM call.
         else:
             # Seed with available context, then call LLM
-            vision = session.get("vision_statement")
-            stack = session.get("stack_statement")
-            code_review = session.get("code_review")
-            ai_features = session.get("ai_features")
-            working_dir = session.get("working_dir")
-            current_version = (
-                project_manager.active_version(working_dir, session)
-                if working_dir
-                else None
-            )
-            ai_features_block = (
-                ai_features_for_stack(ai_features, current_version) + "\n"
-                if ai_features
-                else ""
-            )
-            feature_specs = session.get("feature_specs")
-            spine_block = (
-                feature_specs_for_stack(feature_specs, ai_features) + "\n\n"
-                if feature_specs
-                else ""
-            )
-
-            design_dir = (
-                project_manager.get_version_dir(working_dir, current_version) / "design"
-                if working_dir and current_version is not None
-                else None
-            )
-            design_ctx = design_manifest_for_stack(load_design_manifest(design_dir))
-            design_block = f"{design_ctx}\n\n" if design_ctx else ""
-
-            vision_block = (
-                f"Here is my project vision statement:\n\n```json\n{json.dumps(vision, indent=2)}\n```\n\n"
-                if vision
-                else ""
-            )
-            code_review_block = (
-                f"For context, here is a code review of the existing project:\n\n"
-                f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
-                "Within the review, treat `runtime_versions`, `languages`, "
-                "`frameworks`, `dependencies`, `protocols_implemented`, "
-                "`build_system`, and `commands.deploy` as authoritative facts. "
-                "`protocols_implemented` are industry standards already wired "
-                "in — treat them as constraints when proposing changes. The "
-                "`notes` block is typed observations — pay particular "
-                "attention to `notes.change_risks` when proposing technology "
-                "swaps.\n\n"
-                "**Important:** If any stack choices proposed during our conversation conflict with "
-                "the existing technologies above (different language, incompatible framework, etc.), "
-                "proactively warn me about the conflict, explain the implications (migration effort, "
-                "incompatibility risks), and offer concrete options: keep existing tech, migrate to "
-                "new choice, or a hybrid approach.\n\n"
-                if code_review
-                else ""
-            )
-
-            prior_stack = (
-                project_manager.load_prior_stack(working_dir) if working_dir else None
-            )
-            delta = revision_delta(vision)
-
-            if stack:
-                seed = (
-                    f"{vision_block}"
-                    f"{spine_block}"
-                    f"{design_block}"
-                    f"{code_review_block}"
-                    f"{ai_features_block}"
-                    f"I also have an existing stack spec:\n\n"
-                    f"```json\n{json.dumps(stack, indent=2)}\n```\n\n"
-                    "Please introduce yourself as StackAdvisor and briefly summarize the existing "
-                    "stack spec. Then ask me: would I like to **continue refining this existing "
-                    "stack**, or would I prefer to **start with a completely new stack** from "
-                    "scratch? Wait for my answer before proceeding."
-                )
-            elif prior_stack is not None and delta is not None:
-                # Revision mode: a previous version of this project has been
-                # implemented. Carry the established stack forward as the
-                # baseline and scope recommendations to this revision's vision
-                # delta rather than re-deciding the whole stack from scratch.
-                seed = (
-                    f"{vision_block}"
-                    f"{spine_block}"
-                    f"{design_block}"
-                    f"{code_review_block}"
-                    f"{ai_features_block}"
-                    "I am starting a REVISION round on an existing, already-implemented "
-                    "version of this project. Operate in REVISION mode.\n\n"
-                    "Here is the established stack spec from the previous implemented "
-                    "version, to carry forward as the baseline:\n\n"
-                    f"```json\n{json.dumps(prior_stack, indent=2)}\n```\n\n"
-                    f"{build_revision_note(delta)}\n\n"
-                    "Please introduce yourself as StackAdvisor, briefly confirm the "
-                    "established stack you are carrying forward, then guide me through "
-                    "only the incremental stack changes this revision's new or changed "
-                    "features require. Do not re-decide the established stack or re-run "
-                    "the full topic sequence."
-                )
-            elif code_review:
-                seed = (
-                    f"{vision_block}"
-                    f"{spine_block}"
-                    f"{design_block}"
-                    f"{code_review_block}"
-                    f"{ai_features_block}"
-                    "Please introduce yourself as StackAdvisor. Briefly describe what you understand "
-                    "about the project's existing technology from the code review, then offer me two "
-                    "options: (1) you draft an initial stack spec based on what you found for me to "
-                    "review and refine, or (2) we start fresh and you guide me through the usual "
-                    "stack selection questions. Ask me which I'd prefer."
-                )
-            else:
-                seed = (
-                    f"{vision_block}"
-                    f"{spine_block}"
-                    f"{design_block}"
-                    f"{ai_features_block}"
-                    "Please introduce yourself as StackAdvisor, greet the user, and begin guiding "
-                    "me through the technology stack selection."
-                )
-
-            messages.append({"role": "user", "content": seed})
+            messages.append({"role": "user", "content": _stack_seed_message(session)})
     else:
         messages.append({"role": "user", "content": user_input})
 
@@ -283,10 +163,137 @@ def run(
         # AttributeError on a schema-deviant `libraries` wrote a never-rendered
         # stack.json to disk, three attempts running, each looking like a failure
         # to the developer and a success to the pipeline.
-        display = _format_stack_as_text(stack_spec)
-        session["stack_advisor_state"] = STATE_STACK_COMPLETE
-        session["stack_statement"] = stack_spec
-        session["stack_advisor_stale_acknowledged"] = {}
-        messages[-1]["content"] = display
-        session["_display_override"] = display
-        session["stack_advisor_artifact_msg_count"] = len(messages)
+        _stack_commit(session, messages, stack_spec)
+
+
+def _stack_seed_message(session: dict[str, Any]) -> str:
+    """The whole seed message for a fresh StackAdvisor turn."""
+    vision = session.get("vision_statement")
+    stack = session.get("stack_statement")
+    code_review = session.get("code_review")
+    ai_features = session.get("ai_features")
+    working_dir = session.get("working_dir")
+    current_version = (
+        project_manager.active_version(working_dir, session) if working_dir else None
+    )
+    ai_features_block = (
+        ai_features_for_stack(ai_features, current_version) + "\n"
+        if ai_features
+        else ""
+    )
+    feature_specs = session.get("feature_specs")
+    spine_block = (
+        feature_specs_for_stack(feature_specs, ai_features) + "\n\n"
+        if feature_specs
+        else ""
+    )
+
+    design_dir = (
+        project_manager.get_version_dir(working_dir, current_version) / "design"
+        if working_dir and current_version is not None
+        else None
+    )
+    design_ctx = design_manifest_for_stack(load_design_manifest(design_dir))
+    design_block = f"{design_ctx}\n\n" if design_ctx else ""
+
+    vision_block = (
+        f"Here is my project vision statement:\n\n```json\n{json.dumps(vision, indent=2)}\n```\n\n"
+        if vision
+        else ""
+    )
+    code_review_block = (
+        f"For context, here is a code review of the existing project:\n\n"
+        f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
+        "Within the review, treat `runtime_versions`, `languages`, "
+        "`frameworks`, `dependencies`, `protocols_implemented`, "
+        "`build_system`, and `commands.deploy` as authoritative facts. "
+        "`protocols_implemented` are industry standards already wired "
+        "in — treat them as constraints when proposing changes. The "
+        "`notes` block is typed observations — pay particular "
+        "attention to `notes.change_risks` when proposing technology "
+        "swaps.\n\n"
+        "**Important:** If any stack choices proposed during our conversation conflict with "
+        "the existing technologies above (different language, incompatible framework, etc.), "
+        "proactively warn me about the conflict, explain the implications (migration effort, "
+        "incompatibility risks), and offer concrete options: keep existing tech, migrate to "
+        "new choice, or a hybrid approach.\n\n"
+        if code_review
+        else ""
+    )
+
+    prior_stack = project_manager.load_prior_stack(working_dir) if working_dir else None
+    delta = revision_delta(vision)
+
+    if stack:
+        seed = (
+            f"{vision_block}"
+            f"{spine_block}"
+            f"{design_block}"
+            f"{code_review_block}"
+            f"{ai_features_block}"
+            f"I also have an existing stack spec:\n\n"
+            f"```json\n{json.dumps(stack, indent=2)}\n```\n\n"
+            "Please introduce yourself as StackAdvisor and briefly summarize the existing "
+            "stack spec. Then ask me: would I like to **continue refining this existing "
+            "stack**, or would I prefer to **start with a completely new stack** from "
+            "scratch? Wait for my answer before proceeding."
+        )
+    elif prior_stack is not None and delta is not None:
+        # Revision mode: a previous version of this project has been
+        # implemented. Carry the established stack forward as the
+        # baseline and scope recommendations to this revision's vision
+        # delta rather than re-deciding the whole stack from scratch.
+        seed = (
+            f"{vision_block}"
+            f"{spine_block}"
+            f"{design_block}"
+            f"{code_review_block}"
+            f"{ai_features_block}"
+            "I am starting a REVISION round on an existing, already-implemented "
+            "version of this project. Operate in REVISION mode.\n\n"
+            "Here is the established stack spec from the previous implemented "
+            "version, to carry forward as the baseline:\n\n"
+            f"```json\n{json.dumps(prior_stack, indent=2)}\n```\n\n"
+            f"{build_revision_note(delta)}\n\n"
+            "Please introduce yourself as StackAdvisor, briefly confirm the "
+            "established stack you are carrying forward, then guide me through "
+            "only the incremental stack changes this revision's new or changed "
+            "features require. Do not re-decide the established stack or re-run "
+            "the full topic sequence."
+        )
+    elif code_review:
+        seed = (
+            f"{vision_block}"
+            f"{spine_block}"
+            f"{design_block}"
+            f"{code_review_block}"
+            f"{ai_features_block}"
+            "Please introduce yourself as StackAdvisor. Briefly describe what you understand "
+            "about the project's existing technology from the code review, then offer me two "
+            "options: (1) you draft an initial stack spec based on what you found for me to "
+            "review and refine, or (2) we start fresh and you guide me through the usual "
+            "stack selection questions. Ask me which I'd prefer."
+        )
+    else:
+        seed = (
+            f"{vision_block}"
+            f"{spine_block}"
+            f"{design_block}"
+            f"{ai_features_block}"
+            "Please introduce yourself as StackAdvisor, greet the user, and begin guiding "
+            "me through the technology stack selection."
+        )
+    return seed
+
+
+def _stack_commit(
+    session: dict[str, Any], messages: list[dict[str, Any]], stack_spec: dict[str, Any]
+) -> None:
+    """Render first, then commit the stack to the session (D-SC18a)."""
+    display = _format_stack_as_text(stack_spec)
+    session["stack_advisor_state"] = STATE_STACK_COMPLETE
+    session["stack_statement"] = stack_spec
+    session["stack_advisor_stale_acknowledged"] = {}
+    messages[-1]["content"] = display
+    session["_display_override"] = display
+    session["stack_advisor_artifact_msg_count"] = len(messages)
