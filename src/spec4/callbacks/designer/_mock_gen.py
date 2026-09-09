@@ -223,7 +223,7 @@ def _expected_stream_chars(working_dir: str | None) -> int:
     return int((len(prior_mock) + manifest_chars) * 1.1)
 
 
-def _start_gen(
+def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbatim with agents/designer.py
     store: dict[str, Any],
     working_dir: str | None,
     model: str,
@@ -245,11 +245,7 @@ def _start_gen(
     # A new generation abandons any prior one still in flight or awaiting
     # delivery: stop its stream and drop its buffer, or the entry (up to
     # 512 kB of HTML) stays in MOCK_BUFFERS for the life of the process.
-    old_gen_id = store.get("_gen_id")
-    if old_gen_id:
-        old_entry = MOCK_BUFFERS.pop(old_gen_id, None)
-        if old_entry:
-            old_entry["stop"].set()
+    _mock_stop_previous(store)
 
     gen_id = str(uuid.uuid4())
     stop_ev = threading.Event()
@@ -275,26 +271,11 @@ def _start_gen(
     # would save the mock where none of the readers — which all pass the
     # session — ever look, silently breaking refresh/approve/retry. A failure
     # resolving it only skips persistence — delivery must still happen.
-    design_dir_path: pathlib.Path | None = None
-    if working_dir:
-        try:
-            design_dir_path = (
-                project_manager.get_version_dir(
-                    working_dir,
-                    project_manager.active_version(working_dir, session),
-                )
-                / "design"
-            )
-        except Exception as exc:
-            logger.warning("Designer: could not resolve the design save dir: %s", exc)
+    design_dir_path = _mock_design_dir(working_dir, session)
 
     def _run() -> None:
         try:
-            snippets: list[str] = []
-            if not existing_html and working_dir:
-                snippets = collect_ui_source_files(pathlib.Path(working_dir))
-            if _DEV_MODE:
-                print("\n[Designer] Generating mock...", flush=True)
+            snippets = _mock_collect_snippets(existing_html, working_dir)
             for chunk in generate_mock_streaming(
                 ds,
                 model,
@@ -325,72 +306,21 @@ def _start_gen(
                 "__DONE__" in accumulated and "__GENERATION_ERROR__:" not in accumulated
             )
             if done_ok:
-                html_text = accumulated.replace("__DONE__", "").strip()
-                extracted = _extract_html(html_text)
-                if extracted is None:
-                    buf_entry["text"] += (
-                        "__GENERATION_ERROR__: The model did not return a valid "
-                        "HTML document. Please retry or refine your style "
-                        "description."
-                    )
-                else:
-                    if len(extracted) > _MAX_HTML_BYTES:
-                        extracted = (
-                            extracted[:_MAX_HTML_BYTES]
-                            + "\n<!-- Designer: output truncated at 512 kB -->"
-                        )
-                    if design_dir_path is not None:
-                        try:
-                            save_ds: DesignerSession = {
-                                "step": 6,
-                                "preference_text": ds["preference_text"],
-                                "screenshots": ds["screenshots"],
-                                "mock_html": extracted,
-                                "finalized": False,
-                            }
-                            save_session(save_ds, design_dir_path)
-                            save_mock(extracted, design_dir_path)
-                            # D-DM9: refine draws are manifest-bearing too, so
-                            # the manifest tracks the mock that actually ships
-                            # instead of freezing at the initial draw.
-                            # Extraction failure still returns early and leaves
-                            # the prior manifest.json untouched, so a missed
-                            # manifest is never worse than the pre-D-DM9
-                            # behaviour.
-                            _persist_manifest(
-                                accumulated, planning_context, design_dir_path
-                            )
-                        except Exception as exc:
-                            logger.warning(
-                                "Designer: could not persist session to disk: %s",
-                                exc,
-                            )
-                    # Set last: the poll treats final_html as "complete and
-                    # persisted", so everything savable must already be on
-                    # disk by the time this appears.
-                    buf_entry["final_html"] = extracted
+                _mock_finalise_draw(
+                    accumulated, buf_entry, ds, design_dir_path, planning_context
+                )
         except Exception as exc:
             # A crash here would otherwise die silently in the daemon thread,
             # leaving the poll spinning on a buffer that never completes.
             # Surface it through the same sentinel the streaming layer uses so
             # the user gets the error alert and a Retry button.
-            logger.warning("Designer generation thread crashed", exc_info=True)
-            msg = str(exc).strip() or repr(exc)
-            buf_entry["text"] += f"__GENERATION_ERROR__: {type(exc).__name__}: {msg}"
+            _mock_report_failure(exc, buf_entry)
         finally:
             # The mock draw never passes through the chat poll's persist
             # funnel, so the generation thread flushes its own LLM usage.
             # Same version resolution as the design dir above; a failure
             # here only loses the usage record, never the mock.
-            if working_dir:
-                try:
-                    project_manager.save_usage(
-                        working_dir,
-                        llm.drain_usage_records(),
-                        project_manager.active_version(working_dir, session),
-                    )
-                except Exception as exc:
-                    logger.warning("Designer: could not save LLM usage: %s", exc)
+            _mock_persist_session(working_dir, ds, session)
             # Unconditional: `done` without final_html or an error sentinel is
             # the poll's cleanup signal. Setting it on an already-popped entry
             # (user clicked Start Over mid-generation) is harmless.
@@ -420,3 +350,115 @@ def _start_gen(
     }
     cleared_buffer: dict[str, Any] = {"tokens": 0, "progress": 0, "error": None}
     return updated_store, cleared_buffer, False  # False = not disabled
+
+
+def _mock_stop_previous(store: dict[str, Any]) -> None:
+    """Stop and evict any generation still running for this store."""
+    old_gen_id = store.get("_gen_id")
+    if old_gen_id:
+        old_entry = MOCK_BUFFERS.pop(old_gen_id, None)
+        if old_entry:
+            old_entry["stop"].set()
+
+
+def _mock_design_dir(
+    working_dir: Any, session: dict[str, Any] | None
+) -> pathlib.Path | None:
+    """Resolve the version's design directory; None when it cannot be resolved."""
+    design_dir_path: pathlib.Path | None = None
+    if working_dir:
+        try:
+            design_dir_path = (
+                project_manager.get_version_dir(
+                    working_dir,
+                    project_manager.active_version(working_dir, session),
+                )
+                / "design"
+            )
+        except Exception as exc:
+            logger.warning("Designer: could not resolve the design save dir: %s", exc)
+    return design_dir_path
+
+
+def _mock_collect_snippets(existing_html: str | None, working_dir: Any) -> list[str]:
+    """UI source snippets for a first draw; none on a refine."""
+    snippets: list[str] = []
+    if not existing_html and working_dir:
+        snippets = collect_ui_source_files(pathlib.Path(working_dir))
+    if _DEV_MODE:
+        print("\n[Designer] Generating mock...", flush=True)
+    return snippets
+
+
+def _mock_finalise_draw(
+    accumulated: str,
+    buf_entry: dict[str, Any],
+    ds: Any,
+    design_dir_path: Any,
+    planning_context: dict[str, Any] | None,
+) -> None:
+    """Extract the HTML from a finished draw, save it and its manifest."""
+    html_text = accumulated.replace("__DONE__", "").strip()
+    extracted = _extract_html(html_text)
+    if extracted is None:
+        buf_entry["text"] += (
+            "__GENERATION_ERROR__: The model did not return a valid "
+            "HTML document. Please retry or refine your style "
+            "description."
+        )
+    else:
+        if len(extracted) > _MAX_HTML_BYTES:
+            extracted = (
+                extracted[:_MAX_HTML_BYTES]
+                + "\n<!-- Designer: output truncated at 512 kB -->"
+            )
+        if design_dir_path is not None:
+            try:
+                save_ds: DesignerSession = {
+                    "step": 6,
+                    "preference_text": ds["preference_text"],
+                    "screenshots": ds["screenshots"],
+                    "mock_html": extracted,
+                    "finalized": False,
+                }
+                save_session(save_ds, design_dir_path)
+                save_mock(extracted, design_dir_path)
+                # D-DM9: refine draws are manifest-bearing too, so
+                # the manifest tracks the mock that actually ships
+                # instead of freezing at the initial draw.
+                # Extraction failure still returns early and leaves
+                # the prior manifest.json untouched, so a missed
+                # manifest is never worse than the pre-D-DM9
+                # behaviour.
+                _persist_manifest(accumulated, planning_context, design_dir_path)
+            except Exception as exc:
+                logger.warning(
+                    "Designer: could not persist session to disk: %s",
+                    exc,
+                )
+        # Set last: the poll treats final_html as "complete and
+        # persisted", so everything savable must already be on
+        # disk by the time this appears.
+        buf_entry["final_html"] = extracted
+
+
+def _mock_report_failure(exc: Exception, buf_entry: dict[str, Any]) -> None:
+    """Surface a thread crash through the streaming layer's error sentinel."""
+    logger.warning("Designer generation thread crashed", exc_info=True)
+    msg = str(exc).strip() or repr(exc)
+    buf_entry["text"] += f"__GENERATION_ERROR__: {type(exc).__name__}: {msg}"
+
+
+def _mock_persist_session(
+    working_dir: Any, ds: Any, session: dict[str, Any] | None
+) -> None:
+    """Persist the designer session after a draw, however it ended."""
+    if working_dir:
+        try:
+            project_manager.save_usage(
+                working_dir,
+                llm.drain_usage_records(),
+                project_manager.active_version(working_dir, session),
+            )
+        except Exception as exc:
+            logger.warning("Designer: could not save LLM usage: %s", exc)

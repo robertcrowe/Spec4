@@ -461,18 +461,7 @@ def on_stream_poll(n: Any, session: Any) -> Any:
 
     stream = streaming.get(stream_id)
     if not stream:
-        if _DEV_MODE:
-            print(
-                f"[poll {stream_id[:8]}] stream entry missing — another poll already "
-                f"finalised this stream; leaving authoritative session intact",
-                flush=True,
-            )
-        # Entries are evicted at the next start(), not in the done branch, so a
-        # missing entry means this stream was already finalised and the store's
-        # _stream_id is already None (a later turn has begun or is about to).
-        # Return no_update to avoid clobbering the authoritative session from our
-        # stale State snapshot.
-        return no_update, 0
+        return _poll_missing_stream(stream_id)
 
     text = stream["text"]
     messages = list(session.get("messages", []))
@@ -490,26 +479,10 @@ def on_stream_poll(n: Any, session: Any) -> Any:
     status = stream["session"].get("_stream_status")
 
     if not stream["done"]:
-        prev = (session.get("messages") or [{}])[-1].get("content", "")
-        if (
-            text == prev
-            and received == session.get("_stream_received_chars")
-            and status == session.get("_stream_status")
-        ):
-            return no_update, no_update
-        updated = {**session, "messages": messages}
-        updated["_stream_received_chars"] = received
-        updated["_stream_status"] = status
-        return updated, no_update
+        return _poll_running(session, messages, text, received, status)
 
     # Stream complete — merge agent-mutated session and finalise
-    if _DEV_MODE:
-        print(
-            f"[poll {stream_id[:8]}] done branch firing; text_len={len(text)}, "
-            f"messages_count={len(messages)}, "
-            f"last_msg_preview={text[:120]!r}",
-            flush=True,
-        )
+    _poll_dev_trace(stream_id, text, messages)
     # Read (do NOT pop) the agent-mutated session from the live entry. Eviction
     # happens at the next start(); leaving the entry in place means two polls
     # racing into this branch both read the same authoritative session and return
@@ -523,6 +496,85 @@ def on_stream_poll(n: Any, session: Any) -> Any:
     # chat row while the chars counter beside them stays. Both polls still return
     # the same terminal store, because the first run's mutations land on this
     # shared session dict.
+    _poll_finalise(stream_id, agent_session, messages)
+    # D-ER2: a finished turn whose assistant message is empty is never correct —
+    # it renders as a blank bubble with no controls under it, which reads as the
+    # app hanging. It happens when a generator returns without yielding and
+    # without setting a display override: an artifact reply that was suppressed
+    # on its way to the screen and then failed to parse takes exactly that path.
+    # Agents fix their own causes; this is the last line of defence, and it
+    # routes the turn into the same Try Again recovery a raised exception gets.
+    empty_turn = _poll_substitute_empty_turn(stream_id, messages)
+    return (
+        {
+            **agent_session,
+            "messages": messages,
+            "_stream_id": None,
+            "_initial_turn_done": True,
+            "_display_override": None,
+            "_stream_received_chars": None,
+            "_stream_status": None,
+            # D-ER1: the turn died and the error text is the whole assistant
+            # message. Record that so the chat can offer Try Again; a clean
+            # finish writes None here and retires any earlier failure.
+            "_stream_error": True if (stream.get("error") or empty_turn) else None,
+        },
+        0,
+    )
+
+
+def _poll_missing_stream(stream_id: str) -> Any:
+    """The poll tick for a stream id whose entry another poll already finalised."""
+    if _DEV_MODE:
+        print(
+            f"[poll {stream_id[:8]}] stream entry missing — another poll already "
+            f"finalised this stream; leaving authoritative session intact",
+            flush=True,
+        )
+    # Entries are evicted at the next start(), not in the done branch, so a
+    # missing entry means this stream was already finalised and the store's
+    # _stream_id is already None (a later turn has begun or is about to).
+    # Return no_update to avoid clobbering the authoritative session from our
+    # stale State snapshot.
+    return no_update, 0
+
+
+def _poll_running(
+    session: dict[str, Any],
+    messages: list[dict[str, Any]],
+    text: str,
+    received: Any,
+    status: Any,
+) -> Any:
+    """The poll tick while the stream is still producing."""
+    prev = (session.get("messages") or [{}])[-1].get("content", "")
+    if (
+        text == prev
+        and received == session.get("_stream_received_chars")
+        and status == session.get("_stream_status")
+    ):
+        return no_update, no_update
+    updated = {**session, "messages": messages}
+    updated["_stream_received_chars"] = received
+    updated["_stream_status"] = status
+    return updated, no_update
+
+
+def _poll_dev_trace(stream_id: str, text: str, messages: list[dict[str, Any]]) -> None:
+    """DEV_MODE trace of the done branch firing."""
+    if _DEV_MODE:
+        print(
+            f"[poll {stream_id[:8]}] done branch firing; text_len={len(text)}, "
+            f"messages_count={len(messages)}, "
+            f"last_msg_preview={text[:120]!r}",
+            flush=True,
+        )
+
+
+def _poll_finalise(
+    stream_id: str, agent_session: dict[str, Any], messages: list[dict[str, Any]]
+) -> None:
+    """Claim the finalise once, persist artifacts, apply any display override."""
     if streaming.claim_finalise(stream_id):
         try:
             _persist_artifacts(agent_session)
@@ -550,13 +602,10 @@ def on_stream_poll(n: Any, session: Any) -> Any:
                 f"(len={len(agent_session['_display_override'])})",
                 flush=True,
             )
-    # D-ER2: a finished turn whose assistant message is empty is never correct —
-    # it renders as a blank bubble with no controls under it, which reads as the
-    # app hanging. It happens when a generator returns without yielding and
-    # without setting a display override: an artifact reply that was suppressed
-    # on its way to the screen and then failed to parse takes exactly that path.
-    # Agents fix their own causes; this is the last line of defence, and it
-    # routes the turn into the same Try Again recovery a raised exception gets.
+
+
+def _poll_substitute_empty_turn(stream_id: str, messages: list[dict[str, Any]]) -> bool:
+    """D-ER2: substitute the notice when a finished turn produced no visible text."""
     empty_turn = bool(
         messages
         and messages[-1].get("role") == "assistant"
@@ -570,19 +619,4 @@ def on_stream_poll(n: Any, session: Any) -> Any:
                 f"the notice and enabling retry",
                 flush=True,
             )
-    return (
-        {
-            **agent_session,
-            "messages": messages,
-            "_stream_id": None,
-            "_initial_turn_done": True,
-            "_display_override": None,
-            "_stream_received_chars": None,
-            "_stream_status": None,
-            # D-ER1: the turn died and the error text is the whole assistant
-            # message. Record that so the chat can offer Try Again; a clean
-            # finish writes None here and retires any earlier failure.
-            "_stream_error": True if (stream.get("error") or empty_turn) else None,
-        },
-        0,
-    )
+    return empty_turn

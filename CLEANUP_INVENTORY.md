@@ -4208,6 +4208,14 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
 2. **Proof is the existing tests, unmodified.** The golden and characterization files
    listed per sub-phase must pass without a single edit. If a test needs editing, the
    extraction was not behaviour-preserving — revert it.
+   **A second exception, any sub-phase:** a test that asserts on `inspect.getsource()`
+   output is **structural, not behavioural**, and cannot survive any decomposition of
+   the function it inspects. Such a test may be **rewritten in place** — same file, same
+   class, same name — to assert the same property through behaviour. The sub-phase
+   report lists it as a forced edit with the **old and new assertion** quoted. No other
+   test edit. *Added at 5m, where `test_persist_is_not_gated_on_the_draw_kind` asserted
+   `"_persist_manifest(" in inspect.getsource(_start_gen)`.*
+
    **One exception, 5p only:** 5p(f) may make *lint-only* edits under `tests/` — yoda
    comparisons (SIM300) and `strict=False` on `zip` (B905). Nothing else under `tests/`
    is touched in any sub-phase, 5p included: no assertion, fixture, name or import
@@ -4271,8 +4279,9 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
    than top-level sections.*
 10. **Mechanical defects may be fixed in place; everything else reverts.** Three defect
     classes may be repaired without spending the sub-phase's retry: an **indentation
-    error**; a **helper parameter annotation that must match the narrowed type at its
-    call site** rather than the enclosing function's signature; and a **reference to a
+    error**; **annotation propagation, parameter or return** — a helper
+    annotation that must match the narrowed type at its call site rather than the
+    enclosing function's signature; and a **reference to a
     pre-promotion name** left behind by rule 8. The test is all three of: the gate names
     the exact line, the repair touches **no logic, no string and no control flow**, and
     the sub-phase report lists each fix by site. **Cap of five per sub-phase; a sixth is
@@ -6490,3 +6499,120 @@ extraction site is on a covered path.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 170.89s` (exit 0) |
 | Coverage | same run | `TOTAL 12338 stmts, 896 miss (893 + 3), 93%` |
+
+## 43. Source-text assertions in `tests/` (Phase 6 layout-coupling item)
+
+Swept before 5n and 5o, per the rule-2 exception. Every test that reads source as text
+or inspects it structurally, and whether decomposition can break it.
+
+| Test | What it reads | Survives decomposition? |
+|---|---|---|
+| `test_designer.py:999` | `inspect.getsource(_start_gen)`, asserts `"_persist_manifest(" in src` | **No** — the only fatal one. Rewritten at 5m (44.4). |
+| `test_agent_llm_selection.py:526` | every `src/spec4/**/*.py`, regex `agent_name=["'](...)["']` | **Yes** — the literals move with the code, and the sweep is repo-wide |
+| `test_setup_wizard_register.py:200` | every `callbacks/**/*.py`, `ast.parse` for `@callback` decorators carrying `Input(...)` | **Yes** — decorators stay on the callback; extraction moves bodies, not decorators |
+| `test_deployer_invariants.py:43` | `deployer.__file__` as text | **Yes in practice** — it asserts on prompt strings, which move verbatim; passed unmodified through 5i's 398→173-line decomposition |
+| `test_chat_transcript_blocks.py:31` | `app.py` as text | Untested by Phase 5 — `app.py` is frozen by rule 5 and is not a 5n/5o target |
+| `test_agent_llm_selection.py:813`, `test_chat_action_row_emphasis.py:279`, `test_chat_pill_bar.py:427`, `test_entry_screens.py:199`, `test_artifact_view.py:1470`, `test_chat_input_asset.py:9` | `assets/v3.css`, `assets/chat_input.js` | **Yes** — stylesheets and JS, not Python |
+| `test_import_layering.py:31` | every `src/spec4/**/*.py`, `ast.parse` for import edges | **Yes** — by design; it is the layering contract |
+
+**Conclusion for 5n and 5o:** none of the remaining source-text tests targets a function
+either sub-phase decomposes. The `inspect.getsource` pattern occurs exactly once in the
+suite. Per the standing instruction the rewrite rule is applied *at the point it blocks*,
+not pre-emptively — and on this evidence it will not be needed again.
+
+**For Phase 6:** the CSS/JS readers are legitimate (they pin rendered appearance to the
+stylesheet, which no Python refactor touches). The one to revisit is
+`test_chat_transcript_blocks.py`'s `app.py` text read, which is the only Python-source
+text assertion left after 5m and is only safe because rule 5 freezes `app.py`.
+
+## 44. Phase 5m — `callbacks/`: 11 helpers, 3 arity noqas, one forced test rewrite
+
+Extract-only. All five 27.3 findings cleared. `src/spec4/callbacks/**` is now clean for
+C90 / PLR0912 / PLR0913 / PLR0915.
+
+### 44.1 Before and after
+
+| File | Function | C901 | Br | St | Ar | → |
+|---|---|---:|---:|---:|---:|---|
+| `designer/_mock_gen.py` | `_start_gen` | **20** | — | **64** | 13 | **10**, St clear, Ar noqa |
+| `_chat.py` | `on_stream_poll` | **16** | **15** | — | — | clear |
+| `designer/_mock_gen.py` | `_run` (nested) | **15** | **16** | — | — | folded into `_start_gen`'s 10 |
+| `_setup.py` | `on_setup_connect` | — | — | — | 6 | noqa |
+| `designer/_refine.py` | `on_designer_regenerate` | — | — | — | 6 | noqa |
+
+### 44.2 The 11 helpers
+
+**`_chat.on_stream_poll` (5)** — one per poll arm, as 27.3 called for:
+`_poll_missing_stream`, `_poll_running`, `_poll_dev_trace`, `_poll_finalise`,
+`_poll_substitute_empty_turn`. Every `Output` tuple shape and component id is unchanged.
+
+**`designer/_mock_gen.py` (6)** — `_mock_stop_previous`, `_mock_design_dir`,
+`_mock_collect_snippets`, `_mock_finalise_draw`, `_mock_report_failure`,
+`_mock_persist_session`.
+
+### 44.3 Rule 8 was *not* applied to `_run`, and why
+
+`_run` is a nested closure, so rule 8 says promote it. **It captures 17 locals**
+(`api_base`, `api_key`, `buf_entry`, `capture_mode`, `design_dir_path`, `ds`, `effort`,
+`existing_html`, `extra_kwargs`, `gen_id`, `image_support`, `model`,
+`planning_context`, `search_cfg`, `session`, `stop_ev`, `working_dir` — measured with
+`symtable`, not guessed). Promoting it produces a 17-parameter function needing its own
+PLR0913 noqa, which is not pre-approved.
+
+Instead its *body* was extracted into six module-level helpers, which drops `_run`'s
+contribution to its enclosing function's count without moving `_run` itself.
+`_start_gen` lands at **C901 10** — exactly at the threshold, which is why the last two
+cuts (`_mock_stop_previous`, `_mock_design_dir`) were needed. Rule 8's purpose is served:
+no closure complexity is being suppressed, it is decomposed.
+
+### 44.4 Forced test edit (rule 2's structural exception) — the only one
+
+`tests/test_designer.py::TestRefinePersistsManifest::test_persist_is_not_gated_on_the_draw_kind`
+
+**Old (structural):**
+```python
+src = inspect.getsource(_dmod()._start_gen)
+assert "_persist_manifest(" in src
+assert "if existing_html is None:" not in src
+```
+
+**New (behavioural):** runs `_start_gen` on a **refine** draw (`existing_html` set) with
+a synchronous `Thread` stand-in and `_persist_manifest` patched, then
+`assert calls, "a refine draw must still persist the manifest"`.
+
+Same file, same class, same name. It fails if the persist is ever gated on the draw kind
+again — which is D-DM9, the property the test exists for — and unlike the old form it
+does not fail merely because the call moved into a helper. A `_SyncThread` stand-in was
+added beside the existing `_NoThread` so the generation body runs inline.
+
+**This is the only test edit in 5a–5m.** The sweep in §43 confirms `inspect.getsource`
+occurs exactly once in the suite, so the exception should not be needed again.
+
+### 44.5 Line accounting (rule 3)
+
+**446 non-blank lines**; **441 verbatim**; 5 accounted: three `def` lines now carrying
+arity noqas, and two lines of the `_persist_manifest(...)` call re-wrapped by
+`ruff format` when it moved into `_mock_finalise_draw` (identical tokens and arguments —
+`accumulated, planning_context, design_dir_path`). **No statement line is unaccounted
+for.**
+
+### 44.6 Statement counts and coverage (rule 4)
+
+Suite-wide **12338 → 12363, +25**. Misses **896 = 893 + 3**, unchanged.
+
+### 44.7 One reverted attempt
+
+The first 5m build passed ruff, format, mypy and the callbacks complexity check, then
+failed `test_persist_is_not_gated_on_the_draw_kind`. Per the stop condition a failing
+test is reverted immediately with **no retry** — it was, and reported. The rule-2
+structural exception was then granted and this build is the result.
+
+### 44.8 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 174.98s` (exit 0) |
+| Coverage | same run | `TOTAL 12363 stmts, 896 miss (893 + 3), 93%` |

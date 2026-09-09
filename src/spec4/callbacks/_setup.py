@@ -57,7 +57,7 @@ def on_provider_hint(provider_label: Any) -> Any:
     State("prefs", "data"),
     prevent_initial_call=True,
 )
-def on_setup_connect(
+def on_setup_connect(  # noqa: PLR0913  # parameters are the callback's Input/State list
     n: Any, provider_label: Any, api_key: Any, save_prefs: Any, session: Any, prefs: Any
 ) -> Any:
     if not n:

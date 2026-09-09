@@ -979,6 +979,17 @@ class TestRetryReproducesTheDraw:
         assert out[0]["_capture_mode"] is False
 
 
+class _SyncThread:
+    """Stand-in for threading.Thread that runs the generation body inline."""
+
+    def __init__(self, *args: Any, target: Any = None, **kwargs: Any) -> None:
+        self._target = target
+
+    def start(self) -> None:
+        if self._target is not None:
+            self._target()
+
+
 class _NoThread:
     """Stand-in for threading.Thread that never runs the generation body."""
 
@@ -992,13 +1003,31 @@ class _NoThread:
 class TestRefinePersistsManifest:
     """D-DM9: the manifest tracks the mock that ships, not just the first draw."""
 
-    def test_persist_is_not_gated_on_the_draw_kind(self) -> None:
-        """The save path calls _persist_manifest unconditionally now."""
-        import inspect
-
-        src = inspect.getsource(_dmod()._start_gen)
-        assert "_persist_manifest(" in src
-        assert "if existing_html is None:" not in src
+    def test_persist_is_not_gated_on_the_draw_kind(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """A refine draw persists the manifest, same as a first draw."""
+        dmod = _dmod()
+        calls: list[Any] = []
+        monkeypatch.setattr(dmod._mock_gen.threading, "Thread", _SyncThread)
+        monkeypatch.setattr(
+            dmod._mock_gen,
+            "generate_mock_streaming",
+            lambda *a, **k: iter(["<html><body>hi</body></html>", "__DONE__"]),
+        )
+        monkeypatch.setattr(
+            dmod._mock_gen, "_persist_manifest", lambda *a, **k: calls.append(a)
+        )
+        dmod._start_gen(
+            {},
+            str(tmp_path),
+            "m",
+            "k",
+            None,
+            False,
+            existing_html="<html><body>prior</body></html>",
+        )
+        assert calls, "a refine draw must still persist the manifest"
 
     def test_missing_manifest_leaves_the_prior_file_untouched(
         self, tmp_path: Path

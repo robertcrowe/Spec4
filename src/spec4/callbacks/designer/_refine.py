@@ -113,7 +113,7 @@ def on_designer_refine_image_delete(
     State("image-support-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_regenerate(
+def on_designer_regenerate(  # noqa: PLR0913  # parameters are the callback's Input/State list
     n: Any,
     refine_text: Any,
     annotations: Any,
