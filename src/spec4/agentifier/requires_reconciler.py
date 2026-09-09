@@ -266,42 +266,9 @@ def directional_signals(
     trigger = _trigger_text(consumer)
     inputs_text = _inputs_text(consumer)
     producer_name = str(producer.get("name") or "")
-    producer_id = str(producer.get("id") or "")
+    _s1_signals(consumer, producer_name, trigger, inputs_text, signals)
 
-    if producer_name:
-        # Trigger mentions carry the participation/consumption ambiguity
-        # ("Called by Thread_Summarization" vs "after X produces the
-        # ruleset") — require a completion/output qualifier, same as S2.
-        # Input mentions are consumption by construction and stay bare.
-        if trigger and _names_as_completed(producer_name, trigger):
-            signals.append(f"S1 trigger awaits '{producer_name}'")
-        elif inputs_text and name_matches(producer_name, inputs_text):
-            signals.append(f"S1 inputs name '{producer_name}'")
-        else:
-            for entry in _input_entries(consumer):
-                in_name = str(entry.get("name") or "")
-                if in_name and _stem_prefix_match(in_name, producer_name):
-                    signals.append(f"S1b input stem '{in_name}'")
-                    break
-
-    if trigger:
-        if prod_map is not None:
-            for fid, nid in prod_map.items():
-                if nid == producer_id and _names_as_completed(fid, trigger):
-                    signals.append(
-                        f"S2 trigger awaits completion of produced feature '{fid}'"
-                    )
-                    break
-        else:
-            for vf in producer.get("linked_vision_features") or []:
-                vf = str(vf)
-                if not vf or vf_link_counts.get(slug(vf), 0) > S2_MAX_LINKED:
-                    continue
-                if _names_as_completed(vf, trigger):
-                    signals.append(
-                        f"S2 trigger awaits completion of vision feature '{vf}' (selective)"
-                    )
-                    break
+    _s2_signals(producer, trigger, prod_map, vf_link_counts, signals)
 
     return signals
 
@@ -373,7 +340,7 @@ def _resolve(
     return name_to_node.get(req_name) or slug_to_node.get(slug(req_name))
 
 
-def _has_cycle(features: list[dict[str, Any]]) -> bool:
+def _has_cycle(features: list[dict[str, Any]]) -> bool:  # noqa: C901  # single iterative-DFS cycle detection; the colour invariant spans the whole function, so any split leaves a helper callable at only one point in the traversal
     """True if the feature->feature ``requires`` graph holds a cycle.
 
     Unresolvable entries are sinks and cannot participate. Iterative DFS
@@ -438,6 +405,83 @@ def reconcile_requires(
     applied set is reverted and recorded ``reverted-cycle`` (D-RC2 a).
     Mutual, lean, CONFLICTING, and NO-EVIDENCE edges are never touched.
     """
+    nodes, name_to_node, slug_to_node, prod_map, vf_link_counts = _reconcile_inputs(
+        features, feature_specs
+    )
+
+    candidates = _inversion_candidates(
+        nodes, prod_map, vf_link_counts, name_to_node, slug_to_node
+    )
+
+    records: list[dict[str, Any]] = []
+    records = _records_from_candidates(candidates, nodes, name_to_node, slug_to_node)
+    return records
+
+
+def _s1_signals(
+    consumer: dict[str, Any],
+    producer_name: str,
+    trigger: str,
+    inputs_text: str,
+    signals: list[str],
+) -> None:
+    """S1 / S1b: the consumer's trigger or inputs name the producer."""
+    if producer_name:
+        # Trigger mentions carry the participation/consumption ambiguity
+        # ("Called by Thread_Summarization" vs "after X produces the
+        # ruleset") — require a completion/output qualifier, same as S2.
+        # Input mentions are consumption by construction and stay bare.
+        if trigger and _names_as_completed(producer_name, trigger):
+            signals.append(f"S1 trigger awaits '{producer_name}'")
+        elif inputs_text and name_matches(producer_name, inputs_text):
+            signals.append(f"S1 inputs name '{producer_name}'")
+        else:
+            for entry in _input_entries(consumer):
+                in_name = str(entry.get("name") or "")
+                if in_name and _stem_prefix_match(in_name, producer_name):
+                    signals.append(f"S1b input stem '{in_name}'")
+                    break
+
+
+def _s2_signals(
+    producer: dict[str, Any],
+    trigger: str,
+    prod_map: dict[str, str] | None,
+    vf_link_counts: dict[str, int],
+    signals: list[str],
+) -> None:
+    """S2: the trigger awaits completion of something the producer produces."""
+    producer_id = str(producer.get("id") or "")
+    if trigger:
+        if prod_map is not None:
+            for fid, nid in prod_map.items():
+                if nid == producer_id and _names_as_completed(fid, trigger):
+                    signals.append(
+                        f"S2 trigger awaits completion of produced feature '{fid}'"
+                    )
+                    break
+        else:
+            for vf in producer.get("linked_vision_features") or []:
+                vf = str(vf)
+                if not vf or vf_link_counts.get(slug(vf), 0) > S2_MAX_LINKED:
+                    continue
+                if _names_as_completed(vf, trigger):
+                    signals.append(
+                        f"S2 trigger awaits completion of vision feature '{vf}' (selective)"
+                    )
+                    break
+
+
+def _reconcile_inputs(
+    features: list[dict[str, Any]], feature_specs: Any
+) -> tuple[
+    list[dict[str, Any]],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, str] | None,
+    dict[str, int],
+]:
+    """The node index, the production map and the vision-feature link counts."""
     nodes = [f for f in features if f.get("kind", "feature") != INFRA_KIND]
     name_to_node = {str(n["name"]): n for n in nodes if n.get("name")}
     slug_to_node = {str(n["id"]): n for n in nodes if n.get("id")}
@@ -450,7 +494,17 @@ def reconcile_requires(
         for vf in n.get("linked_vision_features") or []:
             key = slug(str(vf))
             vf_link_counts[key] = vf_link_counts.get(key, 0) + 1
+    return nodes, name_to_node, slug_to_node, prod_map, vf_link_counts
 
+
+def _inversion_candidates(
+    nodes: list[dict[str, Any]],
+    prod_map: dict[str, str] | None,
+    vf_link_counts: dict[str, int],
+    name_to_node: dict[str, Any],
+    slug_to_node: dict[str, Any],
+) -> list[Any]:
+    """Consumer/producer pairs whose requires edge looks inverted."""
     candidates: list[
         tuple[str, str, dict[str, Any], dict[str, Any], str, list[str]]
     ] = []
@@ -475,7 +529,16 @@ def reconcile_requires(
                     list(verdict["rev"]),
                 )
             )
+    return candidates
 
+
+def _records_from_candidates(
+    candidates: list[Any],
+    nodes: list[dict[str, Any]],
+    name_to_node: dict[str, Any],
+    slug_to_node: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Apply each candidate inversion and record what changed."""
     records: list[dict[str, Any]] = []
     for from_id, to_id, consumer, producer, req_name, signals in sorted(
         candidates, key=lambda c: (c[0], c[1])

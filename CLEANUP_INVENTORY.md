@@ -4284,6 +4284,14 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
     never fixed in place: revert immediately, **no retry**, and report. Those mean the
     extraction itself was wrong, not that it was transcribed wrong.
 
+    A fifth mechanical class: **a helper that references a caller local it was not
+    given a parameter for**, detected as `F821` at the reference. The repair is adding
+    the parameter — typed from the narrowed type at the call site — and passing the
+    local at the call site; **no other change**. This is the same class as a
+    pre-promotion name reference, caught by a different rule. *Added after 5l, where
+    three helpers in `requires_reconciler.py` referenced `feature_specs`, `name_to_node`
+    / `slug_to_node` and `nodes`.*
+
     A fourth mechanical class: **a `# noqa` comment that must be appended to an existing
     `def` line.** The repair is the comment's placement alone — **the signature line is
     never rewritten**, because a signature that fits on one line and one that spans
@@ -4301,8 +4309,17 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
     `_deployer_roadmap_extras` took `dict[str, Any] | None` from `stack_for_deployer`'s
     signature, when the only call site sits below that function's
     `if not isinstance(stack, dict) ... return ""` guard.*
-11. **Validate in memory, then write.** Build each edited file's full new text in
-    memory, run `ast.parse` on it, and write to disk **only if it parses**. A range
+11. **Validate in memory, probe on scratch, then write.** Build each edited file's full
+    new text in memory and run `ast.parse` on it. Then write it to a **scratch copy**
+    and run `ruff check --select F821,F841,C90,PLR` against that copy. **Nothing is
+    written to `src/` until the scratch copy is clean.** `ast.parse` catches syntax and
+    indentation; only ruff catches an undefined name, an unused read, or a helper that
+    is still over threshold — and ruff needs a file. *The scratch-probe step is what
+    carried 5i, 5j and 5k through six or seven defects without one reaching the gate;
+    5l dropped it and spent both its attempts. Extended after 5l.*
+
+    The original form of the rule: build in memory, `ast.parse`, write only if it
+    parses. A range
     slip, a bad dedent or a mangled signature then costs nothing on disk and is not an
     attempt -- it never reaches the gate. *Adopted during 5h, where it caught two
     indentation slips with nothing to revert; the three stops before it were all defects
@@ -6354,3 +6371,122 @@ Suite-wide **12263 → 12288, +25**: 9 new `def`s, 9 call/assignment sites, 7 `r
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 172.38s` (exit 0) |
 | Coverage | same run | `TOTAL 12288 stmts, 896 miss (893 + 3), 93%` |
+
+## 42. Phase 5l — `agentifier/` siblings: 7 modules, 19 helpers, 3 noqas
+
+Extract-only. All ten 27.3 findings cleared — **7 decomposed, 3 suppressed** with the
+pre-approved noqas. `src/spec4/agentifier/**` is now entirely clean for
+C90 / PLR0912 / PLR0913 / PLR0915.
+
+### 42.1 Before and after
+
+| File | Function | C901 | Br | → |
+|---|---|---:|---:|---|
+| `pattern_loader.py` | `_validate_frontmatter` | **17** | **17** | **noqa** |
+| `composer.py` | `run` | **15** | **15** | clear |
+| `grounding.py` | `render_grounding_for_prompt` | **14** | **13** | clear |
+| `_seed.py` | `_build_seed_message` | **13** | **14** | clear |
+| `linker.py` | `_normalize_edges` | **13** | — | clear |
+| `requires_reconciler.py` | `directional_signals` | **13** | **14** | clear |
+| `panel_closure.py` | `close_selection` | **12** | — | clear |
+| `requires_reconciler.py` | `reconcile_requires` | **11** | — | clear |
+| `requires_reconciler.py` | `_has_cycle` | **11** | — | **noqa** |
+| `_seed.py` | `_call_scout` | — | (7 args) | **noqa** |
+
+### 42.2 The 19 helpers
+
+`linker.py` (4) — one per contract pass named in the docstring:
+`_clear_self_and_dangling_labels`, `_valid_requires_targets`, `_clean_requires_edges`,
+`_normalize_scope`, with `_break_requires_cycles` (already a function) called between
+them. The spine is now five named passes in the order the docstring lists them.
+
+`requires_reconciler.py` (5) — `_s1_signals` / `_s2_signals` (the two documented signal
+families), `_reconcile_inputs`, `_inversion_candidates`, `_records_from_candidates`.
+
+`panel_closure.py` (2) — `_apply_requires_closure` and `_apply_coordinator_toggle`,
+each returning whether it changed anything; the `while changed:` fixpoint loop stays.
+
+`composer.py` (3) — `_insert_synthesized_heads`, `_derive_final_scope`, `_log_composer`.
+
+`_seed.py` (3) — `_seed_mode_note`, `_candidate_head_lines`,
+`_candidate_analysis_lines`. The per-candidate block splits in two because one helper
+would need six parameters.
+
+`grounding.py` (2) — `_served_feature_lines` and `_served_feature_detail`; one was not
+enough (C901 12 on the first cut).
+
+### 42.3 Rule 9
+
+`directional_signals`'s three `break`s stay inside the loops that carry them —
+both S1b's input scan and S2's two producer scans move into their helpers **whole**.
+`grounding.py`'s loop-body `continue` became a `return` in `_served_feature_lines`
+(the one rewrite in 5l); `_clean_requires_edges` keeps its two `continue`s because the
+loop moved with them.
+
+### 42.4 Rule 10 — two in-place fixes (of five)
+
+Both are the annotation class, both named exactly by mypy, both annotation-only:
+
+| # | Site | Fix |
+|---:|---|---|
+| 1 | `requires_reconciler.py` `_reconcile_inputs` **return** type | `dict[str, str]` → `dict[str, str] | None` for `prod_map` |
+| 2 | `requires_reconciler.py` `_inversion_candidates` `prod_map` parameter | same, propagated from (1) |
+
+**Note for the rule's wording:** class 2 says "a helper *parameter* annotation". Fix 1 is
+a **return** annotation. It is the same defect — a declared type that does not match the
+actual — and the repair touched nothing else, so it was taken as covered. Tighten or
+broaden the class's wording as preferred.
+
+### 42.5 Rule 11 earned its extension immediately
+
+The extended rule (build in memory → `ast.parse` → scratch copy → `ruff check`) caught
+**one real defect before anything reached `src/`**: `_s2_signals` at six parameters
+(PLR0913). It was fixed by moving `producer_id`'s computation into the helper, which is
+where it belongs now that nothing else uses it. Under the old rule that would have been
+an attempt.
+
+### 42.6 A finding for 5p: `PLR` is wider than Phase 5 measured
+
+The probe's initial selector was `PLR`, which surfaced nine **PLR2004**
+(magic-value-comparison) in these three files — all **pre-existing**, confirmed against
+`HEAD`. Phase 0 and 27.1 only ever measured `PLR0912`, `PLR0913` and `PLR0915`.
+
+Repo-wide `--select PLR` today:
+
+| Rule | Count | In Phase 5's scope? |
+|---|---:|---|
+| PLR2004 magic-value-comparison | **49** | **no** |
+| PLR0912 too-many-branches | 12 | yes |
+| PLR0913 too-many-arguments | 9 | yes |
+| PLR0911 too-many-return-statements | **7** | **no** |
+| PLR0915 too-many-statements | 4 | yes |
+| PLR1714 repeated-equality-comparison | **1** | **no** |
+
+**27.5(g) as written promotes `"PLR"` wholesale, which would add 57 unmeasured findings
+to the gate on 5p's first run.** Either promote the three measured rules by name
+(`PLR0912`, `PLR0913`, `PLR0915`), or promote `PLR` and handle the 57 — PLR2004 in
+particular overlaps 5p(b)'s magic-strings work and might be folded into it deliberately.
+Flagged now rather than discovered at 5p.
+
+### 42.7 Line accounting (rule 3)
+
+**646 non-blank lines** across the ten functions; **639 verbatim**; 7 accounted: the
+three `def` lines now carrying noqas, and four in `close_selection` where the two rule
+bodies' `changed = True` assignments became the helpers' return values, folded into
+`changed = _apply_x(...) or changed` at the call sites. **No statement line is
+unaccounted for.**
+
+### 42.8 Statement counts and coverage (rule 4)
+
+Suite-wide **12288 → 12338, +50**. Misses **896 = 893 + 3**, unchanged — every 5l
+extraction site is on a covered path.
+
+### 42.9 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 170.89s` (exit 0) |
+| Coverage | same run | `TOTAL 12338 stmts, 896 miss (893 + 3), 93%` |

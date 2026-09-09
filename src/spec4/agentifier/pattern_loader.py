@@ -230,7 +230,7 @@ def _parse_bullets(text: str) -> list[str]:
     return [item for item in items if item]
 
 
-def _validate_frontmatter(meta: dict[str, Any], path: Path, category: str) -> None:
+def _validate_frontmatter(meta: dict[str, Any], path: Path, category: str) -> None:  # noqa: C901, PLR0912  # flat per-field schema validation; one branch per frontmatter field, each two or three lines appending an error
     """Validate frontmatter fields and types for a pattern of ``category``."""
     for required in _REQUIRED_COMMON_FIELDS:
         if required not in meta:

@@ -118,42 +118,52 @@ def render_grounding_for_prompt(grounding: dict[str, Any] | None) -> str:
         "",
     ]
     for feat in served:
-        if not isinstance(feat, dict):
-            continue
-        name = feat.get("name") or feat.get("id") or "(unnamed)"
-        lines.append(f"- **{name}**")
-        purpose = str(feat.get("purpose") or "").strip()
-        if purpose:
-            lines.append(f"  - Purpose: {purpose}")
-        inv = feat.get("invocation")
-        trigger = inv.get("trigger") if isinstance(inv, dict) else None
-        if trigger:
-            lines.append(f"  - Trigger: {trigger}")
-        inputs = [i for i in (feat.get("inputs") or []) if isinstance(i, dict)]
-        if inputs:
-            rendered = ", ".join(_input_label(i) for i in inputs if _input_label(i))
-            if rendered:
-                lines.append(f"  - Inputs: {rendered}")
-        outputs = feat.get("outputs")
-        if isinstance(outputs, dict):
-            primary = str(outputs.get("primary") or "").strip()
-            if primary:
-                lines.append(f"  - Output: {primary}")
-        sc = [str(s) for s in (feat.get("success_criteria") or []) if s]
-        if sc:
-            lines.append(f"  - Success criteria: {'; '.join(sc)}")
-        modes = [
-            str(m.get("mode"))
-            for m in (feat.get("failure_modes") or [])
-            if isinstance(m, dict) and m.get("mode")
-        ]
-        if modes:
-            lines.append(f"  - Failure modes: {'; '.join(modes)}")
-        entities = [str(e) for e in (feat.get("entities") or []) if e]
-        if entities:
-            lines.append(f"  - Domain entities: {', '.join(entities)}")
-        deps = [str(d) for d in (feat.get("dependencies") or []) if d]
-        if deps:
-            lines.append(f"  - Depends on (build order): {', '.join(deps)}")
+        _served_feature_lines(feat, lines)
     lines.append("")
     return "\n".join(lines)
+
+
+def _served_feature_lines(feat: Any, lines: list[str]) -> None:
+    """One served product feature: name, purpose and trigger."""
+    if not isinstance(feat, dict):
+        return
+    name = feat.get("name") or feat.get("id") or "(unnamed)"
+    lines.append(f"- **{name}**")
+    purpose = str(feat.get("purpose") or "").strip()
+    if purpose:
+        lines.append(f"  - Purpose: {purpose}")
+    inv = feat.get("invocation")
+    trigger = inv.get("trigger") if isinstance(inv, dict) else None
+    if trigger:
+        lines.append(f"  - Trigger: {trigger}")
+    _served_feature_detail(feat, lines)
+
+
+def _served_feature_detail(feat: dict[str, Any], lines: list[str]) -> None:
+    """Inputs, output, success criteria, failure modes, entities, dependencies."""
+    inputs = [i for i in (feat.get("inputs") or []) if isinstance(i, dict)]
+    if inputs:
+        rendered = ", ".join(_input_label(i) for i in inputs if _input_label(i))
+        if rendered:
+            lines.append(f"  - Inputs: {rendered}")
+    outputs = feat.get("outputs")
+    if isinstance(outputs, dict):
+        primary = str(outputs.get("primary") or "").strip()
+        if primary:
+            lines.append(f"  - Output: {primary}")
+    sc = [str(s) for s in (feat.get("success_criteria") or []) if s]
+    if sc:
+        lines.append(f"  - Success criteria: {'; '.join(sc)}")
+    modes = [
+        str(m.get("mode"))
+        for m in (feat.get("failure_modes") or [])
+        if isinstance(m, dict) and m.get("mode")
+    ]
+    if modes:
+        lines.append(f"  - Failure modes: {'; '.join(modes)}")
+    entities = [str(e) for e in (feat.get("entities") or []) if e]
+    if entities:
+        lines.append(f"  - Domain entities: {', '.join(entities)}")
+    deps = [str(d) for d in (feat.get("dependencies") or []) if d]
+    if deps:
+        lines.append(f"  - Depends on (build order): {', '.join(deps)}")

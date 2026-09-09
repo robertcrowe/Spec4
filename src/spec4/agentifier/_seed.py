@@ -142,7 +142,7 @@ def _iter_async_gen(async_gen: Any) -> Generator[str, None, None]:
 # ---------------------------------------------------------------------------
 
 
-def _call_scout(
+def _call_scout(  # noqa: PLR0913  # the Scout call contract, threaded straight through
     vision: dict[str, Any],
     code_review: dict[str, Any] | None,
     llm_config: dict[str, Any],
@@ -337,27 +337,7 @@ def _build_seed_message(
     revision_goal: str = "",
 ) -> str:
     """Build the first user message injected into the orchestrator conversation."""
-    if revision_goal:
-        mode_note = (
-            " This is a REVISION round of an already-built project — the developer "
-            "is extending the existing AI surface, not starting fresh, so do NOT "
-            "ask whether they are adding AI for the first time. The goal of this "
-            f"revision: {revision_goal} The candidates below are only the NEW AI "
-            "opportunities introduced by this revision's changes; already-built AI "
-            "features are carried forward automatically and are not shown here. "
-            "Present the first new candidate, framing the conversation around this "
-            "revision's goal."
-        )
-    elif brownfield:
-        mode_note = (
-            " This is a BROWNFIELD project (an existing codebase was reviewed). "
-            "Before presenting the first candidate, briefly ask the developer: "
-            "'Are we adding AI features for the first time, extending existing AI "
-            "features, or rethinking how AI is used overall?' — then proceed with "
-            "presenting candidates based on their answer."
-        )
-    else:
-        mode_note = ""
+    mode_note = _seed_mode_note(revision_goal, brownfield)
     intro = (
         f"[Spec4 system note: Scout found {len(candidates)} AI opportunity "
         f"candidate(s) in the project vision. Tier Analyst has provided a "
@@ -378,41 +358,10 @@ def _build_seed_message(
             required_by.setdefault(r, []).append(c.name)
     parts = [intro]
     for i, (cand, analysis) in enumerate(zip(candidates, analyses), 1):
-        lines = [
-            f"\n---\n**Candidate {i}: {cand.name}** (scope: {cand.scope})",
-            f"Description: {cand.rough_description}",
-        ]
-        if cand.linked_existing_workflow:
-            lines.append(
-                "Existing implementation this would replace: "
-                f"{cand.linked_existing_workflow}"
-            )
-        lines.extend(
-            _graph_placement_lines(cand, present, members_by_coordinator, required_by)
+        lines = _candidate_head_lines(
+            i, cand, present, members_by_coordinator, required_by
         )
-        if cand.linked_vision_features:
-            lines.append(
-                f"Linked vision features: {', '.join(cand.linked_vision_features)}"
-            )
-        lines.append(f"Recommended tier: **{analysis.recommended_tier}**")
-        lines.append(f"Rationale: {analysis.rationale}")
-        if analysis.compared_to_next_tier_down:
-            lines.append(
-                f"Compared to next cheaper tier: {analysis.compared_to_next_tier_down}"
-            )
-        if analysis.borderline:
-            seams = ", ".join(analysis.borderline_seams)
-            lines.append(f"Borderline: YES — watch for: {seams}")
-        else:
-            lines.append("Borderline: NO")
-        if analysis.risks_of_going_higher:
-            lines.append(
-                "Risks of going higher: " + "; ".join(analysis.risks_of_going_higher)
-            )
-        if analysis.risks_of_going_lower:
-            lines.append(
-                "Risks of going lower: " + "; ".join(analysis.risks_of_going_lower)
-            )
+        _candidate_analysis_lines(analysis, lines)
         parts.append("\n".join(lines))
     return "\n".join(parts)
 
@@ -507,3 +456,79 @@ def _candidates_from_dicts(data: list[dict[str, Any]]) -> list[Candidate]:
         )
         for d in data
     ]
+
+
+def _seed_mode_note(revision_goal: Any, brownfield: bool) -> str:
+    """The revision / brownfield / greenfield framing note for the seed intro."""
+    if revision_goal:
+        mode_note = (
+            " This is a REVISION round of an already-built project — the developer "
+            "is extending the existing AI surface, not starting fresh, so do NOT "
+            "ask whether they are adding AI for the first time. The goal of this "
+            f"revision: {revision_goal} The candidates below are only the NEW AI "
+            "opportunities introduced by this revision's changes; already-built AI "
+            "features are carried forward automatically and are not shown here. "
+            "Present the first new candidate, framing the conversation around this "
+            "revision's goal."
+        )
+    elif brownfield:
+        mode_note = (
+            " This is a BROWNFIELD project (an existing codebase was reviewed). "
+            "Before presenting the first candidate, briefly ask the developer: "
+            "'Are we adding AI features for the first time, extending existing AI "
+            "features, or rethinking how AI is used overall?' — then proceed with "
+            "presenting candidates based on their answer."
+        )
+    else:
+        mode_note = ""
+    return mode_note
+
+
+def _candidate_head_lines(
+    i: int,
+    cand: Any,
+    present: set[str],
+    members_by_coordinator: dict[str, list[str]],
+    required_by: dict[str, list[str]],
+) -> list[str]:
+    """One candidate's heading, description, graph placement and vision links."""
+    lines = [
+        f"\n---\n**Candidate {i}: {cand.name}** (scope: {cand.scope})",
+        f"Description: {cand.rough_description}",
+    ]
+    if cand.linked_existing_workflow:
+        lines.append(
+            "Existing implementation this would replace: "
+            f"{cand.linked_existing_workflow}"
+        )
+    lines.extend(
+        _graph_placement_lines(cand, present, members_by_coordinator, required_by)
+    )
+    if cand.linked_vision_features:
+        lines.append(
+            f"Linked vision features: {', '.join(cand.linked_vision_features)}"
+        )
+    return lines
+
+
+def _candidate_analysis_lines(analysis: Any, lines: list[str]) -> None:
+    """The Tier Analyst recommendation, rationale and risk lines for one candidate."""
+    lines.append(f"Recommended tier: **{analysis.recommended_tier}**")
+    lines.append(f"Rationale: {analysis.rationale}")
+    if analysis.compared_to_next_tier_down:
+        lines.append(
+            f"Compared to next cheaper tier: {analysis.compared_to_next_tier_down}"
+        )
+    if analysis.borderline:
+        seams = ", ".join(analysis.borderline_seams)
+        lines.append(f"Borderline: YES — watch for: {seams}")
+    else:
+        lines.append("Borderline: NO")
+    if analysis.risks_of_going_higher:
+        lines.append(
+            "Risks of going higher: " + "; ".join(analysis.risks_of_going_higher)
+        )
+    if analysis.risks_of_going_lower:
+        lines.append(
+            "Risks of going lower: " + "; ".join(analysis.risks_of_going_lower)
+        )

@@ -227,54 +227,11 @@ def _normalize_edges(candidates: list[Candidate]) -> list[Candidate]:
     """
     names = {c.name for c in candidates}
 
-    # composed_under: drop self-edges first, then degrade danglers to flat.
-    for c in candidates:
-        if c.composed_under == c.name:
-            c.composed_under = ""
-    member_counts = Counter(c.composed_under for c in candidates if c.composed_under)
-    for c in candidates:
-        label = c.composed_under
-        if label and label not in names and member_counts[label] < 2:
-            _log.warning(
-                "Linker edge: degrading dangling composed_under %r on %r to flat",
-                label,
-                c.name,
-            )
-            c.composed_under = ""
-
-    # A requires target may resolve to an emitted candidate, a synthesizable
-    # head-absent coordinator, or a cross-feature (an emitted candidate). Only
-    # labels with >=2 members and no matching candidate get synthesized later.
-    surviving = Counter(c.composed_under for c in candidates if c.composed_under)
-    synthesizable = {lbl for lbl, n in surviving.items() if lbl not in names and n >= 2}
-    valid_targets = names | synthesizable
-
-    for c in candidates:
-        cleaned: list[str] = []
-        for r in c.requires:
-            if r == c.name:
-                _log.warning("Linker edge: dropping self requires on %r", c.name)
-                continue
-            if r not in valid_targets:
-                _log.warning(
-                    "Linker edge: dropping dangling requires %r on %r", r, c.name
-                )
-                continue
-            if r not in cleaned:
-                cleaned.append(r)
-        c.requires = cleaned
-
+    _clear_self_and_dangling_labels(candidates, names)
+    valid_targets = _valid_requires_targets(candidates, names)
+    _clean_requires_edges(candidates, valid_targets)
     _break_requires_cycles(candidates)
-
-    # Scope consistency: normalize rather than reject. A member is a
-    # sub_feature; an emitted head is a feature. composed_under wins, so a
-    # nested coordinator (member of a higher coordinator) stays sub_feature.
-    referenced = {c.composed_under for c in candidates if c.composed_under}
-    for c in candidates:
-        if c.composed_under:
-            c.scope = "sub_feature"
-        elif c.name in referenced:
-            c.scope = "feature"
+    _normalize_scope(candidates)
 
     return candidates
 
@@ -391,3 +348,65 @@ class LinkerAgent:
                 break
 
         return LinkerOutput(overlay=overlay, outcome=outcome)
+
+
+def _clear_self_and_dangling_labels(
+    candidates: list[Candidate], names: set[str]
+) -> None:
+    """composed_under: drop self-edges, then degrade danglers to flat."""
+    # composed_under: drop self-edges first, then degrade danglers to flat.
+    for c in candidates:
+        if c.composed_under == c.name:
+            c.composed_under = ""
+    member_counts = Counter(c.composed_under for c in candidates if c.composed_under)
+    for c in candidates:
+        label = c.composed_under
+        if label and label not in names and member_counts[label] < 2:
+            _log.warning(
+                "Linker edge: degrading dangling composed_under %r on %r to flat",
+                label,
+                c.name,
+            )
+            c.composed_under = ""
+
+
+def _valid_requires_targets(candidates: list[Candidate], names: set[str]) -> set[str]:
+    """Emitted candidates plus synthesizable head-absent coordinators."""
+    # A requires target may resolve to an emitted candidate, a synthesizable
+    # head-absent coordinator, or a cross-feature (an emitted candidate). Only
+    # labels with >=2 members and no matching candidate get synthesized later.
+    surviving = Counter(c.composed_under for c in candidates if c.composed_under)
+    synthesizable = {lbl for lbl, n in surviving.items() if lbl not in names and n >= 2}
+    valid_targets = names | synthesizable
+    return valid_targets
+
+
+def _clean_requires_edges(candidates: list[Candidate], valid_targets: set[str]) -> None:
+    """Drop self-references and dangling requires, deduped."""
+    for c in candidates:
+        cleaned: list[str] = []
+        for r in c.requires:
+            if r == c.name:
+                _log.warning("Linker edge: dropping self requires on %r", c.name)
+                continue
+            if r not in valid_targets:
+                _log.warning(
+                    "Linker edge: dropping dangling requires %r on %r", r, c.name
+                )
+                continue
+            if r not in cleaned:
+                cleaned.append(r)
+        c.requires = cleaned
+
+
+def _normalize_scope(candidates: list[Candidate]) -> None:
+    """Scope consistency: a member is sub_feature, an emitted head is feature."""
+    # Scope consistency: normalize rather than reject. A member is a
+    # sub_feature; an emitted head is a feature. composed_under wins, so a
+    # nested coordinator (member of a higher coordinator) stays sub_feature.
+    referenced = {c.composed_under for c in candidates if c.composed_under}
+    for c in candidates:
+        if c.composed_under:
+            c.scope = "sub_feature"
+        elif c.name in referenced:
+            c.scope = "feature"

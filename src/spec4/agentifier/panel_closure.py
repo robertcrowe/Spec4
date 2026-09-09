@@ -98,30 +98,13 @@ def close_selection(
     while changed:
         changed = False
 
-        # R — requires-closure: a selected dependent pulls in its producers,
-        # each of which is then locked on.
-        for name in list(selected):
-            for producer in by_name[name].requires:
-                if producer not in by_name:
-                    continue  # dangling target; already degraded upstream
-                if producer not in required:
-                    required.add(producer)
-                    changed = True
-                if producer not in selected:
-                    selected.add(producer)
-                    changed = True
-
-        # C — coordinator toggle: on iff >= 2 members are in the closed set, or
-        # the coordinator is itself required by a selected dependent.
-        for coord in coordinators:
-            present = sum(1 for m in members_by_coord[coord] if m in selected)
-            should_be_on = present >= 2 or coord in required
-            if should_be_on and coord not in selected:
-                selected.add(coord)
-                changed = True
-            elif not should_be_on and coord in selected:
-                selected.discard(coord)
-                changed = True
+        changed = _apply_requires_closure(by_name, selected, required) or changed
+        changed = (
+            _apply_coordinator_toggle(
+                coordinators, members_by_coord, selected, required
+            )
+            or changed
+        )
 
     return ClosureResult(
         selected=selected,
@@ -155,3 +138,41 @@ def pool_from_dicts(dicts: list[dict[str, Any]]) -> list[Candidate]:
             )
         )
     return pool
+
+
+def _apply_requires_closure(
+    by_name: dict[str, Candidate], selected: set[str], required: set[str]
+) -> bool:
+    """Rule R: a selected dependent pulls in its producers, each then locked on."""
+    changed = False
+    for name in list(selected):
+        for producer in by_name[name].requires:
+            if producer not in by_name:
+                continue  # dangling target; already degraded upstream
+            if producer not in required:
+                required.add(producer)
+                changed = True
+            if producer not in selected:
+                selected.add(producer)
+                changed = True
+    return changed
+
+
+def _apply_coordinator_toggle(
+    coordinators: set[str],
+    members_by_coord: dict[str, list[str]],
+    selected: set[str],
+    required: set[str],
+) -> bool:
+    """Rule C: a coordinator is on iff >= 2 members are in, or it is required."""
+    changed = False
+    for coord in coordinators:
+        present = sum(1 for m in members_by_coord[coord] if m in selected)
+        should_be_on = present >= 2 or coord in required
+        if should_be_on and coord not in selected:
+            selected.add(coord)
+            changed = True
+        elif not should_be_on and coord in selected:
+            selected.discard(coord)
+            changed = True
+    return changed

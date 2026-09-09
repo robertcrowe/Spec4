@@ -260,14 +260,7 @@ class ComposerAgent:
 
         # Build the augmented list: insert each synthesized head just before its
         # first member, preserving original order otherwise. Nothing is dropped.
-        inserted: set[str] = set()
-        out: list[Candidate] = []
-        for c in candidates:
-            label = c.composed_under
-            if label in synthesized_heads and label not in inserted:
-                out.append(synthesized_heads[label])
-                inserted.add(label)
-            out.append(c)
+        out = _insert_synthesized_heads(candidates, synthesized_heads)
 
         # Final scope derivation (contract §8) — composed_under is now settled,
         # so scope is a pure function of the finalized graph and no longer a Scout
@@ -275,28 +268,58 @@ class ComposerAgent:
         # composed_under) is a feature; a remaining standalone that relates to more
         # than one vision feature is cross_feature; anything else is a feature.
         referenced = {c.composed_under for c in out if c.composed_under}
-        for c in out:
-            if c.composed_under:
-                c.scope = "sub_feature"
-            elif c.name in referenced:
-                c.scope = "feature"
-            elif len(c.linked_vision_features) > 1:
-                c.scope = "cross_feature"
-            else:
-                c.scope = "feature"
+        _derive_final_scope(out, referenced)
 
         # Enrich over the final list so synthesized heads get their coordinator
         # sentence too.
         members_by_label_final, _ = _group_by_composed_under(out)
         _enrich_descriptions(out, members_by_label_final)
 
-        if _DEV_MODE:
-            print(
-                f"[agentifier] composer: {len(candidates)} in → {len(out)} out, "
-                f"{len(compositions)} composition(s), {n_synthesized} synthesized head(s)",
-                flush=True,
-            )
+        _log_composer(candidates, out, compositions, n_synthesized)
 
         return ComposerOutput(
             candidates=out, compositions=compositions, n_synthesized=n_synthesized
+        )
+
+
+def _insert_synthesized_heads(
+    candidates: list[Candidate], synthesized_heads: dict[str, Candidate]
+) -> list[Candidate]:
+    """Insert each synthesized head just before its first member, dropping nothing."""
+    inserted: set[str] = set()
+    out: list[Candidate] = []
+    for c in candidates:
+        label = c.composed_under
+        if label in synthesized_heads and label not in inserted:
+            out.append(synthesized_heads[label])
+            inserted.add(label)
+        out.append(c)
+    return out
+
+
+def _derive_final_scope(out: list[Candidate], referenced: set[str]) -> None:
+    """Final scope derivation (contract section 8) over the settled graph."""
+    for c in out:
+        if c.composed_under:
+            c.scope = "sub_feature"
+        elif c.name in referenced:
+            c.scope = "feature"
+        elif len(c.linked_vision_features) > 1:
+            c.scope = "cross_feature"
+        else:
+            c.scope = "feature"
+
+
+def _log_composer(
+    candidates: list[Candidate],
+    out: list[Candidate],
+    compositions: list[Composition],
+    n_synthesized: int,
+) -> None:
+    """DEV_MODE trace of the composition pass."""
+    if _DEV_MODE:
+        print(
+            f"[agentifier] composer: {len(candidates)} in → {len(out)} out, "
+            f"{len(compositions)} composition(s), {n_synthesized} synthesized head(s)",
+            flush=True,
         )
