@@ -1798,3 +1798,210 @@ already formatted` is §15.6's 187 plus the four new modules; `64 source files` 
 mypy's 60 plus the same four. Statements rose 11680 → 11747 (+67, the façade) and
 misses held at 893, so no per-module floor moved. `.coverage` was restored after
 the run.
+
+## 17. Phase 4b — `project_manager.py` split into four modules
+
+Recorded 2026-09-08 on branch `look-rework`. Five files under `src/spec4/`
+changed or added; **no importer anywhere changed**, no test file was edited,
+`pyproject.toml` is untouched. Nothing was written under `.spec4/`, `.venv/` or
+`.git/`, and no git command was run beyond `git show HEAD:…` and `git status`,
+both read-only.
+
+Unlike 4a, this is a **partial** façade: `project_manager.py` still defines the
+staleness and button-state block (§15.3's "~220 lines stays in the façade"),
+and re-exports the 66 names that moved out.
+
+### 17.1 Line counts of the five resulting files
+
+| File | Lines | Was |
+|---|---:|---:|
+| `project_manager.py` (façade + staleness/button state) | 515 | 1897 |
+| `_paths.py` | 199 | — |
+| `_artifacts.py` | 555 | — |
+| `_phase_markdown.py` | 442 | — |
+| `_usage.py` | 436 | — |
+| **total** | **2147** | **1897** |
+
+The +250 is compatibility layer and prose: the façade's four import blocks and
+85-name `__all__` (+24 statements, see §17.5), four module docstrings, and the
+import header each new module needs. No definition grew or shrank by a line —
+every one moved byte-for-byte, and §17.4 shows how that was checked.
+
+### 17.2 The names moved to each
+
+All 85 top-level names are accounted for: 66 moved, 19 stayed. Nothing was
+dropped, added, or renamed — **no name changed spelling in 4b.** §15.4's
+decision 2 (public names in the new module, underscore aliases in the façade)
+was 4a-specific and does not apply here: the split has **zero cross-module
+private references**, so the plan's "no cross-module private imports" rule is
+satisfied without a single rename. Every name one new module needs from another
+(`get_version_dir`, `ensure_version_dir`, `active_version`,
+`latest_phase_version`, `latest_implemented_version`, `parse_phase_markdown`,
+`render_phase_markdown`, `USAGE_FILENAME`) was already public.
+
+**`_paths.py`** — where an artifact lives: dirs, versioning, rounds (13):
+`get_spec4_dir`, `ensure_spec4_dir`, `get_version_dir`, `ensure_version_dir`,
+`_PHASE_VERSION_RE`, `_phase_version_dirs`, `latest_phase_version`,
+`latest_implemented_version`, `active_version`, `RoundsOnDisk`,
+`rounds_on_disk`, `session_is_brownfield`, `resolve_phase_version`. Both banner
+comments in this range ("Directory helpers", "Phase-set versioning") moved with
+their blocks.
+
+**`_artifacts.py`** — read/write every `.spec4/` artifact, plus README assembly
+(26): `load_spec4_artifacts`, `_write_text_if_changed`, `save_vision`,
+`save_stack`, `merge_library_additions`, `save_code_review`,
+`load_prior_vision`, `save_phases`, `save_ai_catalog`, `load_ai_catalog`,
+`save_ai_features`, `load_ai_features`, `save_feature_specs`,
+`load_design_manifest`, `load_feature_specs`, `load_vision`,
+`save_deployment_plan`, `load_prior_ai_features`, `load_prior_mock`,
+`load_prior_stack`, `load_deployment_plan`, `load_prior_deployment_plan`,
+`SPEC4_README_ATTRIBUTION`, `_with_readme_attribution`, `save_readme`,
+`load_existing_readme`.
+
+`load_prior_vision` and `save_phases` sat inside the "Phase-set versioning"
+banner in the old file but are artifact reads/writes, and moved here rather
+than to `_paths`; the README trio sat inside the "LLM usage log" banner and
+moved here rather than to `_usage`. Those are the only three places where the
+old banner boundaries and the concern boundaries disagreed.
+
+**`_phase_markdown.py`** — phase-file assembly and parsing (7):
+`_PHASE_FRONTMATTER_RE` (with its explaining comment, old lines 39–45),
+`_phase_spec_preamble`, `_declared_ids`, `_phase_stack_lines`,
+`_phase_nfr_lines`, `render_phase_markdown`, `parse_phase_markdown`.
+
+**`_usage.py`** — usage log and cost rollup (20): `USAGE_FILENAME`,
+`USAGE_SCHEMA_VERSION`, `_USAGE_COST_SOURCE`, `_USAGE_ROLLUP_PARENT`,
+`_USAGE_LOCK`, `_usage_int`, `_usage_float`, `usage_rollup_name`,
+`_usage_versions`, `summarize_usage`, `usage_totals`, `load_usage`,
+`_COST_SUMMARY_EMPTY`, `_cost_block`, `cost_summary`, `_call_is_unpriced`,
+`unpriced_calls`, `round_cost`, `_write_atomic`, `save_usage`. `_USAGE_LOCK`
+keeps its §14.1 category-(a) comment verbatim, and the façade re-export binds
+the same `threading.Lock` object.
+
+**Stayed in `project_manager.py`** (19): `_NON_ARTIFACT_FILES`,
+`_STALE_DEPENDENCIES`, `_path_mtime`, `detect_stale_inputs`,
+`_PIPELINE_ARTIFACT_ORDER`, `_REQUIRED_INPUTS`, the six `AGENT_BTN_*`
+constants, `brownfield_new_round_pending`, `directory_has_content`,
+`directory_opens`, `needs_project_mode`, `_has_transcript`,
+`agent_button_state`, `_artifact_button_state`. Both are decided from artifact
+mtimes across the whole pipeline rather than from any one concern.
+
+### 17.3 The resulting import graph
+
+```
+_phase_markdown  ←  _artifacts  →  _paths  ←  _usage
+             all four  ←  project_manager (façade)
+```
+
+Acyclic. `_artifacts` → `_paths` (5 names) and → `_phase_markdown` (2);
+`_usage` → `_paths` (2); `_phase_markdown` and `_paths` import nothing from the
+split. No new edge leaves `spec4`'s existing dependency set —
+`design_manifest`, `stack_routing` and `feature_specs` are now imported by
+`_phase_markdown` alone, `app_constants` by `_paths` (`PROJECT_MODE_EXISTING`)
+and the façade (`PROJECT_MODES`), and the `spec4.__version__` import by
+`_usage` alone.
+
+The `project_manager` ↔ `layouts` cycle the plan warns about is not
+reintroduced: none of the four imports `layouts`, `callbacks`, `app` or
+`session`.
+
+### 17.4 How "no logic changes" was verified
+
+- **AST equality per definition.** All 85 top-level definitions were re-parsed
+  from their new home and `ast.dump`-compared against the same definition in
+  `HEAD:src/spec4/project_manager.py`. **85 matched exactly, 0 missing, 0
+  added** — no inverse-rename step was needed, because nothing was renamed. No
+  string constant moved, so no string that reaches an LLM changed (rule 4).
+- **Attribute surface.** Every `project_manager.<name>` / `pm.<name>`
+  attribute reference in `src/`, `tests/`, `evals/` and `scripts/` was
+  enumerated and resolved against the imported façade: **all resolve.** That
+  includes the three patch targets — `spec4.project_manager.load_feature_specs`
+  (`tests/agentifier/test_vision_grounding.py:276`, a re-exported attribute,
+  and every caller reaches it as `project_manager.load_feature_specs`) and
+  `spec4.project_manager.os.replace` / `.os.fdopen`
+  (`tests/test_usage_capture.py:815,838`, which patch the shared `os` module
+  object, so `_usage._write_atomic` sees them; the façade still imports `os`
+  for `directory_opens`).
+- **Private names imported by name elsewhere.** Only one:
+  `from spec4.project_manager import _USAGE_ROLLUP_PARENT`
+  (`tests/test_agent_llm_selection.py`). It is re-exported and listed in
+  `__all__`; the importer did not change.
+- **Coverage attribution, not coverage loss.** The five files together are
+  783 stmts / 22 miss / 97%, against 759 / 22 / 97% for the single pre-split
+  file. Same 22 missed lines; the +24 statements are the façade's imports and
+  `__all__`. Suite-wide misses unchanged at 893.
+- **§15.5 invariants.** The callback registry still holds **92** callbacks;
+  `tests/test_streaming_characterization.py` and `tests/test_layout_contract.py`
+  were not edited (no test file was).
+- `tests/test_project_manager_golden.py` (17 tests) and
+  `tests/test_project_manager.py` pass unmodified.
+
+### 17.5 Deferred (noted, not done)
+
+- **The layering contract no longer covers the moved code, and should be
+  widened.** `tests/test_import_layering.py`'s `_AGENT_SIDE` is
+  `("spec4.agents", "spec4.agentifier", "spec4.project_manager")`. §15.2
+  anticipated a `project_manager.py` that became a *package*, whose sub-modules
+  would still match the `spec4.project_manager` prefix; 4b instead produced
+  flat siblings, per §15.3's table (which reserves "package `X/`" wording for
+  4c–4e and 4h) and the sub-phase brief. Rule 1 therefore still holds — all
+  seven tests pass, and none of the four new modules imports `layouts`,
+  `callbacks`, `app` or `session` — but it no longer *guards* them. The fix is
+  four strings: add `"spec4._paths"`, `"spec4._artifacts"`,
+  `"spec4._phase_markdown"` and `"spec4._usage"` to `_AGENT_SIDE`. Left undone
+  because editing the contract test is not this sub-phase's scope (rule 7).
+  **This should be closed before 4c**, or the same gap will accumulate.
+- **4j** owns the importer cleanup. For 4b that is narrower than for 4a — there
+  are no aliases to retire — and amounts to: point the 18 importers of
+  `spec4.project_manager` at the owning module where they use only one
+  concern's names, then trim `__all__` to what is still re-exported. Two names
+  worth revisiting there: `_USAGE_ROLLUP_PARENT` (imported by name from a test,
+  the one cross-file private) and `_with_readme_attribution` (reached as a
+  façade attribute by `test_project_manager_golden.py:168-173`).
+- **Phase 5** owns every long function that moved intact. Re-measuring §5's
+  rule sets over the five files (`ruff check --select C90,PLR0912,PLR0913,
+  PLR0915,SIM,B`) gives the same 10 findings the single file had, re-homed:
+
+  | Finding | Function | Now in |
+  |---|---|---|
+  | C901 20, PLR0912 17, PLR0915 65 | `_phase_spec_preamble` (187 lines) | `_phase_markdown.py` |
+  | PLR0915 58 | `render_phase_markdown` | `_phase_markdown.py` |
+  | C901 14, PLR0912 14 | `merge_library_additions` (85 lines) | `_artifacts.py` |
+  | SIM105 | `load_spec4_artifacts` | `_artifacts.py` |
+  | SIM105 | `_write_atomic` | `_usage.py` |
+  | C901 13 | `_artifact_button_state` | `project_manager.py` (stayed) |
+  | B905 (`zip` without `strict=`) | `_artifact_button_state` | `project_manager.py` (stayed) |
+
+  §9's per-function complexity rows for `project_manager.py` now point at the
+  new owning modules.
+- **The banner comments were kept where a module now has only one.**
+  `_artifacts.py`, `_phase_markdown.py` and `_usage.py` each open with the
+  section banner that delimited the block in the old file, which duplicates the
+  new module docstring. Kept for byte-fidelity with 4a (§16.2, "both banner
+  comments moved with their blocks"); removing the three redundant ones is a
+  Phase 5 cosmetic, not a 4b decision.
+- **`tests/README.md`** does not know about the four new modules and still
+  carries its stale `project_manager.py` row. Phase 7's docs pass, per §11.
+  `README.md`'s project-structure tree lists `project_manager.py`; the path is
+  unchanged, so it is still correct, just incomplete.
+- **`vulture_whitelist.py`** needed no change — none of its entries is in this
+  file.
+
+### 17.6 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Layering | `uv run pytest tests/test_import_layering.py -q` | `7 passed in 0.35s` (exit 0) |
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `195 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 68 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 164.37s (0:02:44)` (exit 0) |
+| Coverage | same run | `TOTAL 11771 stmts, 893 miss, 92%` |
+
+Test count is unchanged at 4256 — 4b adds no test and removes none. `195 files
+already formatted` is §16.6's 191 plus the four new modules; `68 source files`
+is mypy's 64 plus the same four. Statements rose 11747 → 11771 (+24, the
+façade's imports and `__all__`) and misses held at 893, so no per-module floor
+moved. Per-module: `_paths.py` 60/0/100%, `_artifacts.py` 252/17/93%,
+`_phase_markdown.py` 205/0/100%, `_usage.py` 158/4/97%, `project_manager.py`
+108/1/99% — against 759/22/97% for the pre-split file.
