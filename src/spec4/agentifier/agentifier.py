@@ -6,43 +6,52 @@ an opinionated-with-override conversation to lock tier decisions into ai_catalog
 Phase 2 — Spec drafting: for each accepted feature, invokes Spec Drafter
 (StreamingSubAgent), enriches references via Reference Verifier, and produces
 the final ai_features.json.
+
+Cleanup Phase 4i moved this module's leaf-pure edges into three siblings, one
+concern each, leaving the orchestrator's generator flow -- the four
+``_run_*_phase`` drivers, the transitions between them, and ``run`` -- here:
+
+* :mod:`spec4.agentifier._seed` -- the sub-agent registry and the async->sync
+  bridge that drives it, the five ``_call_*`` wrappers, the orchestrator seed
+  message, and the candidate/analysis (de)serialisers.
+* :mod:`spec4.agentifier._render` -- every ``_format_*`` renderer,
+  ``_build_ai_features``, the priority-edit reader, and the revision snapshot.
+* :mod:`spec4.agentifier._ff_review` -- the Fast Forward review prompts, the
+  shared ``name: instruction`` router, and the two review presenters.
+
+The import path ``spec4.agentifier.agentifier`` is unchanged, and every name the
+split moved is re-exported below with its spelling intact, so no importer
+changed when the code moved -- import from here or from the owning module, both
+resolve to the same object. ``_registry`` in particular is the same object as
+``_seed._registry``, so ``patch("spec4.agentifier.agentifier._registry.stream")``
+still reaches the live registry. ``__all__`` is load-bearing rather than
+decorative: ``[tool.mypy] strict`` implies ``no_implicit_reexport``, so without
+it a re-exported name could not be imported from this module at all.
 """
 
 from __future__ import annotations
 
-import asyncio
 import copy
 import json
 import logging
 import os
 import pathlib
-import queue
-import re
-import threading
 import uuid
 from collections.abc import Callable, Generator
-from dataclasses import dataclass, field
 from typing import Any
 
 from spec4 import project_manager, llm, websearch
 from spec4.agentifier.composer import (
-    ComposerAgent,
-    ComposerInput,
     ComposerOutput,
-    Composition,
 )
 from spec4.agentifier.cross_cutting_analyst import (
     CROSS_CUTTING_TOPICS,
     SKIPPABLE_TOPICS,
-    CrossCuttingAnalyst,
     CrossCuttingInput,
     warranted_topics,
 )
 from spec4.agentifier.linker import (
-    LinkerAgent,
-    LinkerInput,
     LinkerOutcome,
-    LinkerOutput,
     apply_overlay,
 )
 from spec4.agentifier.grounding import build_grounding
@@ -51,26 +60,16 @@ from spec4.agentifier.panel_closure import close_selection
 from spec4.agentifier.pattern_loader import load_patterns
 from spec4.agentifier.requires_reconciler import reconcile_requires
 from spec4.agentifier.prioritizer import (
-    PRIORITIES,
-    PrioritizerAgent,
-    PrioritizerInput,
     PrioritizerOutcome,
-    PrioritizerOutput,
     normalize_priorities,
 )
 from spec4.agentifier.prioritizer import apply_overlay as apply_priority_overlay
 from spec4.agentifier.scout import (
     Candidate,
-    ScoutAgent,
-    ScoutInput,
     ScoutOutcome,
-    ScoutOutput,
 )
-from spec4.agentifier.spec_drafter import SpecDrafterAgent, SpecDrafterInput
-from spec4.agentifier.subagents import SubAgentRegistry
+from spec4.agentifier.spec_drafter import SpecDrafterInput
 from spec4.agentifier.tier_analyst import (
-    TierAnalystAgent,
-    TierAnalystInput,
     TierAnalystOutput,
     _existing_ai_context,
 )
@@ -88,78 +87,109 @@ from spec4.agents._utils import (
     _set_status,
     _stream_suppressing_json,
     _suppressed_as_artifact,
-    slug,
 )
 from spec4.app_constants import FF_PROMPT, STATE_AGENTIFIER_COMPLETE, STATE_IN_PROGRESS
+from spec4.agentifier._ff_review import (
+    _FF_REVISION_RE,
+    _cc_ff_review_prompt,
+    _ff_sweep_cross_cutting,
+    _present_cc_ff_review,
+    _present_spec_ff_review,
+    _route_ff_revision_lines,
+    _spec_ff_review_prompt,
+)
+from spec4.agentifier._render import (
+    PriorityEdits,
+    _CATALOG_SPEC_PROMPT,
+    _FEATURES_COMPLETE_TRANSITION,
+    _PRIORITY_EDIT_RE,
+    _VALID_PRIORITIES,
+    _build_ai_features,
+    _format_ai_features_complete,
+    _format_catalog_as_text,
+    _format_composition_summary,
+    _format_cross_cutting_topic,
+    _format_priority_repairs,
+    _format_priority_table,
+    _format_spec_as_text,
+    _parse_priority_edits,
+    _merge_revision_snapshot,
+    _removed_feature_heads_up,
+    _revision_delta,
+)
+from spec4.agentifier._seed import (
+    _analyses_from_session,
+    _analyses_to_dicts,
+    _build_registry,
+    _build_seed_message,
+    _call_composer,
+    _call_linker,
+    _call_prioritizer,
+    _call_scout,
+    _call_tier_analyst,
+    _candidates_from_dicts,
+    _candidates_from_session,
+    _candidates_to_dicts,
+    _graph_placement_lines,
+    _iter_async_gen,
+    _registry,
+    _vision_mvp_feature_names,
+    _vision_purpose,
+)
+
+#: Every name Phase 4i moved into ``_seed`` / ``_render`` / ``_ff_review``,
+#: re-exported here so the pre-split attribute surface is unchanged, plus the
+#: three names the orchestrator itself publishes. Load-bearing: ``[tool.mypy]
+#: strict`` implies ``no_implicit_reexport``.
+__all__ = [
+    "_analyses_from_session",
+    "_analyses_to_dicts",
+    "_build_ai_features",
+    "_build_registry",
+    "_build_seed_message",
+    "_call_composer",
+    "_call_linker",
+    "_call_prioritizer",
+    "_call_scout",
+    "_call_tier_analyst",
+    "_candidates_from_dicts",
+    "_candidates_from_session",
+    "_candidates_to_dicts",
+    "_CATALOG_SPEC_PROMPT",
+    "_cc_ff_review_prompt",
+    "_FEATURES_COMPLETE_TRANSITION",
+    "_FF_REVISION_RE",
+    "_ff_sweep_cross_cutting",
+    "_format_ai_features_complete",
+    "_format_catalog_as_text",
+    "_format_composition_summary",
+    "_format_cross_cutting_topic",
+    "_format_priority_repairs",
+    "_format_priority_table",
+    "_format_spec_as_text",
+    "_graph_placement_lines",
+    "_iter_async_gen",
+    "_merge_revision_snapshot",
+    "_parse_priority_edits",
+    "_present_cc_ff_review",
+    "_present_spec_ff_review",
+    "_PRIORITY_EDIT_RE",
+    "_registry",
+    "_removed_feature_heads_up",
+    "_revision_delta",
+    "_route_ff_revision_lines",
+    "_spec_ff_review_prompt",
+    "_VALID_PRIORITIES",
+    "_vision_mvp_feature_names",
+    "_vision_purpose",
+    "ORCHESTRATOR_SYSTEM_PROMPT",
+    "PriorityEdits",
+    "reset_agentifier_flow",
+    "run",
+]
 
 _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
 _log = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Sub-agent registry
-# ---------------------------------------------------------------------------
-
-
-def _build_registry() -> SubAgentRegistry:
-    """Every sub-agent the orchestrator can dispatch to, in registration order.
-
-    Built once at module import and read-only afterwards, so it needs no guard.
-    Deliberately *not* initialised from ``app.py``: this module is imported
-    lazily from ``callbacks`` and ``session`` and never from ``app``, so an
-    init call there would make a deferred import eager and add an
-    ``app`` → ``agentifier`` edge the layering does not have.
-    """
-    registry = SubAgentRegistry()
-    for agent in (
-        ScoutAgent(),
-        LinkerAgent(),
-        ComposerAgent(),
-        TierAnalystAgent(),
-        SpecDrafterAgent(),
-        CrossCuttingAnalyst(),
-        PrioritizerAgent(),
-    ):
-        registry.register(agent)
-    return registry
-
-
-_registry = _build_registry()
-
-# ---------------------------------------------------------------------------
-# Async → sync streaming bridge
-# ---------------------------------------------------------------------------
-
-
-def _iter_async_gen(async_gen: Any) -> Generator[str, None, None]:
-    """Bridge an async generator to a synchronous generator.
-
-    Runs the async generator in a dedicated daemon thread and drains it
-    into a queue, yielding each chunk in the calling thread. Thread-safe.
-    """
-    q: queue.Queue[str | BaseException | None] = queue.Queue()
-
-    async def _drain() -> None:
-        try:
-            async for chunk in async_gen:
-                q.put(chunk)
-        except BaseException as exc:
-            q.put(exc)
-        finally:
-            q.put(None)  # sentinel
-
-    t = threading.Thread(target=asyncio.run, args=(_drain(),), daemon=True)
-    t.start()
-    try:
-        while True:
-            item = q.get()
-            if item is None:
-                break
-            if isinstance(item, BaseException):
-                raise item
-            yield item
-    finally:
-        t.join()
-
 
 # ---------------------------------------------------------------------------
 # Phase 1 — Catalog: system prompt
@@ -310,150 +340,6 @@ def _session_counter(
     return _on_chunk, lambda: total[0]
 
 
-def _call_scout(
-    vision: dict[str, Any],
-    code_review: dict[str, Any] | None,
-    llm_config: dict[str, Any],
-    revision: dict[str, Any] | None = None,
-    on_chunk: Callable[[str], None] | None = None,
-    brownfield: bool = False,
-    guidance: dict[str, Any] | None = None,
-) -> ScoutOutput:
-    """Invoke Scout synchronously via the registry.
-
-    ``brownfield`` is the developer's answer, not an inference from
-    ``code_review`` — see the note on :class:`ScoutInput`. ``guidance`` is the
-    developer's redraw guidance from the breadth panel's Try Again (D-TA7),
-    ``None`` for a first draw or an un-guided redraw.
-    """
-    scout_input = ScoutInput(
-        vision=vision,
-        code_review=code_review,
-        llm_config=llm_config,
-        revision=revision,
-        on_chunk=on_chunk,
-        brownfield=brownfield,
-        guidance=guidance,
-    )
-    scout_output: ScoutOutput = asyncio.run(_registry.run("scout", scout_input))
-    return scout_output
-
-
-def _vision_purpose(vision: dict[str, Any]) -> str:
-    """Best-effort one-line project purpose for the Linker's context."""
-    vs = vision.get("vision_statement") if isinstance(vision, dict) else None
-    inner = vs.get("vision") if isinstance(vs, dict) else None
-    if isinstance(inner, dict):
-        return str(inner.get("purpose") or inner.get("description") or "")
-    if isinstance(vs, dict):
-        return str(vs.get("purpose") or vs.get("description") or vs.get("name") or "")
-    return ""
-
-
-def _vision_mvp_feature_names(vision: dict[str, Any]) -> list[str]:
-    """Names from the vision's ``key_features_mvp``, shape-guarded.
-
-    The Brainstormer emits each entry as a single-key mapping
-    (``{"Order_Help_Chat": {...}}``), but hand-edited visions carry plain
-    strings or ``{"name": ...}`` mappings. Anything unrecognised is skipped:
-    these names feed a prompt annotation (D-PP14), so a miss costs an unmarked
-    feature, never a crash.
-    """
-    vs = vision.get("vision_statement") if isinstance(vision, dict) else None
-    inner = vs.get("vision") if isinstance(vs, dict) else vs
-    entries = inner.get("key_features_mvp") if isinstance(inner, dict) else None
-    if not isinstance(entries, list):
-        return []
-
-    names: list[str] = []
-    for entry in entries:
-        if isinstance(entry, str):
-            names.append(entry)
-        elif isinstance(entry, dict):
-            if isinstance(entry.get("name"), str):
-                names.append(entry["name"])
-            elif len(entry) == 1:
-                names.append(next(iter(entry)))
-    return [n for n in names if n]
-
-
-def _call_linker(
-    candidates: list[Candidate],
-    vision: dict[str, Any],
-    llm_config: dict[str, Any],
-    on_chunk: Callable[[str], None] | None = None,
-) -> LinkerOutput:
-    """Invoke the Linker synchronously via the registry, returning its output."""
-    li = LinkerInput(
-        candidates=candidates,
-        vision_purpose=_vision_purpose(vision),
-        llm_config=llm_config,
-        on_chunk=on_chunk,
-    )
-    linker_output: LinkerOutput = asyncio.run(_registry.run("linker", li))
-    return linker_output
-
-
-def _call_composer(
-    candidates: list[Candidate],
-    vision: dict[str, Any],
-    llm_config: dict[str, Any],
-    on_chunk: Callable[[str], None] | None = None,
-) -> ComposerOutput:
-    """Invoke Composer synchronously via the registry."""
-    ci = ComposerInput(
-        candidates=candidates,
-        vision=vision,
-        llm_config=llm_config,
-        on_chunk=on_chunk,
-    )
-    composer_output: ComposerOutput = asyncio.run(_registry.run("composer", ci))
-    return composer_output
-
-
-def _call_prioritizer(
-    features: list[dict[str, Any]],
-    vision: dict[str, Any],
-    llm_config: dict[str, Any],
-    carried_forward: list[dict[str, Any]],
-    on_chunk: Callable[[str], None] | None = None,
-) -> PrioritizerOutput:
-    """Invoke the Prioritizer synchronously via the registry, returning its output."""
-    pi = PrioritizerInput(
-        features=features,
-        vision_purpose=_vision_purpose(vision),
-        llm_config=llm_config,
-        carried_forward=carried_forward,
-        mvp_vision_features=_vision_mvp_feature_names(vision),
-        on_chunk=on_chunk,
-    )
-    prioritizer_output: PrioritizerOutput = asyncio.run(
-        _registry.run("prioritizer", pi)
-    )
-    return prioritizer_output
-
-
-def _format_composition_summary(compositions: list[Composition]) -> str:
-    """Render a short composition summary — coordinators and their members.
-
-    Nothing is merged; members are kept beneath their coordinator. A synthesized
-    head (Scout did not emit one) is tagged so the reader can tell it apart.
-    """
-    n_groups = len(compositions)
-    n_members = sum(len(c.members) for c in compositions)
-    header = (
-        f"### Composer — {n_members} sub-feature"
-        f"{'' if n_members == 1 else 's'} grouped under {n_groups} "
-        f"coordinator{'' if n_groups == 1 else 's'}\n"
-    )
-    lines = [header]
-    for comp in compositions:
-        members_str = ", ".join(f"`{m}`" for m in comp.members)
-        tag = " *(synthesized)*" if comp.synthesized else ""
-        lines.append(f"- **`{comp.coordinator}`**{tag} coordinates {members_str}")
-    return "\n".join(lines)
-
-
 def _log_composition(
     input_candidates: list[Candidate],
     composed: ComposerOutput,
@@ -506,233 +392,6 @@ def _log_composition(
         )
 
 
-def _call_tier_analyst(
-    candidate: Candidate,
-    llm_config: dict[str, Any],
-    code_review: dict[str, Any] | None = None,
-    on_chunk: Callable[[str], None] | None = None,
-    guidance: list[str] | None = None,
-) -> TierAnalystOutput:
-    """Invoke TierAnalyst synchronously via the registry.
-
-    ``guidance`` is the developer's redraw notes (D-TA7), when the panel that
-    produced this candidate was reached through a guided Try Again.
-    """
-    tiers, mechanisms = load_patterns()
-    ta_input = TierAnalystInput(
-        candidate=candidate,
-        llm_config=llm_config,
-        tier_patterns=tiers,
-        code_review=code_review,
-        mechanism_patterns=mechanisms,
-        guidance=list(guidance or []),
-        on_chunk=on_chunk,
-    )
-    tier_output: TierAnalystOutput = asyncio.run(
-        _registry.run("tier_analyst", ta_input)
-    )
-    return tier_output
-
-
-# ---------------------------------------------------------------------------
-# Phase 1 — Seed-message builder
-# ---------------------------------------------------------------------------
-
-
-def _graph_placement_lines(
-    cand: Candidate,
-    present: set[str],
-    members_by_coordinator: dict[str, list[str]],
-    required_by: dict[str, list[str]],
-) -> list[str]:
-    """Human-facing lines locating a candidate in the feature graph.
-
-    Feature→feature only: infrastructure substrate is injected post-assembly by
-    the expander, so no substrate edge exists at tier-review time. Every
-    reference is trimmed to the reviewed set (``present``) so a closure-dropped
-    coordinator or a deselected producer/consumer is never named to the
-    developer.
-    """
-    lines: list[str] = []
-    coordinator = cand.composed_under
-    if coordinator and coordinator in present:
-        lines.append(f"A sub-feature of `{coordinator}`.")
-    members = [m for m in members_by_coordinator.get(cand.name, []) if m in present]
-    if members:
-        listed = ", ".join(f"`{m}`" for m in members)
-        plural = "" if len(members) == 1 else "s"
-        lines.append(f"Coordinates {len(members)} sub-feature{plural}: {listed}.")
-    uses = [r for r in cand.requires if r in present]
-    if uses:
-        lines.append("Uses the output of: " + ", ".join(f"`{r}`" for r in uses) + ".")
-    feeds = [c for c in required_by.get(cand.name, []) if c in present]
-    if feeds:
-        lines.append("Its output feeds: " + ", ".join(f"`{c}`" for c in feeds) + ".")
-    return lines
-
-
-def _build_seed_message(
-    candidates: list[Candidate],
-    analyses: list[TierAnalystOutput],
-    brownfield: bool = False,
-    revision_goal: str = "",
-) -> str:
-    """Build the first user message injected into the orchestrator conversation."""
-    if revision_goal:
-        mode_note = (
-            " This is a REVISION round of an already-built project — the developer "
-            "is extending the existing AI surface, not starting fresh, so do NOT "
-            "ask whether they are adding AI for the first time. The goal of this "
-            f"revision: {revision_goal} The candidates below are only the NEW AI "
-            "opportunities introduced by this revision's changes; already-built AI "
-            "features are carried forward automatically and are not shown here. "
-            "Present the first new candidate, framing the conversation around this "
-            "revision's goal."
-        )
-    elif brownfield:
-        mode_note = (
-            " This is a BROWNFIELD project (an existing codebase was reviewed). "
-            "Before presenting the first candidate, briefly ask the developer: "
-            "'Are we adding AI features for the first time, extending existing AI "
-            "features, or rethinking how AI is used overall?' — then proceed with "
-            "presenting candidates based on their answer."
-        )
-    else:
-        mode_note = ""
-    intro = (
-        f"[Spec4 system note: Scout found {len(candidates)} AI opportunity "
-        f"candidate(s) in the project vision. Tier Analyst has provided a "
-        f"recommendation for each.{mode_note} Begin by presenting the first "
-        f"candidate recommendation to the developer. Follow the conversation "
-        f"rules in your system prompt exactly.]"
-    )
-    # Reverse-edge maps over the reviewed set, so each candidate block can show
-    # its members (reverse of composed_under) and consumers (reverse of requires)
-    # in pool order. Feature→feature only at this stage; infra is injected later.
-    present = {c.name for c in candidates}
-    members_by_coordinator: dict[str, list[str]] = {}
-    required_by: dict[str, list[str]] = {}
-    for c in candidates:
-        if c.composed_under:
-            members_by_coordinator.setdefault(c.composed_under, []).append(c.name)
-        for r in c.requires:
-            required_by.setdefault(r, []).append(c.name)
-    parts = [intro]
-    for i, (cand, analysis) in enumerate(zip(candidates, analyses), 1):
-        lines = [
-            f"\n---\n**Candidate {i}: {cand.name}** (scope: {cand.scope})",
-            f"Description: {cand.rough_description}",
-        ]
-        if cand.linked_existing_workflow:
-            lines.append(
-                "Existing implementation this would replace: "
-                f"{cand.linked_existing_workflow}"
-            )
-        lines.extend(
-            _graph_placement_lines(cand, present, members_by_coordinator, required_by)
-        )
-        if cand.linked_vision_features:
-            lines.append(
-                f"Linked vision features: {', '.join(cand.linked_vision_features)}"
-            )
-        lines.append(f"Recommended tier: **{analysis.recommended_tier}**")
-        lines.append(f"Rationale: {analysis.rationale}")
-        if analysis.compared_to_next_tier_down:
-            lines.append(
-                f"Compared to next cheaper tier: {analysis.compared_to_next_tier_down}"
-            )
-        if analysis.borderline:
-            seams = ", ".join(analysis.borderline_seams)
-            lines.append(f"Borderline: YES — watch for: {seams}")
-        else:
-            lines.append("Borderline: NO")
-        if analysis.risks_of_going_higher:
-            lines.append(
-                "Risks of going higher: " + "; ".join(analysis.risks_of_going_higher)
-            )
-        if analysis.risks_of_going_lower:
-            lines.append(
-                "Risks of going lower: " + "; ".join(analysis.risks_of_going_lower)
-            )
-        parts.append("\n".join(lines))
-    return "\n".join(parts)
-
-
-# ---------------------------------------------------------------------------
-# Phase 1 — Session serialisation helpers
-# ---------------------------------------------------------------------------
-
-
-def _candidates_to_dicts(candidates: list[Candidate]) -> list[dict[str, Any]]:
-    return [
-        {
-            "name": c.name,
-            "linked_vision_features": c.linked_vision_features,
-            "scope": c.scope,
-            "rough_description": c.rough_description,
-            "linked_existing_workflow": c.linked_existing_workflow,
-            # Scout graph contract (D-EP): carry the edges through serialization so
-            # they survive into the breadth pool and downstream into ai_features.
-            "composed_under": c.composed_under,
-            "requires": list(c.requires),
-            # Node classification (D-I5); "feature" for everything Scout produces.
-            "kind": c.kind,
-        }
-        for c in candidates
-    ]
-
-
-def _analyses_to_dicts(
-    analyses: list[TierAnalystOutput], candidates: list[Candidate]
-) -> list[dict[str, Any]]:
-    return [
-        {
-            "name": candidates[i].name,
-            "recommended_tier": a.recommended_tier,
-            "rationale": a.rationale,
-            "risks_of_going_higher": a.risks_of_going_higher,
-            "risks_of_going_lower": a.risks_of_going_lower,
-            "borderline": a.borderline,
-            "borderline_seams": a.borderline_seams,
-            "compared_to_next_tier_down": a.compared_to_next_tier_down,
-        }
-        for i, a in enumerate(analyses)
-    ]
-
-
-def _candidates_from_session(session: dict[str, Any]) -> list[Candidate]:
-    data = session.get("agentifier_candidates") or []
-    return [
-        Candidate(
-            name=d["name"],
-            linked_vision_features=d.get("linked_vision_features", []),
-            scope=d.get("scope", "feature"),
-            rough_description=d.get("rough_description", ""),
-            linked_existing_workflow=d.get("linked_existing_workflow", ""),
-            composed_under=d.get("composed_under", ""),
-            requires=list(d.get("requires") or []),
-            kind=d.get("kind", "feature"),
-        )
-        for d in data
-    ]
-
-
-def _analyses_from_session(session: dict[str, Any]) -> list[TierAnalystOutput]:
-    data = session.get("agentifier_analyses") or []
-    return [
-        TierAnalystOutput(
-            recommended_tier=d.get("recommended_tier", "deterministic"),
-            rationale=d.get("rationale", ""),
-            risks_of_going_higher=d.get("risks_of_going_higher", []),
-            risks_of_going_lower=d.get("risks_of_going_lower", []),
-            borderline=d.get("borderline", False),
-            borderline_seams=d.get("borderline_seams", []),
-            compared_to_next_tier_down=d.get("compared_to_next_tier_down", ""),
-        )
-        for d in data
-    ]
-
-
 # ---------------------------------------------------------------------------
 # Phase 1 — Artifact helpers
 # ---------------------------------------------------------------------------
@@ -742,32 +401,6 @@ def _extract_catalog_json(text: str) -> dict[str, Any] | None:
     """Extract the ai_catalog JSON block from the LLM response, or None."""
     data = _extract_json_block(text)
     return data if data is not None and "ai_catalog" in data else None
-
-
-_CATALOG_SPEC_PROMPT = (
-    "---\n\n"
-    "Tier decisions locked. Reply **yes** to begin drafting per-feature specs, "
-    "or ask to revise any catalog entry first."
-)
-
-
-def _format_catalog_as_text(catalog: dict[str, Any]) -> str:
-    """Render ai_catalog to a readable Markdown display with spec-phase prompt."""
-    entries: list[dict[str, Any]] = catalog.get("ai_catalog") or []
-    lines: list[str] = ["**AI Integration Catalog**\n"]
-    lines.append("| # | Feature | Recommended | Decided | Notes |")
-    lines.append("| --- | --- | --- | --- | --- |")
-    for i, entry in enumerate(entries, 1):
-        name = entry.get("name", "")
-        rec = entry.get("tier_recommendation", "")
-        dec = entry.get("tier_decision", "")
-        rationale = entry.get("tier_decision_rationale", "") or ""
-        note = rationale[:60] + "…" if len(rationale) > 60 else rationale
-        match_marker = "" if dec == rec else " (mismatch)"
-        lines.append(f"| {i} | {name} | {rec} | {dec}{match_marker} | {note} |")
-    lines.append("")
-    lines.append(_CATALOG_SPEC_PROMPT)
-    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -806,87 +439,6 @@ def _is_spec_confirmed(text: str) -> bool:
         ):
             return True
     return False
-
-
-def _format_spec_as_text(
-    entry: dict[str, Any],
-    spec: dict[str, Any],
-    index: int,
-    total: int,
-) -> str:
-    """Render one feature spec as readable Markdown."""
-    name = entry.get("name", "")
-    tier = entry.get("tier_decision") or entry.get("tier", "")
-    lines: list[str] = [
-        f"### Feature {index + 1}/{total}: `{name}` — tier: **{tier}**\n"
-    ]
-
-    def _field(label: str, key: str) -> None:
-        val = spec.get(key)
-        if val is None:
-            return
-        if isinstance(val, list):
-            if not val:
-                return
-            lines.append(f"**{label}:**")
-            for item in val:
-                if isinstance(item, dict):
-                    lines.append("- " + ", ".join(f"{k}: {v}" for k, v in item.items()))
-                else:
-                    lines.append(f"- {item}")
-            lines.append("")
-        elif isinstance(val, dict):
-            if not val:
-                return
-            lines.append(f"**{label}:**")
-            for k, v in val.items():
-                if isinstance(v, list):
-                    if v:
-                        lines.append(f"- {k}: " + "; ".join(str(i) for i in v))
-                elif v:
-                    lines.append(f"- {k}: {v}")
-            lines.append("")
-        else:
-            lines.append(f"**{label}:** {val}\n")
-
-    _field("Purpose", "purpose")
-    _field("Invocation", "invocation")
-    _field("Inputs", "inputs")
-    _field("Outputs", "outputs")
-    _field("Decision authority", "decision_authority")
-    _field("Success criteria", "success_criteria")
-    _field("Failure modes", "failure_modes")
-    _field("Escalation", "escalation")
-    _field("Eval approach", "eval_approach")
-    _field("Budgets", "budgets")
-    _field("Privacy / safety", "privacy_safety")
-    # Phase priority is deliberately absent: it is assigned by the Prioritizer
-    # (D-PP2), which runs after spec review. Showing it here would display a
-    # value nobody has set yet.
-    # Tier-specific
-    _field("Knowledge sources", "knowledge_sources")
-    _field("Tool access", "tool_access")
-    _field("Topology", "topology")
-    # Mechanisms
-    mechanisms = spec.get("mechanisms") or []
-    if mechanisms:
-        lines.append("**Mechanisms:**")
-        for m in mechanisms:
-            if isinstance(m, dict):
-                mname = m.get("name", "")
-                mrationale = m.get("rationale", "")
-                lines.append(f"- **{mname}**: {mrationale}")
-            else:
-                lines.append(f"- {m}")
-        lines.append("")
-    # References
-    references = spec.get("references") or []
-    if references:
-        lines.append("**References:**")
-        for r in references:
-            lines.append(f"- {r}")
-        lines.append("")
-    return "\n".join(lines)
 
 
 def _feature_specs_for_session(session: dict[str, Any]) -> dict[str, Any]:
@@ -941,91 +493,6 @@ def _existing_workflow_for_entry(
     return ""
 
 
-def _build_ai_features(
-    catalog_entries: list[dict[str, Any]],
-    spec_results: list[dict[str, Any]],
-    candidates_data: list[dict[str, Any]],
-    analyses_data: list[dict[str, Any]] | None = None,
-    feature_specs: dict[str, Any] | None = None,
-) -> list[dict[str, Any]]:
-    """Merge catalog entries + spec results into ai_features schema.
-
-    When ``feature_specs`` is supplied, each node also carries a
-    ``vision_grounding`` block (D-AC1 B): the Brainstormer product-feature specs
-    it serves, resolved from the candidate's ``linked_vision_features`` by the
-    canonical ``slug()`` join. Absent/empty grounding leaves the key off.
-    """
-    candidates_by_name = {c["name"]: c for c in candidates_data}
-    analysis_by_name = {a["name"]: a for a in (analyses_data or []) if a.get("name")}
-    features: list[dict[str, Any]] = []
-    for i, entry in enumerate(catalog_entries):
-        name = entry.get("name", "")
-        spec = spec_results[i] if i < len(spec_results) else {}
-        cand = candidates_by_name.get(name, {})
-        feature: dict[str, Any] = {
-            "id": slug(name) if name else f"feature_{i}",
-            "name": name,
-            "linked_vision_features": cand.get("linked_vision_features", []),
-            "scope": entry.get("scope", "feature"),
-            "tier": entry.get("tier_decision", "single_call"),
-            "tier_recommendation": entry.get("tier_recommendation", ""),
-            "tier_decision_rationale": entry.get("tier_decision_rationale", ""),
-            "rough_description": entry.get("rough_description", ""),
-        }
-        feature.update(spec)  # merge spec drafter output
-        # Candidate is the authoritative source for rough_description: it carries
-        # Composer-enriched text that the catalog agent may have reverted.
-        # Falls back to the entry value, then to whatever spec supplied.
-        feature["rough_description"] = (
-            cand.get("rough_description")
-            or entry.get("rough_description", "")
-            or feature.get("rough_description", "")
-        )
-        # Scout graph contract (D-EP): the candidate is authoritative for the
-        # edges too — re-assert them after the spec merge so a spec drafter that
-        # echoes these keys cannot clobber the Composer-set values. Persisted raw
-        # (D-EP2 option A): referential trimming of dangling edges is deferred.
-        feature["composed_under"] = cand.get("composed_under", "")
-        feature["requires"] = list(cand.get("requires") or [])
-        # Brownfield linkage (candidate-authoritative, like the edges): without
-        # this, _reselection_pool_from_features' read of the key is always ""
-        # and re-selection rounds silently lose the replaced-workflow context.
-        feature["linked_existing_workflow"] = cand.get("linked_existing_workflow", "")
-        # Node classification (D-I5): selectable features are explicitly
-        # "feature"; tier-derived substrate is stamped "infrastructure" by the
-        # expansion pass. Makes the distinction explicit rather than by absence.
-        feature["kind"] = cand.get("kind", "feature")
-        # Vision grounding (D-AC1 B): the product-feature specs this AI feature
-        # serves, joined from the candidate's linked_vision_features. Attached
-        # after the spec merge so a Spec Drafter that echoes the key cannot
-        # clobber it. Gated on feature_specs actually being present so the
-        # safety-net path (no specs) attaches nothing rather than tagging every
-        # node with noise-only unresolved links; when specs exist, an all-missed
-        # node keeps its unresolved_links as a genuine mis-link signal.
-        if (feature_specs or {}).get("features"):
-            grounding = build_grounding(
-                feature_specs, cand.get("linked_vision_features") or []
-            )
-            if grounding:
-                feature["vision_grounding"] = grounding
-        a = analysis_by_name.get(name, {})
-        feature["tier_analysis"] = (
-            {
-                "recommended_tier": a.get("recommended_tier", ""),
-                "rationale": a.get("rationale", ""),
-                "compared_to_next_tier_down": a.get("compared_to_next_tier_down", ""),
-                "borderline": a.get("borderline", False),
-                "borderline_seams": a.get("borderline_seams", []),
-                "risks_of_going_higher": a.get("risks_of_going_higher", []),
-                "risks_of_going_lower": a.get("risks_of_going_lower", []),
-            }
-            if a
-            else {}
-        )
-        features.append(feature)
-    return features
-
-
 def _expand_infrastructure(
     features: list[dict[str, Any]],
     introduced_in_version: int | None = None,
@@ -1042,123 +509,6 @@ def _expand_infrastructure(
     tiers, _ = load_patterns()
     tier_infrastructure = {t.name: list(t.required_infrastructure) for t in tiers}
     return expand_infrastructure(features, tier_infrastructure, introduced_in_version)
-
-
-# ---------------------------------------------------------------------------
-# Revision mode — pure helpers (deterministic; no LLM)
-# ---------------------------------------------------------------------------
-
-
-def _revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Return this round's revision delta, or ``None`` for a greenfield vision.
-
-    A revision round's vision carries an accumulating ``revision_history`` (each
-    round contributes one entry, stamped deterministically by Brainstormer); its
-    final entry is the delta for the current round — ``goal``, the
-    ``key_features_mvp`` name changes (``added`` / ``modified`` / ``removed``),
-    and ``rationale``. A greenfield vision has no ``revision_history``.
-    """
-    vs = (vision or {}).get("vision_statement") if isinstance(vision, dict) else None
-    history = vs.get("revision_history") if isinstance(vs, dict) else None
-    if isinstance(history, list) and history:
-        last = history[-1]
-        return last if isinstance(last, dict) else None
-    return None
-
-
-def _merge_revision_snapshot(
-    carried_forward: list[dict[str, Any]],
-    new_features: list[dict[str, Any]],
-    current_version: int,
-    prior_version: int,
-) -> list[dict[str, Any]]:
-    """Assemble a revision round's complete feature snapshot with provenance.
-
-    Returns the carried-forward implemented features (kept verbatim aside from a
-    backfilled ``introduced_in_version``) followed by this round's newly selected
-    features. Code owns ``introduced_in_version`` — the model never authors it:
-
-    - new features → ``current_version`` (this planning round).
-    - carried-forward → their existing ``introduced_in_version``; backfilled to
-      ``prior_version`` when a feature predates the marker (e.g. greenfield
-      features built before this field existed).
-
-    Carried-forward names win on collision: if Scout re-surfaces an already-built
-    feature as a "new" candidate despite the delta-informed scoping, the built
-    entry is kept and the duplicate dropped — never double-listed or downgraded.
-    """
-    carried_names = {f.get("name") for f in carried_forward if f.get("name")}
-    out: list[dict[str, Any]] = []
-    for f in carried_forward:
-        g = dict(f)
-        if g.get("introduced_in_version") is None:
-            g["introduced_in_version"] = prior_version
-        out.append(g)
-    for f in new_features:
-        if f.get("name") in carried_names:
-            continue
-        g = dict(f)
-        g["introduced_in_version"] = current_version
-        out.append(g)
-    return out
-
-
-def _removed_feature_heads_up(
-    carried_forward: list[dict[str, Any]],
-    delta: dict[str, Any] | None,
-) -> str:
-    """Informational note (no action) when a built feature is linked to a feature
-    this revision removed.
-
-    Carried-forward features are NEVER auto-dropped — the code is already built,
-    and deprecation/removal is downstream coding work, out of scope for
-    Agentifier discovery. This surfaces the situation so the developer stays in
-    control. Returns ``""`` when nothing applies.
-    """
-    removed = set((delta or {}).get("changes", {}).get("removed") or [])
-    if not removed:
-        return ""
-    hits: list[str] = []
-    for f in carried_forward:
-        linked = set(f.get("linked_vision_features") or [])
-        overlap = linked & removed
-        if overlap:
-            hits.append(
-                f"- **{f.get('name', '')}** (built for: {', '.join(sorted(overlap))})"
-            )
-    if not hits:
-        return ""
-    return (
-        "\n\n> **Heads-up:** these already-built AI features are linked to "
-        "product features you removed this revision. They are carried forward "
-        "unchanged — removing the underlying code is a separate, manual step:\n"
-        + "\n".join(hits)
-        + "\n"
-    )
-
-
-_FEATURES_COMPLETE_TRANSITION = (
-    "---\n\n"
-    "Your AI feature catalog is complete. "
-    "Click **Download ai_features.json** below, "
-    "or use the pipeline pills to continue."
-)
-
-
-def _format_ai_features_complete(ai_features: dict[str, Any]) -> str:
-    """Render a summary display for completed ai_features."""
-    entries = ai_features.get("ai_features") or []
-    lines = ["**AI Feature Catalog — Complete**\n"]
-    lines.append("| # | Feature | Tier | Phase Priority |")
-    lines.append("| --- | --- | --- | --- |")
-    for i, f in enumerate(entries, 1):
-        name = f.get("name", "")
-        tier = f.get("tier", "")
-        priority = f.get("phase_priority", "—")
-        lines.append(f"| {i} | {name} | {tier} | {priority} |")
-    lines.append("")
-    lines.append(_FEATURES_COMPLETE_TRANSITION)
-    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -1613,81 +963,6 @@ def _extract_cross_cutting_analysis(text: str) -> dict[str, Any] | None:
     return None
 
 
-def _cc_ff_review_prompt(locked_topics: list[str]) -> str:
-    prompt = (
-        "\n\n---\n**Comprehensive review.** Reply **yes** to accept all "
-        "cross-cutting decisions as shown, or give revisions one per line "
-        "as `topic: instruction` (`topic: skip` to drop a skippable topic)."
-    )
-    if locked_topics:
-        prompt += (
-            "\nLocked (decided earlier, not revisable here): "
-            + ", ".join(f"`{t}`" for t in locked_topics)
-            + "."
-        )
-    return prompt
-
-
-def _present_cc_ff_review(
-    session: dict[str, Any],
-    only_topics: list[str] | None = None,
-) -> Generator[str, None, None]:
-    """Render the comprehensive cross-cutting review (or revised topics)."""
-    msgs = session["agentifier_messages"]
-    topics: list[str] = session.get("agentifier_cross_cutting_topics") or []
-    analysis = session.get("agentifier_cross_cutting_analysis") or {}
-    decisions = session.get("agentifier_cross_cutting_decisions") or {}
-    locked = session.get("agentifier_cc_ff_locked") or 0
-    locked_topics = topics[:locked]
-
-    shown = only_topics if only_topics is not None else topics
-    parts: list[str] = []
-    if only_topics is None:
-        parts.append("## Comprehensive cross-cutting review\n")
-    for t in shown:
-        i = topics.index(t)
-        # Show the recorded decision, falling back to the analysis view.
-        view = {t: decisions.get(t) or analysis.get(t) or {}}
-        body = _format_cross_cutting_topic(
-            t, i, view, len(topics), include_prompt=False
-        )
-        if i < locked:
-            parts.append(f"*(locked — decided earlier)*\n{body}")
-        elif not (decisions.get(t) or {}):
-            parts.append(f"{body}\n*(skipped)*")
-        else:
-            parts.append(body)
-    display = "\n\n".join(parts) + _cc_ff_review_prompt(locked_topics)
-    msgs.append({"role": "assistant", "content": display})
-    session["_display_override"] = display
-    yield display
-
-
-def _ff_sweep_cross_cutting(
-    session: dict[str, Any],
-    analysis: dict[str, Any],
-) -> Generator[str, None, None]:
-    """D-AF3/D-AF4: adopt the analysis for all remaining topics, one review.
-
-    The analyst has already computed every topic upfront, so the sweep makes
-    no model calls: it records the recommendations (including skippable
-    topics — accepting is the recommendation, skipping is a user
-    prerogative) and presents the batch. Topics decided before the sweep
-    are locked and kept verbatim.
-    """
-    topics: list[str] = session.get("agentifier_cross_cutting_topics") or []
-    index: int = session.get("agentifier_cross_cutting_index") or 0
-    decisions: dict[str, Any] = dict(
-        session.get("agentifier_cross_cutting_decisions") or {}
-    )
-    for t in topics[index:]:
-        decisions[t] = analysis.get(t) or {}
-    session["agentifier_cross_cutting_decisions"] = decisions
-    session["agentifier_cc_ff_locked"] = index
-    session["agentifier_cross_cutting_ff_review"] = True
-    yield from _present_cc_ff_review(session)
-
-
 def _handle_cc_ff_review(
     user_input: str,
     session: dict[str, Any],
@@ -1784,175 +1059,11 @@ def _handle_cc_ff_review(
     yield from _present_cc_ff_review(session, only_topics=revised)
 
 
-def _format_cross_cutting_topic(
-    topic: str,
-    index: int,
-    analysis: dict[str, Any],
-    total: int,
-    include_prompt: bool = True,
-) -> str:
-    """Render one cross-cutting topic recommendation for review."""
-    data = analysis.get(topic) or {}
-    rec = data.get("recommendation", "")
-    rationale = data.get("rationale", "")
-    patterns = data.get("cited_patterns") or []
-
-    lines = [
-        f"### Cross-cutting decision {index + 1}/{total}: **{topic}**\n",
-        f"**Recommendation:** {rec}\n",
-        f"**Rationale:** {rationale}\n",
-    ]
-    if patterns:
-        lines.append(f"**Patterns cited:** {', '.join(patterns)}\n")
-    if not include_prompt:
-        return "\n".join(lines)
-    if topic in SKIPPABLE_TOPICS:
-        lines.append(
-            "---\nReply **yes** to accept, **skip** if this isn't needed, "
-            "or describe what to change."
-        )
-    else:
-        lines.append(
-            "---\nReply **yes** to accept this recommendation, "
-            "or describe what to change."
-        )
-    return "\n".join(lines)
-
-
 def _is_skip(text: str | None) -> bool:
     """True when the user's reply asks to skip the current (skippable) topic."""
     if not text:
         return False
     return text.lower().strip().rstrip(".,!?") in {"skip", "skip it", "n/a", "none"}
-
-
-# ---------------------------------------------------------------------------
-# Phase priority helpers
-# ---------------------------------------------------------------------------
-
-_VALID_PRIORITIES = PRIORITIES
-
-#: `name: priority` — also accepts `=`, `->` and `→`, with an optional bullet.
-_PRIORITY_EDIT_RE = re.compile(
-    r"^\s*(?:[-*•]\s*)?(?:\*\*)?([A-Za-z0-9_][A-Za-z0-9_.\-]*)(?:\*\*)?"
-    r"\s*(?::|=|->|→)\s*(?:\*\*|`)?([A-Za-z0-9_ \-]+?)(?:\*\*|`)?\s*$"
-)
-
-
-@dataclass
-class PriorityEdits:
-    """The result of reading one free-text reply at the priority checkpoint."""
-
-    assignments: dict[str, str] = field(default_factory=dict)
-    unknown_names: list[str] = field(default_factory=list)
-    bad_values: list[tuple[str, str]] = field(default_factory=list)
-
-    @property
-    def saw_pair(self) -> bool:
-        """True when the reply contained anything shaped like an assignment.
-
-        Distinguishes "the user tried to edit and got it wrong" from "the user
-        said something else entirely". Only the latter may be read as a
-        confirmation.
-        """
-        return bool(self.assignments or self.unknown_names or self.bad_values)
-
-
-def _parse_priority_edits(text: str, valid_names: set[str]) -> PriorityEdits:
-    """Read ``name: priority`` assignments out of a free-text reply.
-
-    Deterministic — no LLM turn. Values are normalised for whitespace and
-    hyphens, so ``steel thread`` and ``steel-thread`` both reach
-    ``steel_thread``: the display writes the underscore form, but people type
-    what they read.
-    """
-    edits = PriorityEdits()
-    for segment in re.split(r"[\n;]+", text):
-        if not segment.strip():
-            continue
-        match = _PRIORITY_EDIT_RE.match(segment)
-        if not match:
-            continue
-        name, raw_value = match.group(1), match.group(2)
-        value = re.sub(r"[\s\-]+", "_", raw_value.strip().lower())
-        if value not in _VALID_PRIORITIES:
-            edits.bad_values.append((name, raw_value.strip()))
-        elif name not in valid_names:
-            edits.unknown_names.append(name)
-        else:
-            edits.assignments[name] = value
-    return edits
-
-
-def _format_priority_table(features: list[dict[str, Any]]) -> str:
-    """Render the whole feature set as one priority table.
-
-    Priority is a property of the *set* — which features form the thinnest
-    end-to-end path, what ships first, what waits — so the checkpoint shows the
-    set. A per-feature walk hid the distribution until it was too late to see it.
-    """
-    rank = {p: i for i, p in enumerate(_VALID_PRIORITIES)}
-    ordered = sorted(
-        enumerate(features),
-        key=lambda t: (rank.get(t[1].get("phase_priority") or "mvp", 1), t[0]),
-    )
-    grouped = any(f.get("composed_under") for f in features)
-
-    header = "| Priority | Feature | Tier | Requires |"
-    divider = "|---|---|---|---|"
-    if grouped:
-        header = "| Priority | Feature | Tier | Part of | Requires |"
-        divider = "|---|---|---|---|---|"
-
-    lines = ["### Phase priority\n", header, divider]
-    for _, f in ordered:
-        priority = f.get("phase_priority") or "mvp"
-        requires = ", ".join(f.get("requires") or []) or "—"
-        row = [f"`{priority}`", f"**{f.get('name', '')}**", f.get("tier", ""), requires]
-        if grouped:
-            row.insert(3, f.get("composed_under") or "—")
-        lines.append("| " + " | ".join(row) + " |")
-
-    thread = [
-        f.get("name", "") for f in features if f.get("phase_priority") == "steel_thread"
-    ]
-    lines.append("")
-    if thread:
-        lines.append(
-            "**Steel thread** — built first, end to end: "
-            + ", ".join(f"`{n}`" for n in thread)
-        )
-    else:
-        lines.append("**Steel thread** — nothing assigned yet.")
-
-    deferred = [
-        f.get("name", "")
-        for f in features
-        if f.get("phase_priority") in ("v2", "future")
-    ]
-    if deferred:
-        lines.append(f"**Deferred past the first release:** {len(deferred)}.")
-
-    # Name a feature that is not already in the thread, so the example does not
-    # read as a no-op. Falls back safely on an empty or all-steel_thread set.
-    example = next(
-        (
-            f.get("name", "")
-            for f in features
-            if f.get("phase_priority") != "steel_thread"
-        ),
-        features[0].get("name", "feature_name") if features else "feature_name",
-    )
-    lines.append(
-        "\n---\nReply **yes** to accept, or reassign any number of features, one per line:\n\n"
-        "```\n"
-        f"{example}: steel_thread\n"
-        "another_feature: v2\n"
-        "```\n\n"
-        "Values: `steel_thread` / `mvp` / `v2` / `future`. "
-        "I'll re-check the build order after each change."
-    )
-    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -2031,99 +1142,6 @@ def _run_spec_phase(
 # ---------------------------------------------------------------------------
 # Fast Forward sweep (D-AF series)
 # ---------------------------------------------------------------------------
-
-#: `name: instruction` — same shape as the priority-edit reader: an optional
-#: bullet, an optional bold/backtick-wrapped name, a colon, free instruction.
-_FF_REVISION_RE = re.compile(
-    r"^\s*(?:[-*•]\s*)?(?:\*\*|`)?([A-Za-z0-9_][A-Za-z0-9_.\-]*)(?:\*\*|`)?"
-    r"\s*:\s*(.+?)\s*$"
-)
-
-
-def _route_ff_revision_lines(
-    user_input: str,
-    valid_names: list[str],
-    locked_names: list[str],
-) -> tuple[dict[str, str], list[str], list[str], bool]:
-    """Deterministically route review-turn revision lines by name.
-
-    Returns (routed, unknown, locked_hits, saw_pair). Routing is atomic at
-    the call site: any unknown or locked name means nothing is applied.
-    ``saw_pair`` distinguishes "tried to give revisions and got the format
-    wrong" from free-form input, mirroring the priority-edit reader.
-    """
-    routed: dict[str, str] = {}
-    unknown: list[str] = []
-    locked_hits: list[str] = []
-    saw_pair = False
-    for line in user_input.splitlines():
-        if not line.strip():
-            continue
-        m = _FF_REVISION_RE.match(line)
-        if not m:
-            continue
-        saw_pair = True
-        name, instruction = m.group(1), m.group(2)
-        if name in locked_names:
-            locked_hits.append(name)
-        elif name not in valid_names:
-            unknown.append(name)
-        else:
-            routed[name] = instruction
-    return routed, unknown, locked_hits, saw_pair
-
-
-def _spec_ff_review_prompt(locked_names: list[str]) -> str:
-    prompt = (
-        "\n\n---\n**Comprehensive review.** Reply **yes** to save "
-        "`ai_features.json` with all specs as shown, or give revisions one "
-        "per line as `feature_name: instruction`."
-    )
-    if locked_names:
-        prompt += (
-            "\nLocked (confirmed earlier, not revisable here): "
-            + ", ".join(f"`{n}`" for n in locked_names)
-            + "."
-        )
-    return prompt
-
-
-def _present_spec_ff_review(
-    session: dict[str, Any],
-    only_indices: list[int] | None = None,
-    failure_note: str = "",
-) -> Generator[str, None, None]:
-    """Render the comprehensive spec review (or just re-drafted entries)."""
-    msgs = session["agentifier_messages"]
-    catalog_entries = (session.get("ai_catalog") or {}).get("ai_catalog", [])
-    n = len(catalog_entries)
-    results = session.get("agentifier_spec_results") or []
-    locked = session.get("agentifier_spec_ff_locked") or 0
-    locked_names = [e.get("name", "") for e in catalog_entries[:locked]]
-
-    indices = only_indices if only_indices is not None else list(range(n))
-    parts: list[str] = []
-    if only_indices is None:
-        parts.append("## Comprehensive spec review\n")
-    for i in indices:
-        entry = catalog_entries[i]
-        spec = results[i] if len(results) > i else {}
-        if i < locked:
-            parts.append(
-                f"*(locked — confirmed earlier)*\n"
-                f"{_format_spec_as_text(entry, spec, i, n)}"
-            )
-        elif not spec:
-            parts.append(
-                f"### Feature {i + 1}/{n}: `{entry.get('name', '')}` — "
-                "*(not yet drafted)*"
-            )
-        else:
-            parts.append(_format_spec_as_text(entry, spec, i, n))
-    display = "\n\n".join(parts) + _spec_ff_review_prompt(locked_names) + failure_note
-    msgs.append({"role": "assistant", "content": display})
-    session["_display_override"] = display
-    yield display
 
 
 def _ff_sweep_specs(
@@ -2499,32 +1517,6 @@ def _begin_priority_phase(
 # ---------------------------------------------------------------------------
 
 
-def _format_priority_repairs(
-    before: dict[str, str],
-    after: dict[str, str],
-    requested: dict[str, str],
-) -> list[str]:
-    """Describe every priority the normalization pass moved on its own.
-
-    A feature the developer set explicitly is only reported when normalization
-    overrode them — otherwise the echo is noise.
-    """
-    notes: list[str] = []
-    for name, new_value in after.items():
-        old_value = before.get(name)
-        if old_value == new_value:
-            continue
-        if name in requested and requested[name] == new_value:
-            continue  # exactly what was asked for
-        reason = (
-            "overriding your change, to keep the build order valid"
-            if name in requested
-            else "to keep the build order valid"
-        )
-        notes.append(f"- `{name}`: {old_value} → **{new_value}** ({reason})")
-    return notes
-
-
 def _run_priority_phase(
     user_input: str | None,
     session: dict[str, Any],
@@ -2667,23 +1659,6 @@ def _reselection_pool_from_features(ai_features: dict[str, Any]) -> list[Candida
             )
         )
     return pool
-
-
-def _candidates_from_dicts(data: list[dict[str, Any]]) -> list[Candidate]:
-    """Reconstruct Candidate objects from a serialised dict list."""
-    return [
-        Candidate(
-            name=d["name"],
-            linked_vision_features=d.get("linked_vision_features", []),
-            scope=d.get("scope", "feature"),
-            rough_description=d.get("rough_description", ""),
-            linked_existing_workflow=d.get("linked_existing_workflow", ""),
-            composed_under=d.get("composed_under", ""),
-            requires=list(d.get("requires") or []),
-            kind=d.get("kind", "feature"),
-        )
-        for d in data
-    ]
 
 
 # ---------------------------------------------------------------------------
@@ -3350,8 +2325,6 @@ def _run_catalog_phase(
 # ---------------------------------------------------------------------------
 # Main agent entry point
 # ---------------------------------------------------------------------------
-
-import re  # noqa: E402 — kept here to avoid circular-import confusion at module level
 
 
 # --- Full-restart reset (D-TA1) --------------------------------------------

@@ -3406,3 +3406,269 @@ line is a patch target inside an existing test. `214 files already formatted` is
 files` is mypy's 84 by the same arithmetic. Statements rose 11853 → 11875 (+22,
 the four import headers and `__all__`) and misses held at **893**, so no
 per-module floor moved.
+
+## 24. Phase 4i — `agentifier/agentifier.py` split into three siblings
+
+Recorded 2026-09-09 on branch `look-rework`. Four files under
+`src/spec4/agentifier/` changed or added; **no file outside that directory was
+touched** — no test, no eval, no script, no `pyproject.toml`, no `README.md`,
+no `CLAUDE.md`. Nothing was written under `.spec4/`, `.venv/` or `.git/`, and no
+git command was run beyond `git status` and `git diff --stat`, both read-only.
+`agentifier.py` stays a module (not a package): the three siblings sit beside it,
+as 4a and 4f did, so `spec4.agentifier.agentifier` is unchanged for every
+importer. The last of the Phase 4 splits.
+
+### 24.1 Line counts of the four resulting files
+
+| File | Lines | Was |
+|---|---:|---:|
+| `agentifier/agentifier.py` (façade + phase drivers) | 2538 | 3565 |
+| `agentifier/_seed.py` | 509 | — |
+| `agentifier/_render.py` | 577 | — |
+| `agentifier/_ff_review.py` | 212 | — |
+| **total** | **3836** | **3565** |
+
+The façade is still the largest module in the repo — that is the outcome §15.3
+predicted ("the largest *and* least separable … only the leaf-pure edges come
+out; the phase drivers stay"), and `_run_catalog_phase` alone is 654 lines. See
+§24.6.
+
+### 24.2 The criterion, and the names moved to each
+
+A name moved only if **both** held:
+
+1. **Leaf** — its whole dependency set is closed under the destination module
+   plus sibling packages and stdlib. Nothing it calls stays behind, so the new
+   module never imports `agentifier` and no cycle is possible. Checked with an
+   `ast` walk over every module-global each candidate references: **zero**
+   back-edges, and exactly one cross-module edge (`_ff_review` → `_render`, two
+   names).
+2. **Not a patch trap** — no test rebinds the name at
+   `spec4.agentifier.agentifier.<name>` *from a call site that also moves*. A
+   re-export shares a value, not a binding, so a moved function reads its own
+   module's globals (the 4g §22.5 / 4h §23.5 lesson).
+
+**`_seed.py`** — §15.3's "sub-agent call wrappers, seed message,
+candidate/analysis (de)serialisation, registry" (17 names). Nothing here yields
+chat text or writes a session key.
+
+| Name | Why leaf-pure |
+|---|---|
+| `_build_registry`, `_registry` | Constructs from the seven sub-agent classes only. §14.5's category (a): built once at import, read-only after. |
+| `_iter_async_gen` | asyncio/queue/threading only — the async→sync bridge for `_registry.stream`, so it moves with the registry it exists to drive. |
+| `_call_scout`, `_call_linker`, `_call_composer`, `_call_prioritizer`, `_call_tier_analyst` | Build an `*Input` from their arguments, `asyncio.run(_registry.run(...))`, return the output. They dispatch to an LLM — which is why §15.3 names them their own group — but read and write nothing outside their arguments. |
+| `_vision_purpose`, `_vision_mvp_feature_names` | Shape-guarded reads of a vision dict → `str` / `list[str]`. Pure; used only by the wrappers above. |
+| `_graph_placement_lines`, `_build_seed_message` | Arguments → one string. |
+| `_candidates_to_dicts`, `_analyses_to_dicts`, `_candidates_from_dicts`, `_candidates_from_session`, `_analyses_from_session` | Pure list comprehensions. The two `_from_session` ones *read* two session keys and write none. |
+
+**`_render.py`** — §15.3's "every `_format_*`, `_build_ai_features`, priority
+parsing, revision snapshot" (17 names). Every one derives its result from its
+arguments: no session write, no yield, no I/O.
+
+| Name | Why leaf-pure |
+|---|---|
+| `_format_composition_summary` | `list[Composition]` → Markdown. |
+| `_CATALOG_SPEC_PROMPT`, `_format_catalog_as_text` | Catalog dict → Markdown table. Golden-pinned (§12.1). |
+| `_format_spec_as_text` | Entry + spec → Markdown. Golden-pinned. |
+| `_build_ai_features` | Catalog + specs + candidates → the feature list. Deps `slug` and `build_grounding`, both siblings. |
+| `_FEATURES_COMPLETE_TRANSITION`, `_format_ai_features_complete` | ai_features dict → summary table. |
+| `_format_cross_cutting_topic` | Topic + analysis → Markdown. Dep `SKIPPABLE_TOPICS` (sibling). |
+| `_VALID_PRIORITIES`, `_PRIORITY_EDIT_RE`, `PriorityEdits`, `_parse_priority_edits` | The deterministic priority-edit reader — no LLM turn. |
+| `_format_priority_table`, `_format_priority_repairs` | Feature list / three dicts → the table, the repair notes. |
+| `_revision_delta`, `_merge_revision_snapshot`, `_removed_feature_heads_up` | Vision/feature dicts in, a new list or a string out; `_merge_revision_snapshot` copies rather than mutating. |
+
+**`_ff_review.py`** — §15.3's "both fast-forward review halves", as far as the
+edges reach (7 names).
+
+| Name | Why leaf-pure |
+|---|---|
+| `_cc_ff_review_prompt`, `_spec_ff_review_prompt` | `list[str]` → prompt string. Pure. |
+| `_FF_REVISION_RE`, `_route_ff_revision_lines` | The `name: instruction` router shared by both halves; arguments in, 4-tuple out. Pure. |
+| `_present_cc_ff_review` | Leaf: only outward dep is `_format_cross_cutting_topic` (`_render`) plus its own prompt. |
+| `_present_spec_ff_review` | Leaf: only outward dep is `_format_spec_as_text` (`_render`) plus its own prompt. |
+| `_ff_sweep_cross_cutting` | Leaf: its only dep is `_present_cc_ff_review`, same module. |
+
+The last three record their outcome on the `session` they are handed and yield
+the display text, so they are **leaf but not side-effect-free** — the one place
+this split reads "leaf" as an import-graph property rather than as purity.
+Robert was asked and chose that reading; the alternative left `_ff_review.py` as
+three prompt strings and a regex, which is not "both review halves". Moving them
+is safe on 4h's evidence: their dependency set is closed, no test patches or
+imports them by name, and their only callers all stay in the façade.
+
+### 24.3 What stayed, and why
+
+- **Required by the brief** — `ORCHESTRATOR_SYSTEM_PROMPT`, `_run_catalog_phase`,
+  `_run_spec_phase`, `_run_cross_cutting_phase`, `_run_priority_phase`, `run`,
+  `reset_agentifier_flow` (with `_RESTART_DEFAULTS` / `_RESTART_POP`).
+- **A back-edge that would be a cycle** — `_handle_cc_ff_review`
+  (→ `_begin_priority_phase`, `_extract_cross_cutting_analysis`,
+  `_is_spec_confirmed`, `_is_skip`), `_handle_spec_ff_review` (→ `_finalize_specs`,
+  `_draft_spec`) and `_ff_sweep_specs` (→ `_draft_spec`). Each is independently
+  pinned by a string patch in `tests/agentifier/test_ff_sweep.py`:
+  `_finalize_specs` (:157) and `_begin_priority_phase` (:300) are rebound on
+  `spec4.agentifier.agentifier`, so a moved handler would silently call the real
+  one. That is what made these three the boundary of the FF split, not a taste
+  call.
+- **Not leaf-pure** — `_begin_priority_phase`, `_finalize_specs`, `_draft_spec`,
+  `_draft_and_show_spec`, `_complete_agentifier`, `_handle_reentry`,
+  `_append_assistant`; `_discovery_guidance` and `_feature_specs_for_session`
+  (disk); `_dump_subagent_failure` (disk, and the sole reader of the
+  `_DEV_MODE` that test_ff_sweep.py:454/472 patches); `_session_counter` (writes
+  `session["_stream_received_chars"]`); `_log_composition` (also reads
+  `_DEV_MODE`, prints).
+- **Placed in no §15.3 bucket**, so Rule 7 leaves them — `_APPROACHES_OVERVIEW`,
+  `_extract_catalog_json`, `_extract_cross_cutting_analysis` (also 12 string-patch
+  sites), `_is_spec_confirmed`, `_is_skip`, `_expand_infrastructure`,
+  `_linked_features_for_entry`, `_existing_workflow_for_entry`,
+  `_breadth_candidates`, `_reselection_pool_from_features`, `_DEV_MODE`, `_log`.
+
+**The patch surface survived intact, with no test edit.** `_call_scout` (30
+sites), `_call_tier_analyst` (21), `_call_linker` (4), `_call_composer` (1) and
+`_call_prioritizer` (1) are string-patched on `spec4.agentifier.agentifier`, but
+every call site — `_run_catalog_phase`, `_begin_priority_phase` — stayed in the
+façade and resolves through the façade's globals, which the patch rebinds. The 16
+`patch("spec4.agentifier.agentifier._registry.stream")` sites patch an attribute
+on the *object*, so they survive the move exactly as 4h's `_MOCK_BUFFERS` did:
+`agentifier._registry is _seed._registry` (§24.4).
+`patch.object(agentifier, "load_patterns")` (test_reselection.py:212) wraps
+`_finalize_specs`, which stayed. Both `_DEV_MODE` readers stayed.
+
+### 24.4 The resulting import graph, and the one deviation from Rule 121
+
+```
+agentifier ──► _seed        (17 names)
+           ├─► _render      (17 names)
+           └─► _ff_review   ( 7 names)  ──► _render  (2 names)
+```
+
+Two levels, no cycle, no edge back into the façade. Outside the package the three
+modules import only `spec4.agentifier.{composer,cross_cutting_analyst,grounding,
+linker,pattern_loader,prioritizer,scout,spec_drafter,subagents,tier_analyst}` and
+`spec4.agents._utils` — every edge pointing away from the Dash side, so layering
+rules 1–3 are untouched and `tests/test_import_layering.py` is unchanged and
+passes (7 tests). Its guards only strengthen: the walk sees 3 more modules and
+the `spec4.session` → `spec4.agentifier.agentifier` function-body edge is
+unaffected.
+
+**No name changed spelling**, including the cross-module private imports
+(`_registry`, `_format_spec_as_text`, `_format_cross_cutting_topic`). That
+departs from the plan's Rule 121 ("underscore-prefixed names used across files
+get promoted to public names") and follows the 4d–4h precedent (§23.4, "no name
+moved spelling") instead, for two reasons this sub-phase makes binding: the brief
+requires the functions to move byte-for-byte, and
+`spec4.agentifier.agentifier._registry` must keep resolving for 16 patch targets.
+Renaming is 4j's call, alongside the 4a aliases.
+
+`__all__` on the façade lists all 41 moved names plus `ORCHESTRATOR_SYSTEM_PROMPT`,
+`reset_agentifier_flow` and `run`. It is load-bearing, not decorative: `[tool.mypy]
+strict` implies `no_implicit_reexport`, and it is what keeps `F401` quiet about
+the re-exports. Each new module carries its own `__all__` for the same reason.
+
+### 24.5 How "no logic changes" was verified
+
+- **Byte-for-byte: 3184 of 3191 non-blank lines matched**, after `ruff format`
+  ran. Every one of the seven misses is an import-header or banner line, and all
+  seven are accounted for:
+  - `    Composition,` / `    CrossCuttingAnalyst,` / `    PRIORITIES,` /
+    `    slug,` — each is now a *single-line* import in the module that took the
+    code, so the parenthesised-list form no longer exists.
+  - `from spec4.agentifier.spec_drafter import SpecDrafterAgent, SpecDrafterInput`
+    — split, `SpecDrafterAgent` to `_seed` (the registry) and `SpecDrafterInput`
+    kept in the façade (`_draft_spec`).
+  - `import re  # noqa: E402 — kept here to avoid circular-import confusion at
+    module level` — see below.
+  - The `# Async → sync streaming bridge` banner initially moved with an ASCII
+    arrow; corrected back to the original glyph, which is why it is *not* in the
+    final miss list. No function body moved by a character.
+  `ruff format` reported "1 file reformatted" on the first pass; the diff was
+  blank-line separators only, as in 4a–4h.
+- **Both `import re` statements were removed from the façade** — F401 requires
+  it, and it is verifiable: `re` was used at exactly four places in the pre-split
+  file (`_PRIORITY_EDIT_RE`, `_parse_priority_edits` ×2 → `_render`;
+  `_FF_REVISION_RE` → `_ff_review`). That includes the duplicate
+  `import re  # noqa: E402` at old line 3354, which was already dead before this
+  split — nothing after it used `re`. `asyncio`, `queue`, `threading` and
+  `dataclass`/`field` went the same way, and 19 sibling names the moved code took
+  with it (`ComposerAgent`, `ComposerInput`, `Composition`, `CrossCuttingAnalyst`,
+  `LinkerAgent`, `LinkerInput`, `LinkerOutput`, `PRIORITIES`, `PrioritizerAgent`,
+  `PrioritizerInput`, `PrioritizerOutput`, `ScoutAgent`, `ScoutInput`,
+  `ScoutOutput`, `SpecDrafterAgent`, `SubAgentRegistry`, `TierAnalystAgent`,
+  `TierAnalystInput`, `slug`). **0 definitions were dropped.** Each was grepped
+  as `agentifier.<name>` across `src/`, `tests/`, `evals/` and `scripts/`: no hit.
+- **Attribute surface: 77 of 77 resolve.** Every top-level name the pre-split AST
+  defined resolves on `spec4.agentifier.agentifier`, checked by importing it and
+  `hasattr`-ing the lot. `agentifier._registry is _seed._registry`,
+  `agentifier.project_manager is spec4.project_manager`,
+  `agentifier.llm is spec4.llm`, `agentifier.websearch is spec4.websearch` — all
+  True, so the 11 `patch.object(agentifier.project_manager, …)` sites, the one
+  `monkeypatch.setattr(agentifier.llm, "stream_turn")` and the two
+  `agentifier._registry` sites keep working untouched. `set(__all__)` is a subset
+  of `dir()` and contains no name the pre-split module did not define.
+- **Statements add up.** `coverage`'s parser on the `HEAD` blob: 1416. The four
+  files now: 951 + 153 + 248 + 93 = **1445**, +29 — the three import headers and
+  the four `__all__` blocks. Suite-wide 11875 → 11904, also +29, so **no other
+  module's statement count changed**.
+- **Coverage attribution, not coverage loss.** 128 + 11 + 13 + 1 = **153** missed
+  statements across the four files, against 153 for the single pre-split file
+  (façade 87%, `_render` 96%, `_seed` 92%, `_ff_review` 99%). Suite-wide misses
+  unchanged at **893**, so no per-module floor moved.
+- **§15.5 invariants.** `dash._callback.GLOBAL_CALLBACK_MAP` holds **92** after a
+  fresh `spec4.app` import in a clean interpreter. `tests/test_layout_contract.py`
+  and `tests/test_streaming_characterization.py` were **not** edited — nor was any
+  other test file. `tests/agentifier/` (all 28 modules),
+  `tests/test_renderer_goldens.py` and `tests/test_stream_status.py` pass together:
+  758 tests.
+
+### 24.6 Deferred / not acted on
+
+- **The façade is still 2538 lines and the repo's largest module** — by design
+  (§15.3), and now it is nothing but the orchestrator's generator flow. The Phase 5
+  targets inside it are `_run_catalog_phase` (654 lines), `_draft_spec` (101),
+  `_finalize_specs` (105), `_complete_agentifier` (86), `_handle_reentry` (93) and
+  `_run_cross_cutting_phase` (157). Nothing was shrunk here.
+- **The duplicate `_DEV_MODE` assignment** (old lines 95 and 1171; the second
+  carries a `#:` comment explaining the session-import cycle) is left as it was —
+  both readers stayed in the façade, and de-duplicating a module-level constant is
+  a Phase 5 edit, not a move. Logged as a Phase 5 finding.
+- **The three FF handlers are 4j/Phase 5's problem, if anyone's.**
+  `_handle_cc_ff_review` (94 lines), `_handle_spec_ff_review` (79) and
+  `_ff_sweep_specs` (38) could only follow `_ff_review.py` if the two
+  string-patched transitions (`_finalize_specs`, `_begin_priority_phase`) were
+  retargeted in `tests/agentifier/test_ff_sweep.py` — the 4h §23.5 trade, which
+  this sub-phase was told not to take. Logged, not done.
+- **`__all__` is 4j's to trim.** Of the 44 entries, `_build_registry`,
+  `_graph_placement_lines`, `_vision_purpose`, `_vision_mvp_feature_names`,
+  `_cc_ff_review_prompt`, `_spec_ff_review_prompt`, `_FF_REVISION_RE`,
+  `_PRIORITY_EDIT_RE`, `_VALID_PRIORITIES`, `_CATALOG_SPEC_PROMPT`,
+  `_FEATURES_COMPLETE_TRANSITION` and `PriorityEdits` exist only to preserve the
+  pre-split attribute surface and have no importer anywhere. Phase 2-style
+  candidates, logged not deleted — 4j moves imports, it does not remove
+  definitions.
+- **`pyproject.toml` was checked and not forced.** The 4c widening
+  `"src/spec4/agentifier/**/*.py" = ["E501"]` already covers the three new
+  siblings; ruff selects only `E,F`, and none of the new modules holds a frozen
+  prompt (`ORCHESTRATOR_SYSTEM_PROMPT` and `_APPROACHES_OVERVIEW` stayed).
+- **`vulture_whitelist.py`, `README.md` and `CLAUDE.md` name none of these
+  files**, so none needed the comment-staleness fix 4g/4h logged for `callbacks/`.
+- **§17.5's `_AGENT_SIDE` gap, §21.6's blocked fifth rule and 4g2** are unchanged;
+  4i adds nothing to any of them. 4g2 (splitting `callbacks/_chat.py` into `_gate`
+  and `_nav`) and 4j are what remain of Phase 4.
+- Nothing new for *Bugs found (not fixed)*.
+
+### 24.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Layering | `uv run pytest tests/test_import_layering.py -q` | `7 passed` (exit 0) |
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `217 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 90 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 169.43s (0:02:49)` (exit 0) |
+| Coverage | same run | `TOTAL 11904 stmts, 893 miss, 92%` |
+
+Test count is unchanged at 4256 — 4i adds no test, removes none, and edits none.
+`217 files already formatted` is §23.7's 214 plus the three new files; `90 source
+files` is mypy's 87 by the same arithmetic. Statements rose 11875 → 11904 (+29,
+the import headers and `__all__` blocks) and misses held at **893**, so no
+per-module floor moved. `.coverage` was restored after the run.
