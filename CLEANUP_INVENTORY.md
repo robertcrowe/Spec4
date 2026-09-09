@@ -4250,6 +4250,27 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
    report** — do not add a noqa and do not introduce a sentinel return value to simulate
    the jump. *Added before 5f, the first sub-phase whose blocks are loop bodies rather
    than top-level sections.*
+10. **Mechanical defects may be fixed in place; everything else reverts.** Three defect
+    classes may be repaired without spending the sub-phase's retry: an **indentation
+    error**; a **helper parameter annotation that must match the narrowed type at its
+    call site** rather than the enclosing function's signature; and a **reference to a
+    pre-promotion name** left behind by rule 8. The test is all three of: the gate names
+    the exact line, the repair touches **no logic, no string and no control flow**, and
+    the sub-phase report lists each fix by site. **Cap of five per sub-phase; a sixth is
+    a stop.**
+
+    Everything else keeps the original rule — one revert-and-retry, then stop. In
+    particular a **failing test, a golden or snapshot mismatch, a changed callback
+    count, or any repair that would need a changed conditional or a new statement** is
+    never fixed in place: revert immediately, **no retry**, and report. Those mean the
+    extraction itself was wrong, not that it was transcribed wrong.
+
+    *Corollary, and the cheapest way to never need this: type every extracted helper's
+    parameters from the narrowed type at the call site, not from the enclosing
+    signature. 5g's second attempt failed mypy on exactly that —
+    `_deployer_roadmap_extras` took `dict[str, Any] | None` from `stack_for_deployer`'s
+    signature, when the only call site sits below that function's
+    `if not isinstance(stack, dict) ... return ""` guard.*
 
 ### 27.3 Per-function table
 
@@ -5365,3 +5386,162 @@ now covered by a rule rather than by care.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 175.34s` (exit 0) |
 | Coverage | same run | `TOTAL 12043 stmts, 893 miss, 93%` |
+
+## 34. Phase 5g — `agents/_stack_context.py`: four stack/manifest projections decomposed
+
+`src/spec4/agents/_stack_context.py` only. Extract-only. No other file changed.
+
+### 34.1 Before and after
+
+| Function | C901 | Br | St | lines | → C901 | → lines |
+|---|---:|---:|---:|---:|---:|---:|
+| `stack_for_deployer` | **29** | **28** | **81** | 170 | 5 | 63 |
+| `stack_digest_for_phaser` | **24** | **21** | **66** | 144 | 6 | 44 |
+| `design_manifest_for_stack` | **17** | **17** | — | 88 | 8 | 33 |
+| `manifest_for_phaser` | **11** | — | — | 81 | 2 | 30 |
+
+The file's C901/PLR0912/PLR0915 finding count goes **12 → 0**. Module-level functions
+10 → 35; no nested `def` remains.
+
+### 34.2 The 25 new module-level functions
+
+**From `stack_for_deployer` (10):** `_stack_field` (**promoted closure**, rule 8),
+`_deployer_target_lines` + `_deployer_target_entry`, `_deployer_auth_lines` +
+`_deployer_auth_entry`, `_deployer_integrations_note`, `_deployer_provisioning` +
+`_provision_entry` + `_provision_extras`, `_deployer_roadmap_extras`.
+
+The targets and auth blocks each split in two: the section header and its loop stay in
+one helper, the per-entry body becomes another, because both were C901 12–14 as single
+helpers. `_deployer_provisioning` returns the `(provision, roadmap)` pair the two
+`if` blocks in the spine then render.
+
+**From `design_manifest_for_stack` (4):** `_manifest_data_model_lines`,
+`_manifest_written_and_read`, `_manifest_entity_access_lines`,
+`_manifest_screen_shape_lines`.
+
+**From `stack_digest_for_phaser` (7):** `_stack_backlinks` (**promoted closure**,
+rule 8), `_digest_feature_backlinks`, `_digest_capability_backlinks`,
+`_digest_nfr_lines`, `_digest_status_lines`, `_digest_exposure_lines`,
+`_digest_negatives`.
+
+**From `manifest_for_phaser` (4):** `_phaser_manifest_screens`,
+`_phaser_manifest_surfaces`, `_phaser_manifest_reading_guide`,
+`_phaser_manifest_entities`.
+
+### 34.3 Rule 8 applied — two closures promoted
+
+| Closure | Promoted to | Captured | Passed as |
+|---|---|---|---|
+| `_field(entry, key, label)` | `_stack_field(entry, key, label)` | nothing | — (signature unchanged) |
+| `backlinks(field)` | `_stack_backlinks(entries, field)` | `entries` | first parameter, ahead of `field` |
+
+`_stack_backlinks` takes `entries` first because that is the order the closure read them
+— the captured value before the declared parameter, per rule 8. Six call sites move with
+the two promotions (three `_field`, three `backlinks`), listed in 34.5.
+
+### 34.4 Rule 9 applied — one `continue` → `return`
+
+The `ast` audit again found **no `break` anywhere and no `return` inside any loop**, so
+rule 9's stop clause did not fire. Eight of the nine `continue` statements sit in loops
+that move into a helper whole and are unmodified. The ninth is the roadmap branch of the
+persistence/infrastructure loop body, now `_provision_entry`:
+
+```
+if status in ROADMAP_STATUSES:
+    roadmap.append(...)
+    return          # was `continue` at old line 314
+```
+
+Same branch, same position, same effect: this entry is roadmap, record it and move to
+the next. The two `continue`s guarding that loop (`if not isinstance(block, dict)`,
+`if not isinstance(entry, dict)`) stay in `_deployer_provisioning`'s own loops,
+untouched.
+
+### 34.5 Line accounting (rule 3)
+
+**483 non-blank lines** across the four functions. **473 appear verbatim.** The 10
+others:
+
+| # | Disposition |
+|---:|---|
+| 2 | `def _field(...)` and `def backlinks(...)` — the rule-8 promotions (34.3) |
+| 6 | the six call sites those promotions renamed: three `_field(` → `_stack_field(`, three `backlinks(` → `_stack_backlinks(entries, ` |
+| 2 | the roadmap `roadmap.append(...)` argument — `ruff format` joined two lines into one after the dedent freed room; identical tokens |
+
+The `continue` → `return` is not in this count because `continue` still occurs elsewhere
+in the file; it is verified separately and quoted in 34.4.
+
+**No statement line is unaccounted for.**
+
+### 34.6 Statement counts add up (rule 4)
+
+File statements **354 → 402, +48**; suite-wide **12043 → 12091, +48** — **no other
+module's statement count changed**. By kind:
+
+| Kind | Δ | Why |
+|---|---:|---|
+| `def` | +23 | 25 new module-level functions, less the 2 that were already `def`s as closures |
+| call statement | +21 | the new spine calls |
+| `return` | +3 | `_manifest_written_and_read`, `_deployer_provisioning`, and the rule-9 rewrite |
+| assignment | +2 | the two spine bindings that replaced inlined blocks |
+| `continue` | −1 | the rule-9 rewrite |
+
+Misses held at **893**.
+
+### 34.7 Rule 10 — no in-place fixes were needed
+
+**Zero of the allowed five.** The retry that produced this commit typed every extracted
+helper's parameters from the narrowed type at the call site rather than from the
+enclosing signature (rule 10's corollary), and mypy passed first time. The two places it
+mattered:
+
+- `_deployer_roadmap_extras(stack: dict[str, Any], ...)` — **not** `| None`. Its only
+  call site is below `stack_for_deployer`'s
+  `if not isinstance(stack, dict) or not stack: return ""`. This is the exact annotation
+  that failed the previous attempt.
+- `_stack_backlinks(entries: list[dict[str, Any]], ...)` and
+  `_digest_status_lines(entries: ...)` — `entries` is `stack_signal_entries(stack)`,
+  whose declared return is `list[dict[str, Any]]` (`stack_routing.py:83`), so the
+  parameter is typed from that rather than left as `list[Any]`.
+
+Where the enclosing signature's `| None` **is** still right it was kept:
+`_phaser_manifest_screens` and `_phaser_manifest_entities` take
+`manifest: dict[str, Any] | None`, because `manifest_for_phaser`'s guard narrows
+`surfaces`, not `manifest`, and both bodies do their own `(manifest or {})`.
+
+### 34.8 Verification beyond the gate
+
+- All four public names, signatures and defaults unchanged; every importer (`deployer`,
+  `phaser`, `stack_advisor`) untouched and `__all__` unchanged. All 25 new names are
+  private and unexported.
+- No test file was edited (rule 2). `tests/test_deployer_stack_digest.py`,
+  `test_phaser_manifest_context.py`, `test_design_manifest.py`,
+  `test_deployer_env_and_semantics.py`, `test_deployer_invariants.py` all pass
+  unmodified in the full run.
+- The two load-bearing absence statements — "the stack declares none … do not provision
+  an identity provider" and the trustworthy-negatives block — moved verbatim (rule 5),
+  as did every `**Header**` and the D-PH1c citation instruction.
+
+### 34.9 One failed attempt before this one
+
+Attempt 1: `_manifest_written_and_read`'s body was dedented by 8 where it needed 4
+(the block sits inside `if surfaces:`, so it starts at 8, not 12) → syntax error.
+Reverted with `git checkout --`. Attempt 2 failed mypy on the
+`_deployer_roadmap_extras` annotation and was reverted and reported as a stop; rule 10
+was then added, and this third attempt passed the whole gate without a fix.
+
+### 34.10 Deferred / not acted on
+
+- `_deployer_target_lines` / `_deployer_auth_lines` share the
+  header-then-loop-then-blank shape with several 5f helpers. Comparing them is **5p(a)**.
+- No `# noqa` was needed.
+
+### 34.11 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 170.63s` (exit 0) |
+| Coverage | same run | `TOTAL 12091 stmts, 893 miss, 93%` |

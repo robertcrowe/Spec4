@@ -216,12 +216,44 @@ def stack_for_deployer(stack: dict[str, Any] | None) -> str:
         "it, what to provision, and what to keep out of this build. These decisions "
         "are already settled — build on them rather than re-asking.**\n"
     ]
+    _deployer_target_lines(spec, lines)
+    _deployer_auth_lines(spec, lines)
+    _deployer_integrations_note(spec, lines)
 
-    def _field(entry: dict[str, Any], key: str, label: str) -> str | None:
-        val = entry.get(key)
-        text = str(val or "").strip()
-        return f"  - {label}: {text}" if text else None
+    provision, roadmap = _deployer_provisioning(spec)
 
+    if provision:
+        lines.append(
+            "**To provision** — the stores and infrastructure this build stands up. "
+            "Each choice is ratified; the deployment plan's job is to say how it gets "
+            "created and configured, not to re-choose it:"
+        )
+        lines.extend(provision)
+        lines.append("")
+
+    _deployer_roadmap_extras(stack, roadmap)
+
+    if roadmap:
+        lines.append(
+            "**Roadmap — recorded, not provisioned.** These carry a non-MVP `status`. "
+            "Note them in the plan so they are not lost, but do not build, provision, "
+            "or configure them in this deployment:"
+        )
+        lines.extend(roadmap)
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _stack_field(entry: dict[str, Any], key: str, label: str) -> str | None:
+    """One indented ``label: value`` row, or ``None`` when the value is empty."""
+    val = entry.get(key)
+    text = str(val or "").strip()
+    return f"  - {label}: {text}" if text else None
+
+
+def _deployer_target_lines(spec: dict[str, Any], lines: list[str]) -> None:
+    """The deployment-targets block, one entry per hosted surface."""
     targets = [
         t
         for t in ((spec.get("deployment") or {}).get("targets") or [])
@@ -234,30 +266,38 @@ def stack_for_deployer(stack: dict[str, Any] | None) -> str:
             f"configuration:"
         )
         for t in targets:
-            name = str(t.get("name") or "target").strip()
-            kind = str(t.get("kind") or "").strip()
-            purpose = str(t.get("purpose") or "").strip()
-            head = f"- `{name}`" + (f" ({kind})" if kind else "")
-            lines.append(f"{head} — {purpose}" if purpose else head)
-            for key, label in (
-                ("language", "language"),
-                ("runtime", "runtime"),
-                ("hosting", "hosting"),
-                ("build", "build"),
-                ("distribution", "distribution"),
-                ("api_contract", "API contract"),
-            ):
-                row = _field(t, key, label)
-                if row:
-                    lines.append(row)
-            exposure = t.get("exposure")
-            if isinstance(exposure, dict):
-                for key, label in (("transport", "transport"), ("cors", "CORS")):
-                    row = _field(exposure, key, label)
-                    if row:
-                        lines.append(row)
+            _deployer_target_entry(t, lines)
         lines.append("")
 
+
+def _deployer_target_entry(t: dict[str, Any], lines: list[str]) -> None:
+    """One deployment target: kind, purpose, and its exposure rows."""
+    name = str(t.get("name") or "target").strip()
+    kind = str(t.get("kind") or "").strip()
+    purpose = str(t.get("purpose") or "").strip()
+    head = f"- `{name}`" + (f" ({kind})" if kind else "")
+    lines.append(f"{head} — {purpose}" if purpose else head)
+    for key, label in (
+        ("language", "language"),
+        ("runtime", "runtime"),
+        ("hosting", "hosting"),
+        ("build", "build"),
+        ("distribution", "distribution"),
+        ("api_contract", "API contract"),
+    ):
+        row = _stack_field(t, key, label)
+        if row:
+            lines.append(row)
+    exposure = t.get("exposure")
+    if isinstance(exposure, dict):
+        for key, label in (("transport", "transport"), ("cors", "CORS")):
+            row = _stack_field(exposure, key, label)
+            if row:
+                lines.append(row)
+
+
+def _deployer_auth_lines(spec: dict[str, Any], lines: list[str]) -> None:
+    """The authentication block, or the load-bearing no-accounts statement."""
     security = spec.get("security")
     auth = (
         [a for a in ((security or {}).get("auth") or []) if isinstance(a, dict)]
@@ -270,15 +310,7 @@ def stack_for_deployer(stack: dict[str, Any] | None) -> str:
             f"required environment variables and belong in the Environment section:"
         )
         for a in auth:
-            mech = str(a.get("mechanism") or a.get("name") or "auth").strip()
-            purpose = str(a.get("purpose") or "").strip()
-            lines.append(f"- {mech}" + (f" — {purpose}" if purpose else ""))
-            serves = [str(s) for s in (a.get("serves_features") or []) if str(s)]
-            if serves:
-                lines.append(f"  - serves: {', '.join(serves)}")
-            creds = [str(c) for c in (a.get("credentials_env") or []) if str(c)]
-            if creds:
-                lines.append(f"  - credentials (environment): {', '.join(creds)}")
+            _deployer_auth_entry(a, lines)
         lines.append("")
     else:
         lines.append(
@@ -287,12 +319,31 @@ def stack_for_deployer(stack: dict[str, Any] | None) -> str:
             "secrets, and do not ask the developer to choose one.\n"
         )
 
+
+def _deployer_auth_entry(a: dict[str, Any], lines: list[str]) -> None:
+    """One auth mechanism: purpose, what it serves, its credentials."""
+    mech = str(a.get("mechanism") or a.get("name") or "auth").strip()
+    purpose = str(a.get("purpose") or "").strip()
+    lines.append(f"- {mech}" + (f" — {purpose}" if purpose else ""))
+    serves = [str(s) for s in (a.get("serves_features") or []) if str(s)]
+    if serves:
+        lines.append(f"  - serves: {', '.join(serves)}")
+    creds = [str(c) for c in (a.get("credentials_env") or []) if str(c)]
+    if creds:
+        lines.append(f"  - credentials (environment): {', '.join(creds)}")
+
+
+def _deployer_integrations_note(spec: dict[str, Any], lines: list[str]) -> None:
+    """The load-bearing no-external-integrations statement."""
     if not (spec.get("integrations") or []):
         lines.append(
             "**External integrations** — the stack declares none. There are no "
             "third-party services to configure credentials or network egress for.\n"
         )
 
+
+def _deployer_provisioning(spec: dict[str, Any]) -> tuple[list[str], list[str]]:
+    """What this build stands up, and what is roadmap rather than built."""
     provision: list[str] = []
     roadmap: list[str] = []
     for section in ("persistence", "infrastructure"):
@@ -302,40 +353,50 @@ def stack_for_deployer(stack: dict[str, Any] | None) -> str:
         for key, entry in block.items():
             if not isinstance(entry, dict):
                 continue
-            name = str(entry.get("name") or key).strip()
-            status = str(entry.get("status") or "").strip()
-            choice = str(entry.get("choice") or "").strip()
-            purpose = str(entry.get("purpose") or "").strip()
-            if status in ROADMAP_STATUSES:
-                roadmap.append(
-                    f"- `{name}` ({section}, {status})"
-                    + (f" — {purpose}" if purpose else "")
-                )
-                continue
-            row = f"- `{name}` ({section})" + (f": {choice}" if choice else "")
-            if purpose:
-                row += f" — {purpose}"
-            provision.append(row)
-            for key_name, label in (
-                ("durability", "durability"),
-                ("implementation", "implementation"),
-            ):
-                extra = _field(entry, key_name, label)
-                if extra:
-                    provision.append(extra)
-            sat = [str(s) for s in (entry.get("satisfies_infra") or []) if str(s)]
-            if sat:
-                provision.append(f"  - satisfies infrastructure need: {', '.join(sat)}")
+            _provision_entry(section, key, entry, provision, roadmap)
+    return provision, roadmap
 
-    if provision:
-        lines.append(
-            "**To provision** — the stores and infrastructure this build stands up. "
-            "Each choice is ratified; the deployment plan's job is to say how it gets "
-            "created and configured, not to re-choose it:"
+
+def _provision_entry(
+    section: str,
+    key: str,
+    entry: dict[str, Any],
+    provision: list[str],
+    roadmap: list[str],
+) -> None:
+    """One persistence or infrastructure entry, provisioned or recorded."""
+    name = str(entry.get("name") or key).strip()
+    status = str(entry.get("status") or "").strip()
+    choice = str(entry.get("choice") or "").strip()
+    purpose = str(entry.get("purpose") or "").strip()
+    if status in ROADMAP_STATUSES:
+        roadmap.append(
+            f"- `{name}` ({section}, {status})" + (f" — {purpose}" if purpose else "")
         )
-        lines.extend(provision)
-        lines.append("")
+        return
+    row = f"- `{name}` ({section})" + (f": {choice}" if choice else "")
+    if purpose:
+        row += f" — {purpose}"
+    provision.append(row)
+    _provision_extras(entry, provision)
 
+
+def _provision_extras(entry: dict[str, Any], provision: list[str]) -> None:
+    """The durability / implementation rows and the infra-need backlink."""
+    for key_name, label in (
+        ("durability", "durability"),
+        ("implementation", "implementation"),
+    ):
+        extra = _stack_field(entry, key_name, label)
+        if extra:
+            provision.append(extra)
+    sat = [str(s) for s in (entry.get("satisfies_infra") or []) if str(s)]
+    if sat:
+        provision.append(f"  - satisfies infrastructure need: {', '.join(sat)}")
+
+
+def _deployer_roadmap_extras(stack: dict[str, Any], roadmap: list[str]) -> None:
+    """Roadmap entries outside persistence/infrastructure."""
     for e in stack_signal_entries(stack):
         entry = e["entry"]
         if str(entry.get("status") or "") not in ROADMAP_STATUSES:
@@ -343,17 +404,6 @@ def stack_for_deployer(stack: dict[str, Any] | None) -> str:
         if e["section"] in ("persistence", "infrastructure"):
             continue  # already captured above, with its section context
         roadmap.append(f"- `{e['label']}` ({e['section']}, {entry.get('status')})")
-
-    if roadmap:
-        lines.append(
-            "**Roadmap — recorded, not provisioned.** These carry a non-MVP `status`. "
-            "Note them in the plan so they are not lost, but do not build, provision, "
-            "or configure them in this deployment:"
-        )
-        lines.extend(roadmap)
-        lines.append("")
-
-    return "\n".join(lines)
 
 
 def nfr_goals_for_deployer(
@@ -470,7 +520,17 @@ def design_manifest_for_stack(manifest: dict[str, Any] | None) -> str:
         "is authoritative about the *shape* of what the app stores and how it is "
         "laid out; the mechanism for both remains your decision.**\n"
     ]
+    _manifest_data_model_lines(entities, lines)
+    _manifest_entity_access_lines(surfaces, lines)
+    _manifest_screen_shape_lines(man, screens, lines)
 
+    return "\n".join(lines)
+
+
+def _manifest_data_model_lines(
+    entities: list[dict[str, Any]], lines: list[str]
+) -> None:
+    """The data model block: entities with the fields the UI expects."""
     if entities:
         lines.append(
             "**Data model** — the entities the UI is built on, with the fields it "
@@ -488,17 +548,30 @@ def design_manifest_for_stack(manifest: dict[str, Any] | None) -> str:
             )
         lines.append("")
 
+
+def _manifest_written_and_read(
+    surfaces: list[dict[str, Any]],
+) -> tuple[list[str], list[str]]:
+    """Entities the UI writes, and those it only ever reads."""
+    written: list[str] = []
+    read: list[str] = []
+    for s in surfaces:
+        for ent in s.get("writes") or []:
+            if isinstance(ent, str) and ent not in written:
+                written.append(ent)
+        for ent in s.get("reads") or []:
+            if isinstance(ent, str) and ent not in read:
+                read.append(ent)
+    read_only = [e for e in read if e not in written]
+    return written, read_only
+
+
+def _manifest_entity_access_lines(
+    surfaces: list[dict[str, Any]], lines: list[str]
+) -> None:
+    """The entity-access block: written versus read-only."""
     if surfaces:
-        written: list[str] = []
-        read: list[str] = []
-        for s in surfaces:
-            for ent in s.get("writes") or []:
-                if isinstance(ent, str) and ent not in written:
-                    written.append(ent)
-            for ent in s.get("reads") or []:
-                if isinstance(ent, str) and ent not in read:
-                    read.append(ent)
-        read_only = [e for e in read if e not in written]
+        written, read_only = _manifest_written_and_read(surfaces)
         if written or read_only:
             lines.append(
                 "**Entity access** — which entities the UI writes versus only reads. "
@@ -512,6 +585,11 @@ def design_manifest_for_stack(manifest: dict[str, Any] | None) -> str:
                 lines.append(f"- read-only: {', '.join(read_only)}")
             lines.append("")
 
+
+def _manifest_screen_shape_lines(
+    man: dict[str, Any], screens: list[dict[str, Any]], lines: list[str]
+) -> None:
+    """The screens block: count, navigation shape, and ids."""
     if screens:
         ids = [str(s.get("id") or s.get("name") or "") for s in screens]
         ids = [i for i in ids if i]
@@ -531,8 +609,6 @@ def design_manifest_for_stack(manifest: dict[str, Any] | None) -> str:
             "at all) is your call."
         )
         lines.append("")
-
-    return "\n".join(lines)
 
 
 def stack_digest_for_phaser(
@@ -568,18 +644,41 @@ def stack_digest_for_phaser(
         "approved-components list; use this digest to route stack entries to "
         "the right phases.**\n"
     ]
+    by_feature = _stack_backlinks(entries, "serves_features")
+    _digest_feature_backlinks(by_feature, lines)
 
-    def backlinks(field: str) -> dict[str, list[str]]:
-        links: dict[str, list[str]] = {}
-        for e in entries:
-            for target in e["entry"].get(field) or []:
-                label = e["label"]
-                if e["section"] and e["section"] not in label:
-                    label = f"{label} ({e['section']})"
-                links.setdefault(str(target), []).append(label)
-        return links
+    by_capability = _stack_backlinks(entries, "serves_capabilities")
+    _digest_capability_backlinks(by_capability, lines)
 
-    by_feature = backlinks("serves_features")
+    nfr_claims = _stack_backlinks(entries, "satisfies_nfr")
+    derived: dict[str, str] = {}
+    for g in (feature_specs or {}).get("nfr_goals") or []:
+        if isinstance(g, str) and g.strip():
+            derived[f"nfr_{slug(g.strip())}"] = g.strip()
+    _digest_nfr_lines(nfr_claims, derived, lines)
+    _digest_status_lines(entries, lines)
+    _digest_exposure_lines(spec, lines)
+    _digest_negatives(spec, lines)
+
+    return "\n".join(lines)
+
+
+def _stack_backlinks(entries: list[dict[str, Any]], field: str) -> dict[str, list[str]]:
+    """Target id -> the stack entry labels whose ``field`` names it."""
+    links: dict[str, list[str]] = {}
+    for e in entries:
+        for target in e["entry"].get(field) or []:
+            label = e["label"]
+            if e["section"] and e["section"] not in label:
+                label = f"{label} ({e['section']})"
+            links.setdefault(str(target), []).append(label)
+    return links
+
+
+def _digest_feature_backlinks(
+    by_feature: dict[str, list[str]], lines: list[str]
+) -> None:
+    """Feature -> stack backlinks."""
     if by_feature:
         lines.append(
             "Feature → stack backlinks (entries whose `serves_features` names "
@@ -590,7 +689,11 @@ def stack_digest_for_phaser(
             lines.append(f"- `{fid}`: {', '.join(by_feature[fid])}")
         lines.append("")
 
-    by_capability = backlinks("serves_capabilities")
+
+def _digest_capability_backlinks(
+    by_capability: dict[str, list[str]], lines: list[str]
+) -> None:
+    """AI capability -> stack backlinks."""
     if by_capability:
         lines.append(
             "AI capability → stack backlinks (entries whose "
@@ -600,11 +703,11 @@ def stack_digest_for_phaser(
             lines.append(f"- `{cid}`: {', '.join(by_capability[cid])}")
         lines.append("")
 
-    nfr_claims = backlinks("satisfies_nfr")
-    derived: dict[str, str] = {}
-    for g in (feature_specs or {}).get("nfr_goals") or []:
-        if isinstance(g, str) and g.strip():
-            derived[f"nfr_{slug(g.strip())}"] = g.strip()
+
+def _digest_nfr_lines(
+    nfr_claims: dict[str, list[str]], derived: dict[str, str], lines: list[str]
+) -> None:
+    """Non-functional goals: stack claims, and goals no entry claims."""
     if nfr_claims or derived:
         lines.append(
             "Non-functional goals — stack claims (`satisfies_nfr`). Cite the "
@@ -630,6 +733,9 @@ def stack_digest_for_phaser(
                 )
         lines.append("")
 
+
+def _digest_status_lines(entries: list[dict[str, Any]], lines: list[str]) -> None:
+    """Status semantics and the entries that carry a ``status``."""
     status_entries = [e for e in entries if e["entry"].get("status")]
     lines.append(
         "Status semantics: entries with `status: optional` or `status: "
@@ -648,6 +754,9 @@ def stack_digest_for_phaser(
         )
     lines.append("")
 
+
+def _digest_exposure_lines(spec: dict[str, Any], lines: list[str]) -> None:
+    """Deployment exposure per target."""
     targets = (spec.get("deployment") or {}).get("targets") or []
     exposure_lines = []
     for t in targets:
@@ -665,6 +774,9 @@ def stack_digest_for_phaser(
         lines.extend(exposure_lines)
         lines.append("")
 
+
+def _digest_negatives(spec: dict[str, Any], lines: list[str]) -> None:
+    """Trustworthy negatives -- what the stack records by absence."""
     lines.append(
         "Trustworthy negatives — absence in the stack is a recorded decision, "
         "not an omission; do not re-ask for or re-invent what is absent:"
@@ -688,8 +800,6 @@ def stack_digest_for_phaser(
         "whole app, not any single feature."
     )
     lines.append("")
-
-    return "\n".join(lines)
 
 
 def manifest_for_phaser(manifest: dict[str, Any] | None) -> str:
@@ -719,7 +829,16 @@ def manifest_for_phaser(manifest: dict[str, Any] | None) -> str:
         "their join keys. `implements` holds product-feature ids; `catalog` "
         "holds the AI catalog-node id realized by the surface.**\n"
     ]
+    _phaser_manifest_screens(manifest, lines)
+    _phaser_manifest_surfaces(surfaces, lines)
+    _phaser_manifest_reading_guide(lines)
+    _phaser_manifest_entities(manifest, lines)
 
+    return "\n".join(lines)
+
+
+def _phaser_manifest_screens(manifest: dict[str, Any] | None, lines: list[str]) -> None:
+    """The ``Screens:`` block: audience, purpose and surface membership."""
     screens = (manifest or {}).get("screens") or []
     if screens:
         lines.append("Screens:")
@@ -736,6 +855,9 @@ def manifest_for_phaser(manifest: dict[str, Any] | None) -> str:
             lines.append(line)
         lines.append("")
 
+
+def _phaser_manifest_surfaces(surfaces: list[Any], lines: list[str]) -> None:
+    """One summary line per surface."""
     lines.append("Surfaces:")
     for s in surfaces:
         if not isinstance(s, dict):
@@ -743,6 +865,9 @@ def manifest_for_phaser(manifest: dict[str, Any] | None) -> str:
         lines.append(surface_summary_line(s))
     lines.append("")
 
+
+def _phaser_manifest_reading_guide(lines: list[str]) -> None:
+    """The fixed ``How to read the surfaces:`` guidance."""
     lines.append("How to read the surfaces:")
     lines.append(
         "- Group surfaces by product-feature id when attaching UI work to a "
@@ -763,6 +888,11 @@ def manifest_for_phaser(manifest: dict[str, Any] | None) -> str:
     )
     lines.append("")
 
+
+def _phaser_manifest_entities(
+    manifest: dict[str, Any] | None, lines: list[str]
+) -> None:
+    """The design entities block (the design's data vocabulary)."""
     entity_list = (manifest or {}).get("entities") or []
     ent_lines = []
     for ent in entity_list:
@@ -778,5 +908,3 @@ def manifest_for_phaser(manifest: dict[str, Any] | None) -> str:
         )
         lines.extend(ent_lines)
         lines.append("")
-
-    return "\n".join(lines)
