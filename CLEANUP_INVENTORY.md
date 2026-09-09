@@ -4227,6 +4227,18 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
 4. **Statement counts add up.** `coverage`'s parser on the `HEAD` blob vs. the new file;
    the delta must equal the added `def`/`return` lines, and suite-wide misses must hold
    at 893.
+
+   **Covered-path preference (5i-5o).** Extraction is coverage-neutral on a path the
+   tests execute and coverage-*negative* on one they never reach: the helper's body
+   stays missed and the new call statement at the never-executed site is missed too. So
+   prefer a covered-path block of equal complexity weight. Where a function cannot reach
+   threshold without extracting an uncovered block, the extraction **is permitted** on
+   one condition: the only new miss is the **call statement** at the never-executed
+   site. Report the total as **893 + N**, listing each of the N sites (file, line, the
+   block it calls). A miss from any other cause is still a regression. **Do not add a
+   `# noqa` to dodge this** -- the Phase 6 report re-baselines the number. *Added after
+   5h, where extracting `stream_suppressing_json`'s never-taken `except` block moved
+   misses to 894 (35.6).*
 5. **Rule 4 (frozen surfaces) still binds.** Prompt text, artifact strings, component
    ids and `.spec4/` shapes move verbatim into helpers or stay put. Never re-flow a
    string to fit a new indent — helpers take the indent the string already has.
@@ -4289,6 +4301,12 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
     `_deployer_roadmap_extras` took `dict[str, Any] | None` from `stack_for_deployer`'s
     signature, when the only call site sits below that function's
     `if not isinstance(stack, dict) ... return ""` guard.*
+11. **Validate in memory, then write.** Build each edited file's full new text in
+    memory, run `ast.parse` on it, and write to disk **only if it parses**. A range
+    slip, a bad dedent or a mangled signature then costs nothing on disk and is not an
+    attempt -- it never reaches the gate. *Adopted during 5h, where it caught two
+    indentation slips with nothing to revert; the three stops before it were all defects
+    this would have held back.*
 
 ### 27.3 Per-function table
 
@@ -5723,3 +5741,220 @@ which caught two further indentation slips with nothing on disk to revert.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 176.34s` (exit 0) |
 | Coverage | same run | `TOTAL 12155 stmts, 893 miss, 93%` |
+
+## 36. Phase 5i — cut points for `phaser.run` and `deployer.run` (recorded before the edit)
+
+Both are generators. The binding constraint is not complexity but `yield`: a block
+containing one cannot leave the generator without becoming a sub-generator, which is a
+structural change, not an extraction. So every cut below is a **yield-free** region, and
+**every stream loop stays whole and in place** — `phaser`'s
+`yield from llm.stream_turn(...)` and its validation-retry drain, `deployer`'s
+`yield from stream_counting(...)`.
+
+Structural audit first (`ast`): **no `break`, no `return` inside any loop, no nested
+closure, no `try` block** in either function. Rules 8 and 9 therefore have nothing to do
+here; rule 9's stop clause does not fire.
+
+### 36.1 `phaser.run` — 84–576, C901 33 / PLR0912 37 / PLR0915 148, 472 lines
+
+Yields at **135, 137** (staleness / resume prompts), **303** (the stream turn) and
+**412** (the retry status line). Those four, and the two stream loops around them, stay.
+
+| # | Helper | Old lines | What it is |
+|---|---|---|---|
+| P1 | `_phaser_round_flags(session)` | 100–129 | version pin, greenfield and revision gates → `(target_version, is_greenfield, is_revision)` |
+| P2 | `_phaser_artifact_blocks(session)` | 149–189 | AI-features, spine, design-note and manifest blocks |
+| P3 | `_phaser_vision_and_stack_blocks(...)` | 196–219 | vision block and stack digest |
+| P4 | `_phaser_review_instruction(code_review, ...)` | 221–266 | the brownfield/greenfield `extra_block` + `instruction` pair |
+| P5 | `_phaser_revision_instruction(...)` | 268–287 | the revision-round override of the same pair |
+| P6 | `_phaser_seed_message(...)` | 140–294 | the parent that calls P2–P5 and returns `seed` |
+| P7 | `_phaser_turn_additions(messages, pre_len)` | 324–352 | assistant-message cleanup → `(additions, last_text)` |
+| P8 | `_phaser_retry_prompt(messages, failures, llm_config)` | 375–411 | truncation note, retry message, response format → `status_line` |
+| P9 | `_phaser_retry_outcome(...)` | 443–508 | re-validate after the retry drain |
+| P10 | `_phaser_persist_and_render(...)` | 511–561 | marker check, session writes, display assembly |
+| P11 | `_phaser_json_recovery_note(...)` | 563–576 | the `elif not phases and "```json" in ...` recovery branch |
+
+`messages.append({"role": "user", "content": seed})` (295) and the `else` at 297 stay in
+the spine, as does the whole `if messages:` staleness block (132–138).
+
+### 36.2 `deployer.run` — 548–961, C901 24 / PLR0912 30 / PLR0915 130, 398 lines
+
+Yields at **610, 617, 622, 667, 804, 815, 860, 885, 933, 940** — ten, spread through
+almost every branch, which is why deployer's cuts are smaller and more numerous than
+phaser's.
+
+| # | Helper | Old lines | What it is |
+|---|---|---|---|
+| D1 | `_deployer_readme_reply_intent(user_input)` | 569–600 | affirmative/negative word match on the pending-README reply |
+| D2 | `_deployer_round_context(session)` | 626–663 | the eight session reads, `is_revision`, `greenfield` |
+| D3 | `_deployer_context_blocks(...)` | 670–676 | stack, NFR, phases and existing-infra blocks |
+| D4 | `_deployer_seed_message(...)` | 678–755 | existing-plan / revision / fresh seed assembly |
+| D5 | `_deployer_plan_reply_intent(user_input)` | 762–793 | same word match, for the pending-plan reply |
+| D6 | `_deployer_readme_optin_intent(user_input)` | 821–852 | same word match, for the README opt-in |
+| D7 | `_deployer_readme_accept(...)` | 862–875 | the affirmative branch of the opt-in |
+| D8 | `_deployer_plan_confirm(session, messages, last_text)` | 907–919 | confirm question, display override, session state |
+
+**D1, D5 and D6 are the same ~30-line shape three times**, differing only in their word
+lists. They are extracted as three separate helpers here and **not** unified: that is
+duplicate-removal, which is 5p(a)'s call, not 5i's (rule 7). Recorded here so 5p finds
+them without re-deriving.
+
+### 36.3 Coverage plan (rule 4, covered-path preference)
+
+Current misses in the two files: `phaser/__init__.py` 135–136, 349, 376, 465, 506, 559,
+575; `deployer.py` 617–618 (378 is outside `run`).
+
+Every planned cut is entered under test — the missed lines sit *inside* blocks whose
+guard is executed, so each new call statement is on a covered path. The one to watch is
+**P11**, whose branch may never be entered; if it is not, 5i reports **893 + 1** with
+that site named, per the amended rule 4. Nothing here is suppressed with a noqa to avoid
+a miss.
+
+## 37. Phase 5i — `phaser.run` decomposed; `deployer.run` blocked and not attempted
+
+Scope changed during the run. `phaser.run` is done and committed. **`deployer.run` was
+found to be unreachable under extract-only** and is left exactly as it was — see 37.5,
+which is the substantive finding of this sub-phase.
+
+### 37.1 `phaser.run` — before and after
+
+| | C901 | PLR0912 | PLR0915 | non-blank lines |
+|---|---:|---:|---:|---:|
+| before | **33** | **37** | **148** | 472 |
+| after | 10 | — | — | 91 |
+
+The file's C901/PLR0912/PLR0915 finding count goes **3 → 0**. 16 new module-level
+helpers, matching 36.1's plan plus one (`_phaser_count_chunk`, added when the planned
+set landed at C901 11 — see 37.3).
+
+### 37.2 The 16 helpers
+
+`_phaser_round_flags`, `_phaser_seed_message` and its four block builders
+(`_phaser_artifact_blocks`, `_phaser_vision_and_stack_blocks`,
+`_phaser_review_instruction`, `_phaser_revision_instruction`),
+`_phaser_turn_additions`, `_phaser_validate`, `_phaser_retry_prompt`,
+`_phaser_count_chunk`, `_phaser_retry_exhausted`, `_phaser_completion_marker`,
+`_phaser_ready_display`, `_phaser_seam_advisory`, `_phaser_commit_phases`,
+`_phaser_json_recovery_note`.
+
+**Both stream loops stay whole and in place**, as instructed: the opening
+`yield from llm.stream_turn(...)` and the validation-retry drain
+`for _chunk in llm.stream_turn(...)`. All four yields stay in the generator.
+
+### 37.3 Two deviations from 36.1's plan, both forced
+
+1. **`_phaser_count_chunk` added.** The planned eleven cuts left `run` at C901 **11**.
+   The retry drain's loop *body* (`if _chunk: _received += ...`) became a helper, which
+   removes one branch and — per rule 9 — keeps the loop itself whole and in place. It is
+   the same shape as 5h's `_record_received_chars` and is on a covered path.
+2. **`_phaser_retry_outcome` was not extracted as planned.** Old lines 443–508 contain a
+   `return` that exits the generator (508). Rule 9 forbids extracting a block containing
+   such a return as a unit, so the block was split as rule 9 prescribes: the body of
+   `if failures:` became `_phaser_retry_exhausted` and **the `return` stayed in the
+   caller**. Old 443–454 is an exact re-run of 354–373 and now routes through the same
+   `_phaser_validate` — see 37.4 on why that unification is in scope here.
+
+### 37.4 One in-function unification, deliberately not deferred to 5p
+
+Old 354–373 and 443–454 are the same twelve lines — extract, completeness-check,
+coverage-check — differing only in whether they read `last_text` or
+`last_assistant_text(messages)`. Both now call `_phaser_validate`.
+
+This is a departure from 5f/5g, where similar duplicates were left inline for 5p(a).
+The difference is that here it is **load-bearing**: leaving the second copy inline costs
+two branches and puts `run` at C901 12, so the sub-phase cannot complete without it.
+5p(a)'s remit is lifting duplication *across* modules and agents; collapsing two
+identical blocks *inside the one function being decomposed* is the ordinary result of
+extracting a repeated block. Recorded here so the distinction is on the record rather
+than inferred.
+
+### 37.5 `deployer.run` cannot reach threshold under extract-only
+
+`deployer.run` is C901 24 / PLR0912 30 / PLR0915 130 over 398 lines, with **ten
+`yield` sites** (610, 617, 622, 667, 804, 815, 860, 885, 933, 940). A block containing a
+`yield` cannot leave a generator without becoming a sub-generator, which is a structural
+change, not an extraction.
+
+Two builds were measured, neither written to `src/`:
+
+| Build | C901 | PLR0912 | PLR0915 |
+|---|---:|---:|---:|
+| the eight cuts planned in 36.2 | 21 | 25 | 88 |
+| **maximal** — every remaining non-yield body extracted as well (11 helpers) | **21** | **25** | 79 |
+
+**Extracting three further bodies moved statements 88 → 79 and complexity not at all.**
+That is the finding: deployer's complexity is not in its block bodies but in its branch
+*structure*, and every one of the 25 branches guards a `yield` or a `return`:
+
+- the README opt-in gate (`if` / `elif` / `else` → reask), 3
+- `if user_input is None:` / `else`, and inside it `if messages:` / `else`, 4
+- the staleness and resume probes, 2
+- the greenfield opt-in question, 1
+- the pending-plan reply (`if` / `elif`), and the pending-README reply, 4
+- the README decline and accept branches, 2
+- the post-turn `if generating_readme:` / `elif "## Deployment Steps"`, 2
+- plan-existed / else, and opt-in-done / else, and requested, 5
+
+None of these can move. The available routes are (a) converting the yield-bearing
+branches into sub-generators driven by `yield from`, which is a redesign of the turn
+loop and well outside extract-only; or (b) a `# noqa`, which is not pre-approved for
+this function and which rule 9 and 27.2 rule 6 both forbid inventing.
+
+**So `deployer.py` is untouched by this commit** — not partially extracted, not
+suppressed. It needs a decision, and that decision belongs to a person.
+
+### 37.6 Line accounting (rule 3)
+
+472 non-blank lines in the old `phaser.run`. **456 verbatim.** The 16:
+
+| # | Disposition |
+|---:|---|
+| 11 | old 443–454, the duplicate validate/completeness/coverage block, now routed through `_phaser_validate` (37.4) |
+| 3 | `if _chunk:` and its two body lines, now `_phaser_count_chunk`'s body under the parameter names `chunk` / `received` |
+| 2 | `extra_block = (` and its f-string continuation — `ruff format` joined them after the dedent; identical tokens |
+
+**No statement line is unaccounted for.** One defect was found by this pass and fixed
+before commit: the six-line rationale comment above the version pin (old 100–105) had
+been dropped rather than moved. It is now the opening comment of
+`_phaser_round_flags`'s body, verbatim.
+
+### 37.7 Statement counts add up (rule 4)
+
+Suite-wide **12155 → 12193, +38**: `def` +16, `return` +12, call statement +4,
+assignment +8, less the 2 statements removed by the 37.4 unification. Misses held at
+**893** — the covered-path preference was respected: every extraction site is executed
+under test, so **no 893 + N reporting is needed for this sub-phase**.
+
+### 37.8 Verification beyond the gate
+
+- `run` keeps its name, its three-parameter signature and its `Generator[str, None, None]`
+  return type; the four yields and both stream loops are in their original order.
+- No test file edited (rule 2). `tests/test_streaming_characterization.py`,
+  `test_fast_forward.py`, `test_phase_coverage.py` and
+  `tests/integration/test_pipeline_greenfield.py` all pass unmodified.
+- Every prompt string — the vision-supersession framing (D-PH7a), the code-review
+  guidance, the revision instruction, the retry status line, the phases-ready message —
+  moved verbatim (rule 5).
+
+### 37.9 Rules 10 and 11 in this sub-phase
+
+- **Rule 11 earned its place.** Three separate build errors were caught by the in-memory
+  `ast.parse` with nothing written to disk: a spine that dropped the `if` line above a
+  call, a helper body cut across an `else:` at line 916, and a bad range at 568.
+  None reached the gate and none counted as an attempt.
+- **Rule 11's limit, worth recording.** One error it *cannot* catch: six helper bodies
+  were dedented to column 0, which is valid module-level Python and parses fine. It was
+  caught by `ruff` (F821 × 35) after writing, and the file was reverted and rebuilt with
+  the dedent **computed** from the block's own minimum indentation rather than assumed.
+  That fix is now in the build method, not in a rule.
+- **Rule 10 in-place fixes used: 0 of 5.**
+
+### 37.10 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 170.98s` (exit 0) |
+| Coverage | same run | `TOTAL 12193 stmts, 893 miss, 93%` |
