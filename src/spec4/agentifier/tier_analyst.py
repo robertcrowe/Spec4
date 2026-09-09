@@ -333,7 +333,7 @@ def _build_mechanism_absorption_list(mechanisms: list[MechanismPattern]) -> str:
     return "\n".join(lines)
 
 
-def _parse_output(raw: str, valid_tier_names: list[str]) -> dict[str, Any]:
+def _parse_output(raw: str) -> dict[str, Any]:
     """Extract and parse the JSON tier-recommendation from the LLM response."""
     for attempt in (raw.strip(), _extract_json_object(raw)):
         if attempt is None:
@@ -422,7 +422,7 @@ class TierAnalystAgent:
             if input.on_chunk is not None:
                 input.on_chunk(delta)
         raw = "".join(buf).strip()
-        data = _parse_output(raw, valid_names)
+        data = _parse_output(raw)
 
         # Normalise recommended_tier to a known value
         recommended = str(data.get("recommended_tier", "")).strip()

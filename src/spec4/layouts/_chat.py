@@ -304,10 +304,6 @@ DOWNLOAD_BTN_PREFIX = "btn-dl-"
 OPEN_BTN_PREFIX = "btn-open-"
 
 
-def download_button_id(key: str) -> str:
-    return f"{DOWNLOAD_BTN_PREFIX}{key}"
-
-
 def open_button_id(key: str) -> str:
     return f"{OPEN_BTN_PREFIX}{key}"
 

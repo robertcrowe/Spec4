@@ -25,9 +25,6 @@ from spec4.agents._utils import (
 from spec4.app_constants import STATE_REVIEW_COMPLETE
 
 
-CODE_REVIEW_SCHEMA_VERSION = 1
-
-
 _SKIP_DIRS = {
     ".git",
     ".svn",

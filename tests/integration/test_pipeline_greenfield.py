@@ -113,15 +113,6 @@ _CC_ANALYSIS = {
 }
 
 
-def _make_sync_mock(obj: Any) -> Any:
-    """Return a mock litellm.completion response yielding obj as JSON."""
-    text = json.dumps(obj) if not isinstance(obj, str) else obj
-    response = MagicMock()
-    response.choices = [MagicMock()]
-    response.choices[0].message.content = text
-    return response
-
-
 def _make_streaming_mock(obj: Any) -> Any:
     """Return a mock acompletion that yields obj JSON as word chunks."""
     text = "```json\n" + json.dumps(obj) + "\n```"

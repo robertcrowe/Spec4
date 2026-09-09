@@ -96,7 +96,6 @@ class PatternBase:
     over_engineering_signs: list[str]
     under_engineering_signs: list[str]
     references: list[str]
-    source_path: Path = field(compare=False)
 
 
 @dataclass
@@ -104,8 +103,6 @@ class TierPattern(PatternBase):
     """A tier pattern: what *shape* an AI feature is. Adds ladder metadata."""
 
     tier_order: int
-    cost_range_usd: str
-    latency_range_seconds: str
     # Tier-required enabling infrastructure (D-I1): a closed, enumerated list of
     # structural-substrate component ids that the *tier* implies, independent of
     # the specific vision. Empty for tiers with no tier-specific substrate
@@ -341,14 +338,11 @@ def _build_pattern(path: Path, category: str) -> PatternBase:
         over_engineering_signs=sections["over_engineering_signs"],
         under_engineering_signs=sections["under_engineering_signs"],
         references=references,
-        source_path=path,
     )
 
     if category == "tier":
         return TierPattern(
             tier_order=meta["tier_order"],
-            cost_range_usd=meta["cost_range_usd"],
-            latency_range_seconds=meta["latency_range_seconds"],
             required_infrastructure=list(meta["required_infrastructure"]),
             **common,
         )

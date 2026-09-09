@@ -250,17 +250,16 @@ class TestBuildMechanismAbsorptionList:
 
 class TestParseOutput:
     def test_parses_valid_json_object(self) -> None:
-        valid_tiers = ["deterministic", "embeddings", "single_call"]
-        result = _parse_output(json.dumps(_SAMPLE_TIER_OUTPUT), valid_tiers)
+        result = _parse_output(json.dumps(_SAMPLE_TIER_OUTPUT))
         assert result["recommended_tier"] == "embeddings"
 
     def test_returns_empty_dict_on_invalid_json(self) -> None:
-        result = _parse_output("not json", ["deterministic"])
+        result = _parse_output("not json")
         assert result == {}
 
     def test_extracts_json_from_surrounding_text(self) -> None:
         text = "Here is my analysis:\n" + json.dumps(_SAMPLE_TIER_OUTPUT) + "\nDone."
-        result = _parse_output(text, ["embeddings"])
+        result = _parse_output(text)
         assert result.get("recommended_tier") == "embeddings"
 
 
