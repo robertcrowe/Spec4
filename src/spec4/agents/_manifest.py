@@ -163,6 +163,19 @@ def validate_manifest(
         if isinstance(e, dict) and e.get("name")
     }
 
+    _warn_catalog_coverage(surfaces, ai_features, warnings)
+    vs = _unwrap_vision(vision)
+    _warn_vision_coverage(surfaces, vs, warnings)
+    _warn_audience_validity(manifest, vs, warnings)
+    _repair_dangling_refs(surfaces, entity_names, surface_names, warnings)
+
+    return manifest, warnings
+
+
+def _warn_catalog_coverage(
+    surfaces: list[dict[str, Any]], ai_features: dict[str, Any], warnings: list[str]
+) -> None:
+    """Coverage via ``catalog_surface`` links, both directions."""
     # Coverage via catalog_surface links. Each AI surface realizes one catalog
     # surface (a catalog surface may be realized by several UI surfaces). Invert
     # the links to find catalog surfaces realized by nothing, and flag links that
@@ -185,10 +198,11 @@ def validate_manifest(
     for cs in catalog_surfaces - linked:
         warnings.append(f"catalog AI surface '{cs}' is realized by no surface")
 
-    # Coverage (approximate): vision MVP features should be implemented by a
-    # surface. Advisory only — not every vision feature is necessarily a distinct
-    # user-facing surface.
-    vs = _unwrap_vision(vision)
+
+def _warn_vision_coverage(
+    surfaces: list[dict[str, Any]], vs: dict[str, Any], warnings: list[str]
+) -> None:
+    """Approximate coverage: vision MVP features should have a surface."""
     implemented: set[str] = set()
     for s in surfaces:
         implemented.update(s.get("implements_features") or [])
@@ -197,6 +211,11 @@ def validate_manifest(
         if isinstance(fname, str) and fname and fname not in implemented:
             warnings.append(f"vision feature '{fname}' implemented by no surface")
 
+
+def _warn_audience_validity(
+    manifest: dict[str, Any], vs: dict[str, Any], warnings: list[str]
+) -> None:
+    """Screen audiences must be vision audiences."""
     # Audience validity.
     audiences = {
         a.get("name") if isinstance(a, dict) else a
@@ -211,6 +230,14 @@ def validate_manifest(
             if aud and aud not in audiences:
                 warnings.append(f"screen audience '{aud}' is not a vision audience")
 
+
+def _repair_dangling_refs(
+    surfaces: list[dict[str, Any]],
+    entity_names: set[Any],
+    surface_names: set[Any],
+    warnings: list[str],
+) -> None:
+    """Light repair of dangling ``reads`` / ``writes`` / ``depends_on``."""
     # Reference integrity — light repair of dangling references.
     for s in surfaces:
         for key in ("reads", "writes"):
@@ -228,5 +255,3 @@ def validate_manifest(
                 f"surface '{s.get('name')}' depends_on references unknown surfaces"
             )
         s["depends_on"] = kept_deps
-
-    return manifest, warnings

@@ -72,7 +72,7 @@ def artifact_fallback(artifact: str) -> str:
     )
 
 
-def reask_for_artifact(
+def reask_for_artifact(  # noqa: PLR0913  # the reask contract: agent, artifact, schema, model and callbacks, all threaded through
     *,
     system: str,
     msgs: list[dict[str, Any]],
@@ -216,19 +216,12 @@ def stream_suppressing_json(
     suppress = False
     received = 0
     received_chars = seed
-    if session is not None:
-        # Seed the turn at the caller's pre-stream total (0 unless supplied) so
-        # a stale total from a prior turn cannot be read as this turn's
-        # progress before the first chunk lands.
-        session["_stream_received_chars"] = seed
-    if DEV_MODE:
-        print("[suppress] entering", flush=True)
+    _seed_stream_session(session, seed)
+    _log_suppress_entry()
     try:
         for chunk in chunks:
             received += 1
-            if session is not None and chunk:
-                received_chars += len(chunk)
-                session["_stream_received_chars"] = received_chars
+            received_chars = _record_received_chars(session, chunk, received_chars)
             if flushed:
                 yield chunk
             elif suppress:
@@ -242,12 +235,9 @@ def stream_suppressing_json(
                     flushed = True
                     yield buf
                     buf = ""
-            if session is not None:
-                desired = (
-                    artifact_status if suppress else (reply_status if flushed else None)
-                )
-                if desired and session.get("_stream_status") != desired:
-                    session["_stream_status"] = desired
+            _publish_stream_status(
+                session, suppress, flushed, reply_status, artifact_status
+            )
         if not suppress and not flushed and buf:
             yield buf
     except BaseException as exc:
@@ -260,12 +250,56 @@ def stream_suppressing_json(
             )
         raise
     finally:
-        if DEV_MODE:
-            print(
-                f"[suppress] exit: received={received} suppress={suppress} "
-                f"flushed={flushed}",
-                flush=True,
-            )
+        _log_suppress_exit(received, suppress, flushed)
+
+
+def _seed_stream_session(session: dict[str, Any] | None, seed: int) -> None:
+    """Seed the turn at the caller's pre-stream character total."""
+    if session is not None:
+        # Seed the turn at the caller's pre-stream total (0 unless supplied) so
+        # a stale total from a prior turn cannot be read as this turn's
+        # progress before the first chunk lands.
+        session["_stream_received_chars"] = seed
+
+
+def _publish_stream_status(
+    session: dict[str, Any] | None,
+    suppress: bool,
+    flushed: bool,
+    reply_status: str | None,
+    artifact_status: str | None,
+) -> None:
+    """Publish stage-accurate status-line text for this turn."""
+    if session is not None:
+        desired = artifact_status if suppress else (reply_status if flushed else None)
+        if desired and session.get("_stream_status") != desired:
+            session["_stream_status"] = desired
+
+
+def _log_suppress_entry() -> None:
+    """DEV_MODE entry trace for the suppression wrapper."""
+    if DEV_MODE:
+        print("[suppress] entering", flush=True)
+
+
+def _record_received_chars(
+    session: dict[str, Any] | None, chunk: str, received_chars: int
+) -> int:
+    """Publish the cumulative received-character total (D-SC60), and return it."""
+    if session is not None and chunk:
+        received_chars += len(chunk)
+        session["_stream_received_chars"] = received_chars
+    return received_chars
+
+
+def _log_suppress_exit(received: int, suppress: bool, flushed: bool) -> None:
+    """DEV_MODE exit trace for the suppression wrapper."""
+    if DEV_MODE:
+        print(
+            f"[suppress] exit: received={received} suppress={suppress} "
+            f"flushed={flushed}",
+            flush=True,
+        )
 
 
 def stream_counting(

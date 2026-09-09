@@ -4212,9 +4212,16 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
    comparisons (SIM300) and `strict=False` on `zip` (B905). Nothing else under `tests/`
    is touched in any sub-phase, 5p included: no assertion, fixture, name or import
    changes.
-3. **Line accounting (the 4g2 standard, §26.4).** After each extraction, compare the
-   function's pre-edit text against the new code and account for **every non-blank old
-   line**: present verbatim in a helper, or named in the report with its reason (a `def`
+3. **Line accounting (the 4g2 standard, §26.4).** Every line range used for an
+   extraction or an accounting pass is **verified against absolute line numbers read
+   from the file itself** — never from a renumbered listing (`sed | nl`, a `sed` range
+   printed without `NR`, or an editor's relative view). Use
+   `awk '{printf "%d\t%s\n", NR, $0}'` or equivalent. *Added after 5h attempt 1, where
+   `_orphan_read_findings` was given a range ending 3 lines past its block because the
+   bounds were read off a listing renumbered from 1; it swallowed the opening of the
+   next statement and produced ~90 syntax errors.*
+   After each extraction, compare the function's pre-edit text against the new code and
+   account for **every non-blank old line**: present verbatim in a helper, or named in the report with its reason (a `def`
    line replaced by a call, a comment folded into a helper docstring). "No statement line
    is unaccounted for" is the pass condition.
 4. **Statement counts add up.** `coverage`'s parser on the `HEAD` blob vs. the new file;
@@ -4264,6 +4271,17 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
     count, or any repair that would need a changed conditional or a new statement** is
     never fixed in place: revert immediately, **no retry**, and report. Those mean the
     extraction itself was wrong, not that it was transcribed wrong.
+
+    A fourth mechanical class: **a `# noqa` comment that must be appended to an existing
+    `def` line.** The repair is the comment's placement alone — **the signature line is
+    never rewritten**, because a signature that fits on one line and one that spans
+    several look identical from a range and are not. Append to what is there. If
+    appending pushes the line past E501 in a file that lacks the E501 per-file-ignore
+    (`project_manager.py` in 5o is the one to check — `agents/**` and `agentifier/**`
+    already carry it), add `E501` to that same noqa rather than re-flowing the
+    signature. *Added after 5h attempt 2, where `_validate_dependencies`'s single-line
+    signature was replaced by a `def name(  # noqa: ...` opener and lost its parameter
+    list.*
 
     *Corollary, and the cheapest way to never need this: type every extracted helper's
     parameters from the narrowed type at the call site, not from the enclosing
@@ -5545,3 +5563,163 @@ was then added, and this third attempt passed the whole gate without a fix.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 170.63s` (exit 0) |
 | Coverage | same run | `TOTAL 12091 stmts, 893 miss, 93%` |
+
+## 35. Phase 5h — `agents/` shared helpers: 8 modules, 10 functions
+
+Eight files under `src/spec4/agents/`. Extract-only. Carries two of the five
+pre-approved noqas (27.4). First sub-phase where rule 4's misses invariant actually
+bit — see 35.6.
+
+### 35.1 Before and after
+
+| File | Function | C901 | Br | St | lines | → C901 | → lines |
+|---|---|---:|---:|---:|---:|---:|---:|
+| `_phase_coverage.py` | `check_phase_coverage` | **26** | **26** | **69** | 170 | 5 | 31 |
+| `_manifest.py` | `validate_manifest` | **17** | **17** | — | 82 | 7 | 25 |
+| `_turn_flow.py` | `build_revision_context` | **17** | **16** | — | 69 | 1 | 14 |
+| `_reask.py` | `stream_suppressing_json` | **15** | **16** | — | 96 | 9 | 81 |
+| `code_scanner/_scan.py` | `_gather_project_context` | **15** | **13** | — | 62 | 7 | 26 |
+| `feature_speccer.py` | `_reconcile_dependencies` | **12** | — | — | 43 | 6 | 31 |
+| `_seam_check.py` | `_check_table_provenance` | **11** | — | — | 50 | 1 | 7 |
+| `stack_advisor/_stack_shape.py` | `_normalise_stack_shape` | **11** | — | — | 51 | 2 | 20 |
+| `feature_speccer.py` | `_validate_dependencies` | **11** | — | — | 35 | **noqa** | 35 |
+| `_reask.py` | `reask_for_artifact` | — | — | — | (10 args) | **noqa** | 48 |
+
+All ten findings cleared: **8 decomposed, 2 suppressed** exactly as 27.3 called it.
+31 new module-level helpers.
+
+### 35.2 The 31 helpers
+
+| From | Helpers |
+|---|---|
+| `check_phase_coverage` | `_capability_side_checks`, `_capability_presence`, `_capability_infra_ordering`, `_product_side_checks`, `_product_presence`, `_product_dependency_order` |
+| `validate_manifest` | `_warn_catalog_coverage`, `_warn_vision_coverage`, `_warn_audience_validity`, `_repair_dangling_refs` |
+| `build_revision_context` | `_revision_artifact_blocks`, `_revision_phase_blocks`, `_revision_design_blocks` |
+| `stream_suppressing_json` | `_seed_stream_session`, `_record_received_chars`, `_publish_stream_status`, `_log_suppress_entry`, `_log_suppress_exit` |
+| `_gather_project_context` | `_file_tree_lines`, `_manifest_file_lines`, `_is_test_path` (**promoted**), `_priority_source_files`, `_source_sample_lines` |
+| `_normalise_stack_shape` | `_fold_library_categories`, `_listify_keyed_blocks`, `_key_listed_blocks`, `_key_ai_conventions` |
+| `_check_table_provenance` | `_table_creators`, `_orphan_read_findings`, `_unread_table_findings` |
+| `_reconcile_dependencies` | `_implied_producers` |
+
+`check_phase_coverage`'s two banner-marked halves each split into a side-check plus its
+presence and ordering passes. `_product_side_checks` takes
+`(phases, spine, excluded, failures, advisories)` — five parameters, not six: the
+`if spine and revision_version is None:` guard and the `excluded_feature_ids(...)` call
+stay in the outer spine, which is what keeps the helper off PLR0913.
+
+### 35.3 Rule 8 — one closure promoted
+
+`_is_test` in `_gather_project_context` captured `root`, so it becomes
+`_is_test_path(root, p)` with the captured value first, per rule 8. Its one call site
+moves with it. `_validate_dependencies`'s nested `dfs` is **not** promoted: rule 8
+applies to closures inside a *flagged* function being brought under threshold, and this
+function is being suppressed instead — the noqa covers the nested `def` along with
+everything else, which is precisely why the noqa is the right disposition here.
+
+### 35.4 Rule 9 — no rewrites needed
+
+The `ast` audit found one `break` (`_scan.py:224`, in the source-sample loop) and no
+`return` inside any loop. Rule 9's stop clause did not fire: the loop containing the
+`break` is extracted **whole** into `_source_sample_lines` — header and body together —
+so the `break` is still inside its own loop and is unmodified. Every `continue` in all
+ten functions likewise sits in a loop that moves whole. **Zero `continue` → `return`
+rewrites in this sub-phase.**
+
+### 35.5 Rule 10 — the noqas appended, not rewritten
+
+Both pre-approved noqas were **appended to the existing `def` line**, per the fourth
+mechanical class:
+
+- `feature_speccer.py:368` — `def _validate_dependencies(features: ...) -> ...:` is a
+  **single-line** signature; the noqa goes on the end of it. (Attempt 2 of the previous
+  run replaced this line with a `def name(  # noqa: ...` opener and destroyed the
+  parameter list. That is what the rule now forbids.)
+- `_reask.py:75` — `def reask_for_artifact(` is a multi-line opener; the noqa goes on
+  the opener.
+
+Both files are under `src/spec4/agents/**`, which carries the E501 per-file-ignore, so
+neither needed `E501` added to the noqa.
+
+**In-place fixes used: 0 of 5.**
+
+### 35.6 Rule 4 — a real miss regression, and what replaced it
+
+The first passing build of this sub-phase moved suite-wide misses **893 → 894**. Every
+other gate was green, so this would have been easy to wave through; it is exactly what
+rule 4 exists to catch, so it was chased down instead.
+
+**Cause.** `stream_suppressing_json`'s `except BaseException` block is never taken under
+test. Extracting its DEV_MODE trace into `_log_suppress_exception` turned 4 missed
+statements into 5: the helper's body statements stay missed *and* the new call statement
+at the never-reached call site is missed too. Extraction is coverage-neutral on a
+covered path and coverage-negative on a dead one.
+
+**Resolution.** The except block was put back inline and two **covered-path** blocks
+were extracted instead — `_log_suppress_entry` (the entry trace, whose `if DEV_MODE:`
+runs on every call) and `_record_received_chars` (the per-chunk accounting, D-SC60).
+Both are coverage-neutral: the call site and the helper's guard are executed, so the
+only missed line is the `print` that was already missed. `stream_suppressing_json` lands
+at C901 9 rather than the 10 the entry-trace extraction alone would have given.
+
+Misses are back at **893**. This is worth remembering for 5i–5o: **when a function's
+`if DEV_MODE:` / `except` / defensive branch is never executed under test, extracting it
+costs a miss.** Prefer a covered-path block of equal complexity weight.
+
+### 35.7 Line accounting (rule 3)
+
+Line ranges were read with `awk '{printf "%d\t%s\n", NR, $0}'` this time, per rule 3 as
+amended. **623 non-blank lines** across the ten functions; **616 verbatim.** The 7:
+
+| # | Disposition |
+|---:|---|
+| 3 | the `# Coverage (approximate): vision MVP features …` comment block, folded into `_warn_vision_coverage`'s docstring (`vs = _unwrap_vision(vision)` moved to the spine, since the audience check needs it too) |
+| 2 | `desired = (` and its ternary — `ruff format` rejoined them after the 8→4 dedent; identical tokens |
+| 2 | `def _is_test(...)` and its one call site — the rule-8 promotion |
+
+**No statement line is unaccounted for.**
+
+### 35.8 Statement counts add up (rule 4)
+
+Across the eight files: `def` +30, call statement +26, `return` +4, assignment +4 =
+**+64**, and the suite-wide total moved **12091 → 12155, +64** — no other module
+changed. Misses **893**, unchanged.
+
+### 35.9 Verification beyond the gate
+
+- Every public name, signature and default is unchanged; no importer edited; no `__all__`
+  changed. All 31 new names are private.
+- No test file edited (rule 2). `tests/test_streaming_characterization.py` passes
+  unmodified — it is the pin on `stream_suppressing_json`, whose generator, its three
+  `yield`s and its try/except/finally shape are untouched; only non-yielding blocks were
+  lifted out.
+- `tests/test_phase_coverage.py`, `test_manifest.py`, `test_seam_check*.py`,
+  `test_dependency_reconciliation.py`, `test_feature_ids.py` all pass unmodified.
+
+### 35.10 Two failed attempts before this one
+
+1. **Range error.** `_orphan_read_findings` was given lines 220–246 when its block ends
+   at 243, because the bounds were read off a listing renumbered from 1. It swallowed
+   the opening of `read_keys = {` and produced ~90 syntax errors. Reverted; rule 3 now
+   requires absolute line numbers.
+2. **Signature destroyed.** The `_validate_dependencies` noqa was written as a `def`
+   line replacement against a single-line signature. Reverted; rule 10 now requires
+   appending.
+
+This attempt built every file in memory and ran `ast.parse` on it **before writing**,
+which caught two further indentation slips with nothing on disk to revert.
+
+### 35.11 Deferred / not acted on
+
+- `_stack_shape.py`'s four coercion helpers and `_manifest.py`'s four `_warn_*` helpers
+  are structurally similar to blocks in 5f/5g. Comparison is **5p(a)**.
+- No new `# noqa` beyond the two pre-approved.
+
+### 35.12 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 176.34s` (exit 0) |
+| Coverage | same run | `TOTAL 12155 stmts, 893 miss, 93%` |

@@ -82,6 +82,18 @@ def build_revision_context(session: dict[str, Any], stale: list[str]) -> str:
         "since I last produced my output. Use these latest versions if I ask "
         "you to revise.]"
     ]
+
+    _revision_artifact_blocks(session, stale, parts)
+    _revision_phase_blocks(session, stale, parts)
+    _revision_design_blocks(session, stale, parts)
+
+    return "\n\n".join(parts)
+
+
+def _revision_artifact_blocks(
+    session: dict[str, Any], stale: list[str], parts: list[str]
+) -> None:
+    """The four JSON artifact blocks: vision, AI features, stack, code review."""
     if "vision" in stale:
         v = session.get("vision_statement")
         if v is not None:
@@ -106,6 +118,12 @@ def build_revision_context(session: dict[str, Any], stale: list[str]) -> str:
             parts.append(
                 f"Updated code review:\n\n```json\n{json.dumps(cr, indent=2)}\n```"
             )
+
+
+def _revision_phase_blocks(
+    session: dict[str, Any], stale: list[str], parts: list[str]
+) -> None:
+    """The phases block."""
     if "phases" in stale:
         ph = session.get("phases") or []
         if ph:
@@ -113,6 +131,12 @@ def build_revision_context(session: dict[str, Any], stale: list[str]) -> str:
                 f"```json\n{json.dumps(p, indent=2)}\n```" for p in ph
             )
             parts.append(f"Updated phases:\n\n{phases_block}")
+
+
+def _revision_design_blocks(
+    session: dict[str, Any], stale: list[str], parts: list[str]
+) -> None:
+    """The design manifest and UI mock blocks, both read from the version dir."""
     if "design manifest" in stale:
         wd = session.get("working_dir")
         if wd:
@@ -140,7 +164,6 @@ def build_revision_context(session: dict[str, Any], stale: list[str]) -> str:
                 parts.append("Updated UI mock (HTML):\n\n```html\n" + html + "\n```")
             except OSError:
                 pass
-    return "\n\n".join(parts)
 
 
 def maybe_inject_staleness_question(

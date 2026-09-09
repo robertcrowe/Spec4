@@ -201,6 +201,29 @@ def check_phase_coverage(
     failures: list[tuple[int | None, list[str]]] = []
     advisories: list[str] = []
 
+    _capability_side_checks(phases, ai_features, revision_version, failures, advisories)
+
+    # ======================= product side (Brainstormer spine) ==============
+    spine = [
+        f
+        for f in ((feature_specs or {}).get("features") or [])
+        if isinstance(f, dict) and f.get("id")
+    ]
+    if spine and revision_version is None:
+        excluded = excluded_feature_ids(feature_specs, ai_features)
+        _product_side_checks(phases, spine, excluded, failures, advisories)
+
+    return failures, advisories
+
+
+def _capability_side_checks(
+    phases: list[dict[str, Any]],
+    ai_features: dict[str, Any] | None,
+    revision_version: int | None,
+    failures: list[tuple[int | None, list[str]]],
+    advisories: list[str],
+) -> None:
+    """Capability-side checks over ``capabilities[]`` (AI catalog)."""
     # ======================= capability side (AI catalog) ===================
     nodes = _to_phase_nodes(ai_features, revision_version)
     if nodes:
@@ -213,148 +236,184 @@ def check_phase_coverage(
         )
         failures.extend(cap_failures)
 
-        # presence
-        missing: list[str] = []
-        for fid, node in by_id.items():
-            if fid in cap_declared:
-                continue
-            priority = str(node.get("phase_priority") or "")
-            label = node.get("name") or fid
-            if priority in ENFORCED_PRIORITIES:
-                kind = (
-                    "infrastructure"
-                    if node.get("kind") == INFRA_KIND
-                    else f"'{priority}' capability"
-                )
-                missing.append(f"{label} ({kind}, id: {fid})")
-            else:
-                advisories.append(
-                    f"'{label}' (priority: {priority or 'unset'}) is not built "
-                    "by any phase — deferred."
-                )
-        if missing:
-            failures.append(
-                (
-                    None,
-                    [
-                        "capabilities: these must be built by some phase but no "
-                        "phase declares them: "
-                        + "; ".join(sorted(missing))
-                        + ". Add each to the `capabilities` array of the phase "
-                        "that builds it."
-                    ],
-                )
+        _capability_presence(by_id, cap_declared, failures, advisories)
+        _capability_infra_ordering(by_id, name_to_id, cap_declared, failures)
+
+
+def _capability_presence(
+    by_id: dict[str, dict[str, Any]],
+    cap_declared: dict[str, dict[int | None, str]],
+    failures: list[tuple[int | None, list[str]]],
+    advisories: list[str],
+) -> None:
+    """Every enforced-priority capability must be declared by some phase."""
+    # presence
+    missing: list[str] = []
+    for fid, node in by_id.items():
+        if fid in cap_declared:
+            continue
+        priority = str(node.get("phase_priority") or "")
+        label = node.get("name") or fid
+        if priority in ENFORCED_PRIORITIES:
+            kind = (
+                "infrastructure"
+                if node.get("kind") == INFRA_KIND
+                else f"'{priority}' capability"
             )
-
-        # infrastructure ordering (hard)
-        for fid, node in by_id.items():
-            consumer_phase = _first_phase(cap_declared, fid)
-            if consumer_phase is None:
-                continue  # undeclared: presence check owns it
-            for req_name in node.get("requires") or []:
-                req_id = name_to_id.get(req_name) or _slug(str(req_name))
-                req_node = by_id.get(req_id)
-                if req_node is None or req_node.get("kind") != INFRA_KIND:
-                    continue  # feature→feature edges are not order-checked here
-                infra_phase = _first_phase(cap_declared, req_id)
-                if infra_phase is None:
-                    continue  # presence check owns it
-                if infra_phase > consumer_phase:
-                    consumer_label = node.get("name") or fid
-                    infra_label = req_node.get("name") or req_id
-                    failures.append(
-                        (
-                            consumer_phase,
-                            [
-                                f"capabilities: phase {consumer_phase} builds "
-                                f"'{consumer_label}', which requires the "
-                                f"infrastructure '{infra_label}' — but that "
-                                f"substrate is not stood up until phase "
-                                f"{infra_phase}. Build infrastructure in the same "
-                                "phase as its first consumer, or earlier."
-                            ],
-                        )
-                    )
-
-    # ======================= product side (Brainstormer spine) ==============
-    spine = [
-        f
-        for f in ((feature_specs or {}).get("features") or [])
-        if isinstance(f, dict) and f.get("id")
-    ]
-    if spine and revision_version is None:
-        spine_ids = {str(f["id"]) for f in spine}
-        prod_failures, prod_declared = _check_declared(
-            phases, "features", spine_ids, "the Feature specifications"
+            missing.append(f"{label} ({kind}, id: {fid})")
+        else:
+            advisories.append(
+                f"'{label}' (priority: {priority or 'unset'}) is not built "
+                "by any phase — deferred."
+            )
+    if missing:
+        failures.append(
+            (
+                None,
+                [
+                    "capabilities: these must be built by some phase but no "
+                    "phase declares them: "
+                    + "; ".join(sorted(missing))
+                    + ". Add each to the `capabilities` array of the phase "
+                    "that builds it."
+                ],
+            )
         )
-        failures.extend(prod_failures)
 
-        excluded = excluded_feature_ids(feature_specs, ai_features)
 
-        # presence with the excluded disposition (D-PH2b)
-        missing = []
-        for f in spine:
-            fid = str(f["id"])
-            label = f.get("name") or fid
-            if fid in prod_declared:
-                if fid in excluded:
-                    failures.append(
-                        (
-                            _first_phase(prod_declared, fid),
-                            [
-                                f"features: '{fid}' is excluded from this plan by "
-                                "the developer's Agentifier selection (its AI "
-                                "implementation was rejected) but a phase declares "
-                                "it. Remove the declaration — to include the "
-                                "feature, the developer must revisit the "
-                                "Agentifier selection."
-                            ],
-                        )
+def _capability_infra_ordering(
+    by_id: dict[str, dict[str, Any]],
+    name_to_id: dict[str, str],
+    cap_declared: dict[str, dict[int | None, str]],
+    failures: list[tuple[int | None, list[str]]],
+) -> None:
+    """Infrastructure is stood up no later than its first consumer (hard)."""
+    # infrastructure ordering (hard)
+    for fid, node in by_id.items():
+        consumer_phase = _first_phase(cap_declared, fid)
+        if consumer_phase is None:
+            continue  # undeclared: presence check owns it
+        for req_name in node.get("requires") or []:
+            req_id = name_to_id.get(req_name) or _slug(str(req_name))
+            req_node = by_id.get(req_id)
+            if req_node is None or req_node.get("kind") != INFRA_KIND:
+                continue  # feature→feature edges are not order-checked here
+            infra_phase = _first_phase(cap_declared, req_id)
+            if infra_phase is None:
+                continue  # presence check owns it
+            if infra_phase > consumer_phase:
+                consumer_label = node.get("name") or fid
+                infra_label = req_node.get("name") or req_id
+                failures.append(
+                    (
+                        consumer_phase,
+                        [
+                            f"capabilities: phase {consumer_phase} builds "
+                            f"'{consumer_label}', which requires the "
+                            f"infrastructure '{infra_label}' — but that "
+                            f"substrate is not stood up until phase "
+                            f"{infra_phase}. Build infrastructure in the same "
+                            "phase as its first consumer, or earlier."
+                        ],
                     )
-                continue
+                )
+
+
+def _product_side_checks(
+    phases: list[dict[str, Any]],
+    spine: list[dict[str, Any]],
+    excluded: set[str],
+    failures: list[tuple[int | None, list[str]]],
+    advisories: list[str],
+) -> None:
+    """Product-side checks over ``features[]`` (Brainstormer spine)."""
+    spine_ids = {str(f["id"]) for f in spine}
+    prod_failures, prod_declared = _check_declared(
+        phases, "features", spine_ids, "the Feature specifications"
+    )
+    failures.extend(prod_failures)
+    _product_presence(spine, prod_declared, excluded, failures, advisories)
+    _product_dependency_order(spine, prod_declared, excluded, advisories)
+
+
+def _product_presence(
+    spine: list[dict[str, Any]],
+    prod_declared: dict[str, dict[int | None, str]],
+    excluded: set[str],
+    failures: list[tuple[int | None, list[str]]],
+    advisories: list[str],
+) -> None:
+    """Presence with the excluded disposition (D-PH2b)."""
+    # presence with the excluded disposition (D-PH2b)
+    missing = []
+    for f in spine:
+        fid = str(f["id"])
+        label = f.get("name") or fid
+        if fid in prod_declared:
             if fid in excluded:
-                advisories.append(
-                    f"'{label}' is excluded from this plan via the Agentifier "
-                    "selection (AI implementation rejected). To include it, "
-                    "return to Agentifier and modify the AI feature selection."
+                failures.append(
+                    (
+                        _first_phase(prod_declared, fid),
+                        [
+                            f"features: '{fid}' is excluded from this plan by "
+                            "the developer's Agentifier selection (its AI "
+                            "implementation was rejected) but a phase declares "
+                            "it. Remove the declaration — to include the "
+                            "feature, the developer must revisit the "
+                            "Agentifier selection."
+                        ],
+                    )
                 )
-                continue
-            missing.append(f"{label} (id: {fid})")
-        if missing:
-            failures.append(
-                (
-                    None,
-                    [
-                        "features: these product features must be built by some "
-                        "phase but no phase declares them: "
-                        + "; ".join(sorted(missing))
-                        + ". Add each to the `features` array of the phase that "
-                        "builds it."
-                    ],
-                )
+            continue
+        if fid in excluded:
+            advisories.append(
+                f"'{label}' is excluded from this plan via the Agentifier "
+                "selection (AI implementation rejected). To include it, "
+                "return to Agentifier and modify the AI feature selection."
             )
+            continue
+        missing.append(f"{label} (id: {fid})")
+    if missing:
+        failures.append(
+            (
+                None,
+                [
+                    "features: these product features must be built by some "
+                    "phase but no phase declares them: "
+                    + "; ".join(sorted(missing))
+                    + ". Add each to the `features` array of the phase that "
+                    "builds it."
+                ],
+            )
+        )
 
-        # product-dependency ordering (D-PH2f — advisory)
-        for f in spine:
-            fid = str(f["id"])
-            if fid in excluded:
+
+def _product_dependency_order(
+    spine: list[dict[str, Any]],
+    prod_declared: dict[str, dict[int | None, str]],
+    excluded: set[str],
+    advisories: list[str],
+) -> None:
+    """Product-dependency ordering (D-PH2f -- advisory)."""
+    # product-dependency ordering (D-PH2f — advisory)
+    for f in spine:
+        fid = str(f["id"])
+        if fid in excluded:
+            continue
+        consumer_phase = _first_phase(prod_declared, fid)
+        if consumer_phase is None:
+            continue  # presence owns it
+        for dep in f.get("dependencies") or []:
+            dep_id = str(dep).strip()
+            if not dep_id or dep_id in excluded:
                 continue
-            consumer_phase = _first_phase(prod_declared, fid)
-            if consumer_phase is None:
-                continue  # presence owns it
-            for dep in f.get("dependencies") or []:
-                dep_id = str(dep).strip()
-                if not dep_id or dep_id in excluded:
-                    continue
-                producer_phase = _first_phase(prod_declared, dep_id)
-                if producer_phase is None:
-                    continue
-                if producer_phase > consumer_phase:
-                    advisories.append(
-                        f"Build order: '{fid}' is first built in phase "
-                        f"{consumer_phase} but its dependency '{dep_id}' is "
-                        f"not built until phase {producer_phase} — the spine "
-                        "says a producer is built no later than its consumer."
-                    )
-
-    return failures, advisories
+            producer_phase = _first_phase(prod_declared, dep_id)
+            if producer_phase is None:
+                continue
+            if producer_phase > consumer_phase:
+                advisories.append(
+                    f"Build order: '{fid}' is first built in phase "
+                    f"{consumer_phase} but its dependency '{dep_id}' is "
+                    f"not built until phase {producer_phase} — the spine "
+                    "says a producer is built no later than its consumer."
+                )

@@ -121,6 +121,15 @@ def _normalise_stack_shape(spec: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(ss, dict):
         return spec
 
+    _fold_library_categories(ss)
+    _listify_keyed_blocks(ss)
+    _key_listed_blocks(ss)
+    _key_ai_conventions(ss)
+    return spec
+
+
+def _fold_library_categories(ss: dict[str, Any]) -> None:
+    """A category-keyed ``libraries`` object folds down into the flat list (D-SC27)."""
     libs = ss.get("libraries")
     if isinstance(libs, dict):
         flat: list[Any] = []
@@ -133,6 +142,9 @@ def _normalise_stack_shape(spec: dict[str, Any]) -> dict[str, Any]:
                     flat.append({"name": str(entry), "category": category})
         ss["libraries"] = flat
 
+
+def _listify_keyed_blocks(ss: dict[str, Any]) -> None:
+    """Object-shaped ``integrations`` / ``project_structure`` / ``additional_decisions`` become lists."""
     for block in ("integrations", "project_structure", "additional_decisions"):
         val = ss.get(block)
         if isinstance(val, dict):
@@ -141,6 +153,9 @@ def _normalise_stack_shape(spec: dict[str, Any]) -> dict[str, Any]:
                 for k, v in val.items()
             ]
 
+
+def _key_listed_blocks(ss: dict[str, Any]) -> None:
+    """List-shaped ``providers`` / ``infrastructure`` / ``persistence`` become keyed objects."""
     for block, prefix in (
         ("providers", "provider"),
         ("infrastructure", "component"),
@@ -154,12 +169,14 @@ def _normalise_stack_shape(spec: dict[str, Any]) -> dict[str, Any]:
                 prefix=prefix,
             )
 
+
+def _key_ai_conventions(ss: dict[str, Any]) -> None:
+    """A list-shaped ``ai_conventions`` becomes a keyed object."""
     conv = ss.get("ai_conventions")
     if isinstance(conv, list):
         ss["ai_conventions"] = _keyed_from_list(
             conv, name_fields=("name", "convention"), prefix="convention"
         )
-    return spec
 
 
 def _extract_stack_json(text: str) -> dict[str, Any] | None:

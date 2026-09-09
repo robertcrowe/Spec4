@@ -175,28 +175,13 @@ def _gather_project_context(
         lines.append("The directory appears to be empty (no non-hidden files found).\n")
         return "\n".join(lines)
 
-    lines.append("### File Tree\n```")
-    for f in all_files[:_MAX_TREE_FILES]:
-        lines.append(str(f.relative_to(root)))
-    if len(all_files) > _MAX_TREE_FILES:
-        lines.append(
-            f"... and {len(all_files) - _MAX_TREE_FILES} more files (truncated)"
-        )
-    lines.append("```\n")
+    _file_tree_lines(root, all_files, lines)
 
     readme_lines = _format_readme_block(root, all_files)
     if readme_lines:
         lines.extend(readme_lines)
 
-    lines.append("### Config and Manifest Files\n")
-    manifest_chars = 0
-    for f in all_files:
-        if f.name in _MANIFEST_FILES and manifest_chars < _MAX_MANIFEST_CHARS:
-            content = _read_text_safely(f, _MAX_MANIFEST_FILE_CHARS)
-            if content is None:
-                continue
-            lines.append(f"#### `{f.relative_to(root)}`\n```\n{content}\n```\n")
-            manifest_chars += len(content)
+    _manifest_file_lines(root, all_files, lines)
 
     ci_block = _format_ci_block(root, all_files)
     if ci_block:
@@ -209,15 +194,62 @@ def _gather_project_context(
     lines.append("### Source File Samples\n")
     source_files = [f for f in all_files if f.suffix in _SOURCE_EXTENSIONS]
 
-    def _is_test(p: pathlib.Path) -> bool:
-        parts = [x.lower() for x in p.relative_to(root).parts]
-        return any(x in ("test", "tests", "spec", "specs") for x in parts)
+    priority_files = _priority_source_files(root, source_files)
+    _source_sample_lines(root, priority_files, lines)
 
-    non_test_sources = [f for f in source_files if not _is_test(f)]
+    return "\n".join(lines)
+
+
+def _file_tree_lines(
+    root: pathlib.Path, all_files: list[pathlib.Path], lines: list[str]
+) -> None:
+    """The truncated file tree."""
+    lines.append("### File Tree\n```")
+    for f in all_files[:_MAX_TREE_FILES]:
+        lines.append(str(f.relative_to(root)))
+    if len(all_files) > _MAX_TREE_FILES:
+        lines.append(
+            f"... and {len(all_files) - _MAX_TREE_FILES} more files (truncated)"
+        )
+    lines.append("```\n")
+
+
+def _manifest_file_lines(
+    root: pathlib.Path, all_files: list[pathlib.Path], lines: list[str]
+) -> None:
+    """Config and manifest file contents, within the character budget."""
+    lines.append("### Config and Manifest Files\n")
+    manifest_chars = 0
+    for f in all_files:
+        if f.name in _MANIFEST_FILES and manifest_chars < _MAX_MANIFEST_CHARS:
+            content = _read_text_safely(f, _MAX_MANIFEST_FILE_CHARS)
+            if content is None:
+                continue
+            lines.append(f"#### `{f.relative_to(root)}`\n```\n{content}\n```\n")
+            manifest_chars += len(content)
+
+
+def _is_test_path(root: pathlib.Path, p: pathlib.Path) -> bool:
+    """True when a path lies under a test/spec directory."""
+    parts = [x.lower() for x in p.relative_to(root).parts]
+    return any(x in ("test", "tests", "spec", "specs") for x in parts)
+
+
+def _priority_source_files(
+    root: pathlib.Path, source_files: list[pathlib.Path]
+) -> list[pathlib.Path]:
+    """Non-test sources, entrypoint candidates first, capped."""
+    non_test_sources = [f for f in source_files if not _is_test_path(root, f)]
     entrypoint_files = [f for f in non_test_sources if _is_entrypoint_candidate(f)]
     other_files = [f for f in non_test_sources if not _is_entrypoint_candidate(f)]
     priority_files = (entrypoint_files + other_files)[:_MAX_PRIORITY_SOURCE_FILES]
+    return priority_files
 
+
+def _source_sample_lines(
+    root: pathlib.Path, priority_files: list[pathlib.Path], lines: list[str]
+) -> None:
+    """Head samples of the priority source files, within the character budget."""
     source_chars = 0
     for f in priority_files:
         if source_chars >= _MAX_SOURCE_SAMPLE_CHARS:
@@ -234,8 +266,6 @@ def _gather_project_context(
             f"```\n{sample}\n```\n"
         )
         source_chars += len(sample)
-
-    return "\n".join(lines)
 
 
 def _format_readme_block(

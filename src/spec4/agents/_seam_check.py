@@ -208,6 +208,14 @@ def _extract_graph(
 def _check_table_provenance(graph: dict[str, Any]) -> list[SeamFinding]:
     """Every read table must be created earlier-or-same; flag orphans."""
     findings: list[SeamFinding] = []
+    creators = _table_creators(graph)
+    _orphan_read_findings(graph, creators, findings)
+    _unread_table_findings(graph, creators, findings)
+    return findings
+
+
+def _table_creators(graph: dict[str, Any]) -> dict[str, int]:
+    """Each created table mapped to the earliest phase that creates it."""
     creators: dict[str, int] = {}
     for p in graph["phases"]:
         n = p["phase_number"]
@@ -216,7 +224,13 @@ def _check_table_provenance(graph: dict[str, Any]) -> list[SeamFinding]:
             key = _norm(t)
             if key:
                 creators[key] = min(creators.get(key, 10**9), order)
+    return creators
 
+
+def _orphan_read_findings(
+    graph: dict[str, Any], creators: dict[str, int], findings: list[SeamFinding]
+) -> None:
+    """Tables read but never created, or created after they are needed."""
     for p in graph["phases"]:
         n = p["phase_number"]
         for t in p["reads_tables"]:
@@ -242,6 +256,11 @@ def _check_table_provenance(graph: dict[str, Any]) -> list[SeamFinding]:
                     )
                 )
 
+
+def _unread_table_findings(
+    graph: dict[str, Any], creators: dict[str, int], findings: list[SeamFinding]
+) -> None:
+    """Tables created but never read by any phase."""
     read_keys = {
         _norm(t) for p in graph["phases"] for t in p["reads_tables"] if _norm(t)
     }
@@ -256,8 +275,6 @@ def _check_table_provenance(graph: dict[str, Any]) -> list[SeamFinding]:
                     f"any phase.",
                 )
             )
-
-    return findings
 
 
 def _check_endpoint_provenance(graph: dict[str, Any]) -> list[SeamFinding]:

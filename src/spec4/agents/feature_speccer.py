@@ -365,7 +365,7 @@ def _merge(scaffold: list[dict[str, Any]], enriched: Any) -> list[dict[str, Any]
     return merged
 
 
-def _validate_dependencies(features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _validate_dependencies(features: list[dict[str, Any]]) -> list[dict[str, Any]]:  # noqa: C901  # single DFS back-edge pruning; the WHITE/GRAY/BLACK colour invariant spans the whole function, so any split leaves a helper callable at only one point in the traversal
     """Prune ``dependencies`` to a DAG over known feature ids, deterministically.
 
     Drops self-edges and edges to unknown ids (dangling), then removes back-edges
@@ -422,20 +422,7 @@ def _reconcile_dependencies(features: list[dict[str, Any]]) -> list[dict[str, An
     """
     ids = [f["id"] for f in features]
     by_id = {f["id"]: f for f in features}
-
-    # implied[F.id] = producer ids named in F's trigger, in vision order.
-    implied: dict[str, list[str]] = {}
-    for f in features:
-        inv = f.get("invocation")
-        trigger = str(inv.get("trigger", "") or "") if isinstance(inv, dict) else ""
-        named: list[str] = []
-        if trigger:
-            for gid in ids:
-                if gid == f["id"]:
-                    continue
-                if re.search(rf"\b{re.escape(gid)}\b", trigger, re.IGNORECASE):
-                    named.append(gid)
-        implied[f["id"]] = named
+    implied = _implied_producers(features, ids)
 
     for f in features:
         fid = f["id"]
@@ -453,6 +440,26 @@ def _reconcile_dependencies(features: list[dict[str, Any]]) -> list[dict[str, An
                 if isinstance(g_deps, list) and fid in g_deps:
                     g_deps.remove(fid)
     return features
+
+
+def _implied_producers(
+    features: list[dict[str, Any]], ids: list[str]
+) -> dict[str, list[str]]:
+    """``implied[F.id]`` = producer ids named in F's trigger, in vision order."""
+    # implied[F.id] = producer ids named in F's trigger, in vision order.
+    implied: dict[str, list[str]] = {}
+    for f in features:
+        inv = f.get("invocation")
+        trigger = str(inv.get("trigger", "") or "") if isinstance(inv, dict) else ""
+        named: list[str] = []
+        if trigger:
+            for gid in ids:
+                if gid == f["id"]:
+                    continue
+                if re.search(rf"\b{re.escape(gid)}\b", trigger, re.IGNORECASE):
+                    named.append(gid)
+        implied[f["id"]] = named
+    return implied
 
 
 # ---------------------------------------------------------------------------
