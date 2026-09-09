@@ -150,11 +150,42 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
         return str(ss)
     lines: list[str] = []
 
+    _render_stack_header(ss, lines)
+    _render_languages(ss, lines)
+    _render_deployment(ss, lines)
+    _render_providers(ss, lines)
+    _render_integrations(ss, lines)
+    _render_libraries(ss, lines)
+    _render_persistence(ss, lines)
+    _render_infrastructure(ss, lines)
+    _render_ai_conventions(ss, lines)
+    _render_project_structure(ss, lines)
+    _render_coding_style(ss, lines)
+    _render_additional_decisions(ss, lines)
+
+    render_references(ss.get("references", []), lines)
+
+    _render_rest(ss, _TOP_LEVEL_HANDLED, lines)
+
+    lines.append(
+        "---\n\n"
+        "We've finished defining the tech stack, so now you're ready to move on to "
+        "creating implementation phases for your coding agent. Please click on the "
+        "**Continue to Phaser** button below."
+    )
+    return "\n".join(lines)
+
+
+def _render_stack_header(ss: dict[str, Any], lines: list[str]) -> None:
+    """Name and description -- the two lines every stack opens with."""
     name = ss.get("name", "")
     lines.append(f"**Tech Stack: {name}**\n" if name else "**Tech Stack**\n")
     if ss.get("description"):
         lines.append(f"{ss['description']}\n")
 
+
+def _render_languages(ss: dict[str, Any], lines: list[str]) -> None:
+    """The ``languages`` block: a bare string list, or per-language entries."""
     languages: Any = ss.get("languages") or []
     if languages:
         lines.append("**Languages:**")
@@ -174,6 +205,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
                 _render_rest(lang, {"name", "version", "role"}, lines, "  ")
         lines.append("")
 
+
+def _render_deployment(ss: dict[str, Any], lines: list[str]) -> None:
+    """The ``deployment`` block and its ``targets`` list."""
     deployment: Any = ss.get("deployment") or {}
     if deployment:
         lines.append("**Deployment:**")
@@ -191,6 +225,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
         _render_rest(deployment, {"targets"}, lines)
         lines.append("")
 
+
+def _render_providers(ss: dict[str, Any], lines: list[str]) -> None:
+    """The ``providers`` map, one entry per provider with its capabilities."""
     providers: Any = ss.get("providers") or {}
     if providers:
         lines.append("**Providers:**")
@@ -204,22 +241,13 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
             lines.append(f"- {prov_name}")
             caps = prov.get("capabilities")
             if isinstance(caps, list):
-                for cap in caps:
-                    if not isinstance(cap, dict):
-                        lines.append(f"  - {_scalar_text(cap)}")
-                        continue
-                    head = str(cap.get("tier", "capability"))
-                    if cap.get("capability_class"):
-                        head += f": {cap['capability_class']}"
-                    if cap.get("role"):
-                        head += f" ({cap['role']})"
-                    lines.append(f"  - {head}")
-                    _render_rest(
-                        cap, {"tier", "capability_class", "role"}, lines, "    "
-                    )
+                _render_provider_capabilities(caps, lines)
             _render_rest(prov, {"capabilities"}, lines, "  ")
         lines.append("")
 
+
+def _render_integrations(ss: dict[str, Any], lines: list[str]) -> None:
+    """The ``integrations`` list."""
     integrations: Any = ss.get("integrations") or []
     if integrations:
         lines.append("**Integrations:**")
@@ -234,6 +262,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
             _render_rest(item, {"name", "purpose"}, lines, "  ")
         lines.append("")
 
+
+def _render_libraries(ss: dict[str, Any], lines: list[str]) -> None:
+    """The ``libraries`` block, flat (D-SC27) or category-keyed."""
     libraries: Any = ss.get("libraries") or {}
     if libraries:
         lines.append("**Libraries:**")
@@ -250,6 +281,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
                     _render_library_entries([libs], lines)
         lines.append("")
 
+
+def _render_persistence(ss: dict[str, Any], lines: list[str]) -> None:
+    """The ``persistence`` map, one entry per store."""
     persistence: Any = ss.get("persistence") or {}
     if persistence:
         lines.append("**Data & persistence:**")
@@ -269,30 +303,7 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
             _render_entry_links(store, lines, "  ")
             collections = store.get("collections") or []
             if isinstance(collections, list):
-                for col in collections:
-                    if not isinstance(col, dict):
-                        lines.append(f"  - {_scalar_text(col)}")
-                        continue
-                    bits = []
-                    if col.get("entities"):
-                        bits.append(
-                            "holds "
-                            + ", ".join(
-                                _scalar_text(e) for e in _as_list(col["entities"])
-                            )
-                        )
-                    if col.get("purpose"):
-                        bits.append(_scalar_text(col["purpose"]))
-                    if col.get("serves_features"):
-                        bits.append(f"serves {_as_ids(col['serves_features'])}")
-                    suffix = f" ({'; '.join(bits)})" if bits else ""
-                    lines.append(f"  - {col.get('name', 'collection')}{suffix}")
-                    _render_rest(
-                        col,
-                        {"name", "entities", "serves_features", "purpose"},
-                        lines,
-                        "    ",
-                    )
+                _render_store_collections(collections, lines)
             _render_rest(
                 store,
                 {"choice", "purpose", "durability", "collections", *_ID_KEYS},
@@ -301,6 +312,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
             )
         lines.append("")
 
+
+def _render_infrastructure(ss: dict[str, Any], lines: list[str]) -> None:
+    """The ``infrastructure`` map, one entry per component."""
     infrastructure: Any = ss.get("infrastructure") or {}
     if infrastructure:
         lines.append("**Infrastructure:**")
@@ -316,6 +330,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
             _render_rest(spec, {"choice"}, lines, "  ")
         lines.append("")
 
+
+def _render_ai_conventions(ss: dict[str, Any], lines: list[str]) -> None:
+    """The ``ai_conventions`` block."""
     conventions: Any = ss.get("ai_conventions") or {}
     if conventions:
         lines.append("**AI conventions:**")
@@ -326,6 +343,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
             _render_any("AI Conventions", conventions, lines)
         lines.append("")
 
+
+def _render_project_structure(ss: dict[str, Any], lines: list[str]) -> None:
+    """The ``project_structure`` list of path/purpose entries."""
     structure: Any = ss.get("project_structure") or []
     if structure:
         lines.append("**Project structure:**")
@@ -344,6 +364,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
             _render_any("Project Structure", structure, lines)
         lines.append("")
 
+
+def _render_coding_style(ss: dict[str, Any], lines: list[str]) -> None:
+    """The ``coding_style`` block."""
     style: Any = ss.get("coding_style") or {}
     if style:
         lines.append("**Coding Style:**")
@@ -353,6 +376,9 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
             _render_any("Coding Style", style, lines)
         lines.append("")
 
+
+def _render_additional_decisions(ss: dict[str, Any], lines: list[str]) -> None:
+    """The ``additional_decisions`` list."""
     extra: Any = ss.get("additional_decisions") or []
     if extra:
         lines.append("**Additional decisions:**")
@@ -372,17 +398,45 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
                 lines.append(f"- {_scalar_text(item)}")
         lines.append("")
 
-    render_references(ss.get("references", []), lines)
 
-    _render_rest(ss, _TOP_LEVEL_HANDLED, lines)
+def _render_provider_capabilities(caps: list[Any], lines: list[str]) -> None:
+    """The ``capabilities`` list of one provider entry."""
+    for cap in caps:
+        if not isinstance(cap, dict):
+            lines.append(f"  - {_scalar_text(cap)}")
+            continue
+        head = str(cap.get("tier", "capability"))
+        if cap.get("capability_class"):
+            head += f": {cap['capability_class']}"
+        if cap.get("role"):
+            head += f" ({cap['role']})"
+        lines.append(f"  - {head}")
+        _render_rest(cap, {"tier", "capability_class", "role"}, lines, "    ")
 
-    lines.append(
-        "---\n\n"
-        "We've finished defining the tech stack, so now you're ready to move on to "
-        "creating implementation phases for your coding agent. Please click on the "
-        "**Continue to Phaser** button below."
-    )
-    return "\n".join(lines)
+
+def _render_store_collections(collections: list[Any], lines: list[str]) -> None:
+    """The ``collections`` list of one persistence store."""
+    for col in collections:
+        if not isinstance(col, dict):
+            lines.append(f"  - {_scalar_text(col)}")
+            continue
+        bits = []
+        if col.get("entities"):
+            bits.append(
+                "holds " + ", ".join(_scalar_text(e) for e in _as_list(col["entities"]))
+            )
+        if col.get("purpose"):
+            bits.append(_scalar_text(col["purpose"]))
+        if col.get("serves_features"):
+            bits.append(f"serves {_as_ids(col['serves_features'])}")
+        suffix = f" ({'; '.join(bits)})" if bits else ""
+        lines.append(f"  - {col.get('name', 'collection')}{suffix}")
+        _render_rest(
+            col,
+            {"name", "entities", "serves_features", "purpose"},
+            lines,
+            "    ",
+        )
 
 
 _TOP_LEVEL_HANDLED = {

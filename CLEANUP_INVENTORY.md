@@ -4708,3 +4708,97 @@ is extract-only. Record it; do not act on it in any sub-phase.
 - No module moves or renames — including the root-vs-package inconsistency in 27.7.
 - No `ruff format` run beyond what the gate already requires (the tree is format-clean
   since 0.5a and has stayed clean through 4j).
+
+## 28. Phase 5a — `_format_stack_as_text` decomposed into 14 block renderers
+
+`src/spec4/agents/stack_advisor/_render.py` only. Extract-only: 12 top-level block
+renderers pulled out of the spine in call order, plus 2 nested helpers to bring the two
+densest blocks under the C901 threshold. No other file changed.
+
+### 28.1 Before and after
+
+| | C901 | PLR0912 | PLR0915 | non-blank lines |
+|---|---:|---:|---:|---:|
+| `_format_stack_as_text` before | **62** | **68** | **181** | 224 |
+| `_format_stack_as_text` after | 2 | — | — | 26 |
+
+The file's C901/PLR0912/PLR0915 finding count goes **3 → 0**. Largest function in the
+file is now `_render_any` (33 lines), which was already there and already clean.
+
+### 28.2 The 14 helpers, in call order
+
+`_format_stack_as_text` is now the `ss` unwrap, `lines = []`, twelve calls, the
+`render_references` / `_render_rest` tail and the frozen Continue-to-Phaser footer:
+
+| Helper | Block | Lines |
+|---|---|---:|
+| `_render_stack_header(ss, lines)` | `name`, `description` | 6 |
+| `_render_languages(ss, lines)` | `languages` | 20 |
+| `_render_deployment(ss, lines)` | `deployment` + `targets` | 18 |
+| `_render_providers(ss, lines)` | `providers` | 18 |
+| `_render_integrations(ss, lines)` | `integrations` | 15 |
+| `_render_libraries(ss, lines)` | `libraries` (flat D-SC27 or category-keyed) | 17 |
+| `_render_persistence(ss, lines)` | `persistence` | 29 |
+| `_render_infrastructure(ss, lines)` | `infrastructure` | 16 |
+| `_render_ai_conventions(ss, lines)` | `ai_conventions` | 11 |
+| `_render_project_structure(ss, lines)` | `project_structure` | 19 |
+| `_render_coding_style(ss, lines)` | `coding_style` | 10 |
+| `_render_additional_decisions(ss, lines)` | `additional_decisions` | 20 |
+| `_render_provider_capabilities(caps, lines)` | nested: one provider's `capabilities` | 13 |
+| `_render_store_collections(collections, lines)` | nested: one store's `collections` | 23 |
+
+Every helper takes `(ss, lines)` and opens with the block's own
+`x: Any = ss.get(...) or ...` / `if x:` exactly as the spine had it, so the guard, the
+`or` default and the falsy-skip are unmoved. The two nested helpers take the already-read
+local (`caps`, `collections`) because that is the value the parent had in hand.
+
+No name was added to `__all__`; the package `__init__` re-export list is untouched.
+
+### 28.3 Line accounting (rule 3)
+
+224 non-blank lines in the old `_format_stack_as_text`. **220 appear verbatim** in the
+new code. The remaining **4 are accounted for** — both are `ruff format` re-wraps that
+became possible when the dedent from 16 to 4 spaces freed horizontal room, with
+identical tokens either side:
+
+- `_render_rest(\n cap, {"tier", "capability_class", "role"}, lines, "    "\n)` (3 lines)
+  → `_render_rest(cap, {"tier", "capability_class", "role"}, lines, "    ")` (1 line).
+- `bits.append("holds "\n + ", ".join(\n _scalar_text(e) for e in _as_list(col["entities"])\n))`
+  (4 lines) → the same expression on 3 lines.
+
+**No statement line is unaccounted for.** Nothing was reordered: the twelve calls run in
+the order the blocks ran, and the `render_references` → `_render_rest(ss, ...)` → footer
+tail is unchanged.
+
+### 28.4 Statement counts add up (rule 4)
+
+Suite-wide statements **11878 → 11906, +28**: 14 new `def` lines + 12 new spine calls +
+2 new nested-helper calls. Misses held at **893**, so no per-module floor moved.
+
+### 28.5 Verification beyond the gate
+
+- **`tests/test_renderer_goldens.py` passes unmodified** — 22 tests, including
+  `TestStackRenderer`'s 5 against `render_stack_full.md`, `render_stack_minimal.md` and
+  `render_stack_string_blocks.md`. The file does not appear in `git status`.
+- No test file was edited anywhere (rule 2).
+- `tests/test_layout_contract.py` and `tests/test_callback_co_presence.py` pass in the
+  full run; 5a touches neither layouts nor callbacks, so the id snapshot and the
+  92-callback registry are untouched by construction.
+- The frozen Continue-to-Phaser footer string and every `**Header:**` literal moved
+  verbatim or stayed in the spine; no string was re-flowed (rule 5).
+
+### 28.6 Deferred / not acted on
+
+- Nothing. 5a needed no `# noqa` — the four blocks that looked borderline
+  (`languages`, `libraries`, `additional_decisions`, `project_structure`) all landed
+  under C901 10 on the first cut.
+
+### 28.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 171.13s` (exit 0) |
+| Coverage | same run | `TOTAL 11906 stmts, 893 miss, 92%` |
