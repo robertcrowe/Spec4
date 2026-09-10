@@ -7950,12 +7950,24 @@ listed here only so the diff over §50.3 is not surprised by it.
 #### The rule for Phase 6
 
 > **The files, classes and node ids in §50.3 may not be edited, renamed, moved, or
-> deleted.** Every sub-phase commit proves it with `git diff --stat` over the list: the
-> seven whole-file entries and the 33 tier-B classes must show zero changed lines, and
-> the 85 named tier-A / ordering node ids must still collect under their current ids.
-> **Phase 6 may not lower the floor.** If a specific net test should be pruned or
-> rewritten, petition by node id with the reason and **stop for approval before
-> touching it** (§50.5).
+> deleted.** **Phase 6 may not lower the floor.** If a specific net test should be
+> pruned or rewritten, petition by node id with the reason and **stop for approval
+> before touching it** (§50.5).
+
+**How the check is run** (refined on approval — `--stat` is file-shaped and cannot see
+a class):
+
+| Entry kind | Check at each sub-phase commit | On a hit |
+|---|---|---|
+| The 7 whole-file entries | `git diff --stat` over the file — must be absent | **stop** |
+| The 19 tier-B files, 33 classes | **diff *hunks* against the listed classes' line ranges** — no hunk may land inside a listed class | **stop** |
+| The 85 tier-A / ordering node ids | still collect under their current ids | **stop** |
+
+A tier-B file touched **outside** its listed classes is **allowed, and reported** in the
+sub-phase report — those files are not whole-file entries and the rest of them is
+ordinary Phase 6 scope. Class line ranges are re-read from the working tree at check
+time, not cached from §50.3, so a legitimate edit above a class cannot silently shift
+the range out from under the next check.
 
 Where a §50.2 row lands on a §50.3 file it is marked **keep** — 96 coupling rows,
 listed at the end of §50.2. The net wins over decoupling. Notably
@@ -8110,9 +8122,36 @@ The last two are why the swap is safe on the usage path and why it must still be
 checked: under `MagicMock`, `chunk.usage` and `chunk._hidden_params` are truthy
 auto-children today, and both helpers already reject them — `_usage_fields` returns
 `None` for anything without real counts, and `_hidden_usage` requires an actual `dict`.
-A namespace carrying `usage=None` and no `_hidden_params` reaches the same result by
-the honest route. **Confirm that with the usage tests specifically**, not by the suite's
-green alone.
+
+**Refined on approval: give `usage` and `_hidden_params` the real litellm defaults.**
+The namespace must be rejected by these two helpers *for the reason the real object is
+rejected*, not because a `SimpleNamespace` happens to be missing a field. So the
+defaults were read off a constructed `ModelResponseStream` rather than assumed, and one
+of them is not what it looks like:
+
+| Field | Real default on a chunk with no usage block | Namespace must carry |
+|---|---|---|
+| `_hidden_params` | **`{}`** — the dict litellm always attaches | `{}` |
+| `usage` | **absent** — `hasattr(chunk, "usage")` is `False`; litellm adds it only on the usage chunk under `include_usage` | absent |
+
+So for `usage`, **absence *is* the faithful mirror** — and the refinement's point still
+holds, because it is now absence-by-fidelity rather than absence-by-accident, checked
+against the real type and recorded here. `_hidden_usage` then rejects `{}` for holding
+no `"usage"` key, exactly as it rejects a real chunk; `_chunk_usage` reads
+`_get(chunk, "usage")`, whose `getattr(obj, name, None)` fallback yields `None`, and
+`_usage_fields(None)` returns `None` on its first line — the same path a real
+no-usage chunk takes.
+
+**The usage chunk is a second shape, and the factory needs it.** Under `include_usage`
+litellm appends a final chunk that *does* carry `usage` with real counts; that is the
+chunk `_record_usage` exists to consume. A factory that can only emit the no-usage
+shape would satisfy every negative assertion while quietly severing `_record_usage`
+from its input — which is what the positive-path test below is for.
+
+**Confirm with the usage tests specifically**, not by the suite's green alone. **And
+additionally run one usage test with a chunk carrying real counts**, to prove the
+positive path still reaches the helper and that `_usage_fields` returns a populated
+dict rather than `None`.
 
 **State the shape in a comment on the factory and cite the litellm type it mirrors**,
 so the next person to add a field knows where the list came from. Both factories change
@@ -8174,3 +8213,188 @@ measurements and the 48.3 s finding, §50.2's full coupling inventory and its
 dispositions, §50.3's sources and enumeration, §50.4's gate. The deferred items stay
 deferred — 5p(h) type hygiene, the six sub-generator backlog entries, the
 `project_manager` root-siblings inconsistency.
+
+## 51. Phase 6a — `testpaths`, and the §50.1 addendum
+
+Commit `fe356ea`. One key added to `pyproject.toml`, nothing else, per §50.5(b).
+`git diff --stat` touches no file under `tests/`.
+
+```toml
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+```
+
+The file had no `[tool.pytest.ini_options]` block at all, so this commit creates it.
+
+### 51.1 §50.1 addendum — the re-baseline
+
+Three runs of `uv run pytest -q --durations=40 -p no:cacheprovider`, as §50.1:
+
+| Run | Result | pytest-reported | wall |
+|---|---|---:|---:|
+| 1 | `4174 passed, 1 skipped` | 143.29 s | 145.08 s |
+| 2 | `4174 passed, 1 skipped` | 143.63 s | 144.63 s |
+| 3 | `4174 passed, 1 skipped` | 144.84 s | 145.79 s |
+| **median** | | **143.63 s** | **145.08 s** |
+
+`--collect-only` reports **4175 collected**.
+
+**Counts match §50.5(b) exactly.**
+
+| | predicted | measured | |
+|---|---:|---:|---|
+| collected | 4,175 | **4,175** | ✅ |
+| passed | 4,174 | **4,174** | ✅ |
+| skipped | 1 | **1** | ✅ |
+
+The one skip is still `tests/test_session.py:721`. Zero xfails.
+
+**The median does not match, and §50.5(b)'s prediction was wrong on its own terms.**
+Predicted ~137 s; measured 143.63 s. Rather than reconcile, I measured the control —
+the pre-`testpaths` collection, on the machine as it is now, by passing the paths
+explicitly (which overrides `testpaths`):
+
+| Configuration | tests | median |
+|---|---:|---:|
+| §50.1, this morning, `tests/` + `evals/` | 4,257 | 139.91 s |
+| **control, now**, `tests/` + `evals/` (2 runs: 143.17, 144.91) | 4,257 | **~144.04 s** |
+| **after `testpaths`, now**, `tests/` only | 4,175 | **143.63 s** |
+
+Two separate things were folded into one number, and both are now visible:
+
+1. **The machine is ~4 s slower than it was this morning.** The control reproduces the
+   *old* configuration at ~144 s where §50.1 measured 139.91 s. No code explains that;
+   it is ambient. Every figure in §50.1 was taken in one sitting and is internally
+   consistent, but it is not comparable to a figure taken hours later.
+2. **My −2.6 s estimate for removing `evals/` was wrong; the true saving is ~0.4 s.**
+   Like-for-like on the current machine: 144.04 → 143.63. `evals/` measured 2.59 s
+   *standalone*, and I subtracted that figure directly. Most of those 2.59 s are module
+   import and interpreter warm-up that `tests/` has already paid inside a full run, so
+   the marginal cost of the 82 tests is a fraction of their standalone cost. **82 tests
+   removed bought 0.4 s.** The lesson generalises to Phase 6's pruning: *a test's
+   standalone time is an upper bound on what deleting it saves, and for cheap tests it
+   is a wild one.* Runtime will come from the 50 s finding, not from the count.
+
+**Restated targets.**
+
+| | §50.1 proposal | §50.5(b) restatement | **now, measured** |
+|---|---|---|---|
+| Count floor | 273 | 456 | **456** — unchanged; 10.9% of 4,175 |
+| Runtime target | ≤ 95 s | ≤ 92 s | **≤ 96 s** |
+
+The floor is unchanged and needs no restatement beyond its share: all 456 are under
+`tests/`, so `testpaths` cannot have moved it. Verified — the collected count fell by
+exactly the 82 `evals/` tests and by nothing else.
+
+The runtime target is restated **upward**, to ≤ 96 s. §50.5(b) derived ≤ 92 s by
+subtracting the phantom 2.6 s; with the saving measured at 0.4 s that derivation is
+void. Re-measuring the §50.1 experiment on the current tree and current machine — the
+scratchpad plugin swapping the chunk factory for a namespace, nothing on disk changed:
+
+| | tests | result | pytest time |
+|---|---:|---|---:|
+| baseline, post-`testpaths` | 4,175 | `4174 passed, 1 skipped` | **143.63 s** (median) |
+| with plain-namespace chunks | 4,175 | `4174 passed, 1 skipped` | **92.88 s** |
+
+**−50.75 s**, up from the 48.3 s measured this morning — the same change, measured on a
+slower machine, so it recovers more absolute seconds. 92.88 s is the honest post-fix
+figure; **≤ 96 s** is that plus a ~3 s band for the inter-session drift this addendum
+just measured. A tighter target would fail on machine weather rather than on the work.
+
+### 51.2 Coverage fell, and it is not noise — Rule 6 needs a ruling
+
+**Misses 893 → 909.** Percentage still rounds to 93%, so the summary line hides it.
+
+No test was deleted. The 16 statements are `src/spec4` lines whose **only** coverage
+anywhere in the repo came from the four `evals/` modules that are no longer collected.
+Traced by diffing the covered-line sets of two coverage databases — the full
+`tests/`-only run, and `evals/` alone:
+
+| Module | stmts | with `evals/` | `tests/` only | lost |
+|---|---:|---|---|---:|
+| `agentifier/requires_reconciler.py` | 261 | 11 miss (**95%**) | 26 miss (**90%**) | **15** |
+| `agents/brainstormer.py` | 314 | 9 miss (**97%**) | 10 miss (**96%**) | **1** |
+
+The 15 are not incidental lines. They are the dependency-inversion signal logic:
+`_norm_chunk`'s stemming (156), the stem-length guard (263), the producer-margin
+tie-break (306, 353), the **S3 dominant/reverse-overlap classification** including the
+"reverse lean, uncorroborated, not classified" arm (363–369), and the **S1/S2 trigger
+matching** with its selective vision-feature cap (488, 518–525). `evals/phaser/
+test_requires_inversion.py` is the only thing in the repo that exercises them.
+
+**This is a Rule 6 stop, and I have not reconciled it.** Two readings, and they lead to
+different actions:
+
+- **The baseline was inflated.** Phase 0's 893 was measured with `evals/` collected, so
+  it was never a `tests/`-only figure. On this reading nothing regressed; the correct
+  `tests/`-only baseline is **909**, Rule 6 ratchets against that from here, and the 16
+  statements become a logged coverage gap.
+- **The coverage was real and is now gone.** On this reading `testpaths` must not stand
+  until `tests/` covers those 15 statements itself.
+
+**I recommend the first**, with a condition: re-baseline to 909, and log the 15
+`requires_reconciler.py` statements as a gap to close with real tests under `tests/` —
+Phase 6's own scope if you want it there, otherwise Phase 7. The gap is worth naming
+either way. Whichever way it went, the useful fact is the one this commit surfaced:
+**a substantive block of `requires_reconciler.py` has never been tested by the test
+suite, only by an eval script**, and the pre-`testpaths` 893 was concealing that.
+
+**No pruning, no factory change, no coupling rewrite has started**, per §50.5(b).
+Phase 6b does not begin until this addendum and the Rule 6 ruling are approved.
+
+### 51.3 The `evals/` import that survives, and why it is not a leak
+
+`tests/conftest.py:65` puts `evals/scout/` on `sys.path`:
+
+```python
+_EVAL_SCRIPTS = pathlib.Path(__file__).resolve().parent.parent / "evals" / "scout"
+if _EVAL_SCRIPTS.is_dir() and str(_EVAL_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_EVAL_SCRIPTS))
+```
+
+**This stays, and it is not a collection leak.** `testpaths` scopes *collection*;
+`sys.path` is a separate dependency. `tests/agentifier/test_fanout_baseline.py` imports
+`fanout_baseline` from `evals/scout/`, which is a script directory rather than a
+package; without the insert, that one unimportable module aborts collection for the
+whole run — the conftest comment says exactly this and is still accurate. The import is
+`tests/` depending on `evals/`, which is a different question from `evals/` being
+collected, and it is not this phase's problem.
+
+Recorded here so nobody later reads a surviving `evals/` reference as evidence that
+`testpaths` did not take.
+
+### 51.4 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4174 passed, 1 skipped in 178.61s` (exit 0) |
+| Coverage | same run | `TOTAL 12421 stmts, 909 miss, 93%` — **see §51.2** |
+| Off-limits | §50.5(a) check, all three kinds | **pass** — see below |
+
+### 51.5 The off-limits check, as actually run
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | `git diff --stat` — **no file under `tests/` touched** (this commit changes only `pyproject.toml`) |
+| 19 tier-B files, 33 classes | no diff hunk anywhere under `tests/`, so none inside a listed class |
+| 188 + 85 + 183 node ids | **456 / 456 still collect**, 0 failures |
+
+The node-id half was run against a fresh `pytest --collect-only -q`, which matters this
+commit specifically: `testpaths` changes *collection*, so "does the floor still collect"
+is the question it could most plausibly have broken. It did not — the collected count
+fell by exactly the 82 `evals/` node ids and by nothing under `tests/`.
+
+**One property of the check worth recording, because getting it wrong produces
+convincing false failures.** A listed node id is a *test function*; a parametrized one
+collects as `…::test_name[param]` and never as the bare name. The check must therefore
+match `nid` **or** any collected id beginning with `nid + "["`. Six of the 456 are
+parametrized and failed a first, exact-match version of this check —
+`test_agent_rows.py::TestTheSixActionVariants::test_every_state_renders_a_button` and
+five others. Nothing was wrong with the tree. Related: a node id must not be truncated
+at whitespace when parsing collect output, because parameter ids contain spaces
+(`test_layout_contract.py` has `[working_dir: browsing a directory]`); doing so collapses
+distinct ids and undercounts the whole-file entries — 125 instead of 188, in the first
+version of this check.
