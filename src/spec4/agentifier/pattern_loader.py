@@ -157,7 +157,7 @@ def _parse_sections(body: str, path: Path) -> dict[str, Any]:
 
     seen_order = []
     section_text: dict[str, str] = {}
-    for heading, content in zip(headings, contents):
+    for heading, content in zip(headings, contents, strict=False):
         if heading not in _REQUIRED_SECTION_ORDER:
             raise PatternValidationError(
                 f"{path.name}: unknown top-level section '## {heading}'. "

@@ -10,6 +10,7 @@ reply/artifact status the moment it can classify the turn, and
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import Generator, Iterator
 from typing import Any
@@ -67,10 +68,8 @@ class TestSuppressingWrapperStatus:
         )
         next_step = iter(gen)
         # Consume only the first (undecidable) chunk's processing.
-        try:
+        with contextlib.suppress(StopIteration):
             next(next_step)
-        except StopIteration:
-            pass
         assert session["_stream_status"] in (_SEED, "drafting")
         list(next_step)
         assert session["_stream_status"] == "drafting"

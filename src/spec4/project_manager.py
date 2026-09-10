@@ -30,7 +30,14 @@ import os
 from pathlib import Path
 from typing import Any
 
-from spec4.app_constants import PROJECT_MODES
+from spec4.app_constants import (
+    ARTIFACT_AI_FEATURES,
+    ARTIFACT_CODE_REVIEW,
+    ARTIFACT_FEATURE_SPECS,
+    ARTIFACT_STACK,
+    ARTIFACT_VISION,
+    PROJECT_MODES,
+)
 
 from spec4._artifacts import (
     load_ai_catalog,
@@ -177,10 +184,10 @@ __all__ = [
 _NON_ARTIFACT_FILES: frozenset[str] = frozenset({USAGE_FILENAME})
 
 _STALE_DEPENDENCIES: dict[str, tuple[str, list[tuple[str, str]]]] = {
-    "brainstormer": ("vision.json", [("code review", "code_review.json")]),
+    "brainstormer": (ARTIFACT_VISION, [("code review", ARTIFACT_CODE_REVIEW)]),
     "agentifier": (
-        "ai_features.json",
-        [("vision", "vision.json"), ("code review", "code_review.json")],
+        ARTIFACT_AI_FEATURES,
+        [("vision", ARTIFACT_VISION), ("code review", ARTIFACT_CODE_REVIEW)],
     ),
     # StackAdvisor depends on Designer's *manifest* (the data model and screen
     # structure), not the visual mock: a purely visual change cannot invalidate a
@@ -188,21 +195,21 @@ _STALE_DEPENDENCIES: dict[str, tuple[str, list[tuple[str, str]]]] = {
     # (D-SC5c). The mock remains Phaser's and Deployer's dependency — they hand it
     # to the coding agent.
     "stack_advisor": (
-        "stack.json",
+        ARTIFACT_STACK,
         [
-            ("vision", "vision.json"),
-            ("AI features", "ai_features.json"),
-            ("code review", "code_review.json"),
+            ("vision", ARTIFACT_VISION),
+            ("AI features", ARTIFACT_AI_FEATURES),
+            ("code review", ARTIFACT_CODE_REVIEW),
             ("design manifest", "design/manifest.json"),
         ],
     ),
     "phaser": (
         "phases",
         [
-            ("vision", "vision.json"),
-            ("AI features", "ai_features.json"),
-            ("stack", "stack.json"),
-            ("code review", "code_review.json"),
+            ("vision", ARTIFACT_VISION),
+            ("AI features", ARTIFACT_AI_FEATURES),
+            ("stack", ARTIFACT_STACK),
+            ("code review", ARTIFACT_CODE_REVIEW),
             ("UI mock", "design/mock.html"),
         ],
     ),
@@ -215,16 +222,16 @@ _STALE_DEPENDENCIES: dict[str, tuple[str, list[tuple[str, str]]]] = {
     "deployer": (
         "deployment-plan.md",
         [
-            ("AI features", "ai_features.json"),
-            ("stack", "stack.json"),
-            ("feature specs", "feature_specs.json"),
+            ("AI features", ARTIFACT_AI_FEATURES),
+            ("stack", ARTIFACT_STACK),
+            ("feature specs", ARTIFACT_FEATURE_SPECS),
             ("phases", "phases"),
             ("UI mock", "design/mock.html"),
         ],
     ),
     "designer": (
         "design/mock.html",
-        [("vision", "vision.json"), ("AI features", "ai_features.json")],
+        [("vision", ARTIFACT_VISION), ("AI features", ARTIFACT_AI_FEATURES)],
     ),
 }
 
@@ -275,11 +282,11 @@ def detect_stale_inputs(working_dir: str | Path, agent: str) -> dict[str, float]
 # .spec4/v{N}/. The freshness chain is evaluated against this order: each
 # upstream artifact must be older than the one downstream of it.
 _PIPELINE_ARTIFACT_ORDER: list[str] = [
-    "code_review.json",
-    "vision.json",
-    "ai_features.json",
+    ARTIFACT_CODE_REVIEW,
+    ARTIFACT_VISION,
+    ARTIFACT_AI_FEATURES,
     "design/mock.html",
-    "stack.json",
+    ARTIFACT_STACK,
     "phases",
     "deployment-plan.md",
 ]
@@ -289,10 +296,10 @@ _PIPELINE_ARTIFACT_ORDER: list[str] = [
 # `_STALE_DEPENDENCIES` is optional: it joins the freshness chain only when
 # present and never blocks. Agents absent from this map have no required inputs.
 _REQUIRED_INPUTS: dict[str, list[str]] = {
-    "agentifier": ["vision.json"],
-    "designer": ["vision.json"],
-    "stack_advisor": ["vision.json"],
-    "phaser": ["vision.json", "stack.json"],
+    "agentifier": [ARTIFACT_VISION],
+    "designer": [ARTIFACT_VISION],
+    "stack_advisor": [ARTIFACT_VISION],
+    "phaser": [ARTIFACT_VISION, ARTIFACT_STACK],
     "deployer": ["phases"],
 }
 
@@ -447,7 +454,7 @@ def _artifact_button_state(  # noqa: C901, E501  # the branches are the document
         return _path_mtime(base / rel) if base is not None else None
 
     if agent == "code_scanner":
-        if mtime("code_review.json") is not None:
+        if mtime(ARTIFACT_CODE_REVIEW) is not None:
             return AGENT_BTN_MODIFY
         return AGENT_BTN_START
 
@@ -465,7 +472,7 @@ def _artifact_button_state(  # noqa: C901, E501  # the branches are the document
     raw_chain = [(rel, mtime(rel)) for rel in ordered]
     chain: list[tuple[str, float]] = [(rel, m) for rel, m in raw_chain if m is not None]
 
-    for (_, m_prev), (_, m_next) in zip(chain, chain[1:]):
+    for (_, m_prev), (_, m_next) in zip(chain, chain[1:], strict=False):
         if m_prev > m_next:
             return AGENT_BTN_NOT_READY
 

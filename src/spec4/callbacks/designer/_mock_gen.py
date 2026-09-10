@@ -26,6 +26,9 @@ import threading
 import uuid
 from typing import Any
 
+from spec4.app_constants import (
+    ARTIFACT_MANIFEST,
+)
 from spec4 import llm, llm_selection, project_manager, websearch
 from spec4.agents._manifest import (
     enrich_manifest,
@@ -214,7 +217,7 @@ def _expected_stream_chars(working_dir: str | None) -> int:
         manifest_path = (
             project_manager.get_version_dir(working_dir, version)
             / "design"
-            / "manifest.json"
+            / ARTIFACT_MANIFEST
         )
         try:
             manifest_chars = len(manifest_path.read_text(encoding="utf-8"))
@@ -320,7 +323,7 @@ def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbati
             # funnel, so the generation thread flushes its own LLM usage.
             # Same version resolution as the design dir above; a failure
             # here only loses the usage record, never the mock.
-            _mock_persist_session(working_dir, ds, session)
+            _mock_persist_session(working_dir, session)
             # Unconditional: `done` without final_html or an error sentinel is
             # the poll's cleanup signal. Setting it on an already-popped entry
             # (user clicked Start Over mid-generation) is harmless.
@@ -449,9 +452,7 @@ def _mock_report_failure(exc: Exception, buf_entry: dict[str, Any]) -> None:
     buf_entry["text"] += f"__GENERATION_ERROR__: {type(exc).__name__}: {msg}"
 
 
-def _mock_persist_session(
-    working_dir: Any, ds: Any, session: dict[str, Any] | None
-) -> None:
+def _mock_persist_session(working_dir: Any, session: dict[str, Any] | None) -> None:
     """Persist the designer session after a draw, however it ended."""
     if working_dir:
         try:

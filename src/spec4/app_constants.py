@@ -150,3 +150,14 @@ AGENT_KEYS: tuple[str, ...] = (
     "phaser",
     "deployer",
 )
+
+
+# Artifact file names under .spec4/v{N}/. Frozen surfaces (cleanup rule 4):
+# the values are the on-disk names and must never change.
+ARTIFACT_VISION = "vision.json"
+ARTIFACT_STACK = "stack.json"
+ARTIFACT_CODE_REVIEW = "code_review.json"
+ARTIFACT_AI_FEATURES = "ai_features.json"
+ARTIFACT_MANIFEST = "manifest.json"
+ARTIFACT_FEATURE_SPECS = "feature_specs.json"
+ARTIFACT_USAGE = "usage.json"

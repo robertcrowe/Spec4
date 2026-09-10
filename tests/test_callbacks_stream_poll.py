@@ -335,14 +335,16 @@ class TestBreadthPanelCheckboxStyling:
     def test_label_is_bolded_feature_name(self) -> None:
         from dash import html
 
-        for cb, name in zip(self._checkboxes(), ["feat_a", "feat_b"]):
+        for cb, name in zip(self._checkboxes(), ["feat_a", "feat_b"], strict=False):
             assert isinstance(cb.label, html.Strong), (
                 "feature name must be wrapped in <strong>"
             )
             assert cb.label.children == name
 
     def test_description_is_the_plain_candidate_description(self) -> None:
-        for cb, desc in zip(self._checkboxes(), ["Feature A.", "Feature B."]):
+        for cb, desc in zip(
+            self._checkboxes(), ["Feature A.", "Feature B."], strict=False
+        ):
             assert cb.description == desc
 
     def test_label_and_description_match_chat_text(self) -> None:

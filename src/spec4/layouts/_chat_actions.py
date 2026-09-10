@@ -19,6 +19,10 @@ from dash import html
 import dash_mantine_components as dmc
 
 from spec4.app_constants import (
+    ARTIFACT_AI_FEATURES,
+    ARTIFACT_CODE_REVIEW,
+    ARTIFACT_STACK,
+    ARTIFACT_VISION,
     STATE_AGENTIFIER_COMPLETE,
     STATE_DEPLOYER_COMPLETE,
     STATE_REVIEW_COMPLETE,
@@ -125,10 +129,10 @@ def _turn_token_text(session: dict[str, Any]) -> str:
 # sample data misfiles `deployment-plan.md`, so the tree's reviewed table is
 # the only table this may be built from, and the pairing test checks it.
 CHAT_ARTIFACTS: dict[str, str] = {
-    "review": "code_review.json",
-    "vision": "vision.json",
-    "features": "ai_features.json",
-    "stack": "stack.json",
+    "review": ARTIFACT_CODE_REVIEW,
+    "vision": ARTIFACT_VISION,
+    "features": ARTIFACT_AI_FEATURES,
+    "stack": ARTIFACT_STACK,
     "phases": PHASES_DIR,
     "deployment": "deployment-plan.md",
 }

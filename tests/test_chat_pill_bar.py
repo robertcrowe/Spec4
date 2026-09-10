@@ -412,9 +412,9 @@ class TestItIsTheSharedRendererAndNothingMoved:
             "pipeline-agent--done",
             "pipeline-agent--unreachable",
         )
-        assert _PILL_ACTIVE == step_modifier_class(_PILL_BASE, STEP_ACTIVE)
-        assert _PILL_DONE == step_modifier_class(_PILL_BASE, STEP_DONE)
-        assert _PILL_UNREACHABLE == step_modifier_class(_PILL_BASE, STEP_UNREACHABLE)
+        assert step_modifier_class(_PILL_BASE, STEP_ACTIVE) == _PILL_ACTIVE
+        assert step_modifier_class(_PILL_BASE, STEP_DONE) == _PILL_DONE
+        assert step_modifier_class(_PILL_BASE, STEP_UNREACHABLE) == _PILL_UNREACHABLE
 
 
 # ---------------------------------------------------------------------------

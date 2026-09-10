@@ -566,7 +566,7 @@ def run(  # noqa: C901, PLR0912, PLR0915  # ten-yield generator; every remaining
     # history entirely. A clear answer records the choice and falls through to
     # the normal opening (user_input := None); an ambiguous reply re-asks.
     if user_input is not None and session.get("_deployer_pending_readme_optin"):
-        affirmative, negative = _deployer_readme_reply_intent(user_input)
+        affirmative, negative = _yes_no_intent(user_input, _YES_WORDS, _NO_WORDS)
         if affirmative and not negative:
             session["_deployer_pending_readme_optin"] = False
             session["_deployer_readme_requested"] = True
@@ -610,7 +610,9 @@ def run(  # noqa: C901, PLR0912, PLR0915  # ten-yield generator; every remaining
 
         if session.get("_deployer_pending_plan"):
             session["_deployer_pending_plan"] = False
-            affirmative, negative = _deployer_plan_reply_intent(user_input)
+            affirmative, negative = _yes_no_intent(
+                user_input, _YES_WORDS_PLAN, _NO_WORDS_PLAN
+            )
             if affirmative and not negative:
                 confirm_msg = (
                     "Your new deployment plan has been saved. "
@@ -638,7 +640,7 @@ def run(  # noqa: C901, PLR0912, PLR0915  # ten-yield generator; every remaining
 
         if session.get("_deployer_pending_readme"):
             session["_deployer_pending_readme"] = False
-            affirmative, negative = _deployer_readme_optin_intent(user_input)
+            affirmative, negative = _yes_no_intent(user_input, _YES_WORDS, _NO_WORDS)
             if negative and not affirmative:
                 decline_msg = (
                     "No problem — I haven't created a README. Your deployment "
@@ -730,40 +732,68 @@ def run(  # noqa: C901, PLR0912, PLR0915  # ten-yield generator; every remaining
                 session["_deployer_pending_readme"] = True
 
 
-def _deployer_readme_reply_intent(user_input: str) -> tuple[bool, bool]:
-    """Affirmative / negative word match on a reply to the pending-README offer."""
+_YES_WORDS: tuple[str, ...] = (
+    "yes",
+    "yeah",
+    "yep",
+    "yup",
+    "sure",
+    "ok",
+    "okay",
+    "go ahead",
+    "proceed",
+    "please",
+    "create",
+    "do it",
+)
+
+_NO_WORDS: tuple[str, ...] = (
+    "no",
+    "nope",
+    "nah",
+    "don't",
+    "dont",
+    "skip",
+    "later",
+    "cancel",
+    "stop",
+)
+
+_YES_WORDS_PLAN: tuple[str, ...] = (
+    "yes",
+    "yeah",
+    "yep",
+    "yup",
+    "sure",
+    "ok",
+    "okay",
+    "go ahead",
+    "proceed",
+    "replace",
+    "save",
+    "confirm",
+)
+
+_NO_WORDS_PLAN: tuple[str, ...] = (
+    "no",
+    "nope",
+    "nah",
+    "don't",
+    "dont",
+    "keep",
+    "cancel",
+    "discard",
+    "stop",
+)
+
+
+def _yes_no_intent(
+    user_input: str, yes_words: tuple[str, ...], no_words: tuple[str, ...]
+) -> tuple[bool, bool]:
+    """Affirmative / negative word match on a yes-or-no reply."""
     lowered = user_input.lower()
-    affirmative = any(
-        w in lowered
-        for w in (
-            "yes",
-            "yeah",
-            "yep",
-            "yup",
-            "sure",
-            "ok",
-            "okay",
-            "go ahead",
-            "proceed",
-            "please",
-            "create",
-            "do it",
-        )
-    )
-    negative = any(
-        w in lowered
-        for w in (
-            "no",
-            "nope",
-            "nah",
-            "don't",
-            "dont",
-            "skip",
-            "later",
-            "cancel",
-            "stop",
-        )
-    )
+    affirmative = any(w in lowered for w in yes_words)
+    negative = any(w in lowered for w in no_words)
     return affirmative, negative
 
 
@@ -899,80 +929,6 @@ def _deployer_seed_message(session: dict[str, Any], is_revision: bool) -> str:
             "developer plans to use to implement these phases."
         )
     return seed
-
-
-def _deployer_plan_reply_intent(user_input: str) -> tuple[bool, bool]:
-    """Affirmative / negative word match on a reply to the plan-confirm question."""
-    lowered = user_input.lower()
-    affirmative = any(
-        w in lowered
-        for w in (
-            "yes",
-            "yeah",
-            "yep",
-            "yup",
-            "sure",
-            "ok",
-            "okay",
-            "go ahead",
-            "proceed",
-            "replace",
-            "save",
-            "confirm",
-        )
-    )
-    negative = any(
-        w in lowered
-        for w in (
-            "no",
-            "nope",
-            "nah",
-            "don't",
-            "dont",
-            "keep",
-            "cancel",
-            "discard",
-            "stop",
-        )
-    )
-    return affirmative, negative
-
-
-def _deployer_readme_optin_intent(user_input: str) -> tuple[bool, bool]:
-    """Affirmative / negative word match on a reply to the README opt-in."""
-    lowered = user_input.lower()
-    affirmative = any(
-        w in lowered
-        for w in (
-            "yes",
-            "yeah",
-            "yep",
-            "yup",
-            "sure",
-            "ok",
-            "okay",
-            "go ahead",
-            "proceed",
-            "please",
-            "create",
-            "do it",
-        )
-    )
-    negative = any(
-        w in lowered
-        for w in (
-            "no",
-            "nope",
-            "nah",
-            "don't",
-            "dont",
-            "skip",
-            "later",
-            "cancel",
-            "stop",
-        )
-    )
-    return affirmative, negative
 
 
 def _deployer_readme_accept(

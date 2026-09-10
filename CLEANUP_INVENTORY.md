@@ -6874,3 +6874,117 @@ decomposed or carrying one of the eleven pre-approved noqas.
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 172.34s` (exit 0) |
 | Coverage | same run | `TOTAL 12432 stmts, 897 miss (893 + 4), 93%` |
+
+## 49. Phase 5p — cross-cutting sweep and the rule-set promotion
+
+Closes Phase 5. `uv run ruff check src/ tests/` now runs the promoted rule sets and
+passes.
+
+### 49.1 (a) Duplication — two lifts, both proven exact
+
+**`_stack_ai_served_ids` deleted.** It was byte-identical to the public
+`ai_served_feature_ids` in the same module apart from the accumulator's name and the
+docstring — surfaced by 5f, which extracted it and flagged it here rather than unifying
+mid-sub-phase. `feature_specs_for_stack` now calls the public function.
+
+**The three Deployer yes/no matchers collapsed to one.** `_deployer_readme_reply_intent`
+and `_deployer_readme_optin_intent` were **identical apart from the name and docstring**;
+`_deployer_plan_reply_intent` differed **only in its word lists**. All three become
+`_yes_no_intent(user_input, yes_words, no_words)` with the lists as the module constants
+`_YES_WORDS` / `_NO_WORDS` and `_YES_WORDS_PLAN` / `_NO_WORDS_PLAN`. This is exactly the
+shape 27.5(a) describes — "the same 10+ lines with different constants, lift with the
+constants as parameters" — and 5i surfaced it deliberately (38.3).
+
+The other candidates logged along the way were **left alone** because they are not exact
+matches: the seven per-consumer `_*_feature_lines` helpers (5f) render different field
+sets, and the entity-collection loop appears twice but is four lines.
+
+### 49.2 (b) Magic strings — 68 occurrences, 7 constants
+
+The seven artifact file names appearing in more than one file are now
+`ARTIFACT_VISION`, `ARTIFACT_STACK`, `ARTIFACT_CODE_REVIEW`, `ARTIFACT_AI_FEATURES`,
+`ARTIFACT_MANIFEST`, `ARTIFACT_FEATURE_SPECS`, `ARTIFACT_USAGE` in `app_constants.py`,
+replacing **68 literal occurrences across 14 files** (`project_manager.py` alone held 28).
+
+**String values are provably unchanged.** Every file was parsed before and after and
+every string constant's value compared as a multiset. The only permitted delta is a
+standalone filename literal disappearing; **anything that merely *contains* a filename —
+a prompt, a docstring, an f-string template — had to be identical**. Result: **zero
+violations**. That check is what makes this safe: a `"vision.json"` sitting inside a
+triple-quoted prompt would otherwise have been silently rewritten.
+
+`.spec4/` and `.spec4/v{round_number}/` are **not** extracted: they appear inside
+f-strings whose surrounding text differs, so there is no single literal to name.
+
+### 49.3 (c)(d)(e) The mechanical items — all 13 in `src/`
+
+| Item | Sites | Done |
+|---|---|---|
+| SIM105 | `_artifacts.py`, `_usage.py`, `callbacks/designer/_refine.py` | `contextlib.suppress` |
+| SIM117 | `websearch.py` ×2 | merged `async with (...)` |
+| SIM905 | `requires_reconciler.py` `_STOPWORDS` | tuple literal; **the resulting frozenset was compared to the old one and is identical — 59 words** |
+| B904 | `agentifier/subagents.py` ×2 | `raise ... from exc` |
+| B007 | `agents/designer.py` | `root` → `_root` |
+| B905 | 4 sites | **`strict=False`** — byte-identical to today's silent truncation. `strict=True` would raise on unequal lengths, a behaviour change; each site stays logged for a separate review |
+| ARG | 12 sites | 3 were parameters my own 5m/5n/5o helpers never read → **removed outright**; the rest are uniform-signature or Dash-callback parameters → underscore-prefixed, every call site verified positional first |
+
+### 49.4 (g) The promotion — and the deliberate narrowing of `PLR`
+
+```toml
+select = ["E", "F", "C90", "PLR0912", "PLR0913", "PLR0915", "SIM", "B", "ARG"]
+```
+
+27.5(g) called for `"PLR"` wholesale. **It is promoted as three named rules instead**,
+for the reason recorded at 42.6: bare `PLR` also carries **PLR2004 (49 in `src/`),
+PLR0911 (7) and PLR1714 (1)** — 57 findings Phase 0 never measured and Phase 5 never
+touched. Promoting them would put 57 unreviewed findings into the gate on day one.
+Phase 5 measured and cleared PLR0912/0913/0915; those are what it earns the right to
+enforce. **PLR2004 overlaps 5p(b)'s magic-value work and is the natural Phase 7 follow-up.**
+
+Per-file ignores added:
+
+- `"tests/**/*.py" = ["ARG", "SIM117", "PLR0913"]` — 224 findings that are test shape,
+  not test smell: fixture/stub/lambda parameters a test must accept but need not read,
+  deliberate `pytest.raises` + `patch` nesting, fixture-heavy signatures.
+- `"evals/**/*.py"` and `"scripts/**/*.py"` — the same plus the long-function rules.
+  Both are outside the Rule 6 gate and were never measured by Phase 5.
+
+The mechanical `tests/` findings were **fixed, not ignored**: 8 SIM300 (yoda), 8 B905
+(`strict=False`), 1 SIM105. That is 5p(f)'s lint-only exception to rule 2 and the only
+`tests/` edit in this sub-phase.
+
+### 49.5 (h) Type hygiene — measured and deferred
+
+`src/spec4/**` carries **290 `Any` annotations**. Replacing them where the real type is
+knowable is genuine work with real regression risk, and it is the one 5p item with no
+mechanical check behind it — mypy is already clean, so nothing fails if a replacement is
+wrong in a way the tests do not reach. **Deferred to Phase 7 with the count on record.**
+27.5(h)'s prohibition stands regardless: no `TypedDict` for the session dict, that is a
+design change.
+
+### 49.6 Coverage is back at the Phase 0 baseline
+
+Misses **893** — not 893 + 4. The four permitted call sites from 5j/5k/5o are still
+missed, and are exactly offset by four previously-missed statements that this sub-phase
+removed: the `except: pass` bodies that became `contextlib.suppress` (one statement each
+instead of two on a never-taken path) and the unused parameters that were deleted.
+
+| | Phase 0 | after 5p |
+|---|---:|---:|
+| Statements | 11,676 | 12,421 |
+| Misses | **893** | **893** |
+| Coverage | 91% | 93% |
+
+### 49.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) — **with the promoted rule sets** |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 170.46s` (exit 0) |
+| Coverage | same run | `TOTAL 12421 stmts, 893 miss, 93%` |
+
+`uv run ruff check .` reports 13 findings, all `E501` in `scripts/e2e_agentifier.py`.
+They **predate Phase 5** — `E` was always selected and `scripts/` never carried an
+ignore — and sit outside the Rule 6 gate. Left for Phase 7.

@@ -81,14 +81,67 @@ _GENERIC_INPUT_SUFFIXES = frozenset(
 )
 
 _STOPWORDS = frozenset(
-    """
-    a an and are as at be by for from has have if in into is it its of on or
-    that the this to via when which will with within each all any per
-    not non
-    data report reports output outputs result results user users system
-    content information list lists item items feature features generated
-    based including provided
-    """.split()
+    (
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "from",
+        "has",
+        "have",
+        "if",
+        "in",
+        "into",
+        "is",
+        "it",
+        "its",
+        "of",
+        "on",
+        "or",
+        "that",
+        "the",
+        "this",
+        "to",
+        "via",
+        "when",
+        "which",
+        "will",
+        "with",
+        "within",
+        "each",
+        "all",
+        "any",
+        "per",
+        "not",
+        "non",
+        "data",
+        "report",
+        "reports",
+        "output",
+        "outputs",
+        "result",
+        "results",
+        "user",
+        "users",
+        "system",
+        "content",
+        "information",
+        "list",
+        "lists",
+        "item",
+        "items",
+        "feature",
+        "features",
+        "generated",
+        "based",
+        "including",
+        "provided",
+    )
 )
 
 

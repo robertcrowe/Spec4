@@ -357,7 +357,7 @@ def _build_seed_message(
         for r in c.requires:
             required_by.setdefault(r, []).append(c.name)
     parts = [intro]
-    for i, (cand, analysis) in enumerate(zip(candidates, analyses), 1):
+    for i, (cand, analysis) in enumerate(zip(candidates, analyses, strict=False), 1):
         lines = _candidate_head_lines(
             i, cand, present, members_by_coordinator, required_by
         )

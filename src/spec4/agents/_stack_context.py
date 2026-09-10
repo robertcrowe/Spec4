@@ -18,6 +18,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from spec4.app_constants import (
+    ARTIFACT_MANIFEST,
+)
 from spec4.agents._feature_context import slug
 from spec4.design_manifest import surface_summary_line
 from spec4.stack_routing import (
@@ -479,7 +482,7 @@ def load_design_manifest(design_dir: Path | None) -> dict[str, Any] | None:
     """
     if design_dir is None:
         return None
-    path = design_dir / "manifest.json"
+    path = design_dir / ARTIFACT_MANIFEST
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):

@@ -43,7 +43,12 @@ line-length = 88
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F"]
+# Promoted at cleanup Phase 5p, after every finding under them was decomposed or
+# carried a justified noqa. PLR is promoted by the three rules Phase 5 actually
+# measured and cleared -- PLR0912/0913/0915 -- not wholesale: bare "PLR" also
+# carries PLR2004 (49 in src/), PLR0911 (7) and PLR1714 (1), which Phase 0 never
+# counted and Phase 5 never touched. See CLEANUP_INVENTORY.md 42.6 and 49.4.
+select = ["E", "F", "C90", "PLR0912", "PLR0913", "PLR0915", "SIM", "B", "ARG"]
 
 [tool.ruff.lint.per-file-ignores]
 # Long system-prompt strings in multi-line literals cannot use inline noqa
@@ -52,6 +57,17 @@ select = ["E", "F"]
 "tests/agentifier/*.py" = ["E501"]
 "tests/integration/*.py" = ["E501"]
 "evals/*.py" = ["E501"]
+# Test-shaped code. ARG: fixture, stub and lambda parameters a test must accept
+# but need not read. SIM117: `pytest.raises` + `patch` stacks whose nesting is
+# deliberate and reads better than a merged `with`. PLR0913: fixture-heavy
+# signatures. Fixing these would be churn with no reader benefit; the mechanical
+# ones (SIM300, B905, SIM105) were fixed rather than ignored.
+"tests/**/*.py" = ["ARG", "SIM117", "PLR0913"]
+# evals/ and scripts/ are outside the Rule 6 gate (`ruff check src/ tests/`) and
+# were never measured by Phase 5; the same test-shaped exemptions apply, plus the
+# long-function rules a one-shot script legitimately trips.
+"evals/**/*.py" = ["ARG", "SIM", "PLR0913", "PLR0915", "C90", "PLR0912", "B905"]
+"scripts/**/*.py" = ["ARG", "SIM", "PLR0913", "PLR0915", "C90", "PLR0912", "B905"]
 # Clientside-callback JavaScript strings contain long single lines; imports
 # are intentionally placed after the litellm log-level/env setup that must run
 # before litellm is first imported by any downstream module.

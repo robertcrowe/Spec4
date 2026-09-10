@@ -8,6 +8,7 @@ object.
 from __future__ import annotations
 
 import importlib.metadata
+import contextlib
 import json
 import os
 import tempfile
@@ -16,6 +17,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from spec4.app_constants import (
+    ARTIFACT_USAGE,
+)
 from spec4 import __version__
 from spec4._paths import ensure_version_dir, get_version_dir
 
@@ -24,7 +28,7 @@ from spec4._paths import ensure_version_dir, get_version_dir
 # LLM usage log
 # ---------------------------------------------------------------------------
 
-USAGE_FILENAME = "usage.json"
+USAGE_FILENAME = ARTIFACT_USAGE
 USAGE_SCHEMA_VERSION = "1"
 _USAGE_COST_SOURCE = (
     "litellm response_cost (community cost map; may lag provider price sheets)"
@@ -354,10 +358,8 @@ def _write_atomic(path: Path, text: str) -> None:
             os.fsync(fh.fileno())
         os.replace(tmp_name, path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_name)
-        except OSError:
-            pass
         raise
 
 

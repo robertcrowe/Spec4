@@ -177,33 +177,37 @@ def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
 
 async def _list_tools_async(config: SearchConfig) -> list[str]:
     url, headers = _endpoint(config)
-    async with streamablehttp_client(url, headers=headers) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.list_tools()
-            return [t.name for t in result.tools]
+    async with (
+        streamablehttp_client(url, headers=headers) as (read, write, _),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
+        result = await session.list_tools()
+        return [t.name for t in result.tools]
 
 
 async def _call_search_async(query: str, config: SearchConfig) -> str:
     url, headers = _endpoint(config)
-    async with streamablehttp_client(url, headers=headers) as (read, write, _):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            # Discover the actual search tool name rather than hardcoding it —
-            # Tavily calls it `tavily_search`, Exa `web_search_exa`, and either
-            # is free to rename it.
-            tools_result = await session.list_tools()
-            tool = next(
-                (t for t in tools_result.tools if "search" in t.name.lower()),
-                None,
-            )
-            if tool is None:
-                available = [t.name for t in tools_result.tools]
-                return f"No search tool found. Available tools: {available}"
-            result = await session.call_tool(tool.name, {"query": query})
-            if result.content:
-                return "\n".join(c.text for c in result.content if hasattr(c, "text"))
-            return ""
+    async with (
+        streamablehttp_client(url, headers=headers) as (read, write, _),
+        ClientSession(read, write) as session,
+    ):
+        await session.initialize()
+        # Discover the actual search tool name rather than hardcoding it —
+        # Tavily calls it `tavily_search`, Exa `web_search_exa`, and either
+        # is free to rename it.
+        tools_result = await session.list_tools()
+        tool = next(
+            (t for t in tools_result.tools if "search" in t.name.lower()),
+            None,
+        )
+        if tool is None:
+            available = [t.name for t in tools_result.tools]
+            return f"No search tool found. Available tools: {available}"
+        result = await session.call_tool(tool.name, {"query": query})
+        if result.content:
+            return "\n".join(c.text for c in result.content if hasattr(c, "text"))
+        return ""
 
 
 def validate(config: SearchConfig | str) -> tuple[bool, list[str], str]:

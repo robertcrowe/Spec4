@@ -11,11 +11,20 @@ object.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from pathlib import Path
 from typing import Any
 
+from spec4.app_constants import (
+    ARTIFACT_AI_FEATURES,
+    ARTIFACT_CODE_REVIEW,
+    ARTIFACT_FEATURE_SPECS,
+    ARTIFACT_MANIFEST,
+    ARTIFACT_STACK,
+    ARTIFACT_VISION,
+)
 from spec4._paths import (
     active_version,
     ensure_version_dir,
@@ -57,15 +66,13 @@ def load_spec4_artifacts(working_dir: str | Path) -> dict[str, Any]:
     version_dir = get_version_dir(working_dir, version)
 
     for key, filename in (
-        ("vision", "vision.json"),
-        ("stack", "stack.json"),
-        ("code_review", "code_review.json"),
-        ("feature_specs", "feature_specs.json"),
+        ("vision", ARTIFACT_VISION),
+        ("stack", ARTIFACT_STACK),
+        ("code_review", ARTIFACT_CODE_REVIEW),
+        ("feature_specs", ARTIFACT_FEATURE_SPECS),
     ):
-        try:
+        with contextlib.suppress(OSError, json.JSONDecodeError):
             result[key] = json.loads((version_dir / filename).read_text())
-        except (OSError, json.JSONDecodeError):
-            pass
 
     phases_dir = version_dir / "phases"
 
@@ -100,12 +107,12 @@ def _write_text_if_changed(path: Path, content: str) -> None:
 
 def save_vision(working_dir: str | Path, vision: dict[str, Any], version: int) -> None:
     version_dir = ensure_version_dir(working_dir, version)
-    _write_text_if_changed(version_dir / "vision.json", json.dumps(vision, indent=2))
+    _write_text_if_changed(version_dir / ARTIFACT_VISION, json.dumps(vision, indent=2))
 
 
 def save_stack(working_dir: str | Path, stack: dict[str, Any], version: int) -> None:
     version_dir = ensure_version_dir(working_dir, version)
-    _write_text_if_changed(version_dir / "stack.json", json.dumps(stack, indent=2))
+    _write_text_if_changed(version_dir / ARTIFACT_STACK, json.dumps(stack, indent=2))
 
 
 def merge_library_additions(
@@ -172,7 +179,7 @@ def save_code_review(
 ) -> None:
     version_dir = ensure_version_dir(working_dir, version)
     _write_text_if_changed(
-        version_dir / "code_review.json", json.dumps(review, indent=2)
+        version_dir / ARTIFACT_CODE_REVIEW, json.dumps(review, indent=2)
     )
 
 
@@ -188,7 +195,7 @@ def load_prior_vision(working_dir: str | Path) -> dict[str, Any] | None:
     version = latest_implemented_version(working_dir)
     if version is None:
         return None
-    vision_path = get_version_dir(working_dir, version) / "vision.json"
+    vision_path = get_version_dir(working_dir, version) / ARTIFACT_VISION
     if not vision_path.exists():
         return None
     try:
@@ -255,7 +262,7 @@ def save_ai_features(
 ) -> None:
     version_dir = ensure_version_dir(working_dir, version)
     _write_text_if_changed(
-        version_dir / "ai_features.json", json.dumps(features, indent=2)
+        version_dir / ARTIFACT_AI_FEATURES, json.dumps(features, indent=2)
     )
 
 
@@ -263,7 +270,7 @@ def load_ai_features(working_dir: str | Path) -> dict[str, Any] | None:
     version = latest_phase_version(working_dir)
     if version is None:
         return None
-    path = get_version_dir(working_dir, version) / "ai_features.json"
+    path = get_version_dir(working_dir, version) / ARTIFACT_AI_FEATURES
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else None
@@ -276,7 +283,7 @@ def save_feature_specs(
 ) -> None:
     version_dir = ensure_version_dir(working_dir, version)
     _write_text_if_changed(
-        version_dir / "feature_specs.json", json.dumps(feature_specs, indent=2)
+        version_dir / ARTIFACT_FEATURE_SPECS, json.dumps(feature_specs, indent=2)
     )
 
 
@@ -290,7 +297,7 @@ def load_design_manifest(
     Single loader shared by the Phaser seed projection and the ``save_phases``
     context bundle (D-PH5b).
     """
-    path = get_version_dir(working_dir, version) / "design" / "manifest.json"
+    path = get_version_dir(working_dir, version) / "design" / ARTIFACT_MANIFEST
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -302,7 +309,7 @@ def load_feature_specs(working_dir: str | Path) -> dict[str, Any] | None:
     version = latest_phase_version(working_dir)
     if version is None:
         return None
-    path = get_version_dir(working_dir, version) / "feature_specs.json"
+    path = get_version_dir(working_dir, version) / ARTIFACT_FEATURE_SPECS
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else None
@@ -320,7 +327,7 @@ def load_vision(
     vision exists. Returns ``None`` when the file is absent or unreadable.
     """
     version = active_version(working_dir, session)
-    path = get_version_dir(working_dir, version) / "vision.json"
+    path = get_version_dir(working_dir, version) / ARTIFACT_VISION
     if not path.exists():
         return None
     try:
@@ -351,7 +358,7 @@ def load_prior_ai_features(working_dir: str | Path) -> dict[str, Any] | None:
     version = latest_implemented_version(working_dir)
     if version is None:
         return None
-    path = get_version_dir(working_dir, version) / "ai_features.json"
+    path = get_version_dir(working_dir, version) / ARTIFACT_AI_FEATURES
     if not path.exists():
         return None
     try:
@@ -402,7 +409,7 @@ def load_prior_stack(working_dir: str | Path) -> dict[str, Any] | None:
     version = latest_implemented_version(working_dir)
     if version is None:
         return None
-    path = get_version_dir(working_dir, version) / "stack.json"
+    path = get_version_dir(working_dir, version) / ARTIFACT_STACK
     if not path.exists():
         return None
     try:

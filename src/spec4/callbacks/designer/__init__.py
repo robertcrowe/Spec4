@@ -179,7 +179,7 @@ def render_designer_step(
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_mock_stream_poll(n: Any, store: Any) -> Any:
+def on_mock_stream_poll(_n: Any, store: Any) -> Any:
     """Poll the mock generation thread and deliver completion in-band.
 
     On each tick this updates mock-stream-buffer with token/progress info.

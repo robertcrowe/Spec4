@@ -98,7 +98,7 @@ class _Gated:
         self.gates[n].set()
 
     def gen(self) -> Generator[str, None, None]:
-        for gate, chunk in zip(self.gates, self.chunks):
+        for gate, chunk in zip(self.gates, self.chunks, strict=False):
             gate.wait(5.0)
             self.yielded += 1
             yield chunk

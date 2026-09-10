@@ -13,6 +13,7 @@ uses too, so a refine and a first draw cannot diverge.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from dash import ALL, Input, Output, State, callback, ctx, no_update
@@ -70,7 +71,7 @@ def on_designer_refine_upload(
             images[i] = {**images[i], "annotation": ann or ""}
     new_contents = contents if isinstance(contents, list) else [contents]
     new_filenames = filename if isinstance(filename, list) else [filename]
-    for data, fname in zip(new_contents, new_filenames):
+    for data, fname in zip(new_contents, new_filenames, strict=False):
         images.append({"data": data, "filename": fname or "image", "annotation": ""})
     return {**store, "refine_images": images, "refine_text": refine_text or ""}
 
@@ -313,10 +314,8 @@ def _rerun_failed_draw(store: Any, session: Any, image_support: Any) -> Any:
             / "design"
             / "mock.html"
         )
-        try:
+        with contextlib.suppress(OSError, FileNotFoundError):
             existing_html = mock_path.read_text()
-        except (OSError, FileNotFoundError):
-            pass
     # D-DM8: a retry must reproduce the draw it is retrying. Both the mode and
     # the planning context now come back: refine draws carry planning context
     # too (they always did at the refine call site), and every draw is

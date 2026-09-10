@@ -30,7 +30,15 @@ from typing import Any, NamedTuple
 from dash import html
 
 from spec4 import project_manager
-from spec4.app_constants import AGENT_KEYS
+from spec4.app_constants import (
+    AGENT_KEYS,
+    ARTIFACT_AI_FEATURES,
+    ARTIFACT_CODE_REVIEW,
+    ARTIFACT_FEATURE_SPECS,
+    ARTIFACT_STACK,
+    ARTIFACT_USAGE,
+    ARTIFACT_VISION,
+)
 
 __all__ = [
     "ARTIFACT_TREE_IDS",
@@ -181,21 +189,21 @@ class TreeLine(NamedTuple):
 # that adding a pipeline stage fails the coverage test rather than silently
 # dropping its artifacts off the tree.
 _ARTIFACTS_BY_AGENT: dict[str, tuple[TreeArtifact, ...]] = {
-    "code_scanner": (TreeArtifact("code_review.json", LANE_REF),),
+    "code_scanner": (TreeArtifact(ARTIFACT_CODE_REVIEW, LANE_REF),),
     # Brainstormer writes both of these in the same persist step: the vision
     # and the per-feature specs behind it.
     "brainstormer": (
-        TreeArtifact("vision.json", LANE_REF),
-        TreeArtifact("feature_specs.json", LANE_REF),
+        TreeArtifact(ARTIFACT_VISION, LANE_REF),
+        TreeArtifact(ARTIFACT_FEATURE_SPECS, LANE_REF),
     ),
-    "agentifier": (TreeArtifact("ai_features.json", LANE_REF),),
+    "agentifier": (TreeArtifact(ARTIFACT_AI_FEATURES, LANE_REF),),
     # The mock is what a coding agent is handed; the manifest is the same
     # design as data. Both are reference, and both land together.
     "designer": (
         TreeArtifact("design/mock.html", LANE_REF),
         TreeArtifact("design/manifest.json", LANE_REF),
     ),
-    "stack_advisor": (TreeArtifact("stack.json", LANE_REF),),
+    "stack_advisor": (TreeArtifact(ARTIFACT_STACK, LANE_REF),),
     # The one prompt lane: the phase files are the instructions the coding
     # agent is given, verbatim.
     "phaser": (TreeArtifact("phases/", LANE_PROMPT),),
@@ -206,7 +214,7 @@ _ARTIFACTS_BY_AGENT: dict[str, tuple[TreeArtifact, ...]] = {
 # every agent and read by none, which is exactly why it is here and not above:
 # it has no freshness edges at all (D-LR3).
 _UNOWNED_ARTIFACTS: tuple[TreeArtifact, ...] = (
-    TreeArtifact("usage.json", LANE_RECORD),
+    TreeArtifact(ARTIFACT_USAGE, LANE_RECORD),
 )
 
 # D-LR3: ``usage.json`` is never Needs Update. It is deliberately absent from
@@ -217,7 +225,7 @@ _UNOWNED_ARTIFACTS: tuple[TreeArtifact, ...] = (
 # else. The exemption is restated here, at the point of use, so that a later
 # "compute every line the same way" refactor has to delete a named rule rather
 # than merely forget one.
-_STALENESS_EXEMPT: frozenset[str] = frozenset({"usage.json"})
+_STALENESS_EXEMPT: frozenset[str] = frozenset({ARTIFACT_USAGE})
 
 
 def _artifact_groups() -> tuple[tuple[str | None, tuple[TreeArtifact, ...]], ...]:

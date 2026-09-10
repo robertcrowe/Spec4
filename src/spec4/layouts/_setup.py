@@ -228,7 +228,7 @@ def model_field(
 
 
 def _setup_provider_layout(
-    session: dict[str, Any],
+    _session: dict[str, Any],
     prefs: dict[str, Any],
     labels: list[str],
     setup_error: str | None,

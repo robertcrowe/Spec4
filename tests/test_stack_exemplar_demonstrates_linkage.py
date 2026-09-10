@@ -103,7 +103,7 @@ def _matches(pattern: str, path: str) -> bool:
     seg = path.split(".")
     if len(pat) != len(seg):
         return False
-    return all(p == "*" or p == s for p, s in zip(pat, seg))
+    return all(p == "*" or p == s for p, s in zip(pat, seg, strict=False))
 
 
 def _is_demonstrated(field: str, pattern: str) -> bool:

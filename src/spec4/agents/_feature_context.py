@@ -1044,7 +1044,7 @@ def feature_specs_for_stack(
     if not feats:
         return ""
 
-    ai_served = _stack_ai_served_ids(ai_features)
+    ai_served = ai_served_feature_ids(ai_features)
 
     lines: list[str] = [
         "**Feature specifications (from Brainstormer) — the authoritative "
@@ -1071,25 +1071,6 @@ def feature_specs_for_stack(
     _stack_nfr_lines(feature_specs, lines)
 
     return "\n".join(lines)
-
-
-def _stack_ai_served_ids(ai_features: dict[str, Any] | None) -> set[str]:
-    """Product-feature ids some AI node serves, read from ``vision_grounding``."""
-    # Product-feature ids that some AI node serves. The serves relation lives in
-    # ``vision_grounding.served_features`` (an AI node serves a product feature —
-    # never shares its id), so this is the only sound "is this feature AI-backed"
-    # signal available without the manifest (D-SC5).
-    ai_served: set[str] = set()
-    for node in (ai_features or {}).get("ai_features") or []:
-        if not isinstance(node, dict) or node.get("kind") == INFRA_KIND:
-            continue
-        grounding = node.get("vision_grounding") or {}
-        for sf in grounding.get("served_features") or []:
-            if isinstance(sf, dict):
-                for key in ("id", "name"):
-                    if sf.get(key):
-                        ai_served.add(str(sf[key]))
-    return ai_served
 
 
 def _stack_feature_spec_lines(

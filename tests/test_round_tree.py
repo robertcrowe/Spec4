@@ -577,7 +577,7 @@ class TestRendering:
         plain = _listing(_round_tree(round_dir, 0)).children
         linked = _listing(_round_tree(round_dir, 0, linked=True)).children
         assert len(plain) == len(linked)
-        for plain_row, linked_row in zip(plain, linked):
+        for plain_row, linked_row in zip(plain, linked, strict=False):
             assert plain_row.className == linked_row.className
             assert _text(plain_row) == _text(linked_row)
             # The two spans inside are identical; the link is a wrapper.

@@ -42,7 +42,13 @@ from spec4.layouts._round_tree import (
     rendered_tree_lines,
 )
 from spec4.layouts._status_bar import ARTIFACTS_PATH
-from spec4.app_constants import PATH_TO_PHASE
+from spec4.app_constants import (
+    ARTIFACT_AI_FEATURES,
+    ARTIFACT_CODE_REVIEW,
+    ARTIFACT_STACK,
+    ARTIFACT_VISION,
+    PATH_TO_PHASE,
+)
 from spec4.session import _default_session
 
 
@@ -377,7 +383,7 @@ def _build_phases_zip(session: dict[str, Any]) -> Any:
 def dl_vision(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return _send_json(session.get("vision_statement"), "vision.json")
+    return _send_json(session.get("vision_statement"), ARTIFACT_VISION)
 
 
 @callback(
@@ -389,7 +395,7 @@ def dl_vision(n: Any, session: Any) -> Any:
 def dl_stack(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return _send_json(session.get("stack_statement"), "stack.json")
+    return _send_json(session.get("stack_statement"), ARTIFACT_STACK)
 
 
 @callback(
@@ -401,7 +407,7 @@ def dl_stack(n: Any, session: Any) -> Any:
 def dl_code_review(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return _send_json(session.get("code_review"), "code_review.json")
+    return _send_json(session.get("code_review"), ARTIFACT_CODE_REVIEW)
 
 
 @callback(
@@ -413,7 +419,7 @@ def dl_code_review(n: Any, session: Any) -> Any:
 def dl_features(n: Any, session: Any) -> Any:
     if not n:
         return no_update
-    return _send_json(session.get("ai_features"), "ai_features.json")
+    return _send_json(session.get("ai_features"), ARTIFACT_AI_FEATURES)
 
 
 @callback(

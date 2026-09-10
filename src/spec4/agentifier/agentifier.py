@@ -95,7 +95,12 @@ from spec4.agents._turn_flow import (
     last_assistant_text,
     replay_last_assistant,
 )
-from spec4.app_constants import FF_PROMPT, STATE_AGENTIFIER_COMPLETE, STATE_IN_PROGRESS
+from spec4.app_constants import (
+    ARTIFACT_AI_FEATURES,
+    FF_PROMPT,
+    STATE_AGENTIFIER_COMPLETE,
+    STATE_IN_PROGRESS,
+)
 from spec4.agentifier._ff_review import (
     _ff_sweep_cross_cutting,
     _present_cc_ff_review,
@@ -812,7 +817,7 @@ def _discovery_guidance(session: dict[str, Any]) -> list[dict[str, Any]]:
             project_manager.get_version_dir(
                 working_dir, project_manager.active_version(working_dir, session)
             )
-            / "ai_features.json"
+            / ARTIFACT_AI_FEATURES
         )
         try:
             prior = json.loads(path.read_text(encoding="utf-8"))
@@ -1470,7 +1475,7 @@ def _begin_priority_phase(
 def _run_priority_phase(
     user_input: str | None,
     session: dict[str, Any],
-    llm_config: dict[str, Any],
+    _llm_config: dict[str, Any],
 ) -> Generator[str, None, None]:
     """Handle the phase-priority review turn over the whole feature set.
 
@@ -2403,7 +2408,7 @@ def reset_agentifier_flow(session: dict[str, Any]) -> None:
 
 
 def _handle_reentry(
-    user_input: str | None,
+    _user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
 ) -> Generator[str, None, None]:

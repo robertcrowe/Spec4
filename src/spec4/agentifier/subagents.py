@@ -177,8 +177,8 @@ class SubAgentRegistry:
         """
         try:
             return self._agents[name]
-        except KeyError:
-            raise RegistryLookupError(name)
+        except KeyError as exc:
+            raise RegistryLookupError(name) from exc
 
     async def run(self, name: str, input: Any) -> Any:  # noqa: A002
         """Invoke a request/response sub-agent by name.
@@ -247,8 +247,8 @@ async def run_with_timeout(coro: Any, *, timeout: float, name: str) -> Any:
     try:
         async with asyncio.timeout(timeout):
             return await coro
-    except TimeoutError:
-        raise SubAgentTimeoutError(name, timeout)
+    except TimeoutError as exc:
+        raise SubAgentTimeoutError(name, timeout) from exc
 
 
 # ---------------------------------------------------------------------------

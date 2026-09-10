@@ -7,6 +7,9 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, TypedDict
 
+from spec4.app_constants import (
+    ARTIFACT_MANIFEST,
+)
 from spec4 import llm
 from spec4.agents._manifest import MANIFEST_END, MANIFEST_START
 from spec4.websearch import WEB_SEARCH_TOOL, search as web_search
@@ -196,7 +199,7 @@ def detect_has_ui_source(project_root: Path, design_dir: Path | None = None) -> 
     """Return True if mock.html exists or the project contains UI source files."""
     if design_dir is not None and (design_dir / "mock.html").exists():
         return True
-    for root, dirs, files in project_root.walk():
+    for _root, dirs, files in project_root.walk():
         dirs[:] = sorted(d for d in dirs if d not in _EXCLUDED_DIRS)
         for fname in files:
             if Path(fname).suffix.lower() in _UI_EXTENSIONS:
@@ -241,14 +244,14 @@ def save_mock(html: str, design_dir: Path) -> None:
 def save_manifest(manifest: dict[str, Any], design_dir: Path) -> None:
     """Write the design manifest to design_dir/manifest.json (D-DM)."""
     design_dir.mkdir(parents=True, exist_ok=True)
-    (design_dir / "manifest.json").write_text(
+    (design_dir / ARTIFACT_MANIFEST).write_text(
         json.dumps(manifest, indent=2), encoding="utf-8"
     )
 
 
 def clear_session(design_dir: Path) -> None:
     """Delete session.json and mock.html from design_dir if they exist."""
-    for name in ("session.json", "mock.html", "manifest.json"):
+    for name in ("session.json", "mock.html", ARTIFACT_MANIFEST):
         f = design_dir / name
         if f.exists():
             f.unlink()

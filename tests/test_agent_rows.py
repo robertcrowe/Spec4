@@ -232,7 +232,7 @@ class TestEachRowsCells:
         self, tmp_path: pathlib.Path
     ) -> None:
         rendered = _agent_rows(tmp_path, 0, _session(tmp_path))
-        for key, row in zip(AGENT_KEYS, _rows_of(rendered)):
+        for key, row in zip(AGENT_KEYS, _rows_of(rendered), strict=False):
             assert _text(_cell(row, "agent")) == AGENT_DISPLAY_NAMES[key]
             assert _text(_cell(row, "produces")) == AGENT_PRODUCES[key]
 
@@ -330,13 +330,13 @@ class TestTheActionIsNotReDerived:
     def test_the_label_follows_the_state(self, two_state_project: pathlib.Path) -> None:
         rendered = _agent_rows(two_state_project, 0, _session(two_state_project))
         rows = agent_rows(two_state_project, 0, _session(two_state_project))
-        for row, node in zip(rows, _rows_of(rendered)):
+        for row, node in zip(rows, _rows_of(rendered), strict=False):
             assert _text(_button(node)) == ACTION_LABELS[row.action]
 
     def test_only_not_ready_is_disabled(self, two_state_project: pathlib.Path) -> None:
         rendered = _agent_rows(two_state_project, 0, _session(two_state_project))
         rows = agent_rows(two_state_project, 0, _session(two_state_project))
-        for row, node in zip(rows, _rows_of(rendered)):
+        for row, node in zip(rows, _rows_of(rendered), strict=False):
             assert _button(node).disabled == (row.action == _NOT_READY)
             assert row.disabled == (row.action == _NOT_READY)
 

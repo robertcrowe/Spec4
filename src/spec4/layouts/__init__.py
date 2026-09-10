@@ -30,7 +30,13 @@ from dash import html
 import dash_mantine_components as dmc
 
 from spec4 import project_manager
-from spec4.app_constants import PROJECT_MODE_EXISTING, PROJECT_MODE_NEW
+from spec4.app_constants import (
+    ARTIFACT_CODE_REVIEW,
+    ARTIFACT_STACK,
+    ARTIFACT_VISION,
+    PROJECT_MODE_EXISTING,
+    PROJECT_MODE_NEW,
+)
 from spec4.layouts._agent_rows import (
     _AGENT_ROWS,
     _agent_action_button,
@@ -232,7 +238,7 @@ def _working_dir_layout(session: dict[str, Any]) -> html.Div:
 # ---------------------------------------------------------------------------
 
 
-def _project_mode_layout(session: dict[str, Any]) -> html.Div:
+def _project_mode_layout(_session: dict[str, Any]) -> html.Div:
     """Ask whether the working directory holds a project we are modifying.
 
     Spec4 cannot tell a real codebase from a `uv init` skeleton by looking at
@@ -315,7 +321,9 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
         if working_dir
         else None
     )
-    review_in_spec4 = bool(version_dir and (version_dir / "code_review.json").exists())
+    review_in_spec4 = bool(
+        version_dir and (version_dir / ARTIFACT_CODE_REVIEW).exists()
+    )
 
     mock_loaded = bool(version_dir and (version_dir / "design" / "mock.html").exists())
 
@@ -363,9 +371,7 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
     if error:
         children.append(_error(error))
 
-    _append_new_round_children(
-        children, session, new_round, round_number, review_in_spec4
-    )
+    _append_new_round_children(children, session, new_round, review_in_spec4)
 
     _append_loaded_children(children, loaded_items, new_round)
 
@@ -383,9 +389,9 @@ def _agent_select_loaded_items(session: dict[str, Any], mock_loaded: bool) -> li
     phases_loaded = bool(session.get("phases"))
     loaded_items = []
     if vision_loaded:
-        loaded_items.append("vision.json")
+        loaded_items.append(ARTIFACT_VISION)
     if stack_loaded:
-        loaded_items.append("stack.json")
+        loaded_items.append(ARTIFACT_STACK)
     if phases_loaded:
         loaded_items.append(f"phases/ ({len(session['phases'])} phases)")
     if mock_loaded:
@@ -397,7 +403,6 @@ def _append_new_round_children(
     children: list[Any],
     session: dict[str, Any],
     new_round: bool,
-    round_number: Any,
     review_in_spec4: bool,
 ) -> None:
     """The new-round block: what a fresh round carries forward and what it rescans."""

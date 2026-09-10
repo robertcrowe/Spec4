@@ -577,7 +577,7 @@ class TestProjectViewIds:
         self, tmp_path: pathlib.Path
     ) -> None:
         session = _session(working_dir=str(tmp_path), phase="agent_select")
-        assert _ROUND_TREE_IDS <= _page_ids(_render(session))
+        assert _page_ids(_render(session)) >= _ROUND_TREE_IDS
 
     def test_the_retired_button_is_on_no_screen(self, tmp_path: pathlib.Path) -> None:
         """The change-provider button left the project view for the bar.
@@ -619,7 +619,7 @@ class TestAgentRowIds:
         self, tmp_path: pathlib.Path
     ) -> None:
         session = _session(working_dir=str(tmp_path), phase="agent_select")
-        assert _AGENT_ROW_IDS <= _page_ids(_render(session))
+        assert _page_ids(_render(session)) >= _AGENT_ROW_IDS
 
     def test_there_is_one_row_id_per_pipeline_agent(self) -> None:
         assert {f"agent-row-{key}" for key in AGENT_KEYS} < _AGENT_ROW_IDS
@@ -689,7 +689,7 @@ class TestRoundCostIds:
         self, tmp_path: pathlib.Path
     ) -> None:
         session = _session(working_dir=str(tmp_path), phase="agent_select")
-        assert _ROUND_COST_IDS <= _page_ids(_render(session))
+        assert _page_ids(_render(session)) >= _ROUND_COST_IDS
 
     def test_the_strip_does_not_reuse_the_chat_cards_id(self) -> None:
         """The chat frame's cost card keeps `cost-summary-card` to itself.
@@ -778,7 +778,7 @@ class TestArtifactViewIds:
 
     def test_the_artifact_screen_renders_every_id(self, tmp_path: pathlib.Path) -> None:
         session = _session(working_dir=str(tmp_path), phase="artifacts")
-        assert _ARTIFACT_VIEW_IDS <= _page_ids(_render(session))
+        assert _page_ids(_render(session)) >= _ARTIFACT_VIEW_IDS
 
     def test_it_reuses_no_existing_screen_id(self, tmp_path: pathlib.Path) -> None:
         """New ids, not renamed ones — the existing ids are a test contract.
@@ -811,7 +811,7 @@ class TestArtifactViewIds:
     def test_the_project_view_ids_are_untouched(self, tmp_path: pathlib.Path) -> None:
         """The screen this round adds must not disturb the one it links from."""
         session = _session(working_dir=str(tmp_path), phase="agent_select")
-        assert _PROJECT_VIEW_IDS <= _page_ids(_render(session))
+        assert _page_ids(_render(session)) >= _PROJECT_VIEW_IDS
 
     def test_the_screen_is_reached_by_the_screen_list(
         self, tmp_path: pathlib.Path

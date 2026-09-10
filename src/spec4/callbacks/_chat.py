@@ -103,7 +103,9 @@ def on_init_turn(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_chat_submit(n_clicks: Any, n_submit: Any, user_input: Any, session: Any) -> Any:
+def on_chat_submit(
+    _n_clicks: Any, _n_submit: Any, user_input: Any, session: Any
+) -> Any:
     if not user_input or not user_input.strip():
         return no_update, no_update, no_update
     if session.get("_stream_id"):
@@ -454,7 +456,7 @@ _EMPTY_TURN_NOTICE = (
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_stream_poll(n: Any, session: Any) -> Any:
+def on_stream_poll(_n: Any, session: Any) -> Any:
     stream_id = session.get("_stream_id")
     if not stream_id:
         return no_update, 0

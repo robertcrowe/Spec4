@@ -305,9 +305,7 @@ def run(  # noqa: C901, PLR0912, PLR0915  # nine-yield generator; the surviving 
         # surfacing the specific errors back to the model. On providers
         # that support it, force json_object mode so the retry response
         # is pure JSON instead of prose-wrapped re-explanation.
-        retry_user_msg, response_format = _scanner_retry_prompt(
-            msgs, errors, llm_config
-        )
+        retry_user_msg, response_format = _scanner_retry_prompt(errors, llm_config)
         # The re-ask drains silently — its body is raw or fenced JSON the user
         # should never see — while publishing the running char total so the
         # counter does not freeze for its duration (D-SC-P1 / D-PH9).
@@ -352,7 +350,7 @@ def _scanner_seed(
 
 
 def _scanner_retry_prompt(
-    msgs: list[dict[str, Any]], errors: list[Any], llm_config: dict[str, Any]
+    errors: list[Any], llm_config: dict[str, Any]
 ) -> tuple[str, dict[str, Any] | None]:
     """The retry message and response format for a schema-failed review."""
     retry_user_msg = format_validation_errors_for_retry(errors)
