@@ -44,7 +44,10 @@ from spec4.layouts.designer import (
     _step6_content,
     _step7_content,
 )
-from spec4.session import _default_session, _reset_for_new_project
+from spec4.session import (
+    default_session as _default_session,
+    reset_for_new_project as _reset_for_new_project,
+)
 
 # The round tree's ids, added to the project view this round. Listed rather
 # than derived so that renaming one of them has to be a deliberate edit here.

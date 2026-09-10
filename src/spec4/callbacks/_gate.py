@@ -140,7 +140,7 @@ def on_gate_use_default(n: Any, session: Any) -> Any:
 def on_gate_keep(n: Any, session: Any) -> Any:
     """Keep a carried-forward override: no key re-entry, no re-probe.
 
-    The entry survived `_reset_for_new_project` intact — credential, model list
+    The entry survived `reset_for_new_project` intact — credential, model list
     and both capability flags — so answering costs nothing but the flag.
     """
     if not n:

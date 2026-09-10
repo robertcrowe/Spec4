@@ -263,9 +263,9 @@ class TestOrchestratorSpecPhase:
     """End-to-end: orchestrator drives spec drafting per feature."""
 
     def _make_session(self) -> dict[str, Any]:
-        from spec4.session import _default_session
+        from spec4.session import default_session
 
-        session = _default_session()
+        session = default_session()
         session["working_dir"] = "/tmp/spec4-e2e-project"
         session["vision_statement"] = {"vision_statement": {"name": "TestApp"}}
         session["llm_config"] = _LLM_CONFIG
@@ -438,9 +438,9 @@ _CC_ANALYSIS = {
 
 def _make_cc_session() -> dict[str, Any]:
     """Session already past the spec phase, ready for cross-cutting."""
-    from spec4.session import _default_session
+    from spec4.session import default_session
 
-    session = _default_session()
+    session = default_session()
     session["working_dir"] = "/tmp/spec4-cc-test"
     session["llm_config"] = _LLM_CONFIG
     session["active_agent"] = "agentifier"
@@ -610,9 +610,9 @@ class TestFullPipeline:
     """End-to-end: spec phase → cross-cutting → priority tagging → STATE_AGENTIFIER_COMPLETE."""
 
     def _make_full_session(self) -> dict[str, Any]:
-        from spec4.session import _default_session
+        from spec4.session import default_session
 
-        session = _default_session()
+        session = default_session()
         session["working_dir"] = "/tmp/spec4-full-pipeline"
         session["llm_config"] = _LLM_CONFIG
         session["active_agent"] = "agentifier"

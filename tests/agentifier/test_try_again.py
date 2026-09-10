@@ -32,7 +32,7 @@ from spec4.agentifier.scout import Candidate, ScoutOutput
 from spec4.agentifier.tier_analyst import TierAnalystOutput
 from spec4.app_constants import STATE_AGENTIFIER_COMPLETE, STATE_IN_PROGRESS
 from spec4.callbacks import on_breadth_try_again
-from spec4.session import _default_session, _persist_artifacts
+from spec4.session import default_session, _persist_artifacts
 
 from .test_agentifier_orchestrator import (
     _LLM_CONFIG,
@@ -82,7 +82,7 @@ class TestResetCompleteness:
 
     def test_defaults_match_the_session_defaults(self) -> None:
         """Restored values must be the documented session shape, not guesses."""
-        defaults = _default_session()
+        defaults = default_session()
         shared = set(_RESTART_DEFAULTS) & set(defaults)
         assert shared, "sanity: the two should overlap substantially"
         for key in sorted(shared):
@@ -223,7 +223,7 @@ class TestDiskIsUntouched:
 
 
 def _session(**overrides: Any) -> dict[str, Any]:
-    session = _default_session()
+    session = default_session()
     session.update(
         {
             "phase": "chat",

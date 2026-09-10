@@ -33,7 +33,7 @@ from spec4 import llm, project_manager, usage_report
 from spec4.agents.designer import generate_mock_streaming
 from spec4.app_constants import FF_PROMPT, STATE_VISION_COMPLETE
 from spec4.layouts._chat import _turn_token_text
-from spec4.session import _default_session, _persist_artifacts
+from spec4.session import default_session, _persist_artifacts
 from tests._chunks import make_stream_chunk, make_usage
 
 _CFG = {"model": "gpt-4o-mini", "api_key": "sk-test"}
@@ -722,7 +722,7 @@ class TestSaveUsageReadModifyWrite:
 
         # This session: the same agent re-run on Anthropic, through the real
         # capture -> sink -> persist funnel path.
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         anthropic_cfg = {"model": "claude-sonnet-4-5-20250929", "api_key": "k"}
         _stream_one("phaser", 300, 50, cfg=anthropic_cfg)
         _persist_artifacts(session)
@@ -915,7 +915,7 @@ class TestUsageIsNotAnArtifact:
     def test_writing_usage_moves_no_agent_state(self, tmp_path: Path) -> None:
         project_manager.save_vision(tmp_path, {"app_name": "x"}, 0)
         project_manager.save_stack(tmp_path, {"stack": []}, 0)
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         before_btn = {
             a: project_manager.agent_button_state(tmp_path, a, session) for a in _AGENTS
         }
@@ -958,7 +958,7 @@ class TestPersistFlush:
         self, tmp_path: Path
     ) -> None:
         _stream_one("scout")
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         _persist_artifacts(session)
         assert session["phase_version"] == 0
         data = project_manager.load_usage(tmp_path, 0)
@@ -971,7 +971,7 @@ class TestPersistFlush:
     def test_fast_forward_turn_is_noted(self, tmp_path: Path) -> None:
         _stream_one("phaser")
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(tmp_path),
             "messages": [
                 {"role": "user", "content": FF_PROMPT},
@@ -984,7 +984,7 @@ class TestPersistFlush:
         assert data["notes"]["fast_forward"] is True
 
     def test_every_turn_writes_not_only_round_end(self, tmp_path: Path) -> None:
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         _stream_one("brainstormer")
         _persist_artifacts(session)
         _stream_one("stack_advisor")
@@ -997,7 +997,7 @@ class TestPersistFlush:
     def test_usage_write_failure_does_not_block_artifacts(self, tmp_path: Path) -> None:
         _stream_one("brainstormer")
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(tmp_path),
             "brainstormer_state": STATE_VISION_COMPLETE,
             "vision_statement": {"app_name": "x"},
@@ -1156,7 +1156,7 @@ class TestAgentRunWithMissingUsage:
         from spec4.agents import brainstormer
 
         chunks = [_delta("Who "), _delta("is it "), _delta("for?", "stop")]
-        session = {**_default_session(), "active_agent": "brainstormer"}
+        session = {**default_session(), "active_agent": "brainstormer"}
         with (
             caplog.at_level(logging.WARNING, logger="spec4.llm"),
             patch.object(brainstormer.llm, "build_system_prompt", return_value=""),
@@ -1211,7 +1211,7 @@ _USAGE_PHASER = {
 class TestTurnTokenReadout:
     def test_persist_records_the_turn_usage(self, tmp_path: Path) -> None:
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(tmp_path),
             "active_agent": "brainstormer",
         }
@@ -1238,9 +1238,9 @@ class TestTurnTokenReadout:
         assert _turn_token_text(session) == "no calls recorded"
 
     def test_persist_counts_missing_usage(self, tmp_path: Path) -> None:
-        from spec4.session import _summarize_turn_usage
+        from spec4.session import summarize_turn_usage
 
-        summary = _summarize_turn_usage(
+        summary = summarize_turn_usage(
             "phaser",
             [
                 _call("phaser", prompt=4180, completion=312),
@@ -1259,7 +1259,7 @@ class TestTurnTokenReadout:
         from spec4.layouts._chat import _token_count_text
 
         session = {
-            **_default_session(),
+            **default_session(),
             "active_agent": "phaser",
             "_stream_received_chars": 8291,
             "_turn_usage": _USAGE_PHASER,
@@ -1272,7 +1272,7 @@ class TestTurnTokenReadout:
     def test_readout_text_states(self) -> None:
         from spec4.layouts._chat import _turn_token_text
 
-        base = {**_default_session(), "active_agent": "phaser"}
+        base = {**default_session(), "active_agent": "phaser"}
         usage = _USAGE_PHASER
         assert _turn_token_text({**base, "_turn_usage": usage}) == (
             "Tokens: 4,180 in / 312 out"
@@ -1306,7 +1306,7 @@ class TestTurnTokenReadout:
 
     def test_row_places_readout_right_after_the_counter_once_done(self) -> None:
         session = {
-            **_default_session(),
+            **default_session(),
             "active_agent": "phaser",
             "phaser_state": "in_progress",
             "_stream_received_chars": 8291,
@@ -1320,7 +1320,7 @@ class TestTurnTokenReadout:
 
     def test_row_has_no_readout_while_streaming(self) -> None:
         session = {
-            **_default_session(),
+            **default_session(),
             "active_agent": "phaser",
             "_stream_id": "abc",
             "_stream_received_chars": 512,
@@ -1334,7 +1334,7 @@ class TestTurnTokenReadout:
 
     def test_row_shows_marker_when_usage_was_missing(self) -> None:
         session = {
-            **_default_session(),
+            **default_session(),
             "active_agent": "phaser",
             "_stream_received_chars": 8291,
             "messages": [{"role": "assistant", "content": "x"}],
@@ -1360,7 +1360,7 @@ class TestFinalisationRunsOnce:
         from spec4 import streaming
 
         session = {
-            **_default_session(),
+            **default_session(),
             "active_agent": "brainstormer",
             "working_dir": str(tmp_path),
             "llm_config": {"model": "gpt-4o-mini"},
@@ -1443,7 +1443,7 @@ class TestNoCallsMarker:
 
     def test_zero_calls_shows_the_marker(self) -> None:
         session = {
-            **_default_session(),
+            **default_session(),
             "active_agent": "phaser",
             "_turn_usage": {
                 "agent": "phaser",
@@ -1456,7 +1456,7 @@ class TestNoCallsMarker:
         assert self._row(session) == "no calls recorded"
 
     def test_it_is_distinct_from_the_missing_usage_marker(self) -> None:
-        base = {**_default_session(), "active_agent": "phaser"}
+        base = {**default_session(), "active_agent": "phaser"}
         no_calls = {
             **base,
             "_turn_usage": {
@@ -1482,13 +1482,13 @@ class TestNoCallsMarker:
 
     def test_a_turn_that_never_ran_still_shows_nothing(self) -> None:
         """The one legitimate silence: no turn has finished for this agent."""
-        session = {**_default_session(), "active_agent": "phaser"}
+        session = {**default_session(), "active_agent": "phaser"}
         assert "_turn_usage" not in session
         assert self._row(session) == ""
 
     def test_another_agents_summary_still_shows_nothing(self) -> None:
         session = {
-            **_default_session(),
+            **default_session(),
             "active_agent": "phaser",
             "_turn_usage": {
                 "agent": "brainstormer",
@@ -1502,7 +1502,7 @@ class TestNoCallsMarker:
 
     def test_the_marker_reaches_the_chat_row(self) -> None:
         session = {
-            **_default_session(),
+            **default_session(),
             "active_agent": "phaser",
             "phaser_state": "in_progress",
             "_stream_received_chars": 8291,
@@ -1520,9 +1520,9 @@ class TestNoCallsMarker:
         assert ids.index("chat-turn-tokens") == ids.index("chat-token-count") + 1
 
     def test_the_summariser_never_returns_none(self) -> None:
-        from spec4.session import _summarize_turn_usage
+        from spec4.session import summarize_turn_usage
 
-        assert _summarize_turn_usage("phaser", []) == {
+        assert summarize_turn_usage("phaser", []) == {
             "agent": "phaser",
             "input": 0,
             "output": 0,

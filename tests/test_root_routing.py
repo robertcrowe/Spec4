@@ -32,12 +32,12 @@ from spec4.callbacks import (
 )
 from spec4.layouts import STATUS_EMPTY
 from spec4.project_manager import directory_opens
-from spec4.session import _default_session
+from spec4.session import default_session
 
 
 def _route(pathname: str, session: Any = None, prefs: Any = None) -> Any:
     """The session the router produces, resolved against ``no_update``."""
-    session = _default_session() if session is None else session
+    session = default_session() if session is None else session
     result = on_browser_navigate(pathname, session, prefs or {})
     return session if result is no_update else result
 
@@ -139,13 +139,13 @@ class TestRootResolution:
     def test_the_open_project_wins_over_the_pref(self, tmp_path: pathlib.Path) -> None:
         """A directory chosen this session is not re-loaded from the pref.
 
-        Re-running `_load_working_dir` would reset the round's chat and agent
+        Re-running `load_working_dir` would reset the round's chat and agent
         state, so an already-open project is routed to as it stands.
         """
         open_dir = tmp_path / "open"
         open_dir.mkdir()
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(open_dir),
             "messages": [{"role": "user", "content": "hi"}],
         }
@@ -185,7 +185,7 @@ class TestRootResolution:
         gone = str(tmp_path / "moved-away")
         session = _route(
             ROOT_PATH,
-            session={**_default_session(), "working_dir": gone},
+            session={**default_session(), "working_dir": gone},
             prefs={"working_dir": gone},
         )
         assert session["working_dir"] is None
@@ -202,7 +202,7 @@ class TestRootResolution:
     def test_the_picker_message_clears_once_a_project_opens(
         self, tmp_path: pathlib.Path
     ) -> None:
-        stale = {**_default_session(), "dir_error": "Could not open /gone."}
+        stale = {**default_session(), "dir_error": "Could not open /gone."}
         session = _route(ROOT_PATH, session=stale, prefs={"working_dir": str(tmp_path)})
         assert session["dir_error"] is None
 
@@ -232,7 +232,7 @@ class TestTheOtherPaths:
         on the missing directory.
         """
         just_closed = {
-            **_default_session(),
+            **default_session(),
             "phase": PHASE_DIRECTORY_PICKER,
             "working_dir": None,
             "browser_path": "/home",
@@ -248,7 +248,7 @@ class TestTheOtherPaths:
     ) -> None:
         """An in-app move keeps the round's state; only the phase changes."""
         live = {
-            **_default_session(),
+            **default_session(),
             "phase": PHASE_PROJECT_VIEW,
             "working_dir": str(tmp_path),
             "messages": [{"role": "user", "content": "hi"}],
@@ -259,7 +259,7 @@ class TestTheOtherPaths:
 
     def test_an_unchanged_phase_is_not_rewritten(self, tmp_path: pathlib.Path) -> None:
         live = {
-            **_default_session(),
+            **default_session(),
             "phase": PHASE_PROJECT_VIEW,
             "working_dir": str(tmp_path),
         }
@@ -280,7 +280,7 @@ class TestTheBarReopensThePicker:
 
     def test_the_directory_is_a_button(self, tmp_path: pathlib.Path) -> None:
         context, *_ = on_status_bar(
-            {**_default_session(), "working_dir": str(tmp_path)}, {}
+            {**default_session(), "working_dir": str(tmp_path)}, {}
         )
         assert "btn-status-bar-dir" in _ids(context)
         # And it still reads as the same field it was — the path, not a label.
@@ -295,7 +295,7 @@ class TestTheBarReopensThePicker:
     def test_a_gone_directory_offers_no_button_either(self) -> None:
         """The bar drops a remembered-but-gone path, and the control with it."""
         context, *_ = on_status_bar(
-            {**_default_session(), "working_dir": None},
+            {**default_session(), "working_dir": None},
             {"working_dir": "/no/such/project"},
         )
         assert "btn-status-bar-dir" not in _ids(context)
@@ -303,7 +303,7 @@ class TestTheBarReopensThePicker:
     def test_pressing_it_opens_the_picker_at_the_project(
         self, tmp_path: pathlib.Path
     ) -> None:
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         new_session, pathname = on_status_bar_dir(1, session)
         assert new_session["phase"] == PHASE_DIRECTORY_PICKER
         assert new_session["browser_path"] == str(tmp_path)
@@ -317,24 +317,24 @@ class TestTheBarReopensThePicker:
         Only `on_dir_select` opens a directory, so this writes neither the
         session's `working_dir` nor the pref — it has no prefs Output at all.
         """
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         new_session, _ = on_status_bar_dir(1, session)
         assert new_session["working_dir"] == str(tmp_path)
 
     def test_it_does_not_fire_on_the_initial_render(self) -> None:
-        assert on_status_bar_dir(None, _default_session()) == (no_update, no_update)
-        assert on_status_bar_dir(0, _default_session()) == (no_update, no_update)
+        assert on_status_bar_dir(None, default_session()) == (no_update, no_update)
+        assert on_status_bar_dir(0, default_session()) == (no_update, no_update)
 
     def test_the_path_it_navigates_to_is_the_picker(self) -> None:
         """The pathname is not a second opinion about which screen /dir is."""
-        _, pathname = on_status_bar_dir(1, _default_session())
+        _, pathname = on_status_bar_dir(1, default_session())
         assert PATH_TO_PHASE[pathname] == PHASE_DIRECTORY_PICKER
 
     def test_the_picker_it_opens_is_the_one_the_router_would(
         self, tmp_path: pathlib.Path
     ) -> None:
         """Routing the URL it sets must not undo the phase it just wrote."""
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         opened, pathname = on_status_bar_dir(1, session)
         routed = _route(pathname, session=opened, prefs={"working_dir": str(tmp_path)})
         assert routed["phase"] == PHASE_DIRECTORY_PICKER
@@ -398,7 +398,7 @@ class TestTheGoneDirectoryLeavesNothingBehind:
     def test_the_status_bar_does_not_name_a_gone_directory(self) -> None:
         gone = "/no/such/project"
         context, *_ = on_status_bar(
-            {**_default_session(), "working_dir": None}, {"working_dir": gone}
+            {**default_session(), "working_dir": None}, {"working_dir": gone}
         )
         assert gone not in _text(context)
         assert STATUS_EMPTY in _text(context)
@@ -407,12 +407,12 @@ class TestTheGoneDirectoryLeavesNothingBehind:
         self, tmp_path: pathlib.Path
     ) -> None:
         context, *_ = on_status_bar(
-            {**_default_session(), "working_dir": str(tmp_path)}, {}
+            {**default_session(), "working_dir": str(tmp_path)}, {}
         )
         assert str(tmp_path) in _text(context)
 
     def test_the_picker_does_not_browse_into_a_gone_directory(self) -> None:
-        session = {**_default_session(), "phase": PHASE_DIRECTORY_PICKER}
+        session = {**default_session(), "phase": PHASE_DIRECTORY_PICKER}
         _, _, written = app_module.render_page(
             session, {"working_dir": "/no/such/project"}, 0, None, None
         )
@@ -421,7 +421,7 @@ class TestTheGoneDirectoryLeavesNothingBehind:
     def test_the_picker_browses_into_a_real_remembered_directory(
         self, tmp_path: pathlib.Path
     ) -> None:
-        session = {**_default_session(), "phase": PHASE_DIRECTORY_PICKER}
+        session = {**default_session(), "phase": PHASE_DIRECTORY_PICKER}
         _, _, written = app_module.render_page(
             session, {"working_dir": str(tmp_path)}, 0, None, None
         )
@@ -432,7 +432,7 @@ class TestTheGoneDirectoryLeavesNothingBehind:
     ) -> None:
         """What the picker shows and what the button opens are one directory."""
         session = {
-            **_default_session(),
+            **default_session(),
             "phase": PHASE_DIRECTORY_PICKER,
             "browser_path": "/no/such/project",
         }
@@ -499,7 +499,7 @@ class TestNoLandingIsReachable:
         for phase in (PHASE_ROOT, *PATH_TO_PHASE.values()):
             if phase in ("chat", "designer"):
                 continue  # both need a live project; covered by their own suites
-            session = {**_default_session(), "phase": phase, "project_mode": "new"}
+            session = {**default_session(), "phase": phase, "project_mode": "new"}
             assert "btn-landing-start" not in _ids(_page(session))
 
 
@@ -533,8 +533,8 @@ class TestNothingRendersBeforeResolution:
         assert not getattr(container, "children", None)
 
     def test_the_unresolved_phase_draws_nothing(self) -> None:
-        assert _default_session()["phase"] == PHASE_ROOT
-        assert _page(_default_session()) == []
+        assert default_session()["phase"] == PHASE_ROOT
+        assert _page(default_session()) == []
 
     def test_an_unknown_phase_draws_nothing(self) -> None:
-        assert _page({**_default_session(), "phase": "landing"}) == []
+        assert _page({**default_session(), "phase": "landing"}) == []

@@ -38,7 +38,7 @@ from spec4.layouts._chat import _chat_action_buttons, _chat_layout
 from spec4.layouts._llm_gate import gate_card, is_open, model_chip
 from spec4.layouts.designer import designer_layout
 from spec4.project_manager import _USAGE_ROLLUP_PARENT
-from spec4.session import _default_session, _get_agent_gen, _reset_for_new_project
+from spec4.session import default_session, _get_agent_gen, reset_for_new_project
 
 _SRC = pathlib.Path(__file__).resolve().parents[1] / "src" / "spec4"
 
@@ -55,7 +55,7 @@ _OVERRIDE_CONFIG = {
 
 
 def _session(**extra: Any) -> dict[str, Any]:
-    session = _default_session()
+    session = default_session()
     session.update(
         {
             "provider": "anthropic",
@@ -196,7 +196,7 @@ class TestResolve:
 
     def test_unconfigured_session_still_yields_none(self) -> None:
         """Preserves the pre-change failure mode rather than inventing a config."""
-        assert llm_selection.resolve(_default_session(), "phaser") is None
+        assert llm_selection.resolve(default_session(), "phaser") is None
 
 
 class TestEffortResolution:
@@ -225,7 +225,7 @@ class TestEffortResolution:
         assert llm_selection.effort_for(session, "phaser") == "default"
 
     def test_an_unconfigured_session_reads_as_default(self) -> None:
-        assert llm_selection.effort_for(_default_session(), "phaser") == "default"
+        assert llm_selection.effort_for(default_session(), "phaser") == "default"
 
     def test_effort_travels_inside_the_resolved_config(self) -> None:
         """What makes sub-agent inheritance free: it rides the object itself."""
@@ -474,7 +474,7 @@ class TestOverridesSurviveTheDefaultChanging:
     def test_new_project_keeps_overrides_but_re_asks(self) -> None:
         session = _with_override("code_scanner")
         session["agent_llm_asked"] = {"code_scanner": True}
-        fresh = _reset_for_new_project(session)
+        fresh = reset_for_new_project(session)
         assert fresh["agent_llm"] == session["agent_llm"]
         assert fresh["agent_llm_asked"] == {}
 
@@ -482,7 +482,7 @@ class TestOverridesSurviveTheDefaultChanging:
 class TestDefaultSessionKeys:
     @pytest.mark.parametrize("key", ["agent_llm", "agent_llm_asked", "agent_llm_error"])
     def test_key_is_present(self, key: str) -> None:
-        assert key in _default_session()
+        assert key in default_session()
 
     def test_error_is_transient(self) -> None:
         from spec4.session import _PRESERVED_SETUP_KEYS
@@ -599,7 +599,7 @@ class TestGateCardShapes:
 
     def test_survives_a_new_project_as_the_keep_shape(self) -> None:
         """The state §2.1 hands over: entry preserved, answer cleared."""
-        fresh = _reset_for_new_project(_with_override("code_scanner"))
+        fresh = reset_for_new_project(_with_override("code_scanner"))
         assert is_open(fresh, "code_scanner")
         assert _find(gate_card(fresh, {}, "code_scanner"), "btn-agent-llm-keep")
 

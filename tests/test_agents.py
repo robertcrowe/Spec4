@@ -2449,7 +2449,7 @@ class TestDeployerExistingPlanGuard:
     user returns — including in a fresh browser with no in-memory state."""
 
     def _returning_session(self, **overrides: Any) -> dict[str, Any]:
-        # Mirrors what session._load_working_dir produces when an on-disk
+        # Mirrors what session.load_working_dir produces when an on-disk
         # deployment-plan.md is detected: state is COMPLETE, the "existed"
         # flag is True, the in-memory plan markdown is None, no chat history.
         defaults: dict[str, Any] = dict(
@@ -2469,7 +2469,7 @@ class TestDeployerExistingPlanGuard:
         # The agent's first turn must inform the developer that an existing
         # plan was found and ask how they want to proceed, rather than the
         # generic "which coding agent are you using" intro. Mirror what
-        # _load_working_dir produces: a working_dir with an on-disk plan, and
+        # load_working_dir produces: a working_dir with an on-disk plan, and
         # the _deployer_plan_existed flag set from having detected it.
         from spec4 import project_manager
 

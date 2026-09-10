@@ -2026,10 +2026,10 @@ class TestDesignerRetryWithADifferentModel:
     _ERROR = "AnthropicException - Network is unreachable"
 
     def _session(self, **extra: Any) -> dict[str, Any]:
-        from spec4.session import _default_session
+        from spec4.session import default_session
 
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": "/tmp",
             "phase": "designer",
             "project_mode": "new",
@@ -2192,10 +2192,10 @@ class TestDesignerAutoRetry:
     }
 
     def _session(self, **extra: Any) -> dict[str, Any]:
-        from spec4.session import _default_session
+        from spec4.session import default_session
 
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": "/tmp",
             "phase": "designer",
             "project_mode": "new",
@@ -2330,10 +2330,10 @@ class TestDesignerLayoutWithoutProject:
 
     def test_no_project_renders_the_wizard(self) -> None:
         from spec4.layouts.designer import designer_layout
-        from spec4.session import _default_session
+        from spec4.session import default_session
 
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": None,
             "phase": "designer",
             "provider": "anthropic",

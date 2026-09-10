@@ -195,9 +195,9 @@ def _mock_litellm_stream(text: str) -> Any:
 
 
 def _make_session_for_breadth() -> dict[str, Any]:
-    from spec4.session import _default_session
+    from spec4.session import default_session
 
-    session = _default_session()
+    session = default_session()
     session["vision_statement"] = _SAMPLE_VISION
     session["llm_config"] = _LLM_CONFIG
     session["active_agent"] = "agentifier"
@@ -527,9 +527,9 @@ class TestFinalizeSpecsExplicitlyRejected:
         import json as _json
         from unittest.mock import patch
         from spec4.agentifier.agentifier import _finalize_specs
-        from spec4.session import _default_session
+        from spec4.session import default_session
 
-        session = _default_session()
+        session = default_session()
         session["agentifier_messages"] = []
         session["agentifier_compositions"] = []
         session["ai_catalog"] = {"ai_catalog": []}

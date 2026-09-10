@@ -51,7 +51,7 @@ from spec4.app_constants import (
     PHASE_PROJECT_VIEW,
     PHASE_ROOT,
 )
-from spec4.session import _default_session, _load_working_dir
+from spec4.session import default_session, load_working_dir
 from spec4.callbacks._shared import _HOME
 from spec4.callbacks._setup import (
     on_search_provider_hint,
@@ -351,7 +351,7 @@ def _resolve_root(session: dict[str, Any], prefs: dict[str, Any]) -> dict[str, A
         # Remembered across a browser restart: the pref outlived the session
         # store, so the project's artifacts are loaded here before the view
         # that reports them is asked to draw.
-        session = _load_working_dir(remembered, session)
+        session = load_working_dir(remembered, session)
     return {**session, "phase": PHASE_PROJECT_VIEW, "dir_error": None}
 
 
@@ -372,7 +372,7 @@ def on_browser_navigate(pathname: Any, session: Any, prefs: Any) -> Any:
     destinations. Anything unrecognised is treated as the root rather than
     guessed at, so no URL can strand the app on a blank page.
     """
-    session = session or _default_session()
+    session = session or default_session()
     prefs = prefs or {}
     if pathname not in PATH_TO_PHASE:
         return _no_change(session, _resolve_root(session, prefs))
@@ -384,7 +384,7 @@ def on_browser_navigate(pathname: Any, session: Any, prefs: Any) -> Any:
         # The phase still comes from the path, but the project it describes
         # outlived the session store and has to be re-loaded from the pref.
         new_session = {
-            **_load_working_dir(prefs["working_dir"], session),
+            **load_working_dir(prefs["working_dir"], session),
             "phase": phase,
         }
     return _no_change(session, new_session)
@@ -443,7 +443,7 @@ def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
     if not project_manager.directory_opens(path):
         path = _HOME
     new_prefs = {**(prefs or {}), "working_dir": path}
-    new_session = _load_working_dir(path, session)
+    new_session = load_working_dir(path, session)
     # If the developer already has a working LLM connection from a previous
     # project, skip the setup screen and drop them straight into agent select.
     # The bar's model slot and its Settings item are there on every screen if

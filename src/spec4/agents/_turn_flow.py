@@ -238,7 +238,7 @@ def maybe_inject_resume_summary(
       msgs has grown and the recap fires.
 
     The flag and the message-count snapshot both clear in
-    `session._load_working_dir()`, so reloading the project directory
+    `session.load_working_dir()`, so reloading the project directory
     triggers a fresh summary on the next visit.
     """
     if not msgs:

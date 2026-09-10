@@ -31,7 +31,7 @@ import dash_mantine_components as dmc
 from spec4 import project_manager
 from spec4.app_constants import PROJECT_MODE_EXISTING, PROJECT_MODE_NEW
 from spec4.layouts import _agent_select_layout, _working_dir_layout
-from spec4.session import _default_session
+from spec4.session import default_session
 
 STYLESHEET = (
     pathlib.Path(__file__).resolve().parent.parent
@@ -104,7 +104,7 @@ def _filled(button: Any) -> bool:
 
 
 def _picker(tmp_path: pathlib.Path, **overrides: Any) -> Any:
-    session = {**_default_session(), "browser_path": str(tmp_path)}
+    session = {**default_session(), "browser_path": str(tmp_path)}
     session.update(overrides)
     return _working_dir_layout(session)
 
@@ -120,7 +120,7 @@ def _question(tmp_path: pathlib.Path) -> Any:
     """The project-mode question, rendered the way the app reaches it."""
     (tmp_path / "main.py").write_text("print('hi')\n")
     session = {
-        **_default_session(),
+        **default_session(),
         "working_dir": str(tmp_path),
         "phase": "agent_select",
     }
@@ -461,7 +461,7 @@ class TestTheQuestionIsStillAskedOncePerSession:
         (tmp_path / "main.py").write_text("x")
         for mode in (PROJECT_MODE_EXISTING, PROJECT_MODE_NEW):
             session = {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(tmp_path),
                 "phase": "agent_select",
                 "project_mode": mode,
@@ -485,7 +485,7 @@ class TestTheQuestionIsStillAskedOncePerSession:
         """
         (tmp_path / "main.py").write_text("x")
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(tmp_path),
             "phase": "agent_select",
         }

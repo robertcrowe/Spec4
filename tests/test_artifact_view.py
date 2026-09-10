@@ -95,7 +95,7 @@ from spec4.layouts._round_tree import (
     rendered_tree_lines,
 )
 from spec4.layouts._status_bar import ARTIFACTS_PATH, NAV_ORDER, _status_bar
-from spec4.session import _default_session
+from spec4.session import default_session
 
 # Every reviewed artifact whose relative path is the same in every round. The
 # ``phases/`` entry is deliberately not here: it is the one entry that stands
@@ -307,7 +307,7 @@ class TestTheRoute:
         assert PATH_TO_PHASE["/design"] == "designer"
 
     def test_the_router_sets_the_phase(self) -> None:
-        session = on_browser_navigate(ARTIFACTS_PATH, _default_session(), {})
+        session = on_browser_navigate(ARTIFACTS_PATH, default_session(), {})
         assert session is not no_update
         assert session["phase"] == ARTIFACTS_PHASE
 
@@ -321,7 +321,7 @@ class TestTheRoute:
         with nothing to resolve against.
         """
         session = on_browser_navigate(
-            ARTIFACTS_PATH, _default_session(), {"working_dir": str(tmp_path)}
+            ARTIFACTS_PATH, default_session(), {"working_dir": str(tmp_path)}
         )
         assert session["phase"] == ARTIFACTS_PHASE
         assert session["working_dir"] == str(tmp_path)
@@ -335,13 +335,13 @@ class TestTheRoute:
         developer gets a blank shell. Asserting the phase name alone would
         pass against exactly that.
         """
-        session = on_browser_navigate(ARTIFACTS_PATH, _default_session(), {})
+        session = on_browser_navigate(ARTIFACTS_PATH, default_session(), {})
         assert "artifact-view-root" in _ids(_page(session))
 
     def test_it_is_not_the_unresolved_phase(self) -> None:
         """A screen that draws nothing is what ``PHASE_ROOT`` is for."""
         assert PATH_TO_PHASE[ARTIFACTS_PATH] != PHASE_ROOT
-        assert _page({**_default_session(), "phase": PHASE_ROOT}) == []
+        assert _page({**default_session(), "phase": PHASE_ROOT}) == []
 
 
 # ---------------------------------------------------------------------------
@@ -391,7 +391,7 @@ class TestTheNavEntry:
 
     def test_it_shows_as_active_on_the_artifact_view(self) -> None:
         _, project, artifacts, settings = on_status_bar(
-            {**_default_session(), "phase": ARTIFACTS_PHASE}, {}
+            {**default_session(), "phase": ARTIFACTS_PHASE}, {}
         )
         assert "active" in artifacts
         assert "active" not in project
@@ -405,7 +405,7 @@ class TestTheNavEntry:
 
 class TestTheScreen:
     def test_it_renders_the_three_new_ids(self) -> None:
-        ids = _ids(_artifact_view_layout(_default_session()))
+        ids = _ids(_artifact_view_layout(default_session()))
         assert {
             "artifact-view-root",
             "artifact-view-sidebar",
@@ -414,7 +414,7 @@ class TestTheScreen:
 
     def test_it_is_two_panes_on_one_grid(self) -> None:
         """The mock's shape: a selector column and a content column."""
-        root = _artifact_view_layout(_default_session())
+        root = _artifact_view_layout(default_session())
         assert root.className == "artifact-layout"
         assert [child.id for child in root.children] == [
             "artifact-view-sidebar",
@@ -423,7 +423,7 @@ class TestTheScreen:
 
     def test_the_selector_pane_is_the_round_select_above_the_tree(self) -> None:
         """In that order: pick a round, then pick a file within it."""
-        root = _artifact_view_layout(_default_session())
+        root = _artifact_view_layout(default_session())
         sidebar = root.children[0]
         assert [type(child).__name__ for child in sidebar.children] == [
             "Div",
@@ -442,7 +442,7 @@ class TestTheScreen:
         and a plain one carries no id at all.
         """
         _make_round(tmp_path, 1, ["stack.json"])
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         root = _artifact_view_layout(session)
         assert line_id("stack.json") in _pattern_ids(root)
 
@@ -457,20 +457,20 @@ class TestTheScreen:
         developer would pick v1 and watch v3's files replace its own.
         """
         _make_round(tmp_path, 1, ["stack.json"])
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         ids = _ids(_artifact_view_layout(session))
         assert set(ARTIFACT_TREE_IDS) <= ids
         assert not set(PROJECT_TREE_IDS) & ids
 
     def test_the_content_pane_shows_its_empty_state(self) -> None:
         """Nothing is selected, so nothing is opened on the developer's behalf."""
-        root = _artifact_view_layout(_default_session())
+        root = _artifact_view_layout(default_session())
         assert EMPTY_CONTENT in _text(root.children[1])
 
     def test_an_empty_pane_has_an_empty_header(self) -> None:
         """No file, nothing to say about one. The header keeps its slot so the
         pane does not jump when a file is chosen."""
-        root = _artifact_view_layout(_default_session())
+        root = _artifact_view_layout(default_session())
         header = _by_id(root, HEADER_ID)
         assert header.children == []
         assert _text(header) == ""
@@ -487,7 +487,7 @@ class TestTheScreen:
         _make_round(tmp_path, 1, ["stack.json"])
         reads = _watch_reads(monkeypatch)
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(tmp_path),
             "selected_round": 1,
             "selected_file": "../../etc/passwd",
@@ -497,7 +497,7 @@ class TestTheScreen:
 
     def test_it_uses_no_icon_component(self) -> None:
         """dash-iconify stays unused — text only, like the rest of the app."""
-        stack = [_artifact_view_layout(_default_session())]
+        stack = [_artifact_view_layout(default_session())]
         seen = []
         while stack:
             node = stack.pop()
@@ -518,18 +518,18 @@ class TestTheScreen:
 
 class TestTheSelectionKeys:
     def test_both_keys_are_in_the_default_session(self) -> None:
-        session = _default_session()
+        session = default_session()
         assert "selected_round" in session
         assert "selected_file" in session
 
     def test_the_round_starts_at_the_active_round(self) -> None:
         """Which is unresolved until a project is open — the same value
         ``phase_version`` carries, and read through the same fallback."""
-        session = _default_session()
+        session = default_session()
         assert session["selected_round"] == session["phase_version"]
 
     def test_no_file_is_selected_by_default(self) -> None:
-        assert _default_session()["selected_file"] is None
+        assert default_session()["selected_file"] is None
 
     def test_they_live_in_the_browser_session_store(self) -> None:
         """One store, browser-scoped: no server-side session, no new component.
@@ -555,7 +555,7 @@ class TestTheSelectionKeys:
         set, so every screen is drawn from a session with both keys removed."""
         legacy = {
             k: v
-            for k, v in _default_session().items()
+            for k, v in default_session().items()
             if k not in ("selected_round", "selected_file")
         }
         for phase in PATH_TO_PHASE.values():
@@ -1092,7 +1092,7 @@ class TestTheRoundSelector:
 
     def _strip(self, working_dir: pathlib.Path, **session: Any) -> Any:
         layout = _artifact_view_layout(
-            {**_default_session(), "working_dir": str(working_dir), **session}
+            {**default_session(), "working_dir": str(working_dir), **session}
         )
         return _by_id(layout, ROUND_SELECT_ID)
 
@@ -1187,7 +1187,7 @@ class TestTheRoundSelector:
         _make_round(tmp_path, 1, ["phases/phase7.md"])
         layout = _artifact_view_layout(
             {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(tmp_path),
                 "selected_round": 0,
             }
@@ -1280,7 +1280,7 @@ class TestTheHeader:
     def test_it_is_one_line_in_the_mono_class(self, project: pathlib.Path) -> None:
         layout = _artifact_view_layout(
             {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(project),
                 "selected_round": 1,
                 "selected_file": "stack.json",
@@ -1494,7 +1494,7 @@ class TestTheContentPane:
         _make_round(tmp_path, 1, ["stack.json"])
         layout = _artifact_view_layout(
             {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(tmp_path),
                 "selected_round": 1,
                 "selected_file": "stack.json",
@@ -1544,7 +1544,7 @@ class TestTheMissingMessage:
         _make_round(tmp_path, 1, ["stack.json"])
         layout = _artifact_view_layout(
             {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(tmp_path),
                 "selected_round": 1,
                 "selected_file": "deployment-plan.md",
@@ -1629,14 +1629,14 @@ class TestTheRoundInEffect:
     def test_it_is_the_active_round_by_default(self, tmp_path: pathlib.Path) -> None:
         for version in (0, 1):
             _make_round(tmp_path, version, [])
-        assert selected_round(tmp_path, _default_session()) == 1
+        assert selected_round(tmp_path, default_session()) == 1
 
     def test_the_session_choice_wins_when_it_is_on_disk(
         self, tmp_path: pathlib.Path
     ) -> None:
         for version in (0, 1):
             _make_round(tmp_path, version, [])
-        session = {**_default_session(), "selected_round": 0}
+        session = {**default_session(), "selected_round": 0}
         assert selected_round(tmp_path, session) == 0
 
     def test_a_choice_that_is_no_longer_on_disk_is_dropped(
@@ -1644,11 +1644,11 @@ class TestTheRoundInEffect:
     ) -> None:
         """A session store outlives the project it was written against."""
         _make_round(tmp_path, 1, [])
-        session = {**_default_session(), "selected_round": 9}
+        session = {**default_session(), "selected_round": 9}
         assert selected_round(tmp_path, session) == 1
 
     def test_no_project_has_no_round(self) -> None:
-        assert selected_round(None, _default_session()) is None
+        assert selected_round(None, default_session()) is None
 
 
 # ---------------------------------------------------------------------------
@@ -1692,7 +1692,7 @@ class TestSwitchingRounds:
 
     def _session(self, project: pathlib.Path, **extra: Any) -> dict[str, Any]:
         return {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(project),
             "phase": ARTIFACTS_PHASE,
             **extra,
@@ -1793,7 +1793,7 @@ class TestThePaneCallback:
         header, body = on_artifact_pane(
             "artifact-view-content",
             {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(project),
                 "selected_round": 1,
                 "selected_file": "stack.json",
@@ -1809,7 +1809,7 @@ class TestThePaneCallback:
         _, body = on_artifact_pane(
             "artifact-view-content",
             {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(project),
                 "selected_round": 2,
                 "selected_file": "stack.json",
@@ -1821,7 +1821,7 @@ class TestThePaneCallback:
         header, _ = on_artifact_pane(
             "artifact-view-content",
             {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(project),
                 "selected_file": "stack.json",
             },
@@ -1836,7 +1836,7 @@ class TestThePaneCallback:
     def test_it_matches_what_the_first_paint_drew(self, project: pathlib.Path) -> None:
         """One renderer behind both, so the screen cannot change on arrival."""
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(project),
             "selected_round": 1,
             "selected_file": "stack.json",
@@ -1872,7 +1872,7 @@ class TestATreeLineOnThisScreen:
         session, path = self._click(
             "stack.json",
             {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(project),
                 "phase": ARTIFACTS_PHASE,
                 "selected_round": 1,
@@ -1890,7 +1890,7 @@ class TestATreeLineOnThisScreen:
         session, _ = self._click(
             "stack.json",
             {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(project),
                 "phase": "agent_select",
                 "selected_round": 1,
@@ -2010,7 +2010,7 @@ class TestMockHtmlForStore:
 class TestTheDownloadButtonOnScreen:
     def _layout(self, working_dir: pathlib.Path, **session: Any) -> Any:
         return _artifact_view_layout(
-            {**_default_session(), "working_dir": str(working_dir), **session}
+            {**default_session(), "working_dir": str(working_dir), **session}
         )
 
     def test_it_is_present_and_disabled_with_nothing_selected(
@@ -2044,7 +2044,7 @@ class TestTheDownloadButtonOnScreen:
     def test_the_download_component_is_on_the_screen(
         self, tmp_path: pathlib.Path
     ) -> None:
-        assert DOWNLOAD_ID in _ids(_artifact_view_layout(_default_session()))
+        assert DOWNLOAD_ID in _ids(_artifact_view_layout(default_session()))
 
 
 class TestTheOpenRenderedButtonOnScreen:
@@ -2058,7 +2058,7 @@ class TestTheOpenRenderedButtonOnScreen:
     def _layout(self, project: pathlib.Path, selected_file: str | None) -> Any:
         return _artifact_view_layout(
             {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(project),
                 "selected_round": 1,
                 "selected_file": selected_file,
@@ -2105,7 +2105,7 @@ class TestTheDownloadCallback:
 
     def _session(self, project: pathlib.Path, **extra: Any) -> dict[str, Any]:
         return {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(project),
             "selected_round": 1,
             **extra,
@@ -2165,7 +2165,7 @@ class TestTheContentPaneHead:
         _make_round(tmp_path, 1, ["stack.json"])
         layout = _artifact_view_layout(
             {
-                **_default_session(),
+                **default_session(),
                 "working_dir": str(tmp_path),
                 "selected_round": 1,
                 "selected_file": "stack.json",

@@ -54,7 +54,7 @@ def test_revision_context_skips_ai_features_when_not_stale(tmp_path):
 
 # --- D-DS15: designer mock staleness + downstream hard-block ------------------
 
-from spec4.session import _validate_agent_preconditions  # noqa: E402
+from spec4.session import validate_agent_preconditions  # noqa: E402
 
 
 def _designer_project(tmp_path: Path, newer: str | None) -> str:
@@ -91,7 +91,7 @@ def test_stale_mock_blocks_phaser(tmp_path):
         "vision_statement": {"x": 1},
         "stack_statement": {"y": 1},
     }
-    msg = _validate_agent_preconditions("phaser", session)
+    msg = validate_agent_preconditions("phaser", session)
     assert msg and "out of date" in msg
 
 
@@ -106,7 +106,7 @@ def test_stale_mock_allows_stack_advisor(tmp_path):
         "vision_statement": {"x": 1},
         "stack_statement": {"y": 1},
     }
-    assert _validate_agent_preconditions("stack_advisor", session) is None
+    assert validate_agent_preconditions("stack_advisor", session) is None
 
 
 def test_fresh_mock_allows_downstream(tmp_path):
@@ -117,4 +117,4 @@ def test_fresh_mock_allows_downstream(tmp_path):
         "stack_statement": {"y": 1},
     }
     for agent in ("stack_advisor", "phaser"):
-        assert _validate_agent_preconditions(agent, session) is None
+        assert validate_agent_preconditions(agent, session) is None

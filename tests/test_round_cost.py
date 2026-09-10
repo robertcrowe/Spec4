@@ -31,7 +31,7 @@ from spec4.callbacks import on_round_cost
 from spec4.layouts import _agent_select_layout, _round_cost, round_cost_lines
 from spec4.layouts._round_cost import COST_LABEL, NO_CALLS, _unpriced_name
 from spec4.layouts._shared import PRICE_SOURCE_FALLBACK, price_source_note
-from spec4.session import _default_session
+from spec4.session import default_session
 
 from tests.test_usage_capture import _call
 
@@ -100,7 +100,7 @@ def _lines(root: pathlib.Path | None, version: int | None = 0) -> list[str]:
 
 
 def _session(working_dir: pathlib.Path | None) -> dict[str, Any]:
-    session = _default_session()
+    session = default_session()
     session.update(
         {
             "phase": "agent_select",

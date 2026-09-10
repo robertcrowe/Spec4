@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 from spec4.agentifier.scout import Candidate, ScoutInput, _build_scout_system_prompt
 from spec4.agentifier.tier_analyst import TierAnalystInput, _existing_ai_context
-from spec4.session import _default_session
+from spec4.session import default_session
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -561,7 +561,7 @@ class TestBrownfieldSessionLoad:
         from spec4.agentifier.agentifier import _build_seed_message
         from spec4.agentifier.tier_analyst import TierAnalystOutput
 
-        session = _default_session()
+        session = default_session()
         session["code_review"] = _CODE_REVIEW_WITH_AI
 
         candidates = [

@@ -34,7 +34,7 @@ from spec4.layouts._status_bar import (
     _dir_field,
     _status_context,
 )
-from spec4.session import _default_session
+from spec4.session import default_session
 
 # The marketing-era shell, gone in this round. `nav-*` are the external-link
 # drawer, `blueprint-grid` the grid background behind everything.
@@ -413,7 +413,7 @@ class TestTheShellHasNoMarketingChrome:
 
     def test_the_page_no_longer_carries_a_footer(self) -> None:
         """`render_page` used to wrap every screen in the marketing footer."""
-        content, _, _ = app_module.render_page(_default_session(), {}, 0, None, None)
+        content, _, _ = app_module.render_page(default_session(), {}, 0, None, None)
         assert "footer" not in _class_names(content)
         assert not any(
             type(node).__name__ == "Footer" for node in [content, *_flatten(content)]
@@ -448,7 +448,7 @@ def _flatten(component: Any) -> list[Any]:
 
 
 def _session(**extra: Any) -> dict[str, Any]:
-    session = _default_session()
+    session = default_session()
     session.update(
         {
             "provider": "anthropic",
@@ -754,7 +754,7 @@ class TestTheBarOpensSetup:
 
     def test_the_model_is_a_button(self, tmp_path: pathlib.Path) -> None:
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(tmp_path),
             "llm_config": {"model": "claude-sonnet-5", "api_key": "k"},
             "model": "claude-sonnet-5",
@@ -769,7 +769,7 @@ class TestTheBarOpensSetup:
     def test_not_connected_is_the_same_button(self) -> None:
         """No connection is *more* reason to open setup, so no empty state
         stays plain text: one id, whichever phrase it carries."""
-        context, *_ = on_status_bar({**_default_session()}, {})
+        context, *_ = on_status_bar({**default_session()}, {})
         button = self._button(context)
         assert button.children == NOT_CONNECTED
         assert SLOT_CONNECTION in button.className.split()
@@ -796,7 +796,7 @@ class TestTheBarOpensSetup:
 
     def _connected(self, tmp_path: pathlib.Path) -> dict[str, Any]:
         return {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(tmp_path),
             "available_models": ["claude-sonnet-5"],
             "model": "claude-sonnet-5",
@@ -899,7 +899,7 @@ class TestTheBarOpensSetup:
     def test_no_click_is_a_no_op(self, monkeypatch: Any) -> None:
         from dash import no_update
 
-        assert self._press(monkeypatch, None, _default_session()) == (
+        assert self._press(monkeypatch, None, default_session()) == (
             no_update,
             no_update,
         )

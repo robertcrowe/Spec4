@@ -29,7 +29,7 @@ from spec4.callbacks import (
     on_stream_poll,
 )
 from spec4.layouts._chat import _chat_layout, _retry_panel
-from spec4.session import _default_session
+from spec4.session import default_session
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +73,7 @@ def _await_done(stream_id: str) -> dict[str, Any]:
 
 
 def _session(**overrides: Any) -> dict[str, Any]:
-    s = _default_session()
+    s = default_session()
     s["active_agent"] = "code_scanner"
     s["llm_config"] = {"model": "claude-opus-5", "api_key": "sk-test"}
     s.update(overrides)
@@ -93,7 +93,7 @@ def _session(**overrides: Any) -> dict[str, Any]:
 
 class TestStreamEntryRecordsFailure:
     def test_exception_sets_error_flag(self) -> None:
-        sid = streaming.start(_boom(), _default_session())
+        sid = streaming.start(_boom(), default_session())
         entry = _await_done(sid)
         assert entry["error"] is True, (
             "a generator that raised must mark the entry; the poll has no other "
@@ -102,20 +102,20 @@ class TestStreamEntryRecordsFailure:
 
     def test_formatted_error_still_reaches_the_text(self) -> None:
         """The flag is additive — the existing error-text behaviour is unchanged."""
-        sid = streaming.start(_boom(), _default_session())
+        sid = streaming.start(_boom(), default_session())
         entry = _await_done(sid)
         assert entry["text"].startswith("partial output")
         assert "**Error: RuntimeError**" in entry["text"]
 
     def test_clean_run_leaves_error_false(self) -> None:
-        sid = streaming.start(_clean(), _default_session())
+        sid = streaming.start(_clean(), default_session())
         entry = _await_done(sid)
         assert entry["error"] is False
 
     def test_flag_present_from_the_start(self) -> None:
         """Absent-key access would work via .get, but the entry shape is public
         (tests and the poll both read it) — keep it explicit."""
-        sid = streaming.start(_clean(), _default_session())
+        sid = streaming.start(_clean(), default_session())
         entry = streaming.get(sid)
         assert entry is not None
         assert "error" in entry
@@ -300,7 +300,7 @@ class TestTurnStartsClearTheFlag:
         assert switched["_stream_error"] is None
 
     def test_default_session_starts_clean(self) -> None:
-        assert _default_session()["_stream_error"] is None
+        assert default_session()["_stream_error"] is None
 
 
 # ---------------------------------------------------------------------------

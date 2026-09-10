@@ -46,7 +46,7 @@ from spec4.layouts._chat import (
     open_button_id,
 )
 from spec4.layouts._round_tree import ARTIFACT_LANES, PHASES_DIR
-from spec4.session import _default_session
+from spec4.session import default_session
 
 from tests.test_chat_action_row_emphasis import _rows
 
@@ -202,7 +202,7 @@ class TestSelectionIsWrittenThroughOneHelper:
     land on one door into the Artifact View and not the other."""
 
     def test_it_writes_exactly_the_two_selection_keys(self) -> None:
-        session = _default_session()
+        session = default_session()
         written = select_artifact(session, 3, "stack.json")
         assert written["selected_round"] == 3
         assert written["selected_file"] == "stack.json"
@@ -212,7 +212,7 @@ class TestSelectionIsWrittenThroughOneHelper:
     def test_it_does_not_mutate_the_session_it_was_given(self) -> None:
         """The session is a `dcc.Store` value: Dash pushes an update the
         browser can see only when a *new* object comes back."""
-        session = _default_session()
+        session = default_session()
         select_artifact(session, 3, "stack.json")
         assert session.get("selected_file") is None
 
@@ -220,7 +220,7 @@ class TestSelectionIsWrittenThroughOneHelper:
         """A tree line and an Open button, on the same file, are the same
         selection — which is what "reuse the round tree's helper" buys."""
         _project(tmp_path)
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         with patch(
             "spec4.callbacks._artifacts.ctx",
             _FakeCtx({"type": "round-tree-line", "index": "stack.json"}),
@@ -285,7 +285,7 @@ class TestClickingOpen:
         self, tmp_path: pathlib.Path
     ) -> None:
         _project(tmp_path)
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         new_session, pathname = _open("stack", session)
         assert new_session["selected_file"] == "stack.json"
         assert new_session["selected_round"] == 0
@@ -293,7 +293,7 @@ class TestClickingOpen:
 
     def test_every_button_opens_its_own_artifact(self, tmp_path: pathlib.Path) -> None:
         _project(tmp_path)
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         opened = {
             key: _open(key, session)[0]["selected_file"] for key in CHAT_ARTIFACTS
         }
@@ -304,7 +304,7 @@ class TestClickingOpen:
         while the frame is on screen, and a target captured at render would
         open the previous round's file."""
         _project(tmp_path, version=0)
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         assert _open("stack", session)[0]["selected_round"] == 0
         _project(tmp_path, version=1)
         assert _open("stack", session)[0]["selected_round"] == 1
@@ -315,7 +315,7 @@ class TestClickingOpen:
         """Not from the key the handler was registered with: a handler asked
         about a different button answers about that button."""
         _project(tmp_path)
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         with patch(
             "spec4.callbacks._artifacts.ctx", _FakeCtx(open_button_id("vision"))
         ):
@@ -325,7 +325,7 @@ class TestClickingOpen:
     def test_an_unrecognised_trigger_writes_nothing(
         self, tmp_path: pathlib.Path
     ) -> None:
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         for triggered in (None, "btn-open-nonesuch", {"type": "round-tree-line"}):
             with patch("spec4.callbacks._artifacts.ctx", _FakeCtx(triggered)):
                 assert OPEN_ARTIFACT_CALLBACKS["stack"](1, session) == (
@@ -340,14 +340,14 @@ class TestClickingOpen:
         session change rebuilds the frame — so without this, simply drawing a
         completed run would navigate away from it."""
         _project(tmp_path)
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         assert _open("stack", session, n_clicks=None) == (no_update, no_update)
         assert _open("stack", session, n_clicks=0) == (no_update, no_update)
 
     def test_no_project_open_is_not_an_error(self) -> None:
         """No working directory means no round — the file is still recorded,
         exactly as the round tree's line click records it."""
-        new_session, pathname = _open("stack", _default_session())
+        new_session, pathname = _open("stack", default_session())
         assert new_session["selected_file"] == "stack.json"
         assert new_session["selected_round"] is None
         assert pathname == "/artifacts"
@@ -363,7 +363,7 @@ class TestClickingOpen:
         """The end of the link: what the button writes is what the Artifact
         View opens, without a rejection in between."""
         _project(tmp_path)
-        session = {**_default_session(), "working_dir": str(tmp_path)}
+        session = {**default_session(), "working_dir": str(tmp_path)}
         written, _ = _open("stack", session)
         result = resolve_artifact(
             str(tmp_path), written["selected_round"], written["selected_file"]

@@ -22,7 +22,7 @@ from typing import Any
 from spec4 import project_manager
 from spec4.app_constants import PROJECT_MODE_EXISTING, PROJECT_MODE_NEW
 from spec4.layouts import _agent_select_layout
-from spec4.session import _default_session, _load_working_dir
+from spec4.session import default_session, load_working_dir
 
 
 def _walk_ids(component: Any, out: list[Any]) -> None:
@@ -61,7 +61,7 @@ def _text(component: Any) -> str:
 
 
 def _session(tmp_path: pathlib.Path, **overrides: Any) -> dict[str, Any]:
-    session = _default_session()
+    session = default_session()
     session.update({"working_dir": str(tmp_path), "phase": "agent_select"})
     # The Designer wizard renders behind its model gate; these tests are about
     # what the wizard does once that is answered.
@@ -110,20 +110,20 @@ class TestDirectoryHasContent:
 class TestNeedsProjectMode:
     def test_asked_when_directory_is_occupied(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
-        assert project_manager.needs_project_mode(tmp_path, _default_session())
+        assert project_manager.needs_project_mode(tmp_path, default_session())
 
     def test_not_asked_for_an_empty_directory(self, tmp_path: pathlib.Path) -> None:
-        assert not project_manager.needs_project_mode(tmp_path, _default_session())
+        assert not project_manager.needs_project_mode(tmp_path, default_session())
 
     def test_not_asked_once_answered(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
         for mode in (PROJECT_MODE_EXISTING, PROJECT_MODE_NEW):
-            session = {**_default_session(), "project_mode": mode}
+            session = {**default_session(), "project_mode": mode}
             assert not project_manager.needs_project_mode(tmp_path, session)
 
     def test_garbage_answer_is_not_an_answer(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
-        session = {**_default_session(), "project_mode": "maybe"}
+        session = {**default_session(), "project_mode": "maybe"}
         assert project_manager.needs_project_mode(tmp_path, session)
 
     def test_code_review_does_not_answer_it(self, tmp_path: pathlib.Path) -> None:
@@ -135,7 +135,7 @@ class TestNeedsProjectMode:
         (v0 / "code_review.json").write_text(
             json.dumps({"code_review": {"is_software_project": True}})
         )
-        assert project_manager.needs_project_mode(tmp_path, _default_session())
+        assert project_manager.needs_project_mode(tmp_path, default_session())
 
     def test_a_full_pipeline_on_disk_does_not_answer_it(
         self, tmp_path: pathlib.Path
@@ -145,10 +145,10 @@ class TestNeedsProjectMode:
         v0.mkdir(parents=True)
         for name in ("vision.json", "stack.json", "code_review.json"):
             (v0 / name).write_text("{}")
-        assert project_manager.needs_project_mode(tmp_path, _default_session())
+        assert project_manager.needs_project_mode(tmp_path, default_session())
 
     def test_no_working_dir(self) -> None:
-        assert not project_manager.needs_project_mode(None, _default_session())
+        assert not project_manager.needs_project_mode(None, default_session())
 
 
 # ---------------------------------------------------------------------------
@@ -336,12 +336,12 @@ def _flatten(component: Any) -> list[Any]:
 
 class TestAnswerIsSessionScoped:
     def test_default_session_is_unanswered(self) -> None:
-        assert _default_session()["project_mode"] is None
+        assert default_session()["project_mode"] is None
 
     def test_answer_is_not_written_to_disk(self, tmp_path: pathlib.Path) -> None:
         """A restart re-reads .spec4/ and must not find the answer there."""
         (tmp_path / "main.py").write_text("x")
-        session = _load_working_dir(str(tmp_path), _default_session())
+        session = load_working_dir(str(tmp_path), default_session())
         session["project_mode"] = PROJECT_MODE_NEW
         from spec4.session import _persist_artifacts
 
@@ -353,7 +353,7 @@ class TestAnswerIsSessionScoped:
     def test_a_fresh_session_asks_again(self, tmp_path: pathlib.Path) -> None:
         """Simulates quit-and-restart: a new session over the same directory."""
         (tmp_path / "main.py").write_text("x")
-        answered = {**_default_session(), "project_mode": PROJECT_MODE_NEW}
+        answered = {**default_session(), "project_mode": PROJECT_MODE_NEW}
         assert not project_manager.needs_project_mode(tmp_path, answered)
-        restarted = _load_working_dir(str(tmp_path), _default_session())
+        restarted = load_working_dir(str(tmp_path), default_session())
         assert project_manager.needs_project_mode(tmp_path, restarted)

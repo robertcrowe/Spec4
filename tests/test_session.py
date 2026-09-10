@@ -19,18 +19,18 @@ from spec4.app_constants import (
 )
 from spec4.session import (
     NoModelConnectedError,
-    _default_session,
+    default_session,
     _get_agent_gen,
-    _load_working_dir,
+    load_working_dir,
     _persist_artifacts,
-    _reset_for_new_project,
-    _run_agent_blocking,
+    reset_for_new_project,
+    run_agent_blocking,
 )
 
 
 class TestDefaultSession:
     def test_has_all_expected_keys(self) -> None:
-        session = _default_session()
+        session = default_session()
         required = [
             "working_dir",
             "browser_path",
@@ -71,27 +71,27 @@ class TestDefaultSession:
         until it does, `render_page` draws an empty container, which is what
         keeps an intermediate screen off the page.
         """
-        assert _default_session()["phase"] == PHASE_ROOT
+        assert default_session()["phase"] == PHASE_ROOT
         assert PHASE_ROOT != "landing"
 
     def test_no_directory_error_is_carried(self) -> None:
-        assert _default_session()["dir_error"] is None
+        assert default_session()["dir_error"] is None
 
     def test_active_agent_is_brainstormer(self) -> None:
-        assert _default_session()["active_agent"] == "brainstormer"
+        assert default_session()["active_agent"] == "brainstormer"
 
     def test_messages_is_empty_list(self) -> None:
-        assert _default_session()["messages"] == []
+        assert default_session()["messages"] == []
 
     def test_phases_is_empty_list(self) -> None:
-        assert _default_session()["phases"] == []
+        assert default_session()["phases"] == []
 
     def test_working_dir_is_none(self) -> None:
-        assert _default_session()["working_dir"] is None
+        assert default_session()["working_dir"] is None
 
     def test_returns_fresh_dict_each_call(self) -> None:
-        s1 = _default_session()
-        s2 = _default_session()
+        s1 = default_session()
+        s2 = default_session()
         s1["messages"].append("x")
         assert s2["messages"] == []
 
@@ -108,7 +108,7 @@ class TestRunAgentBlocking:
         with patch(
             "spec4.session.brainstormer.run", return_value=iter(["hello"])
         ) as mock_run:
-            result = _run_agent_blocking("hi", session)
+            result = run_agent_blocking("hi", session)
         mock_run.assert_called_once()
         assert result == "hello"
 
@@ -117,7 +117,7 @@ class TestRunAgentBlocking:
         with patch(
             "spec4.session.code_scanner.run", return_value=iter(["review"])
         ) as mock_run:
-            _run_agent_blocking("hi", session)
+            run_agent_blocking("hi", session)
         mock_run.assert_called_once()
 
     def test_routes_to_stack_advisor(self) -> None:
@@ -125,7 +125,7 @@ class TestRunAgentBlocking:
         with patch(
             "spec4.session.stack_advisor.run", return_value=iter(["stack"])
         ) as mock_run:
-            _run_agent_blocking("hi", session)
+            run_agent_blocking("hi", session)
         mock_run.assert_called_once()
 
     def test_routes_to_phaser(self) -> None:
@@ -133,25 +133,25 @@ class TestRunAgentBlocking:
         with patch(
             "spec4.session.phaser.run", return_value=iter(["phase"])
         ) as mock_run:
-            _run_agent_blocking("hi", session)
+            run_agent_blocking("hi", session)
         mock_run.assert_called_once()
 
     def test_raises_for_unknown_agent(self) -> None:
         session = self._session("nonexistent_agent")
         with pytest.raises(ValueError, match="Unknown agent"):
-            _run_agent_blocking("hi", session)
+            run_agent_blocking("hi", session)
 
     def test_joins_generator_chunks(self) -> None:
         session = self._session("brainstormer")
         with patch(
             "spec4.session.brainstormer.run", return_value=iter(["he", "ll", "o"])
         ):
-            assert _run_agent_blocking("hi", session) == "hello"
+            assert run_agent_blocking("hi", session) == "hello"
 
     def test_passes_llm_config_to_agent(self) -> None:
         session = self._session("brainstormer")
         with patch("spec4.session.brainstormer.run", return_value=iter([])) as mock_run:
-            _run_agent_blocking("hi", session)
+            run_agent_blocking("hi", session)
         _, call_args, _ = mock_run.mock_calls[0]
         assert call_args[2] == {"model": "gpt-4o", "api_key": "sk-test"}
 
@@ -286,7 +286,7 @@ class TestPersistArtifacts:
 
     def test_does_not_save_deployment_plan_without_markdown(self) -> None:
         """A returning user lands in Deployer with deployer_state=COMPLETE
-        (lifted by _load_working_dir from disk presence) but no
+        (lifted by load_working_dir from disk presence) but no
         _deployer_plan_markdown. After any chat turn, _persist_artifacts must
         NOT overwrite the on-disk plan with a stray assistant message."""
         session = self._base_session(
@@ -370,18 +370,18 @@ class TestPersistArtifacts:
 
 class TestLoadWorkingDir:
     def _base_session(self) -> dict[str, Any]:
-        s = _default_session()
+        s = default_session()
         s["provider"] = "openai"
         s["api_key"] = "sk-test"
         return s
 
     def test_sets_working_dir_and_phase(self, tmp_path: pathlib.Path) -> None:
-        session = _load_working_dir(str(tmp_path), self._base_session())
+        session = load_working_dir(str(tmp_path), self._base_session())
         assert session["working_dir"] == str(tmp_path)
         assert session["phase"] == "setup"
 
     def test_project_mode_starts_unanswered(self, tmp_path: pathlib.Path) -> None:
-        session = _load_working_dir(str(tmp_path), self._base_session())
+        session = load_working_dir(str(tmp_path), self._base_session())
         assert session["project_mode"] is None
 
     def test_picking_a_directory_reopens_the_question(
@@ -390,7 +390,7 @@ class TestLoadWorkingDir:
         """D-PM1: an answer belongs to the directory it was given for."""
         prior = self._base_session()
         prior["project_mode"] = "existing"
-        session = _load_working_dir(str(tmp_path), prior)
+        session = load_working_dir(str(tmp_path), prior)
         assert session["project_mode"] is None
 
     def test_code_review_still_loads(self, tmp_path: pathlib.Path) -> None:
@@ -400,7 +400,7 @@ class TestLoadWorkingDir:
         (v0_dir / "code_review.json").write_text(
             json.dumps({"code_review": {"is_software_project": True}})
         )
-        session = _load_working_dir(str(tmp_path), self._base_session())
+        session = load_working_dir(str(tmp_path), self._base_session())
         assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
         # ...and does not answer the question on the developer's behalf: a
         # code review can legitimately exist for a greenfield skeleton.
@@ -411,7 +411,7 @@ class TestLoadWorkingDir:
         v0_dir = tmp_path / ".spec4" / "v0"
         v0_dir.mkdir(parents=True)
         (v0_dir / "vision.json").write_text(json.dumps(vision))
-        session = _load_working_dir(str(tmp_path), self._base_session())
+        session = load_working_dir(str(tmp_path), self._base_session())
         assert session["vision_statement"] == vision
         assert session["brainstormer_state"] == STATE_VISION_COMPLETE
 
@@ -420,20 +420,20 @@ class TestLoadWorkingDir:
             "spec4.session.project_manager.load_spec4_artifacts",
             side_effect=OSError("disk error"),
         ):
-            session = _load_working_dir(str(tmp_path), self._base_session())
+            session = load_working_dir(str(tmp_path), self._base_session())
         assert session["vision_statement"] is None
         assert session["brainstormer_state"] == STATE_IN_PROGRESS
 
     def test_preserves_llm_config_when_set(self, tmp_path: pathlib.Path) -> None:
         # A developer who has already chosen provider+model and picks a
         # different working directory should not be sent back through the
-        # setup screen — _load_working_dir must preserve the LLM connection.
+        # setup screen — load_working_dir must preserve the LLM connection.
         s = self._base_session()
         s["model"] = "gpt-4o"
         s["available_models"] = ["gpt-4o", "gpt-4o-mini"]
         s["llm_config"] = {"model": "gpt-4o", "api_key": "sk-test"}
         s["tavily_api_key"] = "tvly-test"
-        session = _load_working_dir(str(tmp_path), s)
+        session = load_working_dir(str(tmp_path), s)
         assert session["model"] == "gpt-4o"
         assert session["available_models"] == ["gpt-4o", "gpt-4o-mini"]
         assert session["llm_config"] == {"model": "gpt-4o", "api_key": "sk-test"}
@@ -443,8 +443,8 @@ class TestLoadWorkingDir:
         self, tmp_path: pathlib.Path
     ) -> None:
         # First-time user: still routed through /setup because llm_config is
-        # None. _load_working_dir must not synthesize one.
-        session = _load_working_dir(str(tmp_path), self._base_session())
+        # None. load_working_dir must not synthesize one.
+        session = load_working_dir(str(tmp_path), self._base_session())
         assert session["llm_config"] is None
         assert session["model"] is None
         assert session["available_models"] is None
@@ -473,7 +473,7 @@ class TestLoadWorkingDir:
                 "_deployer_pending_plan": True,
             }
         )
-        session = _load_working_dir(str(tmp_path), prior)
+        session = load_working_dir(str(tmp_path), prior)
         assert session["working_dir"] == str(tmp_path)
         assert session["messages"] == []
         assert session["brainstormer_messages"] == []
@@ -502,7 +502,7 @@ class TestLoadWorkingDirNewRound:
     """
 
     def _base_session(self) -> dict[str, Any]:
-        s = _default_session()
+        s = default_session()
         s["provider"] = "openai"
         s["api_key"] = "sk-test"
         return s
@@ -522,7 +522,7 @@ class TestLoadWorkingDirNewRound:
 
     def test_does_not_hydrate_prior_artifacts(self, tmp_path: pathlib.Path) -> None:
         self._implemented_v0(tmp_path)
-        session = _load_working_dir(str(tmp_path), self._base_session())
+        session = load_working_dir(str(tmp_path), self._base_session())
         assert session["vision_statement"] is None
         assert session["stack_statement"] is None
         assert session["phases"] == []
@@ -535,12 +535,12 @@ class TestLoadWorkingDirNewRound:
         # phase_version None lets the persist funnel resolve the new round's
         # version (max + 1) rather than overwriting the implemented round.
         self._implemented_v0(tmp_path)
-        session = _load_working_dir(str(tmp_path), self._base_session())
+        session = load_working_dir(str(tmp_path), self._base_session())
         assert session["phase_version"] is None
 
     def test_stashes_prior_app_name(self, tmp_path: pathlib.Path) -> None:
         self._implemented_v0(tmp_path)
-        session = _load_working_dir(str(tmp_path), self._base_session())
+        session = load_working_dir(str(tmp_path), self._base_session())
         assert session["_prior_app_name"] == "ShelfLife"
 
     def test_in_progress_round_still_hydrates(self, tmp_path: pathlib.Path) -> None:
@@ -549,7 +549,7 @@ class TestLoadWorkingDirNewRound:
         v0 = tmp_path / ".spec4" / "v0"
         v0.mkdir(parents=True)
         (v0 / "vision.json").write_text(json.dumps({"name": "ShelfLife"}))
-        session = _load_working_dir(str(tmp_path), self._base_session())
+        session = load_working_dir(str(tmp_path), self._base_session())
         assert session["vision_statement"] == {"name": "ShelfLife"}
         assert session["brainstormer_state"] == STATE_VISION_COMPLETE
         assert session.get("_prior_app_name") is None
@@ -562,7 +562,7 @@ class TestResetForNewProject:
 
     def _configured_session(self) -> dict[str, Any]:
         return {
-            **_default_session(),
+            **default_session(),
             "working_dir": "/old/project",
             "browser_path": "/old/project",
             "phase": "chat",
@@ -596,7 +596,7 @@ class TestResetForNewProject:
         }
 
     def test_preserves_llm_setup(self) -> None:
-        fresh = _reset_for_new_project(self._configured_session())
+        fresh = reset_for_new_project(self._configured_session())
         assert fresh["provider"] == "openai"
         assert fresh["api_key"] == "sk-test"
         assert fresh["model"] == "gpt-4o"
@@ -605,12 +605,12 @@ class TestResetForNewProject:
         assert fresh["tavily_api_key"] == "tvly-test"
 
     def test_clears_working_dir(self) -> None:
-        fresh = _reset_for_new_project(self._configured_session())
+        fresh = reset_for_new_project(self._configured_session())
         assert fresh["working_dir"] is None
         assert fresh["browser_path"] is None
 
     def test_clears_artifacts(self) -> None:
-        fresh = _reset_for_new_project(self._configured_session())
+        fresh = reset_for_new_project(self._configured_session())
         assert fresh["vision_statement"] is None
         assert fresh["stack_statement"] is None
         assert fresh["phases"] == []
@@ -619,7 +619,7 @@ class TestResetForNewProject:
     def test_clears_agent_states(self) -> None:
         # Agent-select-page checkboxes are driven by these fields. Resetting
         # them is the whole point of "Start New Project".
-        fresh = _reset_for_new_project(self._configured_session())
+        fresh = reset_for_new_project(self._configured_session())
         assert fresh["brainstormer_state"] == STATE_IN_PROGRESS
         assert fresh["stack_advisor_state"] == STATE_IN_PROGRESS
         assert fresh["phaser_state"] is None
@@ -627,7 +627,7 @@ class TestResetForNewProject:
         assert fresh["deployer_state"] == STATE_IN_PROGRESS
 
     def test_clears_message_logs(self) -> None:
-        fresh = _reset_for_new_project(self._configured_session())
+        fresh = reset_for_new_project(self._configured_session())
         assert fresh["brainstormer_messages"] == []
         assert fresh["stack_advisor_messages"] == []
         assert fresh["phaser_messages"] == []
@@ -639,19 +639,19 @@ class TestResetForNewProject:
         # Critical: the new project must NOT inherit the previous plan's
         # "_deployer_plan_existed" flag, or the next plan generated would be
         # treated as a replacement and gated behind the confirmation prompt.
-        fresh = _reset_for_new_project(self._configured_session())
+        fresh = reset_for_new_project(self._configured_session())
         assert fresh.get("_deployer_plan_existed") in (None, False)
         assert fresh.get("_deployer_plan_markdown") in (None, "")
         assert fresh.get("_deployer_pending_plan") in (None, False)
 
     def test_clears_resume_and_staleness_state(self) -> None:
-        fresh = _reset_for_new_project(self._configured_session())
+        fresh = reset_for_new_project(self._configured_session())
         assert fresh["deployer_stale_acknowledged"] == {}
         assert fresh.get("brainstormer_resumed") in (None, False)
 
     def test_handles_empty_session(self) -> None:
         # A defensively-called reset on an empty session shouldn't crash.
-        fresh = _reset_for_new_project({})
+        fresh = reset_for_new_project({})
         assert fresh["provider"] is None
         assert fresh["api_key"] is None
         assert fresh["llm_config"] is None
@@ -677,7 +677,7 @@ class TestNoModelConnected:
     """
 
     def _session(self, **extra: Any) -> dict[str, Any]:
-        session = _default_session()
+        session = default_session()
         session.update({"active_agent": "brainstormer", "working_dir": None})
         session.update(extra)
         return session

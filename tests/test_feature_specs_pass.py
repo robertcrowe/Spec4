@@ -14,7 +14,7 @@ from spec4 import project_manager
 from spec4.agents import brainstormer, feature_speccer
 from spec4.agents._feature_context import slug
 from spec4.app_constants import STATE_IN_PROGRESS, STATE_VISION_COMPLETE
-from spec4.session import _default_session, _load_working_dir
+from spec4.session import default_session, load_working_dir
 
 
 # ---------------------------------------------------------------------------
@@ -194,8 +194,8 @@ class TestPersistence:
     def test_restore_hydrates_feature_specs(self, tmp_path: Path) -> None:
         project_manager.save_vision(tmp_path, {"name": "X"}, 0)
         project_manager.save_feature_specs(tmp_path, self._specs(), 0)
-        session = _default_session()
+        session = default_session()
         session["provider"] = "openai"
         session["api_key"] = "sk-test"
-        session = _load_working_dir(str(tmp_path), session)
+        session = load_working_dir(str(tmp_path), session)
         assert session["feature_specs"] == self._specs()

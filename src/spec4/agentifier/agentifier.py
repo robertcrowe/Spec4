@@ -2331,10 +2331,10 @@ def _catalog_finalize_breadth(
 # carry a prior round's revision framing into a draw that no longer qualifies as
 # one.
 #
-# Keys with a _default_session entry are restored to that value rather than
+# Keys with a default_session entry are restored to that value rather than
 # popped, so the session keeps its documented shape for callers that index them
 # directly. tests/agentifier/test_try_again.py asserts this map agrees with
-# _default_session on every key the two share, and that no agentifier_* key
+# default_session on every key the two share, and that no agentifier_* key
 # escapes both collections.
 _RESTART_DEFAULTS: dict[str, Any] = {
     "agentifier_messages": [],
@@ -2364,7 +2364,7 @@ _RESTART_DEFAULTS: dict[str, Any] = {
     "agentifier_stale_acknowledged": {},
 }
 
-# Keys with no _default_session entry: popped outright. The revision block is
+# Keys with no default_session entry: popped outright. The revision block is
 # re-derived from disk by _run_catalog_phase's fresh-start branch (it reads the
 # vision's revision_history and the latest *implemented* round), so clearing it
 # here is what lets a Try Again inside a revision round draw a genuinely new

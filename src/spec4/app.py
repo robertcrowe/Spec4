@@ -23,7 +23,7 @@ import dash_mantine_components as dmc
 
 from spec4 import __version__, project_manager, version_check
 from spec4.app_constants import DARK_THEME, GOOGLE_FONTS, PHASE_ROOT
-from spec4.session import _default_session
+from spec4.session import default_session
 from spec4.layouts import (
     STATUS_BAR_HEIGHT,
     _status_bar,
@@ -89,7 +89,7 @@ app.layout = dmc.MantineProvider(
         html.Div(id="_progress-dummy", style={"display": "none"}),
         html.Div(id="_progress-show-dummy", style={"display": "none"}),
         html.Div(id="_progress-probe-dummy", style={"display": "none"}),
-        dcc.Store(id="session", storage_type="session", data=_default_session()),
+        dcc.Store(id="session", storage_type="session", data=default_session()),
         dcc.Store(id="prefs", storage_type="local", data={}),
         dcc.Store(id="_last_render", data=0),
         dcc.Store(id="image-support-store", storage_type="local", data=None),
@@ -384,7 +384,7 @@ def render_page(
     screen that does not exist cannot flash — so nothing may be drawn for an
     unresolved phase.
     """
-    session = session or _default_session()
+    session = session or default_session()
     prefs = prefs or {}
 
     new_session = no_update

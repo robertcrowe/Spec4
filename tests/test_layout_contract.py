@@ -56,7 +56,7 @@ from spec4.layouts.designer import (
     _step7_content,
     designer_layout,
 )
-from spec4.session import _default_session
+from spec4.session import default_session as _default_session
 
 SNAPSHOT = pathlib.Path(__file__).resolve().parent / "snapshots" / "component_ids.json"
 _UPDATE_ENV = "SPEC4_UPDATE_SNAPSHOTS"

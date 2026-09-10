@@ -40,7 +40,7 @@ from spec4.layouts._agent_rows import (
     agent_row_id,
     round_usage,
 )
-from spec4.session import _default_session
+from spec4.session import default_session
 
 # The six states, named here rather than reached through the module under
 # test, so a renamed constant fails loudly instead of silently shrinking the
@@ -61,7 +61,7 @@ _ALL_STATES = (_START, _CONTINUE, _MODIFY, _NEEDS_UPDATE, _NOT_READY, _REQUIRED)
 
 
 def _session(working_dir: pathlib.Path | None = None, **extra: Any) -> dict[str, Any]:
-    session = _default_session()
+    session = default_session()
     session["phase"] = "agent_select"
     session["project_mode"] = "new"
     if working_dir is not None:
@@ -517,7 +517,7 @@ class TestContinueForAnInProgressAgent:
     def test_an_empty_message_list_still_yields_start(
         self, designer_not_started: pathlib.Path
     ) -> None:
-        """`_default_session` seeds every agent's list empty; that is not a run."""
+        """`default_session` seeds every agent's list empty; that is not a run."""
         session = _session(designer_not_started, designer_messages=[])
         assert (
             project_manager.agent_button_state(

@@ -25,7 +25,7 @@ from spec4.app_constants import (
     STATE_IN_PROGRESS,
 )
 from spec4.callbacks._shared import _HOME
-from spec4.session import _reset_for_new_project, _validate_agent_preconditions
+from spec4.session import reset_for_new_project, validate_agent_preconditions
 
 
 def _switch_agent(
@@ -74,7 +74,7 @@ def on_agent_pill_click(n_clicks_list: Any, session: Any) -> Any:
     session = session or {}
     if target == session.get("active_agent") and session.get("phase") == "chat":
         return no_update, no_update
-    error = _validate_agent_preconditions(target, session)
+    error = validate_agent_preconditions(target, session)
     if error is not None:
         return {**session, "agent_select_error": error}, no_update
     # No connection, no turn. Entering an agent is what leads to a provider
@@ -243,7 +243,7 @@ def on_phaser_to_deployer(n: Any, session: Any) -> Any:
 def on_deployer_new_project(n: Any, session: Any) -> Any:
     if not n:
         return no_update, no_update
-    fresh = _reset_for_new_project(session or {})
+    fresh = reset_for_new_project(session or {})
     fresh["phase"] = "working_dir"
     # Open the directory browser at home rather than letting the prefs-stored
     # previous-project path get auto-restored (which would land the developer

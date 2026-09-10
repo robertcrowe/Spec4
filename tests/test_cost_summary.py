@@ -49,7 +49,7 @@ from spec4.layouts._round_cost import (
 )
 from spec4.layouts._shared import _fmt_usd, price_source_note
 from spec4.layouts.designer import _step6_content
-from spec4.session import _default_session
+from spec4.session import default_session
 
 from tests.test_usage_capture import _call
 
@@ -116,7 +116,7 @@ _LABELS = {
 def _session(
     working_dir: Path | None, agent: str, complete: bool = True
 ) -> dict[str, Any]:
-    session = _default_session()
+    session = default_session()
     session.update(
         {
             "phase": "chat",

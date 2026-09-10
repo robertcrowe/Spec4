@@ -229,7 +229,7 @@ def _ff_controls(agent_label: str) -> list[Any]:
 #      live.
 #   3. `← Back to Stack Advisor`, Phaser → StackAdvisor. The StackAdvisor pill
 #      switches to the same agent. StackAdvisor is deliberately ungated in
-#      `_validate_agent_preconditions` (D-SC5c), so the pill cannot be the
+#      `validate_agent_preconditions` (D-SC5c), so the pill cannot be the
 #      disabled one.
 #   4. `← Back to Phaser`, Deployer → Phaser. The Phaser pill covers it, with
 #      one gap: Phaser is blocked while the mock is stale

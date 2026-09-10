@@ -49,7 +49,7 @@ from spec4.app_constants import (
     ARTIFACT_VISION,
     PATH_TO_PHASE,
 )
-from spec4.session import _default_session
+from spec4.session import default_session
 
 
 # The phase the Artifact View draws under, read out of the routing table rather
@@ -162,7 +162,7 @@ def on_round_tree_line(n_clicks_list: Any, session: Any) -> Any:
     path = ctx.triggered_id.get("index")
     if not path:
         return no_update, no_update
-    session = session or _default_session()
+    session = session or default_session()
     working_dir = session.get("working_dir")
     if session.get("phase") == _ARTIFACTS_PHASE:
         round_number = selected_round(working_dir, session)
@@ -217,7 +217,7 @@ def on_artifact_round(n_clicks_list: Any, session: Any) -> Any:
     chosen = round_number_from_value(ctx.triggered_id.get("index"))
     if chosen is None or chosen == session_round(session):
         return no_update
-    session = session or _default_session()
+    session = session or default_session()
     selected_file = session.get("selected_file")
     if selected_file is not None and selected_file not in allowed_artifacts(
         session.get("working_dir"), chosen
@@ -523,7 +523,7 @@ def _register_open_artifact(key: str) -> Any:
         )
         if path is None:
             return no_update, no_update
-        session = session or _default_session()
+        session = session or default_session()
         working_dir = session.get("working_dir")
         round_number = (
             project_manager.active_version(working_dir, session)

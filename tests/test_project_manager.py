@@ -1209,10 +1209,10 @@ class TestGreenfieldScanStaysAtV0:
 
     def _scanned(self, tmp_path: Path, mode: str | None) -> dict[str, Any]:
         from spec4.app_constants import STATE_REVIEW_COMPLETE
-        from spec4.session import _default_session, _persist_artifacts
+        from spec4.session import default_session, _persist_artifacts
 
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(tmp_path),
             "active_agent": "code_scanner",
             "project_mode": mode,

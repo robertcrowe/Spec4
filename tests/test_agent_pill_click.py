@@ -1,7 +1,7 @@
 """Unit tests for `on_agent_pill_click` (D-BB1 / D-BB2).
 
 The /agents buttons are enabled by `project_manager.agent_button_state`, which
-is a separate authority from `_validate_agent_preconditions` and can render a
+is a separate authority from `validate_agent_preconditions` and can render a
 button that the click callback then refuses. When that happens the reason must
 reach `agent_select_error` — the /agents layout already renders it — rather
 than being swallowed into a silent no-op.

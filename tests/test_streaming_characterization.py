@@ -31,7 +31,7 @@ from dash import no_update
 from spec4 import llm, project_manager, streaming
 from spec4.callbacks import designer as dmod
 from spec4.callbacks import on_stream_poll
-from spec4.session import _default_session
+from spec4.session import default_session as _default_session
 from spec4.streaming import _format_error
 
 _CFG = {"model": "gpt-4o-mini", "api_key": "sk-test"}

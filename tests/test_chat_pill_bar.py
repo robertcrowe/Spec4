@@ -45,7 +45,7 @@ from spec4.layouts._shared import (
     STEP_UNREACHABLE,
     step_modifier_class,
 )
-from spec4.session import _validate_agent_preconditions
+from spec4.session import validate_agent_preconditions
 
 _SRC = pathlib.Path(__file__).resolve().parent.parent / "src" / "spec4"
 _STYLESHEET = _SRC / "assets" / "v3.css"
@@ -219,7 +219,7 @@ class TestStates:
         blocked = {
             key
             for key in AGENT_KEYS
-            if _validate_agent_preconditions(key, session) is not None
+            if validate_agent_preconditions(key, session) is not None
         }
         assert blocked, "precondition for the test: something is unreachable"
         for key in AGENT_KEYS:
@@ -232,9 +232,7 @@ class TestStates:
     def test_a_dimmed_label_keeps_its_precondition_tooltip(self) -> None:
         session = _session(active_agent="brainstormer")
         by_key = _by_agent(session)
-        assert by_key["phaser"].title == _validate_agent_preconditions(
-            "phaser", session
-        )
+        assert by_key["phaser"].title == validate_agent_preconditions("phaser", session)
         assert "vision statement" in by_key["phaser"].title
 
     def test_a_reachable_label_has_no_tooltip(self) -> None:

@@ -50,7 +50,7 @@ from spec4.layouts.designer import (
     _step7_content,
     designer_layout,
 )
-from spec4.session import _default_session
+from spec4.session import default_session
 
 # The glyphs the wizard's buttons wore, plus the ASCII and guillemet stand-ins
 # somebody would reach for next. The criterion is about the *mark*, not about
@@ -153,7 +153,7 @@ def _marked(row: Any, state: str) -> list[str]:
 
 def _session(**extra: Any) -> dict[str, Any]:
     """A session whose Designer gate is answered, so the wizard renders."""
-    session = _default_session()
+    session = default_session()
     session.update(
         {
             "provider": "anthropic",

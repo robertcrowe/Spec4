@@ -11141,3 +11141,109 @@ Replaces §60.6's table where they differ; its per-commit inheritance stands, as
 | 7p | §59.6 items 9–10 | PLR2004; the 13 E501 in `scripts/e2e_agentifier.py` | not ruled |
 | 7q | **the agentifier eight with the `yield from` backlog — last** | (e) | plan mode, `ultrathink` |
 | close-out | the plan's audit | `CLEANUP_REPORT.md`, docs, the inventory fold; root-siblings, batch 11's three names and (c)'s three recorded for Phase 8 | — |
+
+## 61. Phase 7a — rename batch 1: `session`, six names
+
+§60.7(j) 7a: one commit, default mode, under the rename check. Six private names in
+`spec4.session` take their underscore-free spelling. The rename check proves nothing else
+changed.
+
+### 61.1 What landed
+
+| Private | Public | Sites (§55) | Note |
+|---|---|---:|---|
+| `_default_session` | `default_session` | 248 | three whole-file entries, by import alias (§54.7); two tier-A nodes |
+| `_load_working_dir` | `load_working_dir` | 24 | joined the rename half by §60.7(d); one tier-A node |
+| `_reset_for_new_project` | `reset_for_new_project` | 14 | one whole-file entry, by import alias |
+| `_run_agent_blocking` | `run_agent_blocking` | 8 | |
+| `_validate_agent_preconditions` | `validate_agent_preconditions` | 7 | one tier-A node |
+| `_summarize_turn_usage` | `summarize_turn_usage` | 4 | |
+| | | **305** | |
+
+- **Footprint:** 44 files. The substitution changed 341 lines; `ruff format` then re-wrapped
+  two files, giving 344 insertions and 343 deletions. The re-wraps are
+  `test_callback_co_presence.py`, whose aliased import line outgrew 88 columns and became a
+  parenthesised import, and `test_chat_pill_bar.py:235`, an assertion the shorter name let
+  ruff join. That assertion lies outside the file's two tier-A nodes (`266–285`,
+  `431–436`).
+- **Outside `src/` and `tests/`:** `scripts/e2e_agentifier.py:32, 392` (`_default_session`).
+  It sits outside the gate, so nothing else would have caught it. **Left**, under Rule 2:
+  `.spec4/v0/phases/phase1-notes.md:293, 294, 299`.
+- **D-number citations were updated in the same commit**, so none went stale:
+  `agentifier/agentifier.py:2334, 2337` (D-TA1), `session.py:292` (D-PM1),
+  `layouts/_chat_actions.py:232` (D-AR1, D-BB1, D-LR2, D-LR8), `test_agent_pill_click.py:4`
+  (D-BB1, D-BB2).
+- **`app.py` (D-LR1):** three lines changed, each a name in place: the import at `:26`, and
+  `:92` and `:387`. The `# noqa: E402, F401` lines at `:74–75` are untouched, and no import
+  moved.
+- **Unchanged:**
+  - no string reference (none of the six has a patch target or an `__all__` entry);
+  - no module-path occurrence;
+  - nothing under `tests/golden/` or `tests/snapshots/`.
+
+### 61.2 The rename check, recorded per §60.7(h)
+
+This is the shell function of §60.2, run from the repo root with `P=HEAD` on the working
+tree, `MAP` holding the six `old<TAB>new` lines:
+
+```
+rename check: EMPTY
+```
+
+The scratch implementation of the same check, with the same normalisation, printed
+`rename check: EMPTY -- the change is identifier substitution alone`. **This batch has no
+documented exceptions.**
+
+### 61.3 Petitions
+
+| Petition | File | Result |
+|---|---|---|
+| §54.7 | `test_callback_co_presence.py` | import lines alone (one aliased line became a four-line import) · goldens identical · node ids unchanged — **passes** |
+| §54.7 | `test_layout_contract.py` | one import line · goldens identical · node ids unchanged — **passes** |
+| §54.7 | `test_streaming_characterization.py` | one import line · goldens identical · node ids unchanged — **passes** |
+| §60.3 | `test_round_tree.py` — `TestItClosesTheProjectView::test_the_tree_is_the_last_of_the_three` (762–773), `TestTheCallbackRecomputes::test_it_sees_a_file_written_after_the_last_render` (855–873) | reverse diff empty · assertions token-identical · off-limits elsewhere — **passes** |
+| §60.3 | `test_session.py` — `TestLoadWorkingDir::test_picking_a_directory_reopens_the_question` (387–394) | **passes** |
+| §60.3 | `test_stale_ai_features.py` — `test_stale_mock_allows_stack_advisor` (98–109) | **passes** |
+
+### 61.4 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | 3 in the diff, all listed above under §54.7, all passing. Phase 6's unadapted hunk check flags them, as it was built to |
+| 456 node ids | **456 / 456 collect**; 4,200 collected |
+| 19 tier-B files / 33 classes | **12 files with hunks — 0 inside a listed class.** Reported below in §51.6's template |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_agent_llm_selection.py` | `TestOfferedEfforts` **273–360** | 7 — 41, 58, 199, 228, 477, 485, 602 | **none inside a listed class** |
+| `test_agent_rows.py` | `TestTheSixActionVariants` **376–472**; `TestAMissingUsageEntry` **649–719**; `TestItLeadsTheProjectView` **727–795** | 3 — 43, 64, 520 | **none inside a listed class** |
+| `test_agents.py` | `TestLoadDesignManifest` **2271–2298**; `TestAiFeaturesForPhaserFullSurface` **4962–5060**; `TestPhaserSpecReferenceDirective` **5227–5268** | 2 — 2452, 2472 | **none inside a listed class** |
+| `test_callbacks_stream_poll.py` | `TestStreamedTokenCounter` **735–755** | 28 — 20, 29, 40, 75, 98, 118, 173, 218, 222, 231, 283, 344, 393, 448, 515, 544, 561, 576, 587, 605, 623, 639, 651, 674, 681, 687, 710, 728 | **none inside a listed class** |
+| `test_chat_open_links.py` | `TestTheOpenButtonsRegister` **139–163** | 12 — 49, 205, 215, 223, 288, 296, 307, 318, 328, 343, 350, 366 | **none inside a listed class** |
+| `test_designer.py` | `TestCapturePassesPlanningContext` **794–879**; `TestRetryReproducesTheDraw` **896–979**; `TestRefinePersistsManifest` **1003–1041** | 6 — 2029, 2032, 2195, 2198, 2333, 2336 | **none inside a listed class** |
+| `test_designer_wizard_register.py` | `TestNoBackToTheProjectView` **569–598** | 2 — 53, 156 | **none inside a listed class** |
+| `test_project_manager.py` | `TestPhaseSpecPreamble` **745–946**; `TestRenderPhaseStackRoutingAndNfr` **949–1044**; `TestPreambleTwoAltitudesAndSurfaces` **1047–1175**; `TestSessionIsBrownfield` **1178–1204** | 2 — 1212, 1215 | **none inside a listed class** |
+| `test_project_mode.py` | `TestDesignerFollowsTheAnswer` **274–316** | 13 — 25, 64, 113, 116, 121, 126, 138, 148, 151, 339, 344, 356, 358 | **none inside a listed class** |
+| `test_round_tree.py` | `TestUsageIsNeverStale` **260–302** | 25 — 46, 769, 784, 791, 808, 824, 850, 866, 886, 889, 896, 934, 940, 945, 953, 969, 981, 995, 1002, 1025, 1042, 1048, 1078, 1086, 1099 | **none inside a listed class** |
+| `test_status_bar.py` | `TestOnlyThePathEverGivesUpSpace` **232–330**; `TestTheStylesheetPinsWhatTheLayoutMarks` **333–404** | 7 — 37, 416, 451, 757, 772, 799, 902 | **none inside a listed class** |
+| `test_stream_error_recovery.py` | `TestEmptyTurnBackstop` **194–250** | 7 — 32, 76, 96, 105, 111, 118, 303 | **none inside a listed class** |
+
+### 61.5 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped` (exit 0); 4,200 collected |
+| Coverage | same run | `TOTAL 12421 stmts, 891 miss, 93%` — identical to §60.1, at the ≤ 891 ceiling |
+
+A rename moves no statement: 12,421 before and after.
+
+### 61.6 What this sub-phase did not do
+
+- It adds no contract docstring to `load_working_dir` and no `Mapping` annotation: §60.4's
+  proposals are not renames.
+- It changes no test beyond the substitution itself.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.

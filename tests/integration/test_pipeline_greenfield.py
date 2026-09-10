@@ -14,7 +14,7 @@ import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from spec4.session import _default_session
+from spec4.session import default_session
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -152,7 +152,7 @@ def _make_stream_turn_mock(text: str) -> Any:
 
 class TestGreenFieldSessionDefaults:
     def test_agentifier_fields_present(self) -> None:
-        session = _default_session()
+        session = default_session()
         assert "agentifier_spec_done" in session
         assert "agentifier_cross_cutting_done" in session
         assert "agentifier_priority_done" in session
@@ -160,7 +160,7 @@ class TestGreenFieldSessionDefaults:
         assert session["agentifier_priority_done"] is False
 
     def test_ai_features_none_by_default(self) -> None:
-        session = _default_session()
+        session = default_session()
         assert session["ai_features"] is None
 
 
@@ -173,7 +173,7 @@ class TestDownstreamBackwardCompatibility:
     """Verify downstream agents do not break when ai_features is absent."""
 
     def _base_session(self) -> dict[str, Any]:
-        session = _default_session()
+        session = default_session()
         session["llm_config"] = _LLM_CONFIG
         session["vision_statement"] = _VISION
         session["stack_statement"] = _STACK
@@ -224,7 +224,7 @@ class TestDownstreamAiFeaturesConsumption:
     """Verify ai_features context is injected into downstream agent seeds."""
 
     def _session_with_ai_features(self) -> dict[str, Any]:
-        session = _default_session()
+        session = default_session()
         session["llm_config"] = _LLM_CONFIG
         session["vision_statement"] = _VISION
         session["stack_statement"] = _STACK
@@ -327,7 +327,7 @@ class TestDownstreamAiFeaturesConsumption:
 
 class TestAgentifierGreenfield:
     def _make_session(self) -> dict[str, Any]:
-        session = _default_session()
+        session = default_session()
         session["working_dir"] = "/tmp/spec4-integration-greenfield"
         session["llm_config"] = _LLM_CONFIG
         session["active_agent"] = "agentifier"

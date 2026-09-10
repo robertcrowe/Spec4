@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from spec4.agentifier.pattern_loader import load_patterns
 from spec4.app_constants import STATE_AGENTIFIER_COMPLETE
-from spec4.session import _default_session
+from spec4.session import default_session
 
 # ---------------------------------------------------------------------------
 # Realistic mock payloads
@@ -389,7 +389,7 @@ def run_e2e(project_dir: str) -> int:  # noqa: PLR0912, PLR0915
     print(f"Vision  : {proj_name}")
 
     # Build session as Spec4 would
-    session: dict[str, Any] = _default_session()
+    session: dict[str, Any] = default_session()
     session["working_dir"] = str(project_path)
     session["vision_statement"] = vision
     session["llm_config"] = {"model": "claude-sonnet-4-6", "api_key": "sk-test"}

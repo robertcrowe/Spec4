@@ -17,7 +17,7 @@ from spec4.layouts._chat import (
     _chat_layout,
     _streamed_token_count,
 )
-from spec4.session import _default_session
+from spec4.session import default_session
 
 
 # ---------------------------------------------------------------------------
@@ -26,7 +26,7 @@ from spec4.session import _default_session
 
 
 def _session_with_stream(**overrides: Any) -> dict[str, Any]:
-    s = _default_session()
+    s = default_session()
     s["_stream_id"] = "aaaabbbb-0000-0000-0000-000000000000"
     s["messages"] = [
         {"role": "user", "content": "hi"},
@@ -37,7 +37,7 @@ def _session_with_stream(**overrides: Any) -> dict[str, Any]:
 
 
 def _fake_stream_entry(text: str = "hello", done: bool = True) -> dict[str, Any]:
-    agent_sess = _default_session()
+    agent_sess = default_session()
     agent_sess["_display_override"] = None
     return {"text": text, "done": done, "session": agent_sess}
 
@@ -72,7 +72,7 @@ class TestStreamPollMissingEntry:
 
     def test_no_stream_id_returns_no_update_early(self) -> None:
         """Early-out when _stream_id is None/missing — existing behaviour."""
-        session = _default_session()
+        session = default_session()
         session["_stream_id"] = None
         with patch("spec4.callbacks._chat.streaming.get") as mock_get:
             result = on_stream_poll(1, session)
@@ -95,7 +95,7 @@ class TestStreamPollNormalDone:
     def test_normal_done_merges_agent_session(self) -> None:
         """Successful done branch must still merge the agent-mutated session."""
         session = _session_with_stream()
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["vision_statement"] = {"name": "TestApp"}
         agent_sess["_display_override"] = None
         done_entry = {"text": "final answer", "done": True, "session": agent_sess}
@@ -115,7 +115,7 @@ class TestStreamPollNormalDone:
     def test_normal_done_applies_display_override(self) -> None:
         """_display_override replaces the last chat message in the done branch."""
         session = _session_with_stream()
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["_display_override"] = "Override text from agent"
         done_entry = {"text": "raw stream text", "done": True, "session": agent_sess}
 
@@ -170,7 +170,7 @@ class TestStreamPollDoneFinalisation:
 
         This runs against the real container, so "still present" is observable.
         """
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["_display_override"] = None
         agent_sess["vision_statement"] = {"name": "TestApp"}
 
@@ -215,11 +215,11 @@ class TestStreamPollDoneFinalisation:
         def _gen() -> Any:
             yield "done"
 
-        stream_id = streaming.start(_gen(), _default_session())
+        stream_id = streaming.start(_gen(), default_session())
         _wait_until(lambda: (streaming.get(stream_id) or {}).get("done") is True)
         assert streaming.get(stream_id) is not None
 
-        live_id = streaming.start(_gen(), _default_session())
+        live_id = streaming.start(_gen(), default_session())
 
         assert streaming.get(stream_id) is None, (
             "start() must evict entries the done branch deliberately left behind"
@@ -228,7 +228,7 @@ class TestStreamPollDoneFinalisation:
 
     def test_two_done_polls_return_identical_terminal_store(self) -> None:
         """Two racing done-branch polls must produce byte-identical terminal stores."""
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["vision_statement"] = {"name": "TestApp"}
         agent_sess["_display_override"] = None
         done_entry = {"text": "final text", "done": True, "session": agent_sess}
@@ -280,7 +280,7 @@ class TestBreadthPanelValueSeeding:
     def _make_session_with_groups(
         self, selection: list[str] | None = None
     ) -> dict[str, Any]:
-        s = _default_session()
+        s = default_session()
         s["agentifier_breadth_groups"] = [
             {"name": "feat_a", "description": "Feature A."},
             {"name": "feat_b", "description": "Feature B."},
@@ -341,7 +341,7 @@ class TestBreadthPanelValueSeeding:
         assert _breadth_panel(session) is None
 
     def test_panel_hidden_when_no_groups(self) -> None:
-        session = _default_session()
+        session = default_session()
         assert _breadth_panel(session) is None
 
     def test_panel_hidden_when_streaming(self) -> None:
@@ -390,7 +390,7 @@ class TestBreadthPanelCheckboxStyling:
     """
 
     def _checkboxes(self) -> list[Any]:
-        session = _default_session()
+        session = default_session()
         session["agentifier_breadth_groups"] = [
             {"name": "feat_a", "description": "Feature A."},
             {"name": "feat_b", "description": "Feature B."},
@@ -445,7 +445,7 @@ class TestBreadthPanelCheckboxStyling:
 
 
 def _make_active_breadth_session() -> dict[str, Any]:
-    s = _default_session()
+    s = default_session()
     s["agentifier_breadth_groups"] = [
         {"name": "feat_a", "description": "Feature A."},
     ]
@@ -512,7 +512,7 @@ class TestChatLayoutInputVisibility:
         assert textarea is not None, "chat-input Textarea must be present in the tree"
 
     def test_input_row_visible_when_breadth_inactive(self) -> None:
-        session = _default_session()
+        session = default_session()
         layout = _chat_layout(session)
         row = self._find_input_row(layout)
         assert row is not None
@@ -541,7 +541,7 @@ class TestStreamPollReceivedCounter:
     def test_not_done_threads_received_scalar(self) -> None:
         session = _session_with_stream()
         session["messages"][-1] = {"role": "assistant", "content": "frozen"}
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["_stream_received_chars"] = 51234
         entry = {"text": "frozen", "done": False, "session": agent_sess}
 
@@ -558,7 +558,7 @@ class TestStreamPollReceivedCounter:
         session = _session_with_stream()
         session["messages"][-1] = {"role": "assistant", "content": "frozen"}
         session["_stream_received_chars"] = 50000
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["_stream_received_chars"] = 50120
         entry = {"text": "frozen", "done": False, "session": agent_sess}
 
@@ -573,7 +573,7 @@ class TestStreamPollReceivedCounter:
         session = _session_with_stream()
         session["messages"][-1] = {"role": "assistant", "content": "frozen"}
         session["_stream_received_chars"] = 50000
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["_stream_received_chars"] = 50000
         entry = {"text": "frozen", "done": False, "session": agent_sess}
 
@@ -584,7 +584,7 @@ class TestStreamPollReceivedCounter:
 
     def test_done_clears_received_scalar(self) -> None:
         session = _session_with_stream()
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["_display_override"] = None
         agent_sess["_stream_received_chars"] = 99999
         entry = {"text": "final", "done": True, "session": agent_sess}
@@ -602,7 +602,7 @@ class TestStreamPollStatusLine:
 
     def test_not_done_threads_status(self) -> None:
         session = _session_with_stream()
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["_stream_status"] = "Scout is scanning your vision…"
         entry = {"text": "hello", "done": False, "session": agent_sess}
 
@@ -620,7 +620,7 @@ class TestStreamPollStatusLine:
         session["messages"][-1] = {"role": "assistant", "content": "frozen"}
         session["_stream_received_chars"] = 50000
         session["_stream_status"] = "Scout is scanning your vision…"
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["_stream_received_chars"] = 50000
         agent_sess["_stream_status"] = "Composer is grouping candidates…"
         entry = {"text": "frozen", "done": False, "session": agent_sess}
@@ -636,7 +636,7 @@ class TestStreamPollStatusLine:
         session["messages"][-1] = {"role": "assistant", "content": "frozen"}
         session["_stream_received_chars"] = 50000
         session["_stream_status"] = "Same status…"
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["_stream_received_chars"] = 50000
         agent_sess["_stream_status"] = "Same status…"
         entry = {"text": "frozen", "done": False, "session": agent_sess}
@@ -648,7 +648,7 @@ class TestStreamPollStatusLine:
 
     def test_done_clears_status(self) -> None:
         session = _session_with_stream()
-        agent_sess = _default_session()
+        agent_sess = default_session()
         agent_sess["_display_override"] = None
         agent_sess["_stream_status"] = "Still working…"
         entry = {"text": "final", "done": True, "session": agent_sess}
@@ -671,20 +671,20 @@ class TestChatStatusLine:
         )
 
     def test_renders_session_status(self) -> None:
-        session = _default_session()
+        session = default_session()
         session["_stream_status"] = "Tier Analyst is sizing chat_bot (2/5)…"
         line = self._find_status_line(_chat_layout(session))
         assert line is not None
         assert line.children == "Tier Analyst is sizing chat_bot (2/5)…"
 
     def test_empty_when_no_status(self) -> None:
-        session = _default_session()
+        session = default_session()
         line = self._find_status_line(_chat_layout(session))
         assert line is not None
         assert line.children == ""
 
     def test_is_single_smaller_line(self) -> None:
-        session = _default_session()
+        session = default_session()
         session["_stream_status"] = "Working…"
         line = self._find_status_line(_chat_layout(session))
         assert line.size == "xs", "status line must be smaller than body text"
@@ -707,7 +707,7 @@ class TestAgentStatusSeed:
     def test_seeds_status_on_session(self) -> None:
         from spec4.session import _get_agent_gen
 
-        session = _default_session()
+        session = default_session()
         session["active_agent"] = "brainstormer"
         session["llm_config"] = {"model": "test-model"}
         _get_agent_gen("hi", session)
@@ -725,7 +725,7 @@ class TestAgentStatusSeed:
             "deployer",
         ):
             assert agent in _AGENT_STATUS_SEED
-            session = _default_session()
+            session = default_session()
             session["active_agent"] = agent
             session["llm_config"] = {"model": "test-model"}
             _get_agent_gen(None, session)

@@ -292,7 +292,7 @@ _PIPELINE_ARTIFACT_ORDER: list[str] = [
 ]
 
 # Inputs that must exist for an agent to be runnable at all (the Not-Ready gate),
-# derived from `_validate_agent_preconditions`. Every other input listed in
+# derived from `validate_agent_preconditions`. Every other input listed in
 # `_STALE_DEPENDENCIES` is optional: it joins the freshness chain only when
 # present and never blocks. Agents absent from this map have no required inputs.
 _REQUIRED_INPUTS: dict[str, list[str]] = {
@@ -389,7 +389,7 @@ def _has_transcript(agent: str, session: dict[str, Any] | None) -> bool:
 
     ``{agent}_messages`` is the agent's own LLM transcript, distinct from the
     ``messages`` the chat frame renders. It is seeded empty for every agent in
-    ``_default_session``, so "non-empty list" is the honest test for "this
+    ``default_session``, so "non-empty list" is the honest test for "this
     agent has been talked to" — anything else (absent, ``None``, a value of the
     wrong shape) is a session that has not run it.
     """

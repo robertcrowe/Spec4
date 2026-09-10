@@ -24,7 +24,7 @@ from spec4.app_constants import (
 # ---------------------------------------------------------------------------
 
 
-def _default_session() -> dict[str, Any]:
+def default_session() -> dict[str, Any]:
     return {
         "working_dir": None,
         "browser_path": None,
@@ -49,7 +49,7 @@ def _default_session() -> dict[str, Any]:
         # remembered project: the plain-text message naming the directory that
         # could not be opened. Transient like `setup_error` — set by
         # `on_browser_navigate`, cleared the moment a directory is selected
-        # (`_load_working_dir` resets to these defaults).
+        # (`load_working_dir` resets to these defaults).
         "dir_error": None,
         "llm_config": None,
         # Per-agent model overrides, keyed by the seven user-facing agent names
@@ -185,7 +185,7 @@ _PRESERVED_SETUP_KEYS: tuple[str, ...] = (
 )
 
 
-def _reset_for_new_project(session: dict[str, Any]) -> dict[str, Any]:
+def reset_for_new_project(session: dict[str, Any]) -> dict[str, Any]:
     """Build a fresh-default session preserving only the LLM setup keys.
 
     Used by the "Start New Project" action in Deployer. Clears every
@@ -195,7 +195,7 @@ def _reset_for_new_project(session: dict[str, Any]) -> dict[str, Any]:
     while leaving the developer's provider/model/web-search configuration in place
     so they don't have to redo the setup screen.
     """
-    fresh = _default_session()
+    fresh = default_session()
     for key in _PRESERVED_SETUP_KEYS:
         fresh[key] = session.get(key)
     return fresh
@@ -222,7 +222,7 @@ def _catalog_from_features(ai_features: dict[str, Any]) -> dict[str, Any]:
     return {"ai_catalog": entries}
 
 
-def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
+def load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
     """Build a session dict for the given working directory, loading .spec4/ artifacts.
 
     Selecting a working directory in the browser starts work on a (potentially
@@ -236,7 +236,7 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
     picks a different directory isn't sent back through /setup. Callers route
     to /setup or /agents based on the resulting llm_config.
     """
-    session = _reset_for_new_project(session)
+    session = reset_for_new_project(session)
     session.update(
         {
             "working_dir": path,
@@ -289,7 +289,7 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
     _load_ai_features(session, path, new_round)
     # spec drafting not yet complete — keep STATE_IN_PROGRESS
     _load_deployment_state(session, path, new_round)
-    # D-PM1: picking a directory re-opens the question. `_reset_for_new_project`
+    # D-PM1: picking a directory re-opens the question. `reset_for_new_project`
     # above already restored the default, but state it here too so the intent
     # survives a future refactor of that helper. Whether the directory is
     # occupied is read from disk at render time (project_manager.
@@ -313,7 +313,7 @@ class NoModelConnectedError(RuntimeError):
     """
 
 
-def _validate_agent_preconditions(agent: str, session: dict[str, Any]) -> str | None:
+def validate_agent_preconditions(agent: str, session: dict[str, Any]) -> str | None:
     """Return an error message if agent prerequisites are missing, else None."""
     has_vision = session.get("vision_statement") is not None
     has_stack = session.get("stack_statement") is not None
@@ -463,7 +463,7 @@ def _trace_gen(
         print(f"[agent-gen] {label}: iteration ended (yielded={yielded})", flush=True)
 
 
-def _run_agent_blocking(user_input: str | None, session: dict[str, Any]) -> str:
+def run_agent_blocking(user_input: str | None, session: dict[str, Any]) -> str:
     """Run one agent turn synchronously, returning the full response text."""
     return "".join(_get_agent_gen(user_input, session))
 
@@ -482,7 +482,7 @@ def _turn_was_fast_forward(session: dict[str, Any]) -> bool:
     return False
 
 
-def _summarize_turn_usage(agent: Any, records: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize_turn_usage(agent: Any, records: list[dict[str, Any]]) -> dict[str, Any]:
     """Token readout for one finished turn, from its per-call usage records.
 
     ``{"agent", "input", "output", "calls", "missing"}`` for the chat row's
@@ -548,7 +548,7 @@ def _persist_artifacts(session: dict[str, Any]) -> None:
     # The finished turn's token readout for the chat row (layouts._chat
     # renders it next to the chars counter once the stream has completed).
     # Replaced every turn, cleared when the turn made no call.
-    session["_turn_usage"] = _summarize_turn_usage(
+    session["_turn_usage"] = summarize_turn_usage(
         session.get("active_agent"), usage_records
     )
     _persist_spec_artifacts(session, working_dir, version)
@@ -683,7 +683,7 @@ def _persist_plan_artifacts(
         # response containing "## Deployment Steps" arrives, and only after the
         # confirmation prompt (when an existing plan is on disk) has been
         # resolved with an affirmative reply. This prevents a returning user
-        # whose deployer_state was lifted to COMPLETE by _load_working_dir from
+        # whose deployer_state was lifted to COMPLETE by load_working_dir from
         # silently overwriting the on-disk plan with whatever the last assistant
         # message happens to be (a greeting, a "no" acknowledgement, etc).
         md = session.get("_deployer_plan_markdown") or ""

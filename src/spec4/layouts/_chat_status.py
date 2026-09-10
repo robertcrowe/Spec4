@@ -34,7 +34,7 @@ from spec4.layouts._shared import (
     step_modifier_class,
     step_row,
 )
-from spec4.session import _validate_agent_preconditions
+from spec4.session import validate_agent_preconditions
 
 
 # The pipeline indicator's four states, as the modifier classes `v3.css`
@@ -113,7 +113,7 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
         if key == active:
             entries.append(StepEntry(label, STEP_ACTIVE))
             continue
-        blocked = _validate_agent_preconditions(key, session)
+        blocked = validate_agent_preconditions(key, session)
         if blocked is not None:
             state = STEP_UNREACHABLE
         elif done.get(key):

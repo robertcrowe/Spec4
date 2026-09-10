@@ -43,7 +43,7 @@ from spec4.layouts._round_tree import (
     line_id,
     rendered_tree_lines,
 )
-from spec4.session import _default_session
+from spec4.session import default_session
 
 # The whole round, oldest first. Writing them in this order and then bumping
 # one file's mtime is how a "the upstream moved" fixture is built.
@@ -766,7 +766,7 @@ class TestItClosesTheProjectView:
         it — so what is asserted is its place among the three surfaces, not
         an absolute index.
         """
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         view = _agent_select_layout(session)
         ids = [getattr(child, "id", None) for child in view.children]
         assert ids.index("round-tree") > ids.index("agent-rows")
@@ -781,14 +781,14 @@ class TestItClosesTheProjectView:
         derivation ``TestPipelineOrder`` checks against ``AGENT_KEYS`` — so a
         pipeline change reorders both without editing this test.
         """
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         expected = [line.path for line in rendered_tree_lines(round_dir, 0)]
         assert _line_paths(_agent_select_layout(session)) == expected
 
     def test_the_existing_project_view_ids_survive(
         self, round_dir: pathlib.Path
     ) -> None:
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         view = _agent_select_layout(session)
         # The change-provider button left with the status bar's model slot
         # taking over; the seven action buttons carry pattern-matching ids,
@@ -805,7 +805,7 @@ class TestItClosesTheProjectView:
         call, because what matters is that the lines a developer sees are the
         ones they can click.
         """
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         view = _agent_select_layout(session)
         assert _line_ids(view)
 
@@ -821,7 +821,7 @@ class TestItClosesTheProjectView:
         for name in ("phase2.md", "phase3.md"):
             (base / "phases" / name).write_text("# a phase\n")
 
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         expected = {line.path for line in rendered_tree_lines(round_dir, 0)}
         # The derivation, restated from the table rather than from the
         # function under test: everything but `phases/`, plus the phase files.
@@ -847,7 +847,7 @@ class TestTheCallbackRecomputes:
     def test_it_returns_a_heading_and_a_line_per_artifact(
         self, round_dir: pathlib.Path
     ) -> None:
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         head, lines = on_round_tree("round-tree", session)
         assert head == ".spec4/v0/"
         assert len(lines) == len(_ALL_ARTIFACTS)
@@ -863,7 +863,7 @@ class TestTheCallbackRecomputes:
         """
         base = project_manager.get_version_dir(round_dir, 0)
         (base / "stack.json").unlink()
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
 
         _, before = on_round_tree("round-tree", session)
         assert STATUS_MISSING in _text(before)
@@ -883,17 +883,17 @@ class TestTheCallbackRecomputes:
             _write(base, rel, 1_000_000 + index)
 
         _, populated = on_round_tree(
-            "round-tree", {**_default_session(), "working_dir": str(full)}
+            "round-tree", {**default_session(), "working_dir": str(full)}
         )
         _, blank = on_round_tree(
-            "round-tree", {**_default_session(), "working_dir": str(empty)}
+            "round-tree", {**default_session(), "working_dir": str(empty)}
         )
         assert STATUS_MISSING not in _text(populated)
         assert _text(blank).count(STATUS_MISSING) == len(_ALL_ARTIFACTS)
 
     def test_it_follows_the_round(self, round_dir: pathlib.Path) -> None:
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(round_dir),
             "phase_version": 1,
         }
@@ -931,18 +931,18 @@ def _click(path: str | None, session: Any, n_clicks: Any = None) -> Any:
 
 class TestClickingALine:
     def test_it_opens_the_artifact_view(self, round_dir: pathlib.Path) -> None:
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         new_session, pathname = _click("vision.json", session)
         assert pathname == "/artifacts"
         assert PATH_TO_PHASE[pathname] == "artifacts"
 
     def test_it_records_the_exact_file(self, round_dir: pathlib.Path) -> None:
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         new_session, _ = _click("design/manifest.json", session)
         assert new_session["selected_file"] == "design/manifest.json"
 
     def test_it_records_the_round(self, round_dir: pathlib.Path) -> None:
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         new_session, _ = _click("vision.json", session)
         assert new_session["selected_round"] == 0
 
@@ -950,7 +950,7 @@ class TestClickingALine:
         self, round_dir: pathlib.Path
     ) -> None:
         """The reason `phases/` expands: a click names one file, not a folder."""
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         new_session, pathname = _click("phases/phase1.md", session)
         assert new_session["selected_file"] == "phases/phase1.md"
         assert pathname == "/artifacts"
@@ -966,7 +966,7 @@ class TestClickingALine:
         project_manager.ensure_version_dir(tmp_path, 0)
         project_manager.ensure_version_dir(tmp_path, 1)
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(tmp_path),
             "phase_version": 1,
         }
@@ -978,7 +978,7 @@ class TestClickingALine:
     ) -> None:
         """Only the two selection keys move; a click is not a state reset."""
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(round_dir),
             "messages": [{"role": "user", "content": "hi"}],
             "active_agent": "phaser",
@@ -992,14 +992,14 @@ class TestClickingALine:
         assert changed == {"selected_round", "selected_file"}
 
     def test_a_second_click_replaces_the_first(self, round_dir: pathlib.Path) -> None:
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         once, _ = _click("vision.json", session)
         twice, _ = _click("usage.json", once, n_clicks=[1, 1])
         assert twice["selected_file"] == "usage.json"
 
     def test_no_project_open_is_not_an_error(self) -> None:
         """No working directory means no round — the file is still recorded."""
-        new_session, pathname = _click("vision.json", _default_session())
+        new_session, pathname = _click("vision.json", default_session())
         assert new_session["selected_file"] == "vision.json"
         assert new_session["selected_round"] is None
         assert pathname == "/artifacts"
@@ -1022,7 +1022,7 @@ class TestTheClickGuards:
     def test_a_render_with_no_click_writes_nothing(
         self, round_dir: pathlib.Path
     ) -> None:
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         assert _click("vision.json", session, n_clicks=[None]) == (
             no_update,
             no_update,
@@ -1039,13 +1039,13 @@ class TestTheClickGuards:
     def test_a_missing_triggered_id_writes_nothing(
         self, round_dir: pathlib.Path
     ) -> None:
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         assert _click(None, session) == (no_update, no_update)
 
     def test_a_triggered_id_with_no_path_writes_nothing(
         self, round_dir: pathlib.Path
     ) -> None:
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         with patch(
             "spec4.callbacks._artifacts.ctx", _FakeCtx({"type": LINE_TYPE, "index": ""})
         ):
@@ -1075,7 +1075,7 @@ class TestTheSelectionReachesTheTree:
         A recompute in the plain form leaves a tree that looks identical and
         has silently stopped working — the exact bug this asserts against.
         """
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         _, lines = on_round_tree("round-tree", session)
         assert _line_ids(html.Ol(lines))
 
@@ -1083,7 +1083,7 @@ class TestTheSelectionReachesTheTree:
         self, round_dir: pathlib.Path
     ) -> None:
         session = {
-            **_default_session(),
+            **default_session(),
             "working_dir": str(round_dir),
             "selected_file": "vision.json",
         }
@@ -1096,7 +1096,7 @@ class TestTheSelectionReachesTheTree:
         self, round_dir: pathlib.Path
     ) -> None:
         """The round trip: click, store, redraw."""
-        session = {**_default_session(), "working_dir": str(round_dir)}
+        session = {**default_session(), "working_dir": str(round_dir)}
         clicked, _ = _click("stack.json", session)
         _, lines = on_round_tree("round-tree", clicked)
         marked = [row for row in lines if "is-selected" in row.className]
