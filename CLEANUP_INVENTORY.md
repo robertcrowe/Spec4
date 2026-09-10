@@ -10986,3 +10986,158 @@ judgment — plan mode.
 
 **Stopping here.** Committed as `cleanup: Phase 7 pre-work (§60)`, `CLEANUP_INVENTORY.md`
 only. Phase 7 begins on approval of §60.
+
+### 60.7 Approved — the rulings Phase 7 runs under
+
+§60 approved 2026-09-10. The rulings below are binding on Phase 7 and win over §60's
+proposals wherever the two differ; §60's findings otherwise stand as written.
+
+#### (a) The 290 is a grep of `: Any` lines
+
+Carried as exactly that: 5p's `grep -rc ': Any' src/spec4/ --include=*.py`, summed —
+**lines containing `: Any`**. Phase 7 reports it only in those terms ("`: Any` lines by 5p's
+grep: 290 → 232"), **never as a type-checker number**: `mypy --strict` has no such count,
+and the gate's figure stays "no issues found in 92 source files". The directive's "§59.6
+item 14" was the directive's slip; §60.0(d) stands — it is item 6.
+
+#### (b) The three collisions get new names
+
+| Private | Public | Left untouched |
+|---|---|---|
+| `_breadth_panel` | `render_breadth_panel` | the local `breadth_panel` in `_chat_layout` (`layouts/_chat.py:103`) |
+| `_retry_panel` | `render_retry_panel` | the local `retry_panel` (`layouts/_chat.py:104`) |
+| `_agent_rows` | `build_agent_rows` | the existing public `agent_rows` (`layouts/_agent_rows.py:302`) |
+
+Checked before recording, with §60.2's net cast again for the replacements: none of the
+three — nor `load_working_dir`, item (d) — occurs anywhere in the tracked tree as a token,
+in its hyphenated component-id form, or inside any string literal (component ids,
+session-store keys, patch targets, `__all__` entries, docstrings). A rename that also renamed
+a local fails the rename check by construction, because the reverse substitution does not
+restore it. If the module turns out to have a stronger convention than `render_` /
+`build_`, the batch uses it and says so in its report. With new names the three are no
+longer stops: batch 2 carries all nine of its names, batch 3 all nine of its.
+
+#### (c) The three net-blocked names stay private — *rename blocked by net attribute access*
+
+| Name | Owner | Net entry, where it is reached by attribute | Would become |
+|---|---|---|---|
+| `_record_usage` | `llm.py` | `tests/test_streaming_characterization.py:344` — `llm._record_usage(` | `record_usage` |
+| `_start_gen` | `callbacks/designer/_mock_gen.py` | `tests/test_streaming_characterization.py:402` — `dmod._start_gen(` | `start_gen` |
+| `_with_readme_attribution` | `_artifacts.py` | `tests/test_project_manager_golden.py:168, 169, 172, 173` — `project_manager._with_readme_attribution(` | `with_readme_attribution` |
+
+No compatibility alias in `src/`, no petition: three names are not worth either. When one
+of those net files is next legitimately opened, the rename comes with it. Batch 9 carries
+three names, batch 10 three.
+
+#### (d) `_load_working_dir` and the alias join the rename half
+
+- **`_load_working_dir` → `load_working_dir`** is a `spec4.session` name, so it rides in
+  **batch 1**, which becomes six names and 305 sites (50.8 per name, still the first
+  batch). Scanned as §60.2 scans: no collision, no string reference, no D-number
+  citation, no module of that name; one tier-A site
+  (`test_session.py::TestLoadWorkingDir::test_picking_a_directory_reopens_the_question`,
+  §60.3); one docstring mention (`agents/_turn_flow.py:241`); one tracked `.spec4/` line,
+  left (Rule 2). The contract §60.4 proposed documenting is not part of a rename commit.
+- **`_stream_suppressing_json`**: the alias is deleted and its sites point at the public
+  `stream_suppressing_json` — in **batch 7**. What the rename check shows for it is that
+  batch's one documented exception, reported verbatim. Under §60.2's normalisation the
+  import line itself may cancel (the `x as x` fold); the module-docstring sentence that
+  explains the alias (`agentifier.py:26–28`) will not, and it goes in the same commit,
+  since it would otherwise describe a spelling that no longer exists.
+
+#### (e) The agentifier eight: the split and the promotion, taken once
+
+Not promote-as-is. Promoting generators the backlog already says need splitting would be
+two public-name churns for one decision. The `yield from` sub-generator split (§27.4) and
+the promotion are **one item**, taken once and supervised: the **last Phase 7 sub-phase**,
+in plan mode with `ultrathink`, after the rename half and the small seams. If it does not
+fit Phase 7 it carries to Phase 8 **whole**, never half-done. The other three seams —
+`_persist_artifacts`, `_get_agent_gen`, `_rehydrate_vision_from_disk` — proceed on their
+§60.4 proposals.
+
+#### (f) Root-siblings: no-go for Phase 7
+
+To Phase 8, with whatever seams remain. The `project_manager` rename batch still runs, last
+in the rename order, renaming only names not involved in the inconsistency. **By §60.5's own
+finding that is none of them:** all three are defined in root siblings and re-exported by
+`project_manager`'s `__all__` — `_write_text_if_changed` and `_with_readme_attribution` in
+`_artifacts.py`, `_phase_spec_preamble` in `_phase_markdown.py` — and
+`_with_readme_attribution` is net-blocked besides, (c). **Batch 11 therefore renames
+nothing in Phase 7 and makes no commit.** Deferred with root-siblings, to Phase 8:
+
+| Name | Would become | Sites | Why it waits |
+|---|---|---:|---|
+| `_write_text_if_changed` | `write_text_if_changed` | 4 | defined in `_artifacts.py`, a root sibling |
+| `_phase_spec_preamble` | `phase_spec_preamble` | 1 | defined in `_phase_markdown.py`, a root sibling; its tier-B class `TestPreambleTwoAltitudesAndSurfaces` |
+| `_with_readme_attribution` | `with_readme_attribution` | 4 | defined in `_artifacts.py`; and blocked by net attribute access, (c) |
+
+The `_usage.py` seam still runs in Phase 7 (item (i)2); Phase 8's move would re-point its
+two patch strings.
+
+#### (g) The Designer wizard store: out
+
+The plan's no-`TypedDict` rule covers it. The two-store session model is one design;
+typing one store and not the other is an asymmetry, and a `TypedDict` is a design change,
+not the hygiene Phase 7 scoped. The 13 designer-store rows stay session-dict edge,
+deferred with the rest.
+
+#### (h) Rule 1, relaxed, carries into Phase 7
+
+One commit per rename batch and per sub-phase; the gate green at each; the floor and the
+off-limits check in both halves at each, in §60.3's adapted form; and **the
+reverse-substitution diff recorded in every rename commit's report**.
+
+#### (i) Three additions to §60.6
+
+1. **Type hygiene takes the 58, on two conditions.** (i) The two areas not yet run through
+   mypy — top-level `callbacks/` and the root modules — are run before the batch is
+   committed. The gate does this anyway; the report says so. (ii) The 35 load-bearing rows
+   are re-read for any whose reason was "no stubs": that reason is void, and a row that
+   relied on it moves to the 58 or gets a real reason. Sized now: nine of the 35 reasons
+   mention stubs, the override or "untyped". Two were already corrected by the verifiers
+   (`agents/designer.py:584`, `llm.py:296`); four rest on `dash_mantine_components`,
+   which genuinely ships no types (`callbacks/designer/__init__.py:147`;
+   `layouts/designer.py:75, 147, 209`); one is a false match — the "stub" at
+   `agentifier/subagents.py:144` is a function's stub body; and **two lean on Dash or
+   litellm being untyped and are the re-read**: `layouts/_artifact_view.py:764` (Dash's
+   `ctx.triggered_id`) and `llm.py:489` (litellm's `_hidden_params`).
+2. **`test_root_routing.py:384` joins the `_usage.py` seam sub-phase.** Replacing
+   `pathlib.Path.is_dir` process-wide is the old `os.replace` hazard and gets the same
+   treatment: a production seam in `project_manager.directory_opens`
+   (`project_manager.py:364`), patched by name, and §52.1's four-way verification — the
+   seam transparent when nothing overrides it; the patched seam reached; the stdlib
+   `Path.is_dir` real for the whole patch; a clean restore after.
+3. **M8's acceptance mutation, restated:** everything in the valve message replaced except
+   the "Refresh the page" phrase the two existing tests pin. **Run before recording, at
+   `7f969a9`, full suite: `4199 passed, 1 skipped`.** Nothing pins more of the message than
+   those two tests — a grep of `tests/` for every clause of it finds only
+   `test_designer.py:1549` and `test_streaming_characterization.py:568`, both asserting
+   that one phrase. So M8 is a real gap, and item 6 gets its test rather than a closing
+   note. The new test pins the **whole** message. Its acceptance: it fails under this
+   mutation (and under M8, M8b and M8c) while the rest of the suite stays green; unmutated,
+   everything passes. It sits in `test_designer.py::TestMockDeliveryAck` (not net), beside
+   `test_runaway_valve_reports_the_saved_mock`; the twin in
+   `test_streaming_characterization.py` is whole-file net and stays as it is.
+
+#### (j) The order Phase 7 runs in
+
+Replaces §60.6's table where they differ; its per-commit inheritance stands, as amended by
+(h).
+
+| # | Sub-phase | Scope | Mode |
+|---|---|---|---|
+| 7a | rename batch 1 — `session` | 6 names, 305 sites, `_load_working_dir` included | default, under the rename check |
+| 7b | batch 2 — `layouts._chat` | 9, `render_breadth_panel` and `render_retry_panel` among them | default |
+| 7c | batch 3 — `layouts` | 9, `build_agent_rows` among them | default |
+| 7d–7h | batches 4–8 | as §60.2; batch 7 also drops the alias, (d) | default |
+| 7i | batch 9 — `callbacks.designer` | 3; `_start_gen` blocked, (c) | default |
+| 7j | batch 10 — `llm` | 3; `_record_usage` blocked, (c) | default |
+| — | batch 11 — `project_manager` | nothing to rename, (f); no commit | — |
+| 7k | the `_usage.py` seam, with `directory_opens` | (i)2 | plan mode, `ultrathink` |
+| 7l | M8 | (i)3 | not ruled |
+| 7m | §59.6 item 11 — `test_try_again.py`'s source-text reader | must precede 7q, which may move code out of `agentifier.py` | not ruled |
+| 7n | the three non-agentifier seams | §60.4, one commit each | plan mode, `ultrathink` |
+| 7o | type hygiene — the 58 | (i)1 | not ruled |
+| 7p | §59.6 items 9–10 | PLR2004; the 13 E501 in `scripts/e2e_agentifier.py` | not ruled |
+| 7q | **the agentifier eight with the `yield from` backlog — last** | (e) | plan mode, `ultrathink` |
+| close-out | the plan's audit | `CLEANUP_REPORT.md`, docs, the inventory fold; root-siblings, batch 11's three names and (c)'s three recorded for Phase 8 | — |
