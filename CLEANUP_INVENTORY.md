@@ -9300,3 +9300,76 @@ only in the plan's sense — the *plan file* changed, not the project config.
 | 7 whole-file entries | absent from the diff |
 | 19 tier-B files / 33 classes | 0 files with hunks |
 | 456 node ids | **456 / 456 collect**, 0 failures |
+
+### 55.9 `promote`, split by kind — the two Phase 7 items
+
+94 names and 1,171 sites is not one work item. Split by whether promoting requires a
+decision:
+
+| Kind | Names | Sites | What Phase 7 does |
+|---|---:|---:|---|
+| **`rename`** | **81** | **1,042** | drop the underscore, re-point the sites. No design decision |
+| **`design seam`** | **13** | **129** | decide the public contract first — this is Untangle work, not renaming |
+
+**The rule that assigns the kind**, applied mechanically to each name's definition:
+
+- a **generator** → `design seam`. Making it public commits to a yield protocol, and
+  every one of these is a phase of a turn.
+- **mutates `session`** (subscript assignment, `pop`/`update`/`setdefault`/`clear`, or
+  `del`) → `design seam`. It is a step in a turn, not a function of its inputs.
+- takes an **`on_chunk` callback** → `design seam`; the contract is the protocol.
+- otherwise → `rename`.
+
+A `session` parameter alone is **not** enough. A layout builder that *reads* the session
+and returns a component tree is a function of its argument and renames mechanically —
+an earlier version of this rule classified all nine of `layouts._chat`'s names as seams
+on the parameter name alone, which would have sized 164 sites of pure formatting work as
+design judgment.
+
+#### The rename half, ordered by sites-per-name
+
+Phase 7 starts at the top: one edit retires the most coupling.
+
+| Cluster | Names | Sites | Sites/name |
+|---|---:|---:|---:|
+| `session` | 5 | 281 | **56.2** |
+| `layouts._chat` | 9 | 164 | 18.2 |
+| `layouts` | 10 | 152 | 15.2 |
+| `layouts.designer` | 7 | 100 | 14.3 |
+| `agents.code_scanner` | 7 | 82 | 11.7 |
+| `agents.brainstormer` | 5 | 38 | 7.6 |
+| `agentifier.agentifier` | 20 | 140 | 7.0 |
+| `agents._seam_check` | 7 | 39 | 5.6 |
+| `callbacks.designer` | 4 | 21 | 5.2 |
+| `llm` | 4 | 16 | 4.0 |
+| `project_manager` | 3 | 9 | 3.0 |
+
+`session._default_session` alone is **248 of the 281** — the single highest-leverage
+rename in the repo, and a `sed` once the name is public.
+
+#### The design-seam half — all 13
+
+| Name | Cluster | Sites | Why a seam, not a rename |
+|---|---|---:|---|
+| `_persist_artifacts` | `session` | 35 | mutates `session` — a turn step, not a function of its inputs |
+| `_load_working_dir` | `session` | 24 | mutates `session` — a turn step, not a function of its inputs |
+| `_get_agent_gen` | `session` | 20 | mutates `session` — a turn step, not a function of its inputs |
+| `_run_spec_phase` | `agentifier.agentifier` | 16 | generator — promoting commits to a yield protocol |
+| `_run_cross_cutting_phase` | `agentifier.agentifier` | 8 | generator — promoting commits to a yield protocol |
+| `_complete_agentifier` | `agentifier.agentifier` | 6 | generator — promoting commits to a yield protocol |
+| `_run_catalog_phase` | `agentifier.agentifier` | 5 | generator — promoting commits to a yield protocol |
+| `_rehydrate_vision_from_disk` | `agents.brainstormer` | 4 | mutates `session` — a turn step, not a function of its inputs |
+| `_handle_reentry` | `agentifier.agentifier` | 3 | generator — promoting commits to a yield protocol |
+| `_finalize_specs` | `agentifier.agentifier` | 3 | generator — promoting commits to a yield protocol |
+| `_begin_priority_phase` | `agentifier.agentifier` | 2 | generator — promoting commits to a yield protocol |
+| `_run_priority_phase` | `agentifier.agentifier` | 2 | generator — promoting commits to a yield protocol |
+| `_stream_suppressing_json` | `agentifier.agentifier` | 1 | generator — promoting commits to a yield protocol |
+
+Nine of the thirteen are `agentifier.agentifier` phase runners, five of which already
+carry rule-12 complexity `noqa`s (§27.4). **Promoting these is the same work as the
+`yield from` sub-generator backlog item** — the public contract and the sub-generator
+split are one decision, not two. Phase 7 should take them together or not at all.
+
+The three `session` mutators (`_persist_artifacts` 35, `_load_working_dir` 24,
+`_get_agent_gen` 20 — 79 sites) are the other cluster of judgment: each mutates the
+session dict in place, so the public contract has to say what it may touch.
