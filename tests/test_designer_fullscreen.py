@@ -94,7 +94,7 @@ class TestBrownfieldEntryPoint:
         session = {"working_dir": "/tmp/proj", "vision_statement": {}}
         with (
             patch(
-                "spec4.callbacks.designer.project_manager.load_prior_mock",
+                "spec4.callbacks.designer._wizard.project_manager.load_prior_mock",
                 return_value=_MOCK,
             ),
             patch("spec4.callbacks.designer._wizard.revision_delta", return_value=None),

@@ -8466,3 +8466,110 @@ already paid.
 
 **Any 6x report citing runtime as a reason to drop a test gets that reason struck.**
 Runtime is an outcome of this phase, not an argument within it.
+
+## 52. Phase 6b — the three patch strings that named the wrong seam
+
+§50.5(d) step 1. Two files, three strings, no production change. Neither file is in
+§50.3: `tests/test_usage_capture.py` and `tests/test_designer_fullscreen.py` carry no
+whole-file entry, no tier-A test and no tier-B class.
+
+### 52.1 The `os` pair — and why `spec4._usage.os.replace` was *not* the fix
+
+The obvious rewrite is wrong, and it is worth recording why before the right one.
+
+After 4b the atomic writer is `src/spec4/_usage.py:345` (`_write_atomic`), not
+`project_manager.py`. So the tempting correction is
+`patch("spec4._usage.os.replace")`. **That changes nothing.** `spec4._usage.os` *is* the
+stdlib `os` module object; patching an attribute on it patches it for the whole process,
+exactly as `spec4.project_manager.os.replace` did. Renaming the prefix would have moved
+the string closer to the truth while leaving the defect entirely intact.
+
+Measured, rather than argued:
+
+```
+with patch("spec4.project_manager.os.replace", side_effect=OSError("boom")):
+    os.replace is real_replace   ->  False        # process-wide
+```
+
+For the duration of that patch **every** `os.replace` in the process raised — the
+`tmp_path` fixture's own bookkeeping, any other write the test triggered, pytest's
+internals. The two assertions could not see it.
+
+**The fix is to rebind the module's `os` name, not to mutate the module it points at.**
+A small proxy delegates everything to the real `os` except the calls a test overrides:
+
+```python
+class _OsSeam:
+    def __init__(self, **overrides): self._overrides = overrides
+    def __getattr__(self, name):
+        overrides = object.__getattribute__(self, "_overrides")
+        return overrides[name] if name in overrides else getattr(os, name)
+```
+
+```python
+with patch("spec4._usage.os", _OsSeam(replace=_failing_replace)):
+```
+
+`_write_atomic` uses four `os` calls — `fdopen`, `fsync`, `replace`, `unlink` — and the
+proxy passes the three it is not overriding straight through, so the writer's real
+behaviour on the success path is untouched.
+
+**Verified three ways, because "the tests still pass" proves nothing about a patch that
+was already vacuous in a different sense:**
+
+| Check | Result |
+|---|---|
+| `_OsSeam()` overriding **nothing** — writer must succeed | no raise; delegation works |
+| `_OsSeam(replace=boom)` — writer must be **reached** | `OSError: boom` raised through `save_usage` |
+| stdlib `os.replace` **during** the patch | **still the real function** — blast radius gone |
+| `spec4._usage.os` after the patch | the real module again; clean restore |
+
+The `fdopen` test drops its `real_fdopen = os.fdopen` capture: with the seam scoped to
+`spec4._usage`, the stdlib `os.fdopen` the wrapper calls *is* the real one, so the
+save-a-reference-first dance is no longer needed.
+
+### 52.2 The designer string — a clarity fix, not a behaviour fix
+
+`tests/test_designer_fullscreen.py:97` patched
+`spec4.callbacks.designer.project_manager.load_prior_mock`. The package `__init__`
+neither calls it nor sits on the path to it; after 4h the caller is
+`callbacks/designer/_wizard.py:161`, inside `on_designer_carry_forward` — the very
+function the test invokes. The patch worked only because both names bind the same
+`spec4.project_manager` module object.
+
+Rewritten to the call site: `spec4.callbacks.designer._wizard.project_manager.load_prior_mock`.
+The same `with` block already patches `spec4.callbacks.designer._wizard.revision_delta`,
+so the two now name one seam instead of two.
+
+Verified the new target reaches the branch it is supposed to steer:
+
+| `load_prior_mock` returns | resulting `store["step"]` |
+|---|---|
+| a mock | **7** (the refine view — what the test asserts) |
+| `None` | **3** (the fallback arm) |
+
+### 52.3 What this sub-phase did not do
+
+No production file changed. No test was dropped, renamed or moved; three patch target
+strings changed and one now-redundant local was removed. No runtime claim is made or
+implied — per §51.6, seconds are not a currency in this phase.
+
+### 52.4 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4174 passed, 1 skipped in 176.79s` (exit 0) |
+| Coverage | same run | `TOTAL 12421 stmts, 909 miss, 93%` — **at the §51.6 baseline, not over it** |
+
+**Off-limits check**, both halves, run for real:
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | absent from the diff |
+| 19 tier-B files / 33 classes | **0 files with hunks**; no hunk inside a listed class; nothing to report as touched-outside |
+| 456 node ids | **456 / 456 collect**, 0 failures |
+
+Collected count unchanged at **4,175**.
