@@ -4740,6 +4740,7 @@ also golden-pinned — `tests/golden/README.md` and `phase_*.md` must not move.
 | `agents/code_scanner/__init__.py` | `run` | C901, PLR0912, PLR0915 | nine-yield generator; after the maximal build the surviving branches are five yield/return guards (staleness, resume, the re-entry gate, the missing-working-dir exit, the schema-retry re-ask) and seven entry guards with no extractable body (session-state presence, `user_input is None`, `msgs`, three artifact-present checks). **Eighth pre-approved noqa; granted under rule 12 as amended (39.5).** |
 | `agentifier/agentifier.py` | `_run_catalog_phase` | C901, PLR0912, PLR0915 | **24-yield** generator, the most yield-dense function in the repo; after the maximal build the surviving branches are yield/return guards on the Scout / Composer / Linker / TierAnalyst sub-agent turns and entry guards with no extractable body. **Ninth pre-approved noqa; rule 12 (41.2).** |
 | `agentifier/agentifier.py` | `_run_cross_cutting_phase` | C901, PLR0912, PLR0915 | 12-yield generator; surviving branches are yield/return guards on the per-topic turns and entry guards with no extractable body. **Tenth pre-approved noqa; rule 12 (41.2).** |
+| `llm.py` | `stream_turn` | C901, PLR0912, PLR0915, PLR0913 | **entry guards plus the chunk loop, which 27.3 keeps whole as the streaming characterization surface.** Eleventh pre-approved noqa; rule 12 (48.2). **The widening is deliberate and named:** entries 6-10 survive on yield/return guards and entry guards alone, while this one also keeps a stream loop and its per-chunk branches in place *by instruction*, not because they resist extraction — 5o's first attempt proved they can be extracted and that doing so breaks the turn (48.1). |
 
 Plus **12 `# noqa: PLR0913`** — arity cannot be reduced by extraction. Eight are
 arity-only (`_seed._call_scout` 7, `_reask.reask_for_artifact` 10,
@@ -6774,3 +6775,102 @@ Suite-wide **12395 → 12426, +31**. Misses **897 = 893 + 4**, the fourth accoun
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 174.40s` (exit 0) |
 | Coverage | same run | `TOTAL 12426 stmts, 897 miss (893 + 4), 93%` |
+
+## 47. Why 5o's first `llm.py` attempt failed — diagnosis (read-only)
+
+Seven tests failed and the attempt was reverted. The cause is **not** a helper rebinding
+a caller local; both extracted helpers mutate in place (`tool_call_acc` is a dict,
+`messages` a list) and neither rebinds anything the caller reads afterwards.
+
+**The cause is an indentation mismatch at the call site.** The block replaced was
+
+```
+894             for chunk in response:          <- indent 12, body at 16
+...
+916                 if choice.delta.tool_calls: <- indent 16, the block
+931                     ...                        replaced (916-931)
+```
+
+and the replacement call was written at **indent 12**:
+
+```
+            _accumulate_tool_calls(tool_call_acc, choice)
+```
+
+Indent 12 is the indentation of `for chunk in response:` itself, so the call became a
+**sibling of the loop rather than part of its body**. It therefore ran **once, after the
+stream was exhausted**, with `choice` bound to the final chunk — so tool-call deltas were
+never accumulated across chunks. Every one of the seven failures is a tool-call or search
+path, which is exactly what that predicts.
+
+`_append_tool_call_turn` was fine: it replaced lines 938-954, which start at indent 12,
+and its call was written at indent 12.
+
+**The code was valid Python throughout.** `ast.parse` accepted it, `ruff` accepted it,
+`mypy` accepted it. Only the suite caught it — the same blind spot recorded at 37.9,
+where six helper bodies dedented to column 0 parsed cleanly and had to be caught by
+`ruff`. Here the wrong indent is one level in, so even ruff sees nothing wrong.
+
+**The check that would have caught it** is mechanical and cheap: *the replacement line's
+indentation must equal the indentation of the first line of the range it replaces.* It
+was added to the build method for 5o2 as an assertion that runs before `ast.parse`, and
+it passed on both of 5o2's edits. Whether it becomes rule 13 is a call for the plan
+owner; the rebinding guard proposed alongside it is a real hazard too (5k's
+`_cc_apply_revision` and 5i's `_phaser_count_chunk` both had to return a rebound local),
+but it is not what happened here.
+
+## 48. Phase 5o2 — `llm.py`
+
+### 48.1 What landed
+
+Per 27.3, **request assembly only**; the chunk loop and the tool round stay whole and in
+place. Two helpers:
+
+- `_stream_turn_tools(messages, search_config, response_format)` — the web-search tool,
+  unless a JSON-format turn has to suppress it.
+- `_stream_request_kwargs(system_prompt, messages, llm_config, response_format, tools)` —
+  one tool-loop round's completion kwargs.
+
+Nothing inside `try:` / `for chunk in response:` / `if tool_call_acc:` was touched. 5o's
+first attempt is the evidence for why: those blocks *can* be extracted — the resulting
+code is valid and lints clean — and extracting them broke the turn.
+
+### 48.2 Rule 12 and the eleventh noqa
+
+`stream_turn` after the two cuts is **C901 24 / PLR0912 26 / PLR0915 66 / PLR0913 7**, and
+takes the rule-12 noqa as 27.4 entry eleven. The reason is written to say what actually
+survives — *"entry guards plus the chunk loop, which 27.3 keeps whole as the streaming
+characterization surface"* — rather than reusing entries 6-10's wording, because the
+grant is genuinely wider: those functions keep their branches because extraction cannot
+move them, this one keeps its chunk loop because the plan says to.
+
+The prior measurement stands on the record: 5o's aggressive build reached **C901 17**, so
+the chunk loop is worth 7 complexity points — and its cost is a broken turn.
+
+The three other `llm.py` arity noqas (`_record_usage` 9, `_iter_with_usage` 6,
+`_aiter_with_usage` 6) are the pre-approved 27.4 entries, appended per rule 10.
+
+### 48.3 Line accounting (rule 3)
+
+**314 non-blank lines** across the four functions; **310 verbatim**; 4 accounted — the
+four `def` lines now carrying noqas. **No statement line is unaccounted for.**
+
+### 48.4 `src/` is now clean for the whole Phase 5 rule set
+
+```
+$ uv run ruff check --select C90,PLR0912,PLR0913,PLR0915 --statistics src/
+(no output)
+```
+
+**Zero findings** across `src/spec4/**` — down from 138 at 27.1. Every one either
+decomposed or carrying one of the eleven pre-approved noqas.
+
+### 48.5 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 172.34s` (exit 0) |
+| Coverage | same run | `TOTAL 12432 stmts, 897 miss (893 + 4), 93%` |

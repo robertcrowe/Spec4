@@ -411,7 +411,7 @@ def _computed_cost(
         return None
 
 
-def _record_usage(
+def _record_usage(  # noqa: PLR0913  # the usage record's fields, one parameter each
     *,
     agent_name: str | None,
     kwargs: dict[str, Any],
@@ -495,7 +495,7 @@ def _hidden_usage(chunk: Any) -> Any:
         return None
 
 
-def _iter_with_usage(
+def _iter_with_usage(  # noqa: PLR0913  # the usage-wrapper contract
     response: Any,
     kwargs: dict[str, Any],
     agent_name: str | None,
@@ -544,7 +544,7 @@ def _iter_with_usage(
         )
 
 
-async def _aiter_with_usage(
+async def _aiter_with_usage(  # noqa: PLR0913  # the async usage-wrapper contract
     response: Any,
     kwargs: dict[str, Any],
     agent_name: str | None,
@@ -808,7 +808,7 @@ def supports_reasoning_effort(model: str) -> bool | None:
     return bool("reasoning_effort" in params)
 
 
-def stream_turn(
+def stream_turn(  # noqa: C901, PLR0912, PLR0915, PLR0913  # entry guards plus the chunk loop, which 27.3 keeps whole as the streaming characterization surface
     system_prompt: str,
     messages: list[dict[str, Any]],
     llm_config: dict[str, Any],
@@ -846,12 +846,7 @@ def stream_turn(
     which case `tools=` must remain present (Anthropic rejects the request
     otherwise with `UnsupportedParamsError`).
     """
-    suppress_tools_for_format = (
-        response_format is not None and not _history_has_tool_use(messages)
-    )
-    tools = (
-        [WEB_SEARCH_TOOL] if search_config and not suppress_tools_for_format else None
-    )
+    tools = _stream_turn_tools(messages, search_config, response_format)
 
     # Snapshot the status at entry so it can be restored once the model
     # resumes producing text after a search round. Callers streaming through
@@ -862,12 +857,9 @@ def stream_turn(
     entry_status = session.get("_stream_status") if session is not None else None
 
     while True:
-        llm_messages = [{"role": "system", "content": system_prompt}] + messages
-        kwargs = _build_completion_kwargs(
-            llm_config, llm_messages, response_format=response_format, stream=True
+        kwargs = _stream_request_kwargs(
+            system_prompt, messages, llm_config, response_format, tools
         )
-        if tools:
-            kwargs["tools"] = tools
 
         # Each round of the tool loop is its own request and gets its own
         # usage record — a search round re-sends the whole context, so its
@@ -990,3 +982,35 @@ def stream_turn(
         else:
             messages.append({"role": "assistant", "content": full_text})
             return
+
+
+def _stream_turn_tools(
+    messages: list[dict[str, Any]],
+    search_config: Any,
+    response_format: dict[str, Any] | None,
+) -> list[dict[str, Any]] | None:
+    """The web-search tool, unless a JSON-format turn has to suppress it."""
+    suppress_tools_for_format = (
+        response_format is not None and not _history_has_tool_use(messages)
+    )
+    tools = (
+        [WEB_SEARCH_TOOL] if search_config and not suppress_tools_for_format else None
+    )
+    return tools
+
+
+def _stream_request_kwargs(
+    system_prompt: str,
+    messages: list[dict[str, Any]],
+    llm_config: dict[str, Any],
+    response_format: dict[str, Any] | None,
+    tools: list[dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """One tool-loop round's completion kwargs."""
+    llm_messages = [{"role": "system", "content": system_prompt}] + messages
+    kwargs = _build_completion_kwargs(
+        llm_config, llm_messages, response_format=response_format, stream=True
+    )
+    if tools:
+        kwargs["tools"] = tools
+    return kwargs
