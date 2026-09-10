@@ -8931,6 +8931,32 @@ Ruff, ruff-format and mypy **were** re-run, since the report edits a tracked fil
 | 19 tier-B files / 33 classes | 0 files with hunks |
 | 456 node ids | **456 / 456 collect**, 0 failures |
 
+### 54.7 The golden petition, pre-shaped
+
+§54.3 flags that `_format_catalog_as_text` and `_format_spec_as_text` are reached by
+`tests/test_renderer_goldens.py`, a whole-file §50.3 entry. Promoting those names in
+`src/` requires that file's import lines to follow, which §50.3 forbids. Rather than
+leave Phase 7 to discover it mid-rename and improvise, the exception is defined **now**,
+mechanically, so it is a check rather than a judgment call.
+
+> **Petition — Phase 7 may edit a §50.3 whole-file entry for a seam promotion if and
+> only if all three hold:**
+>
+> 1. **The diff is import lines alone.** Every changed line is inside an `import` or
+>    `from … import` statement. No test body, no assertion, no fixture, no docstring.
+> 2. **Every golden file is byte-identical.** `git diff --stat -- tests/golden/
+>    tests/snapshots/` is empty. A promotion that changes rendered output is not a
+>    promotion.
+> 3. **The off-limits check passes on the rest of the file.** Every node id in the file
+>    still collects under its current id, and the file's test count is unchanged.
+>
+> Any one of the three failing means it is not this petition — stop and ask.
+
+The same shape covers any other §50.3 file a promotion reaches; nothing about it is
+specific to the two renderers. It is deliberately narrow: an import-only diff cannot
+change what a test asserts, and the golden check proves the rename did not disturb the
+output the net exists to pin.
+
 ### 54.6 Stopping here, as rule 4 requires
 
 The Phase 7 list is the whole cluster, and §54.2 shows the cause is structural rather
@@ -8949,3 +8975,328 @@ Two questions for the plan, not for the next report:
 A third option, if the promote-candidate inventory is the actual deliverable: **run the
 §54.3 analysis over the remaining ten clusters in one pass**, producing one Phase 7
 document rather than ten sub-phase reports, and close 6d there.
+
+## 55. Phase 6d, folded — the Phase 7 seam document
+
+The fold of §54.6's option 3, run over **all eleven clusters** including
+`agentifier.agentifier`, so this section is the single Phase 7 document and §54 is the
+reasoning behind it. **No test was changed.**
+
+The plan now carries the redefinition: 6d produces this document and performs no
+rewrites.
+
+### 55.1 Method, and a correction to §50.2's site count
+
+Sites were re-derived by AST over all 127 Python files under `tests/`, counting **every
+use**, not every import. §50.2 reported 583 sites; it counted import statements and
+`module._name` attribute access but **not bare uses of a from-imported private name** —
+so `_default_session()`, called 248 times, contributed one site to §50.2 and contributes
+248 here.
+
+| | §50.2 | §55 |
+|---|---:|---:|
+| Sites | 583 | **1,361** |
+| Names | 176 | 120 (the eleven clusters only; §50.2's figure spans all 35 modules) |
+
+The correction does not change any disposition. It changes what "87 sites" meant in §54
+— the true figure for `agentifier.agentifier` is 208.
+
+Each site carries its **syntactic role** (called / compared / subscripted / iterated /
+import-only / passed-as-arg), and each name's object was resolved at runtime rather than
+guessed from the AST, so a constant imported from a sibling is classified as data rather
+than as an import.
+
+### 55.2 The four dispositions, and the rule that assigns each
+
+| Disposition | Rule | Names | Sites |
+|---|---|---:|---:|
+| **`promote`** | Phase 7 creates the public seam, the test follows. Assigned when the object is callable and no thin public function isolates it | **94** | **1,171** |
+| **`keep: subject is the private object`** | the object is data and no site calls it — the collection *is* what is under test, so private access is the right design and **Phase 7 must not promote these** | **24** | **183** |
+| **`churn`** | re-pointing would change a string and nothing else | **2** | **7** |
+| **`rewrite now`** | a public function already isolates the helper and a mutation would demonstrate it | **0** | **0** |
+| | | **120** | **1,361** |
+
+Dispositions are assigned per site. Within every name in this document the sites agree,
+so the tables list one row per name with its site count; had any name split, it would be
+listed twice. The `· net` marker means at least one site is in a §50.3 whole-file entry
+and is frozen regardless — §54.7 is the petition shape for those.
+
+### 55.3 `rewrite now` is zero, and why that is a finding rather than an omission
+
+Every public function in all eleven clusters was checked against every private name it
+calls. **Eighteen (name, public-caller) pairings exist in total**, and they are these:
+
+| Cluster | Names reached | Public caller | Statements in the caller |
+|---|---|---|---:|
+| `agentifier.agentifier` | `_handle_reentry`, `_run_catalog_phase`, `_run_cross_cutting_phase`, `_run_priority_phase`, `_run_spec_phase` | `run` | 15 |
+| `agents.brainstormer` | `_rehydrate_vision_from_disk` | `run` | 45 |
+| `agents.code_scanner` | `_approx_tokens`, `_collect_files`, `_format_review_as_text` | `run` | 62 |
+| `agents._seam_check` | the six `_check_*` / `_extract_graph` / `_format_advisory` | `run_seam_check` | 21 |
+| `llm` | `_is_tool_incompatible_error` | `stream_turn` | 63 |
+| `llm` | `_record_usage` | `complete`, `acomplete` | 10 |
+
+Every caller but the last is a **turn** — `run`, `stream_turn`, `run_seam_check` — and
+routing a helper's tests through one is an integration test, which rule 2 forbids
+trading granularity for. `run_seam_check` is the closest call at 21 statements, but it
+dispatches to **six** checkers and `_check_declaration_alignment` alone has 15 sites;
+driving 15 cases of one checker through a six-way dispatcher couples each of them to the
+other five.
+
+**The last row is the only genuinely thin isolator in the codebase, and it is still not a
+rewrite.** `llm._record_usage` has two sites. One is in `test_streaming_characterization.py`
+(net, frozen). The other, `test_usage_capture.py:1340`, calls it **inside a generator
+that simulates an agent writing a usage record mid-stream** — it is seeding the sink at a
+controlled point, not testing the recorder. Driving it through `complete` would change
+what the test does, not how it reaches it.
+
+So: **zero `rewrite now` sites. 6e does not exist.**
+
+Notably `project_manager` — 6 public functions, the largest public surface among the
+clusters after `llm` — has **none** of its private names called by any of them. Its
+eight names are five constants (all `keep`) and three helpers.
+
+### 55.4 The `keep: subject is the private object` list — Phase 7 must not promote these
+
+24 names, 183 sites. Each is data whose *structure* is the assertion: a drift guard, a
+declared-set comparison, or a container a test inspects directly. Promoting them would
+invite a rewrite that replaces a completeness check with an output check — §54.1 works
+the `_RESTART_DEFAULTS` case through in full, and the reasoning transfers.
+
+### 55.5 The `churn` list
+
+| Name | Cluster | Sites | Why |
+|---|---|---:|---|
+| `_iter_async_gen` | `agentifier.agentifier` | 6 | async-generator plumbing, owned by `_seed`; re-pointing the import changes a string and nothing a test would catch |
+| `_registry` | `agentifier.agentifier` | 1 | the sub-agent registry instance, owned by `_seed`; same |
+
+### 55.6 Per-cluster tables
+
+#### `spec4.agentifier.agentifier` — 34 names, 208 sites, 2 public fn(s)
+
+| Private name | Kind | Owner | Sites | Test files | Disposition |
+|---|---|---|---:|---|---|
+| `_APPROACHES_OVERVIEW` | data | `self` | 5 | agentifier/test_agentifier_orchestrator.py | `keep: subject is the private object` |
+| `_RESTART_DEFAULTS` | data | `self` | 6 | agentifier/test_try_again.py | `keep: subject is the private object` |
+| `_RESTART_POP` | data | `self` | 4 | agentifier/test_try_again.py | `keep: subject is the private object` |
+| `_analyses_to_dicts` | func | `agentifier._seed` | 3 | agentifier/test_agentifier_orchestrator.py | `promote` |
+| `_begin_priority_phase` | func | `self` | 2 | agentifier/test_prioritizer.py | `promote` |
+| `_breadth_candidates` | func | `self` | 5 | agentifier/test_search_level.py | `promote` |
+| `_build_ai_features` | func | `agentifier._render` | 26 | agentifier/test_agentifier_orchestrator.py, agentifier/test_edge_persistence.py, agentifier/test_vision_grounding.py | `promote` |
+| `_build_seed_message` | func | `agentifier._seed` | 25 | agentifier/test_agentifier_orchestrator.py, agentifier/test_revision.py, integration/test_pipeline_brownfield.py | `promote` |
+| `_candidates_from_dicts` | func | `agentifier._seed` | 7 | agentifier/test_edge_persistence.py | `promote` |
+| `_candidates_to_dicts` | func | `agentifier._seed` | 6 | agentifier/test_edge_persistence.py | `promote` |
+| `_complete_agentifier` | func | `self` | 6 | agentifier/test_revision.py, agentifier/test_try_again.py | `promote` |
+| `_existing_workflow_for_entry` | func | `self` | 4 | agentifier/test_vision_grounding.py | `promote` |
+| `_extract_cross_cutting_analysis` | func | `self` | 8 | agentifier/test_cross_cutting_analyst.py | `promote` |
+| `_feature_specs_for_session` | func | `self` | 4 | agentifier/test_vision_grounding.py | `promote` |
+| `_finalize_specs` | func | `self` | 3 | agentifier/test_reselection.py, agentifier/test_search_level.py | `promote` |
+| `_format_catalog_as_text` | func | `agentifier._render` | 5 | test_renderer_goldens.py | `promote` **· net** |
+| `_format_priority_table` | func | `agentifier._render` | 2 | agentifier/test_prioritizer.py | `promote` |
+| `_format_spec_as_text` | func | `agentifier._render` | 3 | test_renderer_goldens.py | `promote` **· net** |
+| `_handle_reentry` | func | `self` | 3 | agentifier/test_reselection.py | `promote` |
+| `_is_spec_confirmed` | func | `self` | 6 | agentifier/test_spec_drafter.py | `promote` |
+| `_iter_async_gen` | func | `agentifier._seed` | 6 | agentifier/test_streaming_e2e.py | `churn` |
+| `_linked_features_for_entry` | func | `self` | 3 | agentifier/test_vision_grounding.py | `promote` |
+| `_merge_revision_snapshot` | func | `agentifier._render` | 7 | agentifier/test_revision.py | `promote` |
+| `_parse_priority_edits` | func | `agentifier._render` | 2 | agentifier/test_prioritizer.py | `promote` |
+| `_registry` | data | `agentifier._seed` | 1 | agentifier/test_reselection.py | `churn` |
+| `_removed_feature_heads_up` | func | `agentifier._render` | 5 | agentifier/test_revision.py | `promote` |
+| `_reselection_pool_from_features` | func | `self` | 10 | agentifier/test_edge_persistence.py, agentifier/test_reselection.py | `promote` |
+| `_revision_delta` | func | `agentifier._render` | 7 | agentifier/test_revision.py | `promote` |
+| `_run_catalog_phase` | func | `self` | 5 | agentifier/test_revision.py | `promote` |
+| `_run_cross_cutting_phase` | func | `self` | 8 | agentifier/test_ff_sweep.py | `promote` |
+| `_run_priority_phase` | func | `self` | 2 | agentifier/test_prioritizer.py | `promote` |
+| `_run_spec_phase` | func | `self` | 16 | agentifier/test_ff_sweep.py | `promote` |
+| `_stream_suppressing_json` | func | `agents._reask` | 1 | agentifier/test_chars_counter_seed.py | `promote` |
+| `_vision_mvp_feature_names` | func | `agentifier._seed` | 2 | agentifier/test_prioritizer.py | `promote` |
+
+#### `spec4.layouts._chat` — 14 names, 217 sites, 0 public fn(s)
+
+| Private name | Kind | Owner | Sites | Test files | Disposition |
+|---|---|---|---:|---|---|
+| `_PILL_ACTIVE` | data | `layouts._chat_status` | 9 | test_chat_pill_bar.py | `keep: subject is the private object` |
+| `_PILL_BASE` | data | `layouts._chat_status` | 14 | test_chat_pill_bar.py | `keep: subject is the private object` |
+| `_PILL_DONE` | data | `layouts._chat_status` | 11 | test_chat_pill_bar.py | `keep: subject is the private object` |
+| `_PILL_UNREACHABLE` | data | `layouts._chat_status` | 6 | test_chat_pill_bar.py | `keep: subject is the private object` |
+| `_TOKEN_COUNTER_AGENTS` | data | `layouts._chat_actions` | 13 | test_agentifier_chars_counter.py, test_brainstormer_chars_counter.py, test_code_scanner_progress.py, test_stack_advisor_token_counter.py | `keep: subject is the private object` |
+| `_agent_status_bar` | func | `layouts._chat_status` | 4 | test_chat_pill_bar.py | `promote` |
+| `_breadth_panel` | func | `layouts._chat_panels` | 21 | agentifier/test_try_again.py, test_callbacks_stream_poll.py | `promote` |
+| `_chat_action_buttons` | func | `layouts._chat_actions` | 39 | test_agent_llm_selection.py, test_agentifier_chars_counter.py, test_brainstormer_chars_counter.py, test_chat_action_row_emphasis.py, test_chat_open_links.py, test_code_scanner_progress.py, test_fast_forward.py, test_usage_capture.py | `promote` |
+| `_chat_layout` | func | `self` | 37 | test_agent_llm_selection.py, test_callbacks_stream_poll.py, test_chat_transcript_blocks.py, test_code_scanner_progress.py, test_cost_summary.py, test_stream_error_recovery.py | `promote` |
+| `_cost_summary` | func | `layouts._chat_panels` | 13 | test_cost_summary.py | `promote` |
+| `_retry_panel` | func | `layouts._chat_panels` | 15 | test_agent_llm_selection.py, test_stream_error_recovery.py | `promote` |
+| `_streamed_token_count` | func | `layouts._chat_actions` | 8 | test_callbacks_stream_poll.py, test_deployer_chars_counter.py, test_stack_advisor_token_counter.py | `promote` |
+| `_token_count_text` | func | `layouts._chat_actions` | 16 | test_agentifier_chars_counter.py, test_brainstormer_chars_counter.py, test_code_scanner_progress.py, test_deployer_chars_counter.py, test_stack_advisor_token_counter.py, test_usage_capture.py | `promote` |
+| `_turn_token_text` | func | `layouts._chat_actions` | 11 | test_usage_capture.py | `promote` |
+
+#### `spec4.session` — 10 names, 367 sites, 0 public fn(s)
+
+| Private name | Kind | Owner | Sites | Test files | Disposition |
+|---|---|---|---:|---|---|
+| `_AGENT_STATUS_SEED` | data | `self` | 3 | test_callbacks_stream_poll.py | `keep: subject is the private object` |
+| `_PRESERVED_SETUP_KEYS` | data | `self` | 4 | test_agent_llm_selection.py | `keep: subject is the private object` |
+| `_default_session` | func | `self` | 248 | agentifier/test_search_level.py, agentifier/test_streaming_e2e.py, agentifier/test_try_again.py, integration/test_pipeline_brownfield.py, integration/test_pipeline_greenfield.py, test_agent_llm_selection.py, test_agent_rows.py, test_agent_select_layout.py, test_artifact_view.py, test_callback_co_presence.py, test_callbacks_stream_poll.py, test_chat_open_links.py, test_cost_summary.py, test_designer.py, test_designer_wizard_register.py, test_entry_screens.py, test_feature_specs_pass.py, test_layout_contract.py, test_project_manager.py, test_project_mode.py, test_root_routing.py, test_round_cost.py, test_round_tree.py, test_session.py, test_status_bar.py, test_stream_error_recovery.py, test_streaming_characterization.py, test_usage_capture.py | `promote` **· net** |
+| `_get_agent_gen` | func | `self` | 20 | test_agent_llm_selection.py, test_callbacks_stream_poll.py, test_session.py | `promote` |
+| `_load_working_dir` | func | `self` | 24 | test_agent_select_layout.py, test_feature_specs_pass.py, test_project_mode.py, test_session.py | `promote` |
+| `_persist_artifacts` | func | `self` | 35 | agentifier/test_try_again.py, test_project_manager.py, test_project_mode.py, test_session.py, test_usage_capture.py | `promote` |
+| `_reset_for_new_project` | func | `self` | 14 | test_agent_llm_selection.py, test_callback_co_presence.py, test_session.py | `promote` **· net** |
+| `_run_agent_blocking` | func | `self` | 8 | test_session.py | `promote` |
+| `_summarize_turn_usage` | func | `self` | 4 | test_usage_capture.py | `promote` |
+| `_validate_agent_preconditions` | func | `self` | 7 | test_chat_pill_bar.py, test_stale_ai_features.py | `promote` |
+
+#### `spec4.callbacks.designer` — 7 names, 75 sites, 2 public fn(s)
+
+| Private name | Kind | Owner | Sites | Test files | Disposition |
+|---|---|---|---:|---|---|
+| `_DEFAULT_EXPECTED_CHARS` | data | `callbacks.designer._mock_gen` | 5 | test_designer.py, test_streaming_characterization.py | `keep: subject is the private object` **· net** |
+| `_MAX_DELIVERY_TICKS` | data | `callbacks.designer._mock_gen` | 2 | test_designer.py, test_streaming_characterization.py | `keep: subject is the private object` **· net** |
+| `_MOCK_BUFFERS` | data | `callbacks.designer._mock_gen` | 47 | test_designer.py, test_streaming_characterization.py | `keep: subject is the private object` **· net** |
+| `_expected_stream_chars` | func | `callbacks.designer._mock_gen` | 4 | test_designer.py | `promote` |
+| `_extract_html` | func | `callbacks.designer._mock_gen` | 8 | test_designer.py | `promote` |
+| `_persist_manifest` | func | `callbacks.designer._mock_gen` | 1 | test_designer.py | `promote` |
+| `_start_gen` | func | `callbacks.designer._mock_gen` | 8 | test_designer.py, test_streaming_characterization.py | `promote` **· net** |
+
+#### `spec4.layouts` — 12 names, 177 sites, 0 public fn(s)
+
+| Private name | Kind | Owner | Sites | Test files | Disposition |
+|---|---|---|---:|---|---|
+| `_AGENT_ROWS` | data | `layouts._agent_rows` | 4 | test_agent_llm_selection.py, test_callback_co_presence.py | `keep: subject is the private object` **· net** |
+| `_agent_rows` | func | `layouts._agent_rows` | 15 | test_agent_rows.py | `promote` |
+| `_agent_select_layout` | func | `self` | 41 | test_agent_rows.py, test_agent_select_layout.py, test_callback_co_presence.py, test_entry_screens.py, test_layout_contract.py, test_project_mode.py, test_round_cost.py, test_round_tree.py | `promote` **· net** |
+| `_artifact_view_layout` | func | `layouts._artifact_view` | 26 | test_artifact_view.py, test_layout_contract.py | `promote` **· net** |
+| `_chat_layout` | func | `layouts._chat` | 7 | test_layout_contract.py | `promote` **· net** |
+| `_round_cost` | func | `layouts._round_cost` | 4 | test_round_cost.py | `promote` |
+| `_round_tree` | func | `layouts._round_tree` | 23 | test_round_tree.py | `promote` |
+| `_setup_layout` | func | `layouts._setup` | 6 | test_layout_contract.py | `promote` **· net** |
+| `_shared` | data | `self` | 21 | test_designer_wizard_register.py, test_setup_wizard_register.py | `keep: subject is the private object` |
+| `_status_bar` | func | `layouts._status_bar` | 20 | test_layout_contract.py, test_status_bar.py | `promote` **· net** |
+| `_status_context` | func | `layouts._status_bar` | 3 | test_layout_contract.py | `promote` **· net** |
+| `_working_dir_layout` | func | `self` | 7 | test_entry_screens.py, test_layout_contract.py, test_root_routing.py | `promote` **· net** |
+
+#### `spec4.layouts.designer` — 7 names, 100 sites, 3 public fn(s)
+
+| Private name | Kind | Owner | Sites | Test files | Disposition |
+|---|---|---|---:|---|---|
+| `_step1_content` | func | `self` | 6 | test_callback_co_presence.py, test_designer_wizard_register.py, test_layout_contract.py | `promote` **· net** |
+| `_step2_content` | func | `self` | 14 | test_callback_co_presence.py, test_designer_wizard_register.py, test_layout_contract.py | `promote` **· net** |
+| `_step3_content` | func | `self` | 8 | test_callback_co_presence.py, test_designer_wizard_register.py, test_layout_contract.py | `promote` **· net** |
+| `_step4_content` | func | `self` | 13 | test_callback_co_presence.py, test_designer_wizard_register.py, test_layout_contract.py | `promote` **· net** |
+| `_step5_content` | func | `self` | 11 | test_callback_co_presence.py, test_designer_wizard_register.py, test_layout_contract.py | `promote` **· net** |
+| `_step6_content` | func | `self` | 28 | test_callback_co_presence.py, test_cost_summary.py, test_designer_fullscreen.py, test_designer_wizard_register.py, test_layout_contract.py | `promote` **· net** |
+| `_step7_content` | func | `self` | 20 | test_callback_co_presence.py, test_designer_fullscreen.py, test_designer_wizard_register.py, test_layout_contract.py | `promote` **· net** |
+
+#### `spec4.agents.code_scanner` — 7 names, 82 sites, 1 public fn(s)
+
+| Private name | Kind | Owner | Sites | Test files | Disposition |
+|---|---|---|---:|---|---|
+| `_approx_tokens` | func | `agents.code_scanner._scan` | 5 | test_code_scanner_progress.py | `promote` |
+| `_build_fresh_scan_seed` | func | `self` | 2 | test_code_scanner_progress.py | `promote` |
+| `_build_update_scan_seed` | func | `self` | 2 | test_agents.py | `promote` |
+| `_collect_files` | func | `agents.code_scanner._scan` | 7 | test_code_scanner_progress.py | `promote` |
+| `_extract_review_json` | func | `self` | 6 | test_agents.py | `promote` |
+| `_format_review_as_text` | func | `agents.code_scanner._review_render` | 40 | test_agents.py, test_renderer_goldens.py | `promote` **· net** |
+| `_gather_project_context` | func | `agents.code_scanner._scan` | 20 | test_agents.py, test_code_scanner_progress.py | `promote` |
+
+#### `spec4.agents.brainstormer` — 8 names, 46 sites, 1 public fn(s)
+
+| Private name | Kind | Owner | Sites | Test files | Disposition |
+|---|---|---|---:|---|---|
+| `_VISION_REVIEW_FOOTER` | data | `self` | 2 | test_renderer_goldens.py | `keep: subject is the private object` **· net** |
+| `_VISION_TRANSITION` | data | `self` | 2 | test_agents.py | `keep: subject is the private object` |
+| `_apply_revision_history` | func | `self` | 10 | test_agents.py, test_revision_change_classification.py | `promote` |
+| `_assign_feature_ids` | func | `self` | 9 | test_feature_ids.py | `promote` |
+| `_feature_names` | func | `self` | 6 | test_revision_change_classification.py | `promote` |
+| `_format_vision_as_text` | func | `self` | 11 | test_agents.py, test_renderer_goldens.py | `promote` **· net** |
+| `_rehydrate_vision_from_disk` | func | `self` | 4 | test_vision_disk_reconciliation.py | `promote` |
+| `_stamp_revision_block` | func | `self` | 2 | test_agents.py | `promote` |
+
+#### `spec4.agents._seam_check` — 7 names, 39 sites, 1 public fn(s)
+
+| Private name | Kind | Owner | Sites | Test files | Disposition |
+|---|---|---|---:|---|---|
+| `_check_declaration_alignment` | func | `self` | 15 | test_seam_check.py | `promote` |
+| `_check_endpoint_provenance` | func | `self` | 3 | test_seam_check.py | `promote` |
+| `_check_feature_coverage` | func | `self` | 4 | test_seam_check.py | `promote` |
+| `_check_table_provenance` | func | `self` | 5 | test_seam_check.py | `promote` |
+| `_extract_graph` | func | `self` | 3 | test_seam_check.py | `promote` |
+| `_format_advisory` | func | `self` | 4 | test_seam_check.py | `promote` |
+| `_parse_graph` | func | `self` | 5 | test_seam_check.py | `promote` |
+
+#### `spec4.project_manager` — 8 names, 25 sites, 6 public fn(s)
+
+| Private name | Kind | Owner | Sites | Test files | Disposition |
+|---|---|---|---:|---|---|
+| `_NON_ARTIFACT_FILES` | data | `self` | 5 | test_usage_capture.py | `keep: subject is the private object` |
+| `_PIPELINE_ARTIFACT_ORDER` | data | `self` | 1 | test_usage_capture.py | `keep: subject is the private object` |
+| `_REQUIRED_INPUTS` | data | `self` | 2 | test_deployer_invariants.py, test_usage_capture.py | `keep: subject is the private object` |
+| `_STALE_DEPENDENCIES` | data | `self` | 4 | test_deployer_invariants.py, test_round_tree.py, test_usage_capture.py | `keep: subject is the private object` |
+| `_USAGE_ROLLUP_PARENT` | data | `_usage` | 4 | test_agent_llm_selection.py | `keep: subject is the private object` |
+| `_phase_spec_preamble` | func | `_phase_markdown` | 1 | test_project_manager.py | `promote` |
+| `_with_readme_attribution` | func | `_artifacts` | 4 | test_project_manager_golden.py | `promote` **· net** |
+| `_write_text_if_changed` | func | `_artifacts` | 4 | test_project_manager.py | `promote` |
+
+#### `spec4.llm` — 6 names, 25 sites, 9 public fn(s)
+
+| Private name | Kind | Owner | Sites | Test files | Disposition |
+|---|---|---|---:|---|---|
+| `_DEFAULT_EFFORT` | data | `self` | 1 | test_llm.py | `keep: subject is the private object` |
+| `_USAGE_RECORDS` | data | `self` | 8 | test_streaming_characterization.py | `keep: subject is the private object` **· net** |
+| `_history_has_tool_use` | func | `self` | 4 | test_llm.py | `promote` |
+| `_is_effort_rejected_error` | func | `self` | 5 | test_llm.py | `promote` |
+| `_is_tool_incompatible_error` | func | `self` | 5 | test_llm.py | `promote` |
+| `_record_usage` | func | `self` | 2 | test_streaming_characterization.py, test_usage_capture.py | `promote` **· net** |
+
+
+#### Totals
+
+| Disposition | Names | Sites |
+|---|---:|---:|
+| `promote` | 94 | 1171 |
+| `keep: subject is the private object` | 24 | 183 |
+| `churn` | 2 | 7 |
+| `rewrite now` | 0 | 0 |
+| **total** | **120** | **1361** |
+
+### 55.7 What Phase 6 has left
+
+With 6d closed as a document, the phase's remaining work is:
+
+1. **The `drop as duplicate` / `drop as dead` rows from §50.2**, under §51.6's rule —
+   redundancy, coupling or vacuity, never seconds. §50.2's only `drop as dead` row was
+   `streaming.pop`, already resolved in 6c as a rewrite rather than a drop. The two
+   duplicate candidates §12.5 named are mostly, **but not entirely**, frozen:
+
+   | §12.5 pair | Status |
+   |---|---|
+   | `test_layout_contract.py`'s screen registry vs `test_callback_co_presence.py::_phase_screens` | **fully frozen** — both sides are §50.3 whole-file entries, so neither can be consolidated |
+   | `TestMockBuffers` (`test_streaming_characterization.py`) vs `TestMockDeliveryAck` (`test_designer.py`) | **partly frozen** — the first is a whole-file entry; the second is not, but one of its six tests, `test_delivery_preserves_prior_store_keys`, is **tier-A** and in the floor |
+
+   So the duplicate-coverage bullet in the plan has far less scope than it looks: of the
+   two candidates Phase 1 nominated, the only genuinely available material is the five
+   non-floor tests of `TestMockDeliveryAck` (`test_designer.py:1435–1551`) — and those
+   would have to be shown redundant against `TestMockBuffers` on the merits, not merely
+   overlapping in subject.
+2. **The chunk-factory swap** — §50.5(c)'s shape, with `_hidden_params = {}`, `usage`
+   absent by fidelity, the usage tests confirmed specifically, and one positive-path
+   assertion proving `_usage_fields` still returns a populated dict.
+3. **6z, last** — §51.6's exit condition.
+
+### 55.8 Gate results (verbatim)
+
+Documentation only; no `src/`, no `tests/`, no `noqa` change. `pyproject.toml` is edited
+only in the plan's sense — the *plan file* changed, not the project config.
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | — | not re-run; `git diff --stat` against 6d shows only `CLEANUP_INVENTORY.md` and `SPEC4_CLEANUP_PLAN.md`, so §53.4's `4175 passed, 1 skipped` and `909 miss` stand |
+
+**Off-limits check:**
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | absent from the diff |
+| 19 tier-B files / 33 classes | 0 files with hunks |
+| 456 node ids | **456 / 456 collect**, 0 failures |

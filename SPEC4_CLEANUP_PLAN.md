@@ -151,6 +151,9 @@ Not used: radon (duplicates `C90`), pylint (overlaps ruff), pydeps/grimp (import
 - **Slow tests:** run `uv run pytest --durations=20`; anything that spins up a subprocess or takes >1s gets `@pytest.mark.slow`; register the marker in `pyproject.toml`; default `pytest` still runs them, but `pytest -m "not slow"` is documented for the inner loop.
 - **Tests added in Phase 1 are not candidates for removal** in this phase. They are the regression net for this cleanup and can be revisited in a later round.
 - Coverage on every non-UI module must stay at or above the Phase 0 baseline; on UI modules at or above the Phase 1 baseline. If a deletion drops it, the test was not redundant — restore it.
+- **6d produces the Phase 7 seam document and performs no rewrites.** "Rewrite to public seam" assumed a seam that mostly does not exist — eight of the eleven private-name clusters expose no public function that isolates the helper, and Phase 6 cannot create one without touching `src/`. 6d is therefore the promote-candidate inventory (`CLEANUP_INVENTORY.md` §54–§55); the promotions themselves are Phase 7 work.
+
+**Sub-phase order, as executed:** 6a `testpaths` → 6b/6c the three mis-aimed patch strings and the vacuous `streaming.pop` assertion → 6d the seam document (no rewrites) → **remaining:** the `drop as duplicate` and `drop as dead` rows from §50.2 under the redundancy/coupling/vacuity rule; the per-character `MagicMock` chunk-factory swap, with the usage tests confirmed specifically and one positive-path usage assertion; then **6z last** — port the eval-only assertions on `requires_reconciler.py` into `tests/agentifier/`, exit check misses ≤ 893 on `tests/` alone. Pruning is never justified by runtime (§51.6).
 
 **Model/effort:** Opus 5, plan mode, ultrathink.
 
@@ -159,6 +162,7 @@ Not used: radon (duplicates `C90`), pylint (overlaps ruff), pydeps/grimp (import
 **Purpose:** Prove the cleanup did what it claimed and leave the repo self-describing.
 
 - Re-run Phase 0's measurements, including `uvx vulture`, `uv run --with deptry deptry .`, the ruff rule-set statistics, and the layering contract. Produce `CLEANUP_REPORT.md` with before/after: file-size table, test count and runtime, coverage per module, ruff/mypy findings, dead-code candidates remaining (should be zero or justified).
+- **Promote seams per §54–§55**, ahead of the remaining deferred items: create the public seams the 94 promote-candidate names need, then re-point the tests. Then the type-hygiene pass (290 `Any`, §49.5), then the `project_manager` root-siblings inconsistency. Two constraints carried from Phase 6: the 24 `keep: subject is the private object` names are **not** promote targets, and a promotion whose tests live in a §50.3 whole-file entry needs the pre-shaped petition in §54.7.
 - Walk the seven original symptom categories as a checklist; for each, state what was found and what was done.
 - Update `tests/README.md` (coverage table with current module names and no line numbers — they go stale), `README.md`'s project-structure tree, and `CLAUDE.md` for any moved modules or new markers.
 - Delete `CLEANUP_INVENTORY.md` or fold its *Bugs found (not fixed)* section into a `BACKLOG.md` alongside the two existing horizon items (CodeScanner incremental scan, Designer mock capture).
