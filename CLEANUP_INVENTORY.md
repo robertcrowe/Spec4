@@ -9576,3 +9576,87 @@ Collected **4,178**, up 2: the two usage tests. Nothing removed.
 lines **18**, **49** and **3565** — the import, the deleted factory, and
 `_chunkify_stream`'s return annotation. None intersects a listed range, and the file
 carries no tier-A test. **Reported, per §51.6's template.**
+
+## 58. Phase 6z — the eval-only assertions, ported
+
+§51.6's exit condition. One new file, `tests/agentifier/test_requires_inversion_arms.py`,
+22 tests. Nothing else changed.
+
+### 58.1 Why this was an exit condition
+
+Phase 6a's `testpaths` moved four `evals/` modules out of collection, and with them the
+**only** coverage in the repo of 15 statements in
+`spec4.agentifier.requires_reconciler` and one in `spec4.agents.brainstormer` (§51.2).
+The logic is the D-RI signal classification — what decides whether a declared `requires`
+edge points the wrong way. Phase 6 does not touch `src/`, so it was not urgent; the
+moment a `src`-touching phase begins, it is.
+
+### 58.2 One test per arm
+
+| Class | Arm | Statements |
+|---|---|---|
+| `TestStemming` | `_norm_chunk`'s minimal stemming — `ing` above five characters, `s` above three, both in order, short chunks left alone | 154–156 |
+| `TestStemLengthGuard` | D-RI13: a single-chunk stem never matches; a sub-six-character stem never matches; a long enough one matches as a prefix | 263 |
+| `TestProducerMarginTieBreak` | the production map declines a close runner-up, takes a clear leader, rejects overlap below the floor, and returns `None` with no specs | 304, 306 |
+| `TestS3OverlapArms` | forward-dominant overlap; reverse-dominant **with** forward signals (D-RI11); reverse with **zero** forward counter (D-RI12); and the **reverse lean, uncorroborated, not classified** arm that classifies nothing | 353, 363–369 |
+| `TestTriggerMatching` | S1 fires when the trigger awaits the producer by name; S2's selective vision-feature fallback fires under the link cap and is skipped above it | 488, 518–525 |
+| `TestFeatureNamesGuards` | `_feature_names` returns `[]` for a non-dict vision and a non-dict `vision_statement` | brainstormer 284 |
+
+Two classes also pin the constants the arms are defined against — `PROD_FLOOR`/
+`PROD_MARGIN` at 3/2 and `S3_FLOOR`/`S3_DOMINANCE` at 4/2 — so a silent retune of a
+threshold fails here rather than shifting behaviour under the arms.
+
+These are **characterisation** tests: they pin what the code does today.
+
+### 58.3 Three shape errors worth recording
+
+The first draft failed four tests, all because the constructed nodes did not match the
+real ones. Recorded because the next person writing against this module will hit them:
+
+| Assumed | Actually |
+|---|---|
+| `node["trigger"]` | `node["invocation"]["trigger"]` — `_trigger_text` reads nothing else |
+| a spec is `{"id", "name", "description"}` | `build_production_map` scores against `spec["outputs"]["primary"]` + `schema_notes`; a spec with no `outputs` contributes no tokens and is skipped |
+| `build_production_map(nodes, specs)` | `build_production_map(specs, nodes)` |
+
+The middle one is the dangerous shape: a spec with the wrong key produces an **empty**
+map rather than an error, so a test built that way passes its "no producer named"
+assertion for entirely the wrong reason. Both negative assertions in
+`TestProducerMarginTieBreak` are therefore paired with a positive one
+(`test_a_clear_leader_names_the_producer`), so an empty map cannot satisfy the class.
+
+### 58.4 The exit check
+
+| | Before 6z | After 6z | Pre-`testpaths` (with `evals/`) |
+|---|---:|---:|---:|
+| `agentifier/requires_reconciler.py` | 26 miss (90%) | **9 miss (97%)** | 11 miss (95%) |
+| `agents/brainstormer.py` | 10 miss (97%) | **9 miss (97%)** | 9 miss (97%) |
+| **suite total** | 909 | **891** | 893 |
+
+**891 ≤ 893.** §51.6's exit condition is met — and `requires_reconciler.py` is now
+**two statements better than the eval ever left it**, because the arms are tested
+individually rather than incidentally through a probe.
+
+The 9 remaining misses in `requires_reconciler.py` (179, 215, 227, 233, 248, 288, 294,
+299, 571) were never covered by `evals/` either; they are outside 6z's scope, which was
+the 16 statements the `testpaths` change cost.
+
+### 58.5 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped in 106.54s` (exit 0) |
+| Coverage | same run | `TOTAL 12421 stmts, 891 miss, 93%` — **below the §51.6 baseline of 909, and below 893** |
+
+Collected **4,200**, up 22. Nothing removed.
+
+**Off-limits check:**
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | absent from the diff |
+| 19 tier-B files / 33 classes | 0 files with hunks — the only change is a new file |
+| 456 node ids | **456 / 456 collect**, 0 failures |
