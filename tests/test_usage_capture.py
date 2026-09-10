@@ -805,30 +805,9 @@ class TestSaveUsageFastForwardNote:
         assert data["notes"]["fast_forward"] is True
 
 
-class _OsSeam:
-    """The ``os`` that one module sees, with named calls replaced.
-
-    Patched in as ``spec4._usage.os``, so only the atomic writer under test
-    gets the failing call. Patching ``os.replace`` or ``os.fdopen`` on the
-    stdlib module instead is process-wide: every other write while the patch
-    is open -- the ``tmp_path`` fixture, pytest's own bookkeeping -- would go
-    through the stub as well, which is a blast radius the assertions below
-    cannot see. Anything not overridden delegates to the real ``os``.
-    """
-
-    def __init__(self, **overrides: Any) -> None:
-        self._overrides = overrides
-
-    def __getattr__(self, name: str) -> Any:
-        overrides = object.__getattribute__(self, "_overrides")
-        if name in overrides:
-            return overrides[name]
-        return getattr(os, name)
-
-
 class TestSaveUsageAtomicity:
     def test_failed_write_leaves_original_intact_and_no_temp_file(
-        self, tmp_path: Path
+        self, tmp_path: Path, module_seam: Any
     ) -> None:
         project_manager.save_usage(tmp_path, [_call("phaser")], 0)
         path = _usage_path(tmp_path)
@@ -837,13 +816,15 @@ class TestSaveUsageAtomicity:
         def _failing_replace(*args: Any, **kwargs: Any) -> Any:
             raise OSError("boom")
 
-        with patch("spec4._usage.os", _OsSeam(replace=_failing_replace)):
+        with module_seam("spec4._usage.os", replace=_failing_replace):
             with pytest.raises(OSError):
                 project_manager.save_usage(tmp_path, [_call("phaser")], 0)
         assert path.read_text() == before
         assert [p.name for p in path.parent.iterdir()] == ["usage.json"]
 
-    def test_partial_content_write_never_reaches_the_file(self, tmp_path: Path) -> None:
+    def test_partial_content_write_never_reaches_the_file(
+        self, tmp_path: Path, module_seam: Any
+    ) -> None:
         project_manager.save_usage(tmp_path, [_call("phaser")], 0)
         path = _usage_path(tmp_path)
         before = path.read_text()
@@ -859,7 +840,7 @@ class TestSaveUsageAtomicity:
             fh.write = _write  # type: ignore[method-assign]
             return fh
 
-        with patch("spec4._usage.os", _OsSeam(fdopen=_broken_fdopen)):
+        with module_seam("spec4._usage.os", fdopen=_broken_fdopen):
             with pytest.raises(OSError):
                 project_manager.save_usage(tmp_path, [_call("phaser")], 0)
         assert path.read_text() == before

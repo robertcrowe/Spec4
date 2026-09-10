@@ -8573,3 +8573,81 @@ implied — per §51.6, seconds are not a currency in this phase.
 | 456 node ids | **456 / 456 collect**, 0 failures |
 
 Collected count unchanged at **4,175**.
+
+### 52.5 Addendum — the seam is a fixture, and the proxy is scaffolding
+
+Two directives applied after 6b was approved.
+
+#### The proxy now lives once, in `tests/conftest.py`
+
+`_OsSeam` is gone from `tests/test_usage_capture.py`. `tests/conftest.py` gains
+`_ModuleSeam` and the **`module_seam`** fixture, which resolves the real module from the
+target string and rebinds the name:
+
+```python
+with module_seam("spec4._usage.os", replace=_failing_replace):
+    ...
+```
+
+Both atomicity tests take the fixture. The four-way verification of §52.1 was re-run
+through it and holds unchanged: empty seam transparent; writer reached; stdlib
+`os.replace` untouched during the patch; clean restore after.
+
+The fixture's docstring carries the rule — **every** patch that would otherwise reach an
+attribute of a stdlib or third-party module through a `spec4` module goes through it,
+and no test rebinds a module's `os` by hand.
+
+#### The grep, for the record
+
+`patch("spec4.<module>.<stdlib>.<fn>")` across `tests/`, over `os`, `sys`, `shutil`,
+`pathlib`, `subprocess`, `time`, `urllib`, `socket`, `tempfile`:
+
+| Hits | |
+|---|---|
+| **0** | 6b removed the only two that existed (`spec4.project_manager.os.replace`, `.os.fdopen`) |
+
+The two `module_seam` call sites in `test_usage_capture.py` are the only places any test
+rebinds a module attribute of this kind. Nothing is pending and nothing is scheduled.
+
+**Three siblings share the shape but not the hazard**, and are deliberately untouched —
+§50.2 marks all of them `keep`:
+
+| Target | Sites | Why it is not the same problem |
+|---|---:|---|
+| `spec4.llm.litellm.completion` / `.acompletion` / `.completion_cost` / `.get_supported_openai_params` | 183 | `litellm` is the seam under test, not collateral. Nothing else in the process calls it during a test, so a process-wide patch has no blast radius to speak of |
+| `spec4.providers.boto3.client` | 3 | same |
+| `version_check.urllib.request.urlopen` (`patch.object`) | 4 | same |
+
+The `os` case was different in kind: `os.replace` and `os.fdopen` are called constantly
+by code that has nothing to do with the test — which is exactly what made the old patch
+dangerous and invisible.
+
+#### The honest fix is a production seam, and Phase 6 cannot build it
+
+**`module_seam` is scaffolding, not the design.** The right shape is a module-level
+alias in the calling module, patched by name:
+
+```python
+# src/spec4/_usage.py
+_replace = os.replace          # module-level seam
+...
+    _replace(tmp_name, path)   # in _write_atomic
+```
+
+```python
+with patch("spec4._usage._replace", side_effect=OSError("boom")):
+```
+
+That needs no proxy, no delegation, and no fixture: the patched name is spec4's own, so
+the scoping is a property of the code rather than of the test's cleverness. It also
+documents in `src/` that this call is a designed test seam.
+
+**Phase 6 does not touch `src/`**, so it cannot be done here. Logged as a **Phase 7
+candidate**:
+
+> **Phase 7 candidate — production seams for stdlib calls under test.** Give
+> `_usage._write_atomic`'s `os.replace` and `os.fdopen` module-level aliases and patch
+> those by name; then delete `module_seam` and `_ModuleSeam` from `tests/conftest.py`
+> and the fixture argument from the two atomicity tests. The proxy exists only because
+> Phase 6 is test-only. Audit at the same time whether any other production module has a
+> stdlib call that tests need to fail on demand.
