@@ -9373,3 +9373,90 @@ split are one decision, not two. Phase 7 should take them together or not at all
 The three `session` mutators (`_persist_artifacts` 35, `_load_working_dir` 24,
 `_get_agent_gen` 20 — 79 sites) are the other cluster of judgment: each mutates the
 session dict in place, so the public contract has to say what it may touch.
+
+## 56. Phase 6f — the duplicate and dead rows: nothing qualifies
+
+**6e does not exist** (§55.3: zero `rewrite now` sites). This is the next sub-phase in
+the plan's remaining order. **No test was pruned, and that is the finding.**
+
+### 56.1 The standard: the mutation check, inverted
+
+§51.6 gives the forward form — a rewrite must be shown to fail for the defect it
+replaces. The pruning form is its inverse:
+
+> **A test is redundant only if every mutation it catches is also caught by a test that
+> stays.** A test that catches a mutation alone is kept, whatever its subject overlap.
+
+Subject overlap is what §12.5 recorded, and subject overlap is not redundancy.
+
+### 56.2 The candidates
+
+| §50.2 / §12.5 row | Status |
+|---|---|
+| `drop as dead` — `patch("spec4.callbacks._chat.streaming.pop")` | already resolved in **6c** as a rewrite, not a drop: the assertion was vacuous but the invariant was live (§53.1) |
+| duplicate — `test_layout_contract.py` screen registry vs `test_callback_co_presence.py::_phase_screens` | **not testable**: both sides are §50.3 whole-file entries, frozen |
+| duplicate — `TestMockBuffers` vs `TestMockDeliveryAck` | **tested below.** `TestMockBuffers` is frozen (net); `TestMockDeliveryAck` has six tests, one of them tier-A, five nominally available |
+
+So the entire pruning surface Phase 1 nominated comes down to five tests at
+`tests/test_designer.py:1435–1551`.
+
+### 56.3 The catch matrix
+
+Nine mutations to the delivery/acknowledgement logic in
+`callbacks/designer/__init__.py::on_mock_stream_poll`, each applied to the working tree,
+both classes run, then reverted.
+
+| Mutation | `TestMockBuffers` (stays) | `TestMockDeliveryAck` (candidate) |
+|---|---|---|
+| M1 pop the buffer on the delivery tick — kills re-delivery | FAIL | FAIL |
+| M3 acknowledge on `step != 6` instead of `!= 5` — bounces a Refine click | FAIL | FAIL |
+| M4 never pop on acknowledgement — leaks the buffer | FAIL | FAIL |
+| M5 runaway valve never fires | FAIL | FAIL |
+| M6 progress is 99, not 100, on completion | FAIL | FAIL |
+| M9 delivery payload built from scratch, not spread over the store (D-DM8) | FAIL | FAIL |
+| **M7 reinstate the old fixed 6-tick re-delivery window** | **PASS** | **FAIL** |
+| M8 runaway-valve message loses its saved-mock guidance | PASS | PASS |
+
+### 56.4 The verdict: not redundant
+
+**M7 is caught by the candidate and missed by the test that stays.** Sole catcher:
+`TestMockDeliveryAck::test_redelivers_far_beyond_the_old_fixed_window`.
+
+That is not an incidental difference. M7 restores **the exact defect the class was
+written for** — its docstring: *"The previous fixed re-delivery window counted requests
+sent, not deliveries applied, and could expire before the first response ever reached the
+browser, stranding the UI at step 5 with the interval off."* The production comment at
+note 2 says *"Don't reintroduce one."* `TestMockBuffers` drives a generation from start
+to acknowledged delivery and never polls far enough for a six-tick window to matter.
+
+Under §56.1 the class is **kept in full**. Six of the eight mutations are caught by both,
+which is real overlap — and overlap is not the standard.
+
+**Pruned in this sub-phase: nothing.** Per §51.6, a sub-phase that prunes nothing is a
+finding rather than a failure, and the seconds rule forbids the alternative argument.
+
+### 56.5 A gap the matrix found on the way
+
+**M8 is caught by neither class.** The runaway valve's user-facing message — *"The mock
+was generated and saved, but this page stopped receiving updates… Refresh the page to
+load the saved mock, or click Retry"* — can be replaced with anything and the suite stays
+green. The *branch* is covered (M5 fails both); the *text the user reads at the one dead
+end this feature has* is not.
+
+Recorded, not fixed: adding an assertion is out of scope for a pruning sub-phase and
+would be new coverage rather than rationalisation. **Logged for Phase 7** alongside the
+seam work.
+
+### 56.6 Gate results (verbatim)
+
+No file changed. Every mutation was reverted and `git status --porcelain` was empty
+before and after the matrix.
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | — | unchanged from §53.4: `4175 passed, 1 skipped`, `909 miss` |
+
+**Off-limits:** nothing under `tests/` touched; 456/456 collect.
