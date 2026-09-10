@@ -73,6 +73,13 @@ select = ["E", "F", "C90", "PLR0912", "PLR0913", "PLR0915", "SIM", "B", "ARG"]
 # before litellm is first imported by any downstream module.
 "src/spec4/app.py" = ["E501", "E402"]
 
+[tool.pytest.ini_options]
+# Added at cleanup Phase 6. Without it pytest collects from the repo root, so a
+# bare `uv run pytest` pulled in four modules under evals/ -- 82 of 4,257 tests.
+# evals/ is outside the Rule 6 gate for linting and is now outside collection
+# too. See CLEANUP_INVENTORY.md 50.0(e) and 50.5(b).
+testpaths = ["tests"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
