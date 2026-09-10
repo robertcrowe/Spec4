@@ -57,7 +57,7 @@ def _sep() -> Any:
 # row in which exactly one entry is active, the entries already finished read
 # at full weight, and the entries that cannot be entered are dimmed, disabled,
 # and carry the reason as their tooltip. That marking existed once, inside
-# `_chat._agent_status_bar`; copying it into the two wizards is precisely how
+# `_chat.agent_status_bar`; copying it into the two wizards is precisely how
 # the three rows would have drifted, since the active mark is the same accent
 # as the active nav item (D-LR2) and a re-themed accent has to move all of
 # them at once.

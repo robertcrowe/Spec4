@@ -11,7 +11,7 @@ siblings, one module each:
   the run-cost strip, the provider-error retry panel, and the Agentifier
   breadth panel. Each returns ``None`` when inactive.
 
-``_chat_layout`` itself stays here: it is the one function that assembles the
+``chat_layout`` itself stays here: it is the one function that assembles the
 three into a screen, and it belongs to none of them.
 
 Phase 4j then moved every importer onto the owning module and dropped the
@@ -40,20 +40,20 @@ from spec4.layouts._chat_actions import (
     CHAT_ARTIFACTS,
     DOWNLOAD_BTN_PREFIX,
     OPEN_BTN_PREFIX,
-    _chat_action_buttons,
+    chat_action_buttons,
     open_button_id,
-    _streamed_token_count,
-    _token_count_text,
+    streamed_token_count,
+    token_count_text,
     _TOKEN_COUNTER_AGENTS,
-    _turn_token_text,
+    turn_token_text,
 )
 from spec4.layouts._chat_panels import (
-    _breadth_panel,
-    _cost_summary,
-    _retry_panel,
+    render_breadth_panel,
+    cost_summary,
+    render_retry_panel,
 )
 from spec4.layouts._chat_status import (
-    _agent_status_bar,
+    agent_status_bar,
     _PILL_ACTIVE,
     _PILL_BASE,
     _PILL_DONE,
@@ -63,12 +63,12 @@ from spec4.layouts._llm_gate import gate_card, is_open, model_chip
 from spec4.layouts._shared import PROGRESS_CLASS_NAMES, _render_message
 
 __all__ = [
-    "_agent_status_bar",
-    "_breadth_panel",
-    "_chat_action_buttons",
-    "_chat_layout",
+    "agent_status_bar",
+    "render_breadth_panel",
+    "chat_action_buttons",
+    "chat_layout",
     "CHAT_ARTIFACTS",
-    "_cost_summary",
+    "cost_summary",
     "DOWNLOAD_BTN_PREFIX",
     "open_button_id",
     "OPEN_BTN_PREFIX",
@@ -76,15 +76,15 @@ __all__ = [
     "_PILL_BASE",
     "_PILL_DONE",
     "_PILL_UNREACHABLE",
-    "_retry_panel",
-    "_streamed_token_count",
-    "_token_count_text",
+    "render_retry_panel",
+    "streamed_token_count",
+    "token_count_text",
     "_TOKEN_COUNTER_AGENTS",
-    "_turn_token_text",
+    "turn_token_text",
 ]
 
 
-def _chat_layout(
+def chat_layout(
     session: dict[str, Any], prefs: dict[str, Any] | None = None
 ) -> html.Div:
     messages = session.get("messages", [])
@@ -100,9 +100,9 @@ def _chat_layout(
     # The one-word label above each assistant block. The agent naming itself
     # is what tells the two speakers apart now that neither block is filled.
     speaker = AGENT_DISPLAY_NAMES.get(active, "Agent")
-    breadth_panel = _breadth_panel(session)
-    retry_panel = _retry_panel(session)
-    cost_card = _cost_summary(session)
+    breadth_panel = render_breadth_panel(session)
+    retry_panel = render_retry_panel(session)
+    cost_card = cost_summary(session)
     # Mid-agent, the chip re-opens the same card. `agent_llm_draft` marks it
     # open; a resting chip renders nothing extra.
     chip_open = bool(
@@ -127,7 +127,7 @@ def _chat_layout(
             dcc.Download(id="dl-phases"),
             dcc.Download(id="dl-deployment"),
             dcc.Download(id="dl-features"),
-            _agent_status_bar(session),
+            agent_status_bar(session),
             *([gate] if gate is not None else []),
             html.Div(
                 html.Div(
@@ -155,7 +155,7 @@ def _chat_layout(
             # The run's cost, under its last message and above the row that
             # moves on from it. Renders only once the run is complete.
             *([cost_card] if cost_card is not None else []),
-            _chat_action_buttons(session),
+            chat_action_buttons(session),
             *([retry_panel] if retry_panel is not None else []),
             *([breadth_panel] if breadth_panel is not None else []),
             html.Div(
@@ -173,7 +173,7 @@ def _chat_layout(
                     ),
                     # The elapsed readout that used to sit here now rides in the
                     # action row, next to the chars counter — see
-                    # _chat_action_buttons.
+                    # chat_action_buttons.
                 ],
                 id="chat-progress-container",
                 style={

@@ -37,7 +37,7 @@ from spec4.layouts._chat import (
     _PILL_BASE,
     _PILL_DONE,
     _PILL_UNREACHABLE,
-    _agent_status_bar,
+    agent_status_bar,
 )
 from spec4.layouts._shared import (
     STEP_ACTIVE,
@@ -76,7 +76,7 @@ def _row(session: dict[str, Any]) -> Any:
     """The `.pipeline` container itself — the row the seven labels sit in."""
     return next(
         node
-        for node in _walk(_agent_status_bar(session))
+        for node in _walk(agent_status_bar(session))
         if getattr(node, "className", None) == "pipeline"
     )
 
@@ -276,7 +276,7 @@ class TestTheIdsAreUnchanged:
         """
         strays = [
             node
-            for node in _walk(_agent_status_bar(_session()))
+            for node in _walk(agent_status_bar(_session()))
             if type(node).__name__ == "Button"
             and not isinstance(getattr(node, "id", None), dict)
         ]
@@ -316,7 +316,7 @@ class TestItIsTheSharedRendererAndNothingMoved:
         monkeypatch.setattr(chat, "step_row", _fake)
         rendered = [
             node
-            for node in _walk(_agent_status_bar(_session()))
+            for node in _walk(agent_status_bar(_session()))
             if getattr(node, "children", None) == "sentinel"
         ]
         assert rendered, "the pill bar did not go through _shared.step_row"

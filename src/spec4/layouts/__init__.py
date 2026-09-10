@@ -45,7 +45,7 @@ from spec4.layouts._agent_rows import (
     agent_rows,
 )
 from spec4.layouts._artifact_view import _artifact_view_layout
-from spec4.layouts._chat import _agent_status_bar, _chat_action_buttons, _chat_layout
+from spec4.layouts._chat import agent_status_bar, chat_action_buttons, chat_layout
 from spec4.layouts._setup import _setup_layout
 from spec4.layouts._shared import (
     _card,
@@ -98,9 +98,9 @@ __all__ = [
     "_status_bar",
     "_status_context",
     "_status_nav_class",
-    "_agent_status_bar",
-    "_chat_action_buttons",
-    "_chat_layout",
+    "agent_status_bar",
+    "chat_action_buttons",
+    "chat_layout",
     "_setup_layout",
     "_working_dir_layout",
     "_agent_select_layout",

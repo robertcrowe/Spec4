@@ -40,7 +40,7 @@ from spec4.app_constants import STATE_VISION_COMPLETE
 from spec4.layouts import (
     _agent_select_layout,
     _artifact_view_layout,
-    _chat_layout,
+    chat_layout as _chat_layout,
     _setup_layout,
     _status_bar,
     _status_context,

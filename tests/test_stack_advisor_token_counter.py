@@ -15,8 +15,8 @@ from typing import Any
 from spec4.agents._reask import stream_suppressing_json
 from spec4.layouts._chat import (
     _TOKEN_COUNTER_AGENTS,
-    _streamed_token_count,
-    _token_count_text,
+    streamed_token_count,
+    token_count_text,
 )
 
 
@@ -64,7 +64,7 @@ class TestCounterGate:
             "messages": [{"role": "assistant", "content": ""}],
             "_stream_received_chars": 8291,
         }
-        assert _token_count_text(session) == "Chars received: 8291"
+        assert token_count_text(session) == "Chars received: 8291"
 
     def test_silent_for_ungated_agent(self) -> None:
         session: dict[str, Any] = {
@@ -72,14 +72,14 @@ class TestCounterGate:
             "_stream_id": "abc",
             "_stream_received_chars": 8291,
         }
-        assert _token_count_text(session) == ""
+        assert token_count_text(session) == ""
 
     def test_silent_when_idle_with_no_receipt(self) -> None:
         session: dict[str, Any] = {
             "active_agent": "stack_advisor",
             "messages": [{"role": "assistant", "content": ""}],
         }
-        assert _token_count_text(session) == ""
+        assert token_count_text(session) == ""
 
 
 class TestSuppressedStreamPublishesReceipt:
@@ -120,7 +120,7 @@ class TestSuppressedStreamPublishesReceipt:
             "messages": [{"role": "assistant", "content": ""}],
             "_stream_received_chars": None,
         }
-        assert _streamed_token_count(session) == 0
+        assert streamed_token_count(session) == 0
 
     def test_visible_stream_also_counts(self) -> None:
         session: dict[str, Any] = {}

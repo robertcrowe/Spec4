@@ -1,4 +1,6 @@
-"""Unit tests for on_stream_poll stale-clobber fix and _breadth_panel value seeding."""
+"""Unit tests for on_stream_poll stale-clobber fix and render_breadth_panel value
+seeding.
+"""
 
 from __future__ import annotations
 
@@ -13,9 +15,9 @@ from dash import no_update
 from spec4 import streaming
 from spec4.callbacks import on_stream_poll
 from spec4.layouts._chat import (
-    _breadth_panel,
-    _chat_layout,
-    _streamed_token_count,
+    render_breadth_panel,
+    chat_layout,
+    streamed_token_count,
 )
 from spec4.session import default_session
 
@@ -272,7 +274,7 @@ class TestStreamPollDoneFinalisation:
 
 
 # ---------------------------------------------------------------------------
-# _breadth_panel — CheckboxGroup value seeding
+# render_breadth_panel — CheckboxGroup value seeding
 # ---------------------------------------------------------------------------
 
 
@@ -313,7 +315,7 @@ class TestBreadthPanelValueSeeding:
 
     def test_value_reflects_persisted_selection(self) -> None:
         session = self._make_session_with_groups(selection=["feat_a"])
-        panel = _breadth_panel(session)
+        panel = render_breadth_panel(session)
         assert panel is not None
         cg = self._find_checkbox_group(panel)
         assert cg is not None
@@ -321,7 +323,7 @@ class TestBreadthPanelValueSeeding:
 
     def test_value_is_empty_when_selection_is_none(self) -> None:
         session = self._make_session_with_groups(selection=None)
-        panel = _breadth_panel(session)
+        panel = render_breadth_panel(session)
         assert panel is not None
         cg = self._find_checkbox_group(panel)
         assert cg is not None
@@ -329,7 +331,7 @@ class TestBreadthPanelValueSeeding:
 
     def test_value_is_empty_when_selection_is_empty_list(self) -> None:
         session = self._make_session_with_groups(selection=[])
-        panel = _breadth_panel(session)
+        panel = render_breadth_panel(session)
         assert panel is not None
         cg = self._find_checkbox_group(panel)
         assert cg is not None
@@ -338,11 +340,11 @@ class TestBreadthPanelValueSeeding:
     def test_panel_hidden_when_breadth_chosen(self) -> None:
         session = self._make_session_with_groups(selection=["feat_a"])
         session["agentifier_breadth_chosen"] = True
-        assert _breadth_panel(session) is None
+        assert render_breadth_panel(session) is None
 
     def test_panel_hidden_when_no_groups(self) -> None:
         session = default_session()
-        assert _breadth_panel(session) is None
+        assert render_breadth_panel(session) is None
 
     def test_panel_hidden_when_streaming(self) -> None:
         # Clicking Continue starts a stream (sets _stream_id) before the backend
@@ -350,24 +352,24 @@ class TestBreadthPanelValueSeeding:
         # rather than linger until that flag propagates on the next poll.
         session = self._make_session_with_groups(selection=["feat_a"])
         session["_stream_id"] = "sid-abc"
-        assert _breadth_panel(session) is None
+        assert render_breadth_panel(session) is None
 
     def test_panel_is_dmc_paper_with_chat_bubble_class(self) -> None:
         """Fix 1: active panel must be a dmc.Paper with className chat-bubble-assistant."""  # noqa: E501
         import dash_mantine_components as dmc
 
         session = self._make_session_with_groups(selection=None)
-        panel = _breadth_panel(session)
+        panel = render_breadth_panel(session)
         assert panel is not None
         assert isinstance(panel, dmc.Paper), (
-            "_breadth_panel must return a dmc.Paper, not an html.Div"
+            "render_breadth_panel must return a dmc.Paper, not an html.Div"
         )
         assert panel.className == "chat-bubble-assistant"
 
     def test_paper_still_contains_checkbox_group(self) -> None:
         """Existing recursive walker must still find the CheckboxGroup through Paper."""
         session = self._make_session_with_groups(selection=["feat_a"])
-        panel = _breadth_panel(session)
+        panel = render_breadth_panel(session)
         assert panel is not None
         cg = self._find_checkbox_group(panel)
         assert cg is not None, (
@@ -377,7 +379,7 @@ class TestBreadthPanelValueSeeding:
 
 
 # ---------------------------------------------------------------------------
-# _breadth_panel — checkbox text styling
+# render_breadth_panel — checkbox text styling
 # ---------------------------------------------------------------------------
 
 
@@ -398,7 +400,7 @@ class TestBreadthPanelCheckboxStyling:
         session["agentifier_scout_pool"] = [{"name": "feat_a"}, {"name": "feat_b"}]
         session["agentifier_breadth_chosen"] = False
         session["agentifier_breadth_selection"] = None
-        panel = _breadth_panel(session)
+        panel = render_breadth_panel(session)
         assert panel is not None
         cg = TestBreadthPanelValueSeeding()._find_checkbox_group(panel)
         assert cg is not None
@@ -440,7 +442,7 @@ class TestBreadthPanelCheckboxStyling:
 
 
 # ---------------------------------------------------------------------------
-# _chat_layout — Fix 2: input row visibility tied to breadth panel
+# chat_layout — Fix 2: input row visibility tied to breadth panel
 # ---------------------------------------------------------------------------
 
 
@@ -489,7 +491,7 @@ class TestChatLayoutInputVisibility:
 
     def test_input_row_hidden_when_breadth_active(self) -> None:
         session = _make_active_breadth_session()
-        layout = _chat_layout(session)
+        layout = chat_layout(session)
         row = self._find_input_row(layout)
         assert row is not None, "input row must still be in the tree (mounted)"
         assert row.style["display"] == "none", (
@@ -501,7 +503,7 @@ class TestChatLayoutInputVisibility:
         import dash_mantine_components as dmc
 
         session = _make_active_breadth_session()
-        layout = _chat_layout(session)
+        layout = chat_layout(session)
 
         def _is_chat_input(c: Any) -> bool:
             return (
@@ -513,7 +515,7 @@ class TestChatLayoutInputVisibility:
 
     def test_input_row_visible_when_breadth_inactive(self) -> None:
         session = default_session()
-        layout = _chat_layout(session)
+        layout = chat_layout(session)
         row = self._find_input_row(layout)
         assert row is not None
         assert row.style["display"] == "flex", (
@@ -523,7 +525,7 @@ class TestChatLayoutInputVisibility:
     def test_input_row_visible_when_breadth_chosen(self) -> None:
         session = _make_active_breadth_session()
         session["agentifier_breadth_chosen"] = True
-        layout = _chat_layout(session)
+        layout = chat_layout(session)
         row = self._find_input_row(layout)
         assert row is not None
         assert row.style["display"] == "flex"
@@ -673,20 +675,20 @@ class TestChatStatusLine:
     def test_renders_session_status(self) -> None:
         session = default_session()
         session["_stream_status"] = "Tier Analyst is sizing chat_bot (2/5)…"
-        line = self._find_status_line(_chat_layout(session))
+        line = self._find_status_line(chat_layout(session))
         assert line is not None
         assert line.children == "Tier Analyst is sizing chat_bot (2/5)…"
 
     def test_empty_when_no_status(self) -> None:
         session = default_session()
-        line = self._find_status_line(_chat_layout(session))
+        line = self._find_status_line(chat_layout(session))
         assert line is not None
         assert line.children == ""
 
     def test_is_single_smaller_line(self) -> None:
         session = default_session()
         session["_stream_status"] = "Working…"
-        line = self._find_status_line(_chat_layout(session))
+        line = self._find_status_line(chat_layout(session))
         assert line.size == "xs", "status line must be smaller than body text"
         assert line.style["whiteSpace"] == "nowrap", (
             "status line must never wrap to a second line"
@@ -697,7 +699,7 @@ class TestChatStatusLine:
         # The input row hides during the breadth panel; the status line stays
         # mounted (it is empty then — no stream runs while the panel waits).
         session = _make_active_breadth_session()
-        line = self._find_status_line(_chat_layout(session))
+        line = self._find_status_line(chat_layout(session))
         assert line is not None
 
 
@@ -733,7 +735,7 @@ class TestAgentStatusSeed:
 
 
 class TestStreamedTokenCounter:
-    """D-PH9: _streamed_token_count prefers the published received total, and
+    """D-PH9: streamed_token_count prefers the published received total, and
     otherwise falls back to the in-flight assistant message length."""
 
     def test_prefers_received_scalar(self) -> None:
@@ -741,15 +743,15 @@ class TestStreamedTokenCounter:
             "messages": [{"role": "assistant", "content": "short"}],
             "_stream_received_chars": 4321,
         }
-        assert _streamed_token_count(session) == 4321
+        assert streamed_token_count(session) == 4321
 
     def test_falls_back_to_message_length_when_scalar_none(self) -> None:
         session = {
             "messages": [{"role": "assistant", "content": "abcde"}],
             "_stream_received_chars": None,
         }
-        assert _streamed_token_count(session) == 5
+        assert streamed_token_count(session) == 5
 
     def test_falls_back_when_scalar_absent(self) -> None:
         session = {"messages": [{"role": "assistant", "content": "abc"}]}
-        assert _streamed_token_count(session) == 3
+        assert streamed_token_count(session) == 3

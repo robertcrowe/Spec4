@@ -11247,3 +11247,208 @@ A rename moves no statement: 12,421 before and after.
 - It changes no test beyond the substitution itself.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.
+
+## 62. Phase 7b — rename batch 2: `layouts._chat`, nine names
+
+§60.7(j) 7b: one commit, default mode, under the rename check. The nine names of the
+`layouts._chat` cluster take their public spelling. The two collision names take §60.7(b)'s
+`render_` prefix, and §62.6 records what that prefix is and is not.
+
+### 62.1 What landed
+
+| Private | Public | Owner | Sites | Net |
+|---|---|---|---:|---|
+| `_chat_layout` | `chat_layout` | `layouts/_chat.py` | 44 | whole-file `test_layout_contract.py`, by import alias; four tier-A nodes |
+| `_chat_action_buttons` | `chat_action_buttons` | `layouts/_chat_actions.py` | 39 | two tier-A nodes |
+| `_breadth_panel` | `render_breadth_panel` | `layouts/_chat_panels.py` | 21 | two tier-A nodes |
+| `_token_count_text` | `token_count_text` | `layouts/_chat_actions.py` | 16 | tier-B `TestCounterGate` |
+| `_retry_panel` | `render_retry_panel` | `layouts/_chat_panels.py` | 15 | tier-B `TestEmptyTurnBackstop` |
+| `_cost_summary` | `cost_summary` | `layouts/_chat_panels.py` | 13 | — (a clash, not a collision: §60.2 item 3) |
+| `_turn_token_text` | `turn_token_text` | `layouts/_chat_actions.py` | 11 | — |
+| `_streamed_token_count` | `streamed_token_count` | `layouts/_chat_actions.py` | 8 | tier-B `TestStreamedTokenCounter`, `TestSuppressedStreamPublishesReceipt` |
+| `_agent_status_bar` | `agent_status_bar` | `layouts/_chat_status.py` | 4 | one tier-A node |
+| | | | **171** | |
+
+- **Sites.** §55.9 counts 164 for this cluster; `_chat_layout`'s other seven, reached
+  through `spec4.layouts`, go with the one rename (§60.0(b)), which makes 171.
+- **Footprint:** 26 files, all under `src/` and `tests/`. The substitution changed 224
+  lines. Two more edits follow from it: ruff re-wrapped one assertion (§62.3), and the
+  batch's documented exception re-wraps one docstring (§62.2). Together that is 227
+  insertions and 224 deletions. Nothing in `scripts/` or `evals/` references these names. Left under Rule 2:
+  the three tracked `.spec4/` mentions of `_chat_action_buttons` and `_agent_status_bar`.
+- **The `_chat_layout` locals.** `layouts/_chat.py:103–104` now read
+  `breadth_panel = render_breadth_panel(session)` and
+  `retry_panel = render_retry_panel(session)`. The locals are unchanged; only the names on
+  the right moved. Had either local changed, the reverse substitution would not have
+  restored it, and the rename check would have shown it (§62.2). It shows nothing.
+- **String references: 12 `__all__` entries,** rewritten with the code —
+  `layouts/__init__.py:101–103` and `layouts/_chat.py:66–83`.
+- **D-number comments were updated in the same commit:** `callbacks/_chat.py:48` (D-LR8),
+  `layouts/_chat_status.py:140` (D-LR8), `layouts/_shared.py:60` (D-LR2, D-LR9), and
+  `test_callbacks_stream_poll.py:738` (D-PH9, inside a tier-B class — §62.4; `:736`
+  before the exception's two added lines).
+- **`app.py` (D-LR1):** two lines changed, each a name in place — `chat_layout` in the
+  `from spec4.layouts import (…)` block (`:33`) and its call at `:409`. No import moved,
+  and `:74–75` are untouched.
+
+### 62.2 The rename check, recorded per §60.7(h)
+
+**This batch has one documented exception, and the check shows it and nothing else.**
+
+Why there is one: the substitution alone left the gate red. `render_breadth_panel` is six
+characters longer than `_breadth_panel`, so the module docstring at
+`tests/test_callbacks_stream_poll.py:1` grew from 87 to 93 characters and tripped E501.
+`ruff format` re-wraps code but not docstrings, so no formatter pass could clear it. Three
+ways out were put for a ruling:
+
+1. re-wrap the docstring;
+2. leave that one prose mention as `_breadth_panel`;
+3. reword the docstring to fit.
+
+**Ruled: option 1.** The reasons, recorded as given. Option 2 leaves a docstring naming a
+function that no longer exists — exactly the stale reference the D-number rule exists to
+prevent, and that rule should not stop at comments carrying a D-number. Option 3 trades a
+whitespace hunk for a wording hunk and gains nothing. The exception mechanism exists for
+this case: a rename that forces a non-substitution edit gets the edit, shown in full. The
+check stays strict rather than learning to ignore whitespace.
+
+The check, as recorded: the §60.2 shell function with `P=HEAD` over the working tree,
+`MAP` holding the nine lines. Only the temp-dir prefixes of the paths are shortened here.
+
+```
+diff -ru '--exclude=CLEANUP_INVENTORY.md' p/tests/test_callbacks_stream_poll.py c/tests/test_callbacks_stream_poll.py
+@@ -1,4 +1,6 @@
+-"""Unit tests for on_stream_poll stale-clobber fix and _breadth_panel value seeding."""
++"""Unit tests for on_stream_poll stale-clobber fix and _breadth_panel value
++seeding.
++"""
+ 
+ from __future__ import annotations
+```
+
+The scratch implementation prints the same single hunk. Read it after the reverse
+substitution: apart from the name the text is unchanged, and the only difference is where
+the line breaks.
+
+**Where it sits.** Line 1 of `test_callbacks_stream_poll.py` is outside the file's tier-B
+class, `TestStreamedTokenCounter` — `735–755` before the re-wrap and `737–757` after. So
+this is an **allowed-and-reported hunk in a tier-B file, not a petition** (§51.6's
+template, §62.5). This is the first time a batch exception and a tier-B entry land in the
+same file, so the two are kept apart. §60.3's check 1 was evaluated over the listed class
+itself — the net entry in a tier-B file is the class, not the file. Inside
+`TestStreamedTokenCounter` the reverse substitution is empty; the one hunk the file adds
+lies outside it.
+
+### 62.3 The first re-wrap inside a net node
+
+The collision names are longer than the private ones — `render_breadth_panel` is six
+characters past `_breadth_panel` — so for the first time a rename *lengthened* a line past
+88 columns, and ruff split it. The line is `tests/agentifier/test_try_again.py:870–872`,
+inside the tier-A node `TestPanelButton::test_hidden_once_the_panel_is_submitted`
+(864–873):
+
+```
+-            _breadth_panel(self._panel_session(agentifier_breadth_chosen=True)) is None
++            render_breadth_panel(self._panel_session(agentifier_breadth_chosen=True))
++            is None
+```
+
+It is not byte-identical under the substitution. It is token-identical, which is what
+§60.3's check 2 compares and the case §60.3 chose tokens for. The petition passes, and the
+rename check, which formats both sides with magic trailing commas ignored, is empty.
+Recorded here because it is the one assertion in a net node whose layout this batch
+changed.
+
+### 62.4 Petitions, by kind
+
+| Kind | Where | Result |
+|---|---|---|
+| §54.7, whole-file | `test_layout_contract.py` — one import line (`_chat_layout`) | import lines alone · goldens identical · node ids unchanged — **passes** |
+| §60.3, tier-B | `test_callbacks_stream_poll.py::TestStreamedTokenCounter` (737–757) — `:738` (the D-PH9 docstring), `:746`, `:753`, `:757` | each hunk a one-line name substitution · reverse diff empty inside the class · assertions token-identical — **passes**. The file's line-1 hunk is outside the class (§62.2) |
+| §60.3, tier-B | `test_stack_advisor_token_counter.py::TestCounterGate` — `:67`, `:75`, `:82`; `::TestSuppressedStreamPublishesReceipt` — `:123` | **passes** |
+| §60.3, tier-B | `test_stream_error_recovery.py::TestEmptyTurnBackstop` — `:215` | **passes** |
+| §60.3, tier-A | `agentifier/test_try_again.py::TestPanelButton::test_panel_offers_the_guidance_box` (807–815), `::test_hidden_once_the_panel_is_submitted` (864–873, §62.3) | **passes** |
+| §60.3, tier-A | `test_agent_llm_selection.py::TestModelChipPlacement::test_it_shares_a_row_with_the_status_line_and_comes_first` (872–876), `::test_the_gate_still_suppresses_it` (892–897) | **passes** |
+| §60.3, tier-A | `test_agentifier_chars_counter.py::TestLayoutGate::test_pre_panel_build_shows_the_counter` (134–138), `::test_first_post_panel_turn_shows_the_counter` (156–164) | **passes** |
+| §60.3, tier-A | `test_chat_pill_bar.py::TestTheIdsAreUnchanged::test_the_bar_holds_no_control_but_the_pills` (264–283); `test_code_scanner_progress.py::TestLayout::test_elapsed_sits_beside_the_counter_in_the_action_row` (395–414); `test_cost_summary.py::TestChatPlacement::test_sits_between_the_transcript_and_the_action_row` (459–469) | **passes** |
+
+### 62.5 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | 1 in the diff, `test_layout_contract.py`, under §54.7, passing |
+| 456 node ids | **456 / 456 collect**; 4,200 collected |
+| 19 tier-B files / 33 classes | **5 files with hunks.** The 9 hunks inside listed classes are §62.4's §60.3 hunks, each holding one of the batch's old names. Every other hunk is outside a listed class and is reported below in §51.6's template. That includes `test_callbacks_stream_poll.py:1–3`, the documented exception, which lies outside `TestStreamedTokenCounter` (737–757) |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_agent_llm_selection.py` | `TestOfferedEfforts` **273–360** | 11 — 37, 835, 841, 870, 873, 879, 885, 893, 1474, 1562, 1577 | **none inside a listed class** |
+| `test_callbacks_stream_poll.py` | `TestStreamedTokenCounter` **737–757** | 27 — 1–3, 18–20, 277, 318, 326, 334, 343, 347, 355, 362, 365, 372, 382, 403, 445, 494, 506, 518, 528, 678, 684, 691, 702, 738, 746, 753, 757 | **INSIDE: 738→TestStreamedTokenCounter, 746→TestStreamedTokenCounter, 753→TestStreamedTokenCounter, 757→TestStreamedTokenCounter** |
+| `test_chat_open_links.py` | `TestTheOpenButtonsRegister` **139–163** | 2 — 45, 74 | **none inside a listed class** |
+| `test_stack_advisor_token_counter.py` | `TestCounterGate` **27–82**; `TestSuppressedStreamPublishesReceipt` **85–149** | 5 — 18–19, 67, 75, 82, 123 | **INSIDE: 67→TestCounterGate, 75→TestCounterGate, 82→TestCounterGate, 123→TestSuppressedStreamPublishesReceipt** |
+| `test_stream_error_recovery.py` | `TestEmptyTurnBackstop` **194–250** | 16 — 31, 215, 307, 322, 326, 329, 334, 341, 346, 356, 360, 520, 525, 530, 591, 640 | **INSIDE: 215→TestEmptyTurnBackstop** |
+
+### 62.6 `render_` is a one-off for the collision, not the module's convention
+
+Recorded so batch 3 does not have to guess.
+
+- **`layouts/` names a public builder by the component it returns:** `agent_rows`,
+  `artifact_pane`, `artifact_header`, `gate_card`, `model_chip`, `step_row`,
+  `setup_step_row`, `designer_layout`, `designer_step_row`, `round_tree_lines`,
+  `cost_strip_lines`. No public function there carries a verb prefix. Its only
+  verb-prefixed function is the private `_render_message`.
+- **Elsewhere in `src/`, the prefixes mean something else.** `render_` (89 functions)
+  means producing text or markdown: `render_phase_markdown`, `render_feature_block`, the
+  agents' `_render_*` helpers. `build_` (29) assembles data: `build_seed_message`,
+  `build_system_prompt`. Neither has a function in `layouts/`.
+- **So `render_breadth_panel` and `render_retry_panel` carry `render_` only because the
+  noun is taken by `_chat_layout`'s locals** (§60.7(b)). It is not `layouts/`' convention
+  and it does not spread. **Batch 3 renames to the plain noun, as §60.2 proposed.** Its one
+  prefixed name is its one collision, `_agent_rows` → `build_agent_rows`, ruled in
+  §60.7(b); `build_` has no `layouts/` precedent either and marks the same collision-only
+  exception.
+- **Why the ruled names stand.** The module's real convention is the noun, and the noun is
+  what collides. A suffix such as `*_card` or `*_pane` would invent a second convention to
+  dodge the first.
+- **The asymmetry is recorded so nobody "harmonises" it later.** `_chat_panels.py` now
+  holds `render_breadth_panel`, `render_retry_panel` and `cost_summary` side by side; that
+  is the price of the collision. No later batch should add `render_` to `cost_summary`.
+
+### 62.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0), after §62.2's exception. Before it: `E501 Line too long (93 > 88)` at `tests/test_callbacks_stream_poll.py:1:89` — the reason the exception exists |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests, run 1 — before the exception | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped`; `TOTAL 12421 stmts, 891 miss, 93%` |
+| Tests, run 2 — after the exception | same | `1 failed, 4198 passed, 1 skipped`: `FAILED tests/test_agent_pill_click.py::TestBlockedClickSurfacesError::test_phaser_stale_mock_sets_error` (§62.8) |
+| Tests, run 3 — the committed tree | same | `4199 passed, 1 skipped`; `TOTAL 12421 stmts, 891 miss, 93%` — identical to §60.1 |
+
+### 62.8 A flaky failure, recorded and not fixed
+
+Run 2 failed one test. Runs 1 and 3 passed it, and run 3 was on exactly the tree committed
+here.
+
+- **It is not this batch.** The test file and every module on its path —
+  `callbacks/_nav.py`, `session.py`, `project_manager.py`, `_paths.py`, `_artifacts.py` —
+  are outside this batch's diff. The only edit between runs 1 and 2 was the docstring in a
+  different file.
+- **It passes on repetition.** Alone it passed 6 of 6 times, and its file 3 of 3. Across
+  roughly a dozen full-suite runs in this session this is its only failure, and the record
+  has no earlier sighting.
+- **The mechanism is consistent with a timing flake.** `_stale_mock_project` writes the
+  inputs and the mock, sleeps 50 ms, and rewrites `ai_features.json` to make it newer.
+  Staleness is then an mtime comparison with `>=` (`project_manager.py:485`). If the
+  rewrite's mtime does not land after the mock's, the mock reads as fresh and the click is
+  not refused. A clock step on this WSL2 host is one way that could happen. The root cause
+  is **not established**, and nothing was changed.
+- **Logged for the close-out's backlog, not fixed here:** a test whose outcome turns on
+  wall-clock mtimes should set them with `os.utime` rather than sleep. That is out of scope
+  for a rename batch.
+
+### 62.9 What this sub-phase did not do
+
+- It changes no test beyond the substitution itself, and no local variable.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.

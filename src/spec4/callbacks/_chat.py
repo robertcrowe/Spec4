@@ -45,7 +45,7 @@ _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
 # with a route to `/agents`. Both are gone — the status bar's Project link is
 # the same route from the same screen, and it is mounted in the shell rather
 # than in this layout. The walk covering all four removed Back controls is in
-# `layouts/_chat.py`, at `_chat_action_buttons`.
+# `layouts/_chat.py`, at `chat_action_buttons`.
 
 
 # `on_agent_change_provider` stood here, serving the agents page's "Change

@@ -798,17 +798,17 @@ class TestPanelButton:
         return session
 
     def test_panel_offers_try_again(self) -> None:
-        from spec4.layouts._chat import _breadth_panel
+        from spec4.layouts._chat import render_breadth_panel
 
-        ids = _ids(_breadth_panel(self._panel_session()))
+        ids = _ids(render_breadth_panel(self._panel_session()))
         assert "btn-breadth-try-again" in ids
         assert "btn-breadth-submit" in ids
 
     def test_panel_offers_the_guidance_box(self) -> None:
         """D-TA7: the note box sits with Try Again, on the panel only."""
-        from spec4.layouts._chat import _breadth_panel
+        from spec4.layouts._chat import render_breadth_panel
 
-        panel = _breadth_panel(self._panel_session())
+        panel = render_breadth_panel(self._panel_session())
         ids = _ids(panel)
         assert "breadth-retry-input" in ids
         assert ids.index("btn-breadth-submit") < ids.index("breadth-retry-input")
@@ -820,9 +820,9 @@ class TestPanelButton:
         full height (the stretch rule itself lives in v3.css)."""
         from dash import html
 
-        from spec4.layouts._chat import _breadth_panel
+        from spec4.layouts._chat import render_breadth_panel
 
-        panel = _breadth_panel(self._panel_session())
+        panel = render_breadth_panel(self._panel_session())
 
         def find_parent(node: Any) -> Any:
             children = getattr(node, "children", None)
@@ -844,9 +844,9 @@ class TestPanelButton:
         assert field.style["flex"] == "1"
 
     def test_submit_button_reads_next_step(self) -> None:
-        from spec4.layouts._chat import _breadth_panel
+        from spec4.layouts._chat import render_breadth_panel
 
-        panel = _breadth_panel(self._panel_session())
+        panel = render_breadth_panel(self._panel_session())
 
         def find(node: Any) -> Any:
             if getattr(node, "id", None) == "btn-breadth-submit":
@@ -864,9 +864,10 @@ class TestPanelButton:
     def test_hidden_once_the_panel_is_submitted(self) -> None:
         """D-TA6: the button lives on the panel, so it goes when the panel does
         — and the callback refuses mid-stream anyway."""
-        from spec4.layouts._chat import _breadth_panel
+        from spec4.layouts._chat import render_breadth_panel
 
-        assert _breadth_panel(self._panel_session(_stream_id="abc")) is None
+        assert render_breadth_panel(self._panel_session(_stream_id="abc")) is None
         assert (
-            _breadth_panel(self._panel_session(agentifier_breadth_chosen=True)) is None
+            render_breadth_panel(self._panel_session(agentifier_breadth_chosen=True))
+            is None
         )

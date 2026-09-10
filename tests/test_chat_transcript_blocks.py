@@ -22,7 +22,7 @@ import pathlib
 import re
 from typing import Any
 
-from spec4.layouts._chat import _chat_layout
+from spec4.layouts._chat import chat_layout
 from spec4.layouts._llm_gate import model_chip
 from spec4.layouts._shared import _render_message
 
@@ -130,7 +130,7 @@ class TestTheUserBlockKeepsItsClassName:
         assert len(_find_class(block, "chat-bubble-user")) == 1
 
     def test_the_rendered_transcript_still_matches_it(self) -> None:
-        layout = _chat_layout(_session())
+        layout = chat_layout(_session())
         area = _find_id(layout, "chat-scroll-area")
         assert area is not None
         assert len(_find_class(area, "chat-bubble-user")) == 1
@@ -155,7 +155,7 @@ class TestBlocks:
         assert _find_class(agent, "msg-label")[0].children == "Brainstormer"
 
     def test_the_assistant_label_names_the_active_agent(self) -> None:
-        layout = _chat_layout(_session(active_agent="stack_advisor"))
+        layout = chat_layout(_session(active_agent="stack_advisor"))
         labels = [n.children for n in _find_class(layout, "msg-label")]
         assert labels == ["You", "StackAdvisor"]
 
@@ -200,7 +200,7 @@ class TestTheTranscriptHeight:
     def test_the_layout_sets_no_height_of_its_own(self) -> None:
         """An inline height would win over the stylesheet, which is the whole
         point of moving it: 60vh answers to the window, 450px did not."""
-        area = _find_id(_chat_layout(_session()), "chat-scroll-area")
+        area = _find_id(chat_layout(_session()), "chat-scroll-area")
         assert area is not None
         assert "height" not in (area.style or {})
         assert "overflowY" not in (area.style or {})
@@ -216,7 +216,7 @@ class TestTheTranscriptHeight:
 
 class TestMonospaceFigures:
     def _row(self) -> Any:
-        return _chat_layout(
+        return chat_layout(
             _session(
                 _stream_id=None,
                 _stream_received_chars=8291,
@@ -264,7 +264,7 @@ class TestMonospaceFigures:
 
 class TestTheProgressSignal:
     def _bar(self) -> Any:
-        layout = _chat_layout(_session(_stream_id="live"))
+        layout = chat_layout(_session(_stream_id="live"))
         container = _find_id(layout, "chat-progress-container")
         assert container is not None
         return next(n for n in _walk(container) if type(n).__name__ == "Progress")
@@ -326,7 +326,7 @@ class TestEveryFunctionIsStillReachable:
             brainstormer_state="vision_complete",
             _stream_id=None,
         )
-        ids = [getattr(n, "id", None) for n in _walk(_chat_layout(session))]
+        ids = [getattr(n, "id", None) for n in _walk(chat_layout(session))]
         for expected in (
             "chat-scroll-area",
             "chat-token-count",
@@ -348,7 +348,7 @@ class TestEveryFunctionIsStillReachable:
             stack_statement={"stack": []},
             agent_llm_asked={"phaser": True},
         )
-        ids = [getattr(n, "id", None) for n in _walk(_chat_layout(session))]
+        ids = [getattr(n, "id", None) for n in _walk(chat_layout(session))]
         assert "btn-chat-fast-forward" in ids
         assert "btn-ff-info" in ids
         assert "ff-info-modal" in ids
@@ -358,6 +358,6 @@ class TestEveryFunctionIsStillReachable:
             _stream_error="overloaded",
             messages=[{"role": "assistant", "content": "half a"}],
         )
-        ids = [getattr(n, "id", None) for n in _walk(_chat_layout(session))]
+        ids = [getattr(n, "id", None) for n in _walk(chat_layout(session))]
         assert "btn-chat-retry" in ids
         assert "btn-chat-retry-model" in ids

@@ -37,7 +37,7 @@ from spec4.app_constants import (
     STATE_STACK_COMPLETE,
     STATE_VISION_COMPLETE,
 )
-from spec4.layouts._chat import _chat_layout, _cost_summary
+from spec4.layouts._chat import chat_layout, cost_summary
 from spec4.layouts._round_cost import (
     COST_LABEL,
     RUN_SCOPE,
@@ -414,7 +414,7 @@ class TestChatPlacement:
     def test_completed_run_shows_the_strip(self, tmp_path: Path, agent: str) -> None:
         _write_usage(tmp_path, [_call(agent, cost=0.0042)])
         session = _session(tmp_path, agent)
-        strip = _cost_summary(session)
+        strip = cost_summary(session)
         assert strip is not None
         text = _card_text(strip)
         assert f"{_RUN_LABEL} $0.0042 · Tokens: 100 in / 20 out" in text
@@ -424,25 +424,25 @@ class TestChatPlacement:
     @pytest.mark.parametrize("agent", sorted(_COMPLETE))
     def test_run_in_progress_shows_nothing(self, tmp_path: Path, agent: str) -> None:
         _write_usage(tmp_path, [_call(agent, cost=0.0042)])
-        assert _cost_summary(_session(tmp_path, agent, complete=False)) is None
+        assert cost_summary(_session(tmp_path, agent, complete=False)) is None
 
     def test_hidden_while_a_stream_is_live(self, tmp_path: Path) -> None:
         _write_usage(tmp_path, [_call("brainstormer", cost=0.01)])
         session = _session(tmp_path, "brainstormer")
         session["_stream_id"] = "abc"
-        assert _cost_summary(session) is None
+        assert cost_summary(session) is None
 
     def test_hidden_without_a_project_directory(self) -> None:
-        assert _cost_summary(_session(None, "brainstormer")) is None
+        assert cost_summary(_session(None, "brainstormer")) is None
 
     def test_hidden_before_any_usage_is_written(self, tmp_path: Path) -> None:
-        assert _cost_summary(_session(tmp_path, "brainstormer")) is None
+        assert cost_summary(_session(tmp_path, "brainstormer")) is None
 
     def test_unknown_agent_shows_nothing(self, tmp_path: Path) -> None:
         _write_usage(tmp_path, [_call("designer", cost=0.01)])
         session = _session(tmp_path, "brainstormer")
         session["active_agent"] = "designer"
-        assert _cost_summary(session) is None
+        assert cost_summary(session) is None
 
     def test_the_agent_name_is_not_needed_to_read_it(self, tmp_path: Path) -> None:
         """The scope is "this run", not the agent's name.
@@ -452,7 +452,7 @@ class TestChatPlacement:
         not be shared with the round's strip.
         """
         _write_usage(tmp_path, [_call("brainstormer", cost=0.0042)])
-        text = _card_text(_cost_summary(_session(tmp_path, "brainstormer")))
+        text = _card_text(cost_summary(_session(tmp_path, "brainstormer")))
         assert RUN_SCOPE in text
         assert "Brainstormer" not in text
 
@@ -462,7 +462,7 @@ class TestChatPlacement:
         _write_usage(tmp_path, [_call("brainstormer", cost=0.01)])
         session = _session(tmp_path, "brainstormer")
         session["_initial_turn_done"] = True
-        ids = _ids(_chat_layout(session))
+        ids = _ids(chat_layout(session))
         assert "cost-summary-card" in ids
         assert ids.index("chat-scroll-area") < ids.index("cost-summary-card")
         # The action row's counter/download buttons come after the card.
@@ -472,7 +472,7 @@ class TestChatPlacement:
         _write_usage(tmp_path, [_call("brainstormer", cost=0.01)])
         session = _session(tmp_path, "brainstormer")
         session["_initial_turn_done"] = True
-        assert _ids(_chat_layout(session)).count("cost-summary-card") == 1
+        assert _ids(chat_layout(session)).count("cost-summary-card") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -498,9 +498,9 @@ class TestModifyRun:
     ) -> None:
         _write_usage(tmp_path, [_call(agent, cost=0.01)])
         session = _session(tmp_path, agent)
-        assert _cost_summary(session) is not None
+        assert cost_summary(session) is not None
         _chat_past_the_artifact(session, agent)
-        assert _cost_summary(session) is None
+        assert cost_summary(session) is None
 
     @pytest.mark.parametrize("agent", sorted(_COMPLETE))
     def test_re_emitting_the_artifact_brings_it_back(
@@ -514,7 +514,7 @@ class TestModifyRun:
             {"role": "assistant", "content": "revised artifact"}
         )
         session[f"{agent}_artifact_msg_count"] = len(session[f"{agent}_messages"])
-        assert _cost_summary(session) is not None
+        assert cost_summary(session) is not None
 
     def test_no_stamp_means_no_strip(self, tmp_path: Path) -> None:
         """A completed state with no artifact position on record is not
@@ -522,16 +522,16 @@ class TestModifyRun:
         _write_usage(tmp_path, [_call("brainstormer", cost=0.01)])
         session = _session(tmp_path, "brainstormer")
         session["brainstormer_artifact_msg_count"] = None
-        assert _cost_summary(session) is None
+        assert cost_summary(session) is None
         session["brainstormer_artifact_msg_count"] = True  # bool is not a count
-        assert _cost_summary(session) is None
+        assert cost_summary(session) is None
 
     def test_layout_carries_no_strip_mid_modify(self, tmp_path: Path) -> None:
         _write_usage(tmp_path, [_call("brainstormer", cost=0.01)])
         session = _session(tmp_path, "brainstormer")
         session["_initial_turn_done"] = True
         _chat_past_the_artifact(session, "brainstormer")
-        assert "cost-summary-card" not in _ids(_chat_layout(session))
+        assert "cost-summary-card" not in _ids(chat_layout(session))
 
 
 # ---------------------------------------------------------------------------

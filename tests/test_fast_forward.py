@@ -13,7 +13,7 @@ from typing import Any
 from unittest.mock import patch
 
 from spec4.callbacks import FF_PROMPT, on_fast_forward, on_ff_info
-from spec4.layouts._chat import _chat_action_buttons
+from spec4.layouts._chat import chat_action_buttons
 
 
 def _find_component(component: Any, comp_id: str) -> Any:
@@ -76,19 +76,19 @@ def _complete_session(agent: str) -> dict[str, Any]:
 class TestFastForwardButton:
     def test_button_present_and_enabled_pre_complete(self) -> None:
         for agent in FF_AGENTS:
-            div = _chat_action_buttons(_pre_complete_session(agent))
+            div = chat_action_buttons(_pre_complete_session(agent))
             btn = _find_component(div, "btn-chat-fast-forward")
             assert btn is not None, agent
             assert not getattr(btn, "disabled", False), agent
 
     def test_button_absent_when_agent_complete(self) -> None:
         for agent in FF_AGENTS:
-            div = _chat_action_buttons(_complete_session(agent))
+            div = chat_action_buttons(_complete_session(agent))
             assert _find_component(div, "btn-chat-fast-forward") is None, agent
 
     def test_button_absent_for_non_ff_agents(self) -> None:
         for agent in ("brainstormer", "code_scanner"):
-            div = _chat_action_buttons({"active_agent": agent})
+            div = chat_action_buttons({"active_agent": agent})
             assert _find_component(div, "btn-chat-fast-forward") is None, agent
 
 
@@ -147,11 +147,11 @@ class TestAgentifierGate:
     """FF appears for Agentifier only after the breadth panel completes."""
 
     def test_hidden_before_panel_appears(self) -> None:
-        div = _chat_action_buttons({"active_agent": "agentifier"})
+        div = chat_action_buttons({"active_agent": "agentifier"})
         assert _find_component(div, "btn-chat-fast-forward") is None
 
     def test_hidden_while_panel_pending(self) -> None:
-        div = _chat_action_buttons(
+        div = chat_action_buttons(
             {
                 "active_agent": "agentifier",
                 "agentifier_breadth_groups": [{"id": "x", "name": "X"}],
@@ -161,14 +161,14 @@ class TestAgentifierGate:
         assert _find_component(div, "btn-chat-fast-forward") is None
 
     def test_shown_after_panel_submitted(self) -> None:
-        div = _chat_action_buttons(
+        div = chat_action_buttons(
             {"active_agent": "agentifier", "agentifier_breadth_chosen": True}
         )
         assert _find_component(div, "btn-chat-fast-forward") is not None
 
     def test_shown_on_resume_past_catalog(self) -> None:
         """A reloaded session that skips the panel still gets the button."""
-        div = _chat_action_buttons(
+        div = chat_action_buttons(
             {"active_agent": "agentifier", "agentifier_catalog_done": True}
         )
         assert _find_component(div, "btn-chat-fast-forward") is not None
@@ -179,7 +179,7 @@ class TestFastForwardInfo:
 
     def test_info_icon_and_modal_present_pre_complete(self) -> None:
         for agent in FF_AGENTS:
-            div = _chat_action_buttons(_pre_complete_session(agent))
+            div = chat_action_buttons(_pre_complete_session(agent))
             assert _find_component(div, "btn-ff-info") is not None, agent
             modal = _find_component(div, "ff-info-modal")
             assert modal is not None, agent
@@ -196,7 +196,7 @@ class TestFastForwardInfo:
         }
         for agent, label in labels.items():
             modal = _find_component(
-                _chat_action_buttons(_pre_complete_session(agent)), "ff-info-modal"
+                chat_action_buttons(_pre_complete_session(agent)), "ff-info-modal"
             )
             text = str(getattr(modal, "children", ""))
             assert label in text, agent
@@ -205,13 +205,13 @@ class TestFastForwardInfo:
 
     def test_icon_and_modal_absent_when_agent_complete(self) -> None:
         for agent in FF_AGENTS:
-            div = _chat_action_buttons(_complete_session(agent))
+            div = chat_action_buttons(_complete_session(agent))
             assert _find_component(div, "btn-ff-info") is None, agent
             assert _find_component(div, "ff-info-modal") is None, agent
 
     def test_icon_absent_for_non_ff_agents(self) -> None:
         for agent in ("brainstormer", "code_scanner"):
-            div = _chat_action_buttons({"active_agent": agent})
+            div = chat_action_buttons({"active_agent": agent})
             assert _find_component(div, "btn-ff-info") is None, agent
 
     def test_click_opens_modal(self) -> None:

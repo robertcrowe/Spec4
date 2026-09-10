@@ -16,8 +16,8 @@ from spec4.agents import brainstormer
 from spec4.app_constants import STATE_VISION_COMPLETE
 from spec4.layouts._chat import (
     _TOKEN_COUNTER_AGENTS,
-    _chat_action_buttons,
-    _token_count_text,
+    chat_action_buttons,
+    token_count_text,
 )
 
 
@@ -73,30 +73,30 @@ class TestCounterGate:
 
     def test_renders_published_total(self) -> None:
         session = _session(_stream_id="abc", _stream_received_chars=1234)
-        assert _token_count_text(session) == "Chars received: 1234"
+        assert token_count_text(session) == "Chars received: 1234"
 
 
 class TestCounterReachesTheLayout:
-    """Being in ``_TOKEN_COUNTER_AGENTS`` only makes ``_token_count_text``
+    """Being in ``_TOKEN_COUNTER_AGENTS`` only makes ``token_count_text``
     return something — the branch has to render a component to show it. The
     Brainstormer branch had no button bar at all before the vision landed, so
     the counter had nowhere to appear."""
 
     def test_mid_conversation_turn_shows_the_counter(self) -> None:
         session = _session(_stream_id="abc", _stream_received_chars=5150)
-        assert _counter_texts(_chat_action_buttons(session)) == ["Chars received: 5150"]
+        assert _counter_texts(chat_action_buttons(session)) == ["Chars received: 5150"]
 
     def test_complete_state_shows_the_counter(self) -> None:
         session = _session(
             brainstormer_state=STATE_VISION_COMPLETE,
             _stream_received_chars=1234,
         )
-        assert _counter_texts(_chat_action_buttons(session)) == ["Chars received: 1234"]
+        assert _counter_texts(chat_action_buttons(session)) == ["Chars received: 1234"]
 
     def test_bare_before_the_first_chunk(self) -> None:
         # No stream and no count: the bar would be an empty row under a divider.
-        assert _counter_texts(_chat_action_buttons(_session())) == []
-        assert _chat_action_buttons(_session()).children is None
+        assert _counter_texts(chat_action_buttons(_session())) == []
+        assert chat_action_buttons(_session()).children is None
 
     def test_exactly_one_counter_per_bar(self) -> None:
         """Duplicate ids in one layout are a Dash error, not a cosmetic issue."""
@@ -105,7 +105,7 @@ class TestCounterReachesTheLayout:
             {"brainstormer_state": STATE_VISION_COMPLETE},
         ):
             session = _session(_stream_received_chars=9, **overrides)
-            assert len(_counter_texts(_chat_action_buttons(session))) == 1
+            assert len(_counter_texts(chat_action_buttons(session))) == 1
 
     def test_completion_buttons_survive(self) -> None:
         session = _session(
@@ -125,7 +125,7 @@ class TestCounterReachesTheLayout:
             if children is not None:
                 walk(children)
 
-        walk(_chat_action_buttons(session))
+        walk(chat_action_buttons(session))
         assert "btn-dl-vision" in ids
         assert "btn-brainstormer-to-designer" in ids
         assert "btn-brainstormer-to-agentifier" in ids

@@ -1,7 +1,7 @@
 """The Deployer chars counter.
 
 Deployer was gated on in ``_TOKEN_COUNTER_AGENTS`` but published no total, so it
-ran on ``_streamed_token_count``'s displayed-message fallback. That fallback is
+ran on ``streamed_token_count``'s displayed-message fallback. That fallback is
 only accurate while a turn is a single stream yielding exactly what the visible
 assistant message holds — and the greenfield README beat is neither: it yields
 an authoring note between two ``stream_turn`` calls, and the second call starts
@@ -16,7 +16,7 @@ from unittest.mock import patch
 from spec4.agents import deployer
 from spec4.agents._reask import stream_counting
 from spec4.app_constants import STATE_DEPLOYER_COMPLETE
-from spec4.layouts._chat import _streamed_token_count, _token_count_text
+from spec4.layouts._chat import streamed_token_count, token_count_text
 
 _PLAN = "# Deploy\n\n## Deployment Steps\n\nUse Cloud Run.\n"
 _README = "# Project\n\nA thing that does things.\n"
@@ -100,7 +100,7 @@ class TestDeployerPublishesReceipt:
             out = list(deployer.run("go", session, {"model": "x"}))
         assert "".join(out) == "How about GCP?"
         assert session["_stream_received_chars"] == 14
-        assert _token_count_text(session) == "Chars received: 14"
+        assert token_count_text(session) == "Chars received: 14"
 
 
 class TestReadmeBeatStaysMonotonic:
@@ -151,4 +151,4 @@ class TestReadmeBeatStaysMonotonic:
             "_stream_received_chars": None,
             "messages": [{"role": "assistant", "content": "ab"}],
         }
-        assert _streamed_token_count(session) == 2
+        assert streamed_token_count(session) == 2

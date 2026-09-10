@@ -20,9 +20,9 @@ from spec4.agents import code_scanner
 from spec4.app_constants import STATE_IN_PROGRESS, STATE_REVIEW_COMPLETE
 from spec4.layouts._chat import (
     _TOKEN_COUNTER_AGENTS,
-    _chat_action_buttons,
-    _chat_layout,
-    _token_count_text,
+    chat_action_buttons,
+    chat_layout,
+    token_count_text,
 )
 
 
@@ -254,7 +254,7 @@ class TestCharsTotal:
 
 
 def _progress_display(session: dict[str, Any]) -> str:
-    layout = _chat_layout(session)
+    layout = chat_layout(session)
     container = next(
         c
         for c in layout.children
@@ -265,7 +265,7 @@ def _progress_display(session: dict[str, Any]) -> str:
 
 def _progress_bar(session: dict[str, Any]) -> Any:
     """The `dmc.Progress` inside the progress container."""
-    layout = _chat_layout(session)
+    layout = chat_layout(session)
     container = next(
         c
         for c in layout.children
@@ -275,7 +275,7 @@ def _progress_bar(session: dict[str, Any]) -> Any:
 
 
 def _bar_children(session: dict[str, Any]) -> list[Any]:
-    bar = _chat_action_buttons(session)
+    bar = chat_action_buttons(session)
     children = getattr(bar, "children", None) or []
     if not children:
         return []
@@ -293,7 +293,7 @@ class TestLayout:
             "_stream_received_chars": 4210,
             "messages": [{"role": "assistant", "content": ""}],
         }
-        assert _token_count_text(session) == "Chars received: 4210"
+        assert token_count_text(session) == "Chars received: 4210"
 
     def test_progress_bar_shows_while_scanning(self) -> None:
         session = {
@@ -403,7 +403,7 @@ class TestLayout:
         ids = [getattr(c, "id", "") for c in _bar_children(session)]
         assert ids.index("chat-elapsed") == ids.index("chat-token-count") + 1
 
-        layout = _chat_layout(session)
+        layout = chat_layout(session)
         container = next(
             c
             for c in layout.children

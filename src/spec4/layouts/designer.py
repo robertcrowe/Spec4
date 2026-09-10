@@ -726,7 +726,7 @@ def designer_layout(
             # otherwise. `on_gate_continue` cannot start the draw itself — the
             # gate replaces this wizard, so these stores are not mounted while
             # the picker is open — which is why the trigger lives here, the way
-            # `_chat_layout` fires an agent's opening turn.
+            # `chat_layout` fires an agent's opening turn.
             dcc.Interval(
                 id="designer-autoretry-interval",
                 interval=300,

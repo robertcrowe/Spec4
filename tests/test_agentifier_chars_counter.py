@@ -25,8 +25,8 @@ from spec4.agents._reask import stream_suppressing_json
 from spec4.app_constants import STATE_AGENTIFIER_COMPLETE
 from spec4.layouts._chat import (
     _TOKEN_COUNTER_AGENTS,
-    _chat_action_buttons,
-    _token_count_text,
+    chat_action_buttons,
+    token_count_text,
 )
 
 
@@ -70,7 +70,7 @@ def _agentifier_session(**overrides: Any) -> dict[str, Any]:
 class TestLabel:
     def test_reads_chars_not_tokens(self) -> None:
         session = _agentifier_session(_stream_id="abc", _stream_received_chars=4200)
-        assert _token_count_text(session) == "Chars received: 4200"
+        assert token_count_text(session) == "Chars received: 4200"
 
     def test_no_agent_still_reports_tokens(self) -> None:
         for agent in _TOKEN_COUNTER_AGENTS:
@@ -80,7 +80,7 @@ class TestLabel:
                 "messages": [{"role": "assistant", "content": ""}],
                 "_stream_received_chars": 7,
             }
-            assert _token_count_text(session).startswith("Chars received:")
+            assert token_count_text(session).startswith("Chars received:")
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +135,7 @@ class TestLayoutGate:
         """D-AT5 (revised): the pre-panel build has a live stream and no
         breadth_groups yet — and a Scout banner pointing at this counter."""
         session = _agentifier_session(_stream_id="abc", _stream_received_chars=310)
-        assert _counter_texts(_chat_action_buttons(session)) == ["Chars received: 310"]
+        assert _counter_texts(chat_action_buttons(session)) == ["Chars received: 310"]
 
     def test_try_again_redraw_shows_the_counter(self) -> None:
         """The redraw's reset clears breadth_groups; the stream alone is the
@@ -146,12 +146,12 @@ class TestLayoutGate:
             agentifier_scout_pool=None,
             _stream_received_chars=42,
         )
-        assert _counter_texts(_chat_action_buttons(session)) == ["Chars received: 42"]
+        assert _counter_texts(chat_action_buttons(session)) == ["Chars received: 42"]
 
     def test_idle_pre_panel_state_stays_bare(self) -> None:
         """No stream and no panel: nothing to count, nothing to show."""
         session = _agentifier_session()
-        assert _counter_texts(_chat_action_buttons(session)) == []
+        assert _counter_texts(chat_action_buttons(session)) == []
 
     def test_first_post_panel_turn_shows_the_counter(self) -> None:
         """D-AT2: breadth_chosen is set by the generator but does not reach the
@@ -161,7 +161,7 @@ class TestLayoutGate:
             agentifier_breadth_groups=[{"name": "a"}],
             _stream_received_chars=5150,
         )
-        assert _counter_texts(_chat_action_buttons(session)) == ["Chars received: 5150"]
+        assert _counter_texts(chat_action_buttons(session)) == ["Chars received: 5150"]
 
     def test_first_post_panel_turn_does_not_gain_fast_forward(self) -> None:
         """The FF gate is unchanged: it still requires breadth_chosen or
@@ -170,7 +170,7 @@ class TestLayoutGate:
             _stream_id="abc",
             agentifier_breadth_groups=[{"name": "a"}],
         )
-        rendered = _chat_action_buttons(session)
+        rendered = chat_action_buttons(session)
         ids = _component_ids(rendered)
         assert "chat-token-count" in ids
         assert not any(isinstance(i, str) and "ff" in i.lower() for i in ids)
@@ -181,14 +181,14 @@ class TestLayoutGate:
             _stream_id="abc",
             _stream_received_chars=88,
         )
-        assert _counter_texts(_chat_action_buttons(session)) == ["Chars received: 88"]
+        assert _counter_texts(chat_action_buttons(session)) == ["Chars received: 88"]
 
     def test_complete_state_shows_the_counter(self) -> None:
         session = _agentifier_session(
             agentifier_state=STATE_AGENTIFIER_COMPLETE,
             agentifier_breadth_chosen=True,
         )
-        assert _counter_texts(_chat_action_buttons(session)) == ["Chars received: 120"]
+        assert _counter_texts(chat_action_buttons(session)) == ["Chars received: 120"]
 
     def test_exactly_one_counter_per_bar(self) -> None:
         """Duplicate ids in one layout are a Dash error, not a cosmetic issue."""
@@ -199,7 +199,7 @@ class TestLayoutGate:
             {"agentifier_state": STATE_AGENTIFIER_COMPLETE},
         ):
             session = _agentifier_session(**overrides)
-            assert len(_counter_texts(_chat_action_buttons(session))) == 1
+            assert len(_counter_texts(chat_action_buttons(session))) == 1
 
 
 def _component_ids(node: Any, acc: list[Any] | None = None) -> list[Any]:
@@ -222,7 +222,7 @@ def test_counter_component_is_a_text_node() -> None:
     session = _agentifier_session(
         agentifier_breadth_chosen=True, _stream_received_chars=3
     )
-    rendered = _chat_action_buttons(session)
+    rendered = chat_action_buttons(session)
 
     def find(node: Any) -> Any:
         if isinstance(node, list | tuple):

@@ -86,7 +86,7 @@ def _completed_agents(session: dict[str, Any]) -> dict[str, bool]:
     }
 
 
-def _agent_status_bar(session: dict[str, Any]) -> html.Div:
+def agent_status_bar(session: dict[str, Any]) -> html.Div:
     """The pipeline indicator: seven plain labels, in order, no connectors.
 
     The order is ``AGENT_KEYS`` itself rather than a list restated here — a
@@ -137,7 +137,7 @@ def _agent_status_bar(session: dict[str, Any]) -> html.Div:
             # link is that same route, mounted in the app shell, so this was
             # the one control in the app whose destination already had a
             # permanent second door. The full reachability walk behind the
-            # four Back removals is recorded at `_chat_action_buttons` below.
+            # four Back removals is recorded at `chat_action_buttons` below.
             #
             # `mt` on the divider is what the retired Group's `mb` was doing:
             # `.pipeline` draws its own bottom rule, and without the gap the

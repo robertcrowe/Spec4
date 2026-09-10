@@ -42,7 +42,7 @@ from spec4.layouts._chat import (
     CHAT_ARTIFACTS,
     DOWNLOAD_BTN_PREFIX,
     OPEN_BTN_PREFIX,
-    _chat_action_buttons,
+    chat_action_buttons,
     open_button_id,
 )
 from spec4.layouts._round_tree import ARTIFACT_LANES, PHASES_DIR
@@ -71,7 +71,7 @@ def _open(key: str, session: Any, n_clicks: Any = 1) -> Any:
 
 def _buttons(session: dict[str, Any]) -> list[Any]:
     """The row's buttons, in render order."""
-    rendered = _chat_action_buttons(session)
+    rendered = chat_action_buttons(session)
     children = rendered.children or []
     group = next(c for c in children if isinstance(c, dmc.Group))
     return [c for c in group.children if isinstance(c, dmc.Button)]

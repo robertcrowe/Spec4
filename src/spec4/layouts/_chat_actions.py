@@ -42,7 +42,7 @@ _TOKEN_COUNTER_AGENTS = (
 )
 
 
-def _streamed_token_count(session: dict[str, Any]) -> int:
+def streamed_token_count(session: dict[str, Any]) -> int:
     """Characters received so far, used as a token-count proxy.
 
     D-PH9: during the phaser validation-retry drain the visible assistant
@@ -63,13 +63,13 @@ def _streamed_token_count(session: dict[str, Any]) -> int:
     return len(last.get("content") or "")
 
 
-def _token_count_text(session: dict[str, Any]) -> str:
+def token_count_text(session: dict[str, Any]) -> str:
     """Render text for the chars counter, or empty when it shouldn't show."""
     if session.get("active_agent") not in _TOKEN_COUNTER_AGENTS:
         return ""
-    if not session.get("_stream_id") and _streamed_token_count(session) == 0:
+    if not session.get("_stream_id") and streamed_token_count(session) == 0:
         return ""
-    return f"Chars received: {_streamed_token_count(session)}"
+    return f"Chars received: {streamed_token_count(session)}"
 
 
 # Two distinct silences, told apart on screen. "no token count" means calls
@@ -82,7 +82,7 @@ _NO_TOKEN_COUNT = "no token count"
 _NO_CALLS_RECORDED = "no calls recorded"
 
 
-def _turn_token_text(session: dict[str, Any]) -> str:
+def turn_token_text(session: dict[str, Any]) -> str:
     """Token readout for the turn that just finished, or empty.
 
     Fed by ``session["_turn_usage"]``, which the persist funnel writes from
@@ -242,7 +242,7 @@ def _ff_controls(agent_label: str) -> list[Any]:
 # of switching. That is the entry check in `on_agent_pill_click`, and it is a
 # fix rather than a loss: a session with no connection cannot run the turn the
 # Back button would have landed on.
-def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
+def chat_action_buttons(session: dict[str, Any]) -> html.Div:
     active = session.get("active_agent")
     buttons = []
 
@@ -282,7 +282,7 @@ def _chat_action_buttons(session: dict[str, Any]) -> html.Div:
     # The finished turn's token readout sits right after the chars counter it
     # describes. Rendered only when there is something to say (post-stream,
     # usage captured or known-missing) so the live row is untouched.
-    turn_tokens = _turn_token_text(session)
+    turn_tokens = turn_token_text(session)
     if turn_tokens and counter_at is not None:
         row.insert(
             counter_at + 1,
@@ -300,7 +300,7 @@ def _code_scanner_action_buttons(session: dict[str, Any]) -> list[Any]:
     """The chat action row for the code scanner agent."""
     buttons: list[Any] = []
     token_counter = dmc.Text(
-        _token_count_text(session),
+        token_count_text(session),
         id="chat-token-count",
         className="mono",
         size="sm",
@@ -328,7 +328,7 @@ def _code_scanner_action_buttons(session: dict[str, Any]) -> list[Any]:
             ),
             dmc.Button("Continue to Brainstormer →", id="btn-review-to-brainstormer"),
         ]
-    elif _token_count_text(session):
+    elif token_count_text(session):
         # Mid-scan CodeScanner has no other controls, so the bar exists
         # only to carry the counter — render it only once there is a count
         # to show, otherwise the divider would sit above an empty row.
@@ -342,7 +342,7 @@ def _brainstormer_action_buttons(session: dict[str, Any]) -> list[Any]:
     """The chat action row for the brainstormer agent."""
     buttons: list[Any] = []
     token_counter = dmc.Text(
-        _token_count_text(session),
+        token_count_text(session),
         id="chat-token-count",
         className="mono",
         size="sm",
@@ -362,7 +362,7 @@ def _brainstormer_action_buttons(session: dict[str, Any]) -> list[Any]:
             ),
             dmc.Button("Continue to Agentifier →", id="btn-brainstormer-to-agentifier"),
         ]
-    elif _token_count_text(session):
+    elif token_count_text(session):
         # Like mid-scan CodeScanner, Brainstormer has no other controls
         # before the vision lands, so the bar exists only to carry the
         # counter — render it once there is a count, not before, or the
@@ -377,7 +377,7 @@ def _agentifier_action_buttons(session: dict[str, Any]) -> list[Any]:
     """The chat action row for the agentifier agent."""
     buttons: list[Any] = []
     token_counter = dmc.Text(
-        _token_count_text(session),
+        token_count_text(session),
         id="chat-token-count",
         className="mono",
         size="sm",
@@ -425,7 +425,7 @@ def _stack_advisor_action_buttons(session: dict[str, Any]) -> list[Any]:
     """The chat action row for the stack advisor agent."""
     buttons: list[Any] = []
     token_counter = dmc.Text(
-        _token_count_text(session),
+        token_count_text(session),
         id="chat-token-count",
         className="mono",
         size="sm",
@@ -446,7 +446,7 @@ def _phaser_action_buttons(session: dict[str, Any]) -> list[Any]:
     """The chat action row for the phaser agent."""
     buttons: list[Any] = []
     token_counter = dmc.Text(
-        _token_count_text(session),
+        token_count_text(session),
         id="chat-token-count",
         className="mono",
         size="sm",
@@ -467,7 +467,7 @@ def _deployer_action_buttons(session: dict[str, Any]) -> list[Any]:
     """The chat action row for the deployer agent."""
     buttons: list[Any] = []
     token_counter = dmc.Text(
-        _token_count_text(session),
+        token_count_text(session),
         id="chat-token-count",
         className="mono",
         size="sm",

@@ -32,7 +32,7 @@ from litellm.exceptions import BadRequestError as LiteLLMBadRequestError
 from spec4 import llm, project_manager, usage_report
 from spec4.agents.designer import generate_mock_streaming
 from spec4.app_constants import FF_PROMPT, STATE_VISION_COMPLETE
-from spec4.layouts._chat import _turn_token_text
+from spec4.layouts._chat import turn_token_text
 from spec4.session import default_session, _persist_artifacts
 from tests._chunks import make_stream_chunk, make_usage
 
@@ -1177,7 +1177,7 @@ class TestAgentRunWithMissingUsage:
 
 
 def _row_ids_and_texts(session: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
-    from spec4.layouts._chat import _chat_action_buttons
+    from spec4.layouts._chat import chat_action_buttons
 
     ids: list[str] = []
     texts: dict[str, Any] = {}
@@ -1195,7 +1195,7 @@ def _row_ids_and_texts(session: dict[str, Any]) -> tuple[list[str], dict[str, An
         if children is not None:
             walk(children)
 
-    walk(_chat_action_buttons(session))
+    walk(chat_action_buttons(session))
     return ids, texts
 
 
@@ -1235,7 +1235,7 @@ class TestTurnTokenReadout:
             "calls": 0,
             "missing": 0,
         }
-        assert _turn_token_text(session) == "no calls recorded"
+        assert turn_token_text(session) == "no calls recorded"
 
     def test_persist_counts_missing_usage(self, tmp_path: Path) -> None:
         from spec4.session import summarize_turn_usage
@@ -1256,7 +1256,7 @@ class TestTurnTokenReadout:
         }
 
     def test_chars_counter_text_is_unchanged(self) -> None:
-        from spec4.layouts._chat import _token_count_text
+        from spec4.layouts._chat import token_count_text
 
         session = {
             **default_session(),
@@ -1264,31 +1264,31 @@ class TestTurnTokenReadout:
             "_stream_received_chars": 8291,
             "_turn_usage": _USAGE_PHASER,
         }
-        assert _token_count_text(session) == "Chars received: 8291"
-        assert _token_count_text({**session, "_stream_id": "abc"}) == (
+        assert token_count_text(session) == "Chars received: 8291"
+        assert token_count_text({**session, "_stream_id": "abc"}) == (
             "Chars received: 8291"
         )
 
     def test_readout_text_states(self) -> None:
-        from spec4.layouts._chat import _turn_token_text
+        from spec4.layouts._chat import turn_token_text
 
         base = {**default_session(), "active_agent": "phaser"}
         usage = _USAGE_PHASER
-        assert _turn_token_text({**base, "_turn_usage": usage}) == (
+        assert turn_token_text({**base, "_turn_usage": usage}) == (
             "Tokens: 4,180 in / 312 out"
         )
         # Nothing while the stream is live — never estimated from characters.
-        assert _turn_token_text({**base, "_turn_usage": usage, "_stream_id": "x"}) == ""
+        assert turn_token_text({**base, "_turn_usage": usage, "_stream_id": "x"}) == ""
         # Nothing before any turn has finished.
-        assert _turn_token_text(base) == ""
+        assert turn_token_text(base) == ""
         # Nothing for a different agent's turn.
         assert (
-            _turn_token_text({**base, "active_agent": "deployer", "_turn_usage": usage})
+            turn_token_text({**base, "active_agent": "deployer", "_turn_usage": usage})
             == ""
         )
         # All calls missing usage: a marker, not blank or zero.
         assert (
-            _turn_token_text(
+            turn_token_text(
                 {
                     **base,
                     "_turn_usage": {**usage, "input": 0, "output": 0, "missing": 1},
@@ -1298,7 +1298,7 @@ class TestTurnTokenReadout:
         )
         # Some calls missing: the counted part, flagged.
         assert (
-            _turn_token_text(
+            turn_token_text(
                 {**base, "_turn_usage": {**usage, "calls": 2, "missing": 1}}
             )
             == "Tokens: 4,180 in / 312 out (partial)"
@@ -1404,7 +1404,7 @@ class TestFinalisationRunsOnce:
             "missing": 0,
         }
         assert usages[0] == usages[1] == usages[2]
-        assert all(_turn_token_text(s) == "Tokens: 4,180 in / 312 out" for s in stores)
+        assert all(turn_token_text(s) == "Tokens: 4,180 in / 312 out" for s in stores)
 
     def test_the_claim_is_granted_exactly_once(self, tmp_path: Any) -> None:
         from spec4 import streaming
@@ -1439,7 +1439,7 @@ class TestNoCallsMarker:
     """
 
     def _row(self, session: dict[str, Any]) -> str:
-        return _turn_token_text(session)
+        return turn_token_text(session)
 
     def test_zero_calls_shows_the_marker(self) -> None:
         session = {

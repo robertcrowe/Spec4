@@ -30,7 +30,7 @@ from spec4.layouts import (
     _working_dir_layout,
     _setup_layout,
     _agent_select_layout,
-    _chat_layout,
+    chat_layout,
     _artifact_view_layout,
 )
 from spec4.layouts.designer import designer_layout
@@ -406,7 +406,7 @@ def render_page(
     elif phase == "agent_select":
         content = _agent_select_layout(session)
     elif phase == "chat":
-        content = _chat_layout(session, prefs)
+        content = chat_layout(session, prefs)
     elif phase == "designer":
         content = designer_layout(session, prefs)
     elif phase == "artifacts":

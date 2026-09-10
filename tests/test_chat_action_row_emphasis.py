@@ -34,7 +34,7 @@ from spec4.app_constants import (
     STATE_STACK_COMPLETE,
     STATE_VISION_COMPLETE,
 )
-from spec4.layouts._chat import _chat_action_buttons
+from spec4.layouts._chat import chat_action_buttons
 
 _STYLESHEET = (
     pathlib.Path(__file__).resolve().parent.parent
@@ -133,7 +133,7 @@ def _buttons(session: dict[str, Any]) -> list[Any]:
     The row also carries the mono counters and Fast Forward's modal; those are
     not actions and are not what the emphasis rule is about.
     """
-    rendered = _chat_action_buttons(session)
+    rendered = chat_action_buttons(session)
     children = rendered.children or []
     group = next(c for c in children if isinstance(c, dmc.Group))
     return [c for c in group.children if isinstance(c, dmc.Button)]

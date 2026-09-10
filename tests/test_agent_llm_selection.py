@@ -34,7 +34,7 @@ from spec4.callbacks import (
     on_setup_model_continue,
 )
 from spec4.layouts import _AGENT_ROWS
-from spec4.layouts._chat import _chat_action_buttons, _chat_layout
+from spec4.layouts._chat import chat_action_buttons, chat_layout
 from spec4.layouts._llm_gate import gate_card, is_open, model_chip
 from spec4.layouts.designer import designer_layout
 from spec4.project_manager import _USAGE_ROLLUP_PARENT
@@ -832,13 +832,13 @@ class TestModelChip:
 class TestChatLayoutGate:
     def test_the_opening_turn_is_disabled_while_the_gate_is_open(self) -> None:
         session = _session(active_agent="phaser", phase="chat")
-        layout = _chat_layout(session, {})
+        layout = chat_layout(session, {})
         assert _find(layout, "init-turn-interval").max_intervals == 0
         assert _find(layout, "btn-agent-llm-default") is not None
 
     def test_the_interval_arms_once_answered(self) -> None:
         session = on_gate_use_default(1, _session(active_agent="phaser", phase="chat"))
-        layout = _chat_layout(session, {})
+        layout = chat_layout(session, {})
         assert _find(layout, "init-turn-interval").max_intervals == 1
         assert _find(layout, "btn-agent-llm-default") is None
         assert _find(layout, "btn-agent-llm-chip") is not None
@@ -867,22 +867,22 @@ class TestModelChipPlacement:
 
     def test_it_left_the_action_row(self) -> None:
         session = self._answered()
-        assert _find(_chat_action_buttons(session), "btn-agent-llm-chip") is None
+        assert _find(chat_action_buttons(session), "btn-agent-llm-chip") is None
 
     def test_it_shares_a_row_with_the_status_line_and_comes_first(self) -> None:
-        layout = _chat_layout(self._answered(), {})
+        layout = chat_layout(self._answered(), {})
         footer = layout.children[_row_index(layout, "chat-status-line")]
         ids = _child_ids(footer)
         assert ids == ["btn-agent-llm-chip", "chat-status-line"]
 
     def test_the_footer_sits_below_the_input(self) -> None:
-        layout = _chat_layout(self._answered(), {})
+        layout = chat_layout(self._answered(), {})
         assert _row_index(layout, "chat-status-line") > _row_index(layout, "chat-input")
 
     def test_the_status_line_still_reserves_its_line(self) -> None:
         """Moving it into a flex row must not cost the reserved height that
         keeps the input from shifting when the first status lands."""
-        layout = _chat_layout(self._answered(), {})
+        layout = chat_layout(self._answered(), {})
         line = _find(layout, "chat-status-line")
         assert line.style["minHeight"] == "1.4em"
         assert line.style["textOverflow"] == "ellipsis"
@@ -890,7 +890,7 @@ class TestModelChipPlacement:
         assert line.style["minWidth"] == "0"
 
     def test_the_gate_still_suppresses_it(self) -> None:
-        layout = _chat_layout(_session(active_agent="phaser", phase="chat"), {})
+        layout = chat_layout(_session(active_agent="phaser", phase="chat"), {})
         assert _find(layout, "btn-agent-llm-chip") is None
         assert _child_ids(layout.children[_row_index(layout, "chat-status-line")]) == [
             "chat-status-line"
@@ -1471,7 +1471,7 @@ class TestGateRenderSites:
 
         chat = _session(phase="chat", active_agent="code_scanner")
         assert (
-            str(_chat_layout(chat, {})).count(str(gate_card(chat, {}, "code_scanner")))
+            str(chat_layout(chat, {})).count(str(gate_card(chat, {}, "code_scanner")))
             == 1
         )
 
@@ -1559,7 +1559,7 @@ class TestGateWritesTheEffort:
 
     def _surfaces(self, session: dict[str, Any]) -> dict[str, str]:
         """What the bar, the chip and the retry panel say about this agent."""
-        from spec4.layouts._chat import _retry_panel
+        from spec4.layouts._chat import render_retry_panel
         from spec4.layouts._status_bar import SLOT_MODEL
         from spec4.callbacks import on_status_bar
 
@@ -1574,7 +1574,7 @@ class TestGateWritesTheEffort:
         return {
             "status bar": str(slot.children),
             "model chip": _mono_text(model_chip(failed, "code_scanner")),
-            "retry panel": _mono_text(_retry_panel(failed)),
+            "retry panel": _mono_text(render_retry_panel(failed)),
         }
 
     def test_all_three_surfaces_render_the_same_string(self) -> None:

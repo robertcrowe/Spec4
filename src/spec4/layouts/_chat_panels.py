@@ -44,7 +44,7 @@ _RUN_COMPLETE: dict[str, tuple[str, str]] = {
 }
 
 
-def _cost_summary(session: dict[str, Any]) -> Any | None:
+def cost_summary(session: dict[str, Any]) -> Any | None:
     """The cost strip for the active agent, on the turn that ended its run.
 
     The strip itself is ``_round_cost.run_cost_strip`` — the same three-line
@@ -79,7 +79,7 @@ def _cost_summary(session: dict[str, Any]) -> Any | None:
     return run_cost_strip(session.get("working_dir"), session, active)
 
 
-def _retry_panel(session: dict[str, Any]) -> Any | None:
+def render_retry_panel(session: dict[str, Any]) -> Any | None:
     """Recovery affordance for a turn that died on a provider error (D-ER1).
 
     Renders only once the failed stream has been finalised — mid-stream the
@@ -158,7 +158,7 @@ def _retry_panel(session: dict[str, Any]) -> Any | None:
     )
 
 
-def _breadth_panel(session: dict[str, Any]) -> Any | None:
+def render_breadth_panel(session: dict[str, Any]) -> Any | None:
     """Checkbox panel for Agentifier breadth selection.
 
     Renders only when agentifier_breadth_groups is set and the user has not yet

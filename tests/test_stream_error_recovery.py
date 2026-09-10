@@ -28,7 +28,7 @@ from spec4.callbacks import (
     on_init_turn,
     on_stream_poll,
 )
-from spec4.layouts._chat import _chat_layout, _retry_panel
+from spec4.layouts._chat import chat_layout, render_retry_panel
 from spec4.session import default_session
 
 
@@ -212,7 +212,7 @@ class TestEmptyTurnBackstop:
             {"text": "", "done": True, "session": _session(), "error": False}
         )
         assert updated["_stream_error"] is True
-        assert _retry_panel(updated) is not None
+        assert render_retry_panel(updated) is not None
 
     def test_whitespace_only_counts_as_empty(self) -> None:
         updated, _ = _poll_with_entry(
@@ -304,7 +304,7 @@ class TestTurnStartsClearTheFlag:
 
 
 # ---------------------------------------------------------------------------
-# _retry_panel — the visible affordance
+# render_retry_panel — the visible affordance
 # ---------------------------------------------------------------------------
 
 
@@ -319,31 +319,31 @@ def _failed_session(**overrides: Any) -> dict[str, Any]:
 
 class TestRetryPanel:
     def test_absent_without_a_failure(self) -> None:
-        assert _retry_panel(_session()) is None
+        assert render_retry_panel(_session()) is None
 
     def test_absent_mid_stream(self) -> None:
         """The progress bar owns that space; the turn may still succeed."""
-        assert _retry_panel(_failed_session(_stream_id="live")) is None
+        assert render_retry_panel(_failed_session(_stream_id="live")) is None
 
     def test_offers_the_retry_button(self) -> None:
-        panel = _retry_panel(_failed_session())
+        panel = render_retry_panel(_failed_session())
         assert panel is not None
         assert "btn-chat-retry" in _ids(panel)
 
     def test_explains_what_happened(self) -> None:
-        rendered = str(_retry_panel(_failed_session()))
+        rendered = str(render_retry_panel(_failed_session()))
         assert "didn't complete" in rendered
         assert "Nothing already saved is lost." in rendered
 
     def test_absent_when_the_transcript_was_cleared(self) -> None:
         """A flag that outlived its turn renders nothing — every restart path
         (agent switch, re-scan, skip-into-agent) empties `messages`."""
-        assert _retry_panel(_session(_stream_error=True, messages=[])) is None
+        assert render_retry_panel(_session(_stream_error=True, messages=[])) is None
 
     def test_absent_when_the_last_turn_is_the_users(self) -> None:
         """Nothing to replace: the failed assistant bubble is gone."""
         assert (
-            _retry_panel(
+            render_retry_panel(
                 _session(
                     _stream_error=True,
                     messages=[{"role": "user", "content": "hi"}],
@@ -353,11 +353,11 @@ class TestRetryPanel:
         )
 
     def test_reaches_the_chat_layout(self) -> None:
-        ids = _ids(_chat_layout(_failed_session()))
+        ids = _ids(chat_layout(_failed_session()))
         assert "btn-chat-retry" in ids
 
     def test_layout_is_unchanged_without_a_failure(self) -> None:
-        ids = _ids(_chat_layout(_session()))
+        ids = _ids(chat_layout(_session()))
         assert "btn-chat-retry" not in ids
         # The ordinary chat furniture is untouched either way.
         assert "chat-input" in ids
@@ -517,17 +517,17 @@ class TestRetryWithADifferentModel:
         )
 
     def test_the_panel_offers_both_doors(self) -> None:
-        rendered = _ids(_retry_panel(self._failed()))
+        rendered = _ids(render_retry_panel(self._failed()))
         assert "btn-chat-retry" in rendered
         assert "btn-chat-retry-model" in rendered
 
     def test_neither_button_appears_mid_stream(self) -> None:
-        assert _retry_panel(self._failed(_stream_id="live")) is None
+        assert render_retry_panel(self._failed(_stream_id="live")) is None
 
     def test_the_copy_no_longer_promises_a_retry_will_work(self) -> None:
         """A developer facing an unreachable provider must not be told twice
         that the failure is "usually temporary"."""
-        rendered = str(_retry_panel(self._failed()))
+        rendered = str(render_retry_panel(self._failed()))
         assert "fail the same way every time" in rendered
 
     def test_clicking_opens_the_picker_for_the_active_agent(self) -> None:
@@ -588,7 +588,7 @@ class TestRetryWithADifferentModel:
         assert answered["_stream_id"] == "sid"
         assert result["poll"] == -1
         assert answered["_stream_error"] is None
-        assert _retry_panel(answered) is None
+        assert render_retry_panel(answered) is None
 
     def test_the_re_run_re_sends_the_original_message(self) -> None:
         result, _ = self._choose(self._failed())
@@ -637,7 +637,7 @@ class TestRetryWithADifferentModel:
         assert answered["agent_llm"]["phaser"]["model"] == "gpt-5"
         assert answered.get("_stream_id") is None
         assert poll is no_update
-        assert _retry_panel(answered) is not None
+        assert render_retry_panel(answered) is not None
 
     def test_the_retry_then_runs_on_the_new_model(self) -> None:
         from spec4 import llm_selection
