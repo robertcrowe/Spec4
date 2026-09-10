@@ -9660,3 +9660,100 @@ Collected **4,200**, up 22. Nothing removed.
 | 7 whole-file entries | absent from the diff |
 | 19 tier-B files / 33 classes | 0 files with hunks — the only change is a new file |
 | 456 node ids | **456 / 456 collect**, 0 failures |
+
+## 59. Phase 6 close-out
+
+### 59.1 What the phase did, sub-phase by sub-phase
+
+| Sub-phase | § | Change | Tests |
+|---|---|---|---|
+| **6a** | §51 | `testpaths = ["tests"]` — the only `pyproject.toml` edit | −82 (`evals/` out of collection) |
+| **6b** | §52 | three patch strings re-aimed at their call-site seams | 0 |
+| **6b addendum** | §52.5 | the `os` proxy moved to `conftest.py` as the `module_seam` fixture | 0 |
+| **6c** | §53 | `streaming.pop`'s vacuous assertion replaced by two real ones | +1 |
+| **6d** | §54–§55 | the Phase 7 seam document — **no rewrites**, by design | 0 |
+| **6e** | — | **does not exist** (§55.3: zero `rewrite now` sites) | — |
+| **6f** | §56 | duplicate/dead rows — **nothing qualified for pruning** | 0 |
+| **6g** | §57 | the chunk factory: `tests/_chunks.py` replaces two `MagicMock` factories | +2 |
+| **6z** | §58 | the eval-only D-RI arms ported into `tests/agentifier/` | +22 |
+
+**Nine commits. No production file was changed at any point.** The single
+non-test edit in the entire phase is one `pyproject.toml` key.
+
+### 59.2 Counts
+
+| | Phase 5p | Phase 6 close | |
+|---|---:|---:|---|
+| Collected | 4,257 | **4,200** | −57 |
+| — of which `evals/` | 82 | 0 | moved out of collection, not deleted |
+| — under `tests/` | 4,175 | **4,200** | **+25** |
+| Passed / skipped | 4,256 / 1 | 4,199 / 1 | |
+
+**No test was deleted in Phase 6.** The suite under `tests/` grew by 25: one rewrite
+split into two (6c), two usage tests (6g), and 6z's 22.
+
+### 59.3 Runtime — paired, in one session
+
+| | Runs | Median |
+|---|---|---:|
+| Phase 5p baseline (`tests/` + `evals/`, 4,257) | 139.20 s, 139.76 s | **139.48 s** |
+| Phase 6 close-out (`tests/`, 4,200) | 86.70 s, 87.32 s, 86.79 s | **86.79 s** |
+| | | **−52.69 s** |
+
+**86.8 s against the ≤ 96 s target** (§51.1, restated in §51.6), with 9.2 s of headroom.
+Both halves measured back to back on the same machine, per §51.6 — the baseline was
+reconstructed by checking `pyproject.toml` and `tests/` out at `a86a2ee` and running
+`tests/ evals/` explicitly.
+
+Essentially all of it is 6g. `testpaths` was worth ~0.4 s (§51.1), and nothing was
+pruned for speed, because §51.6 forbids it.
+
+### 59.4 Coverage
+
+| | Misses | |
+|---|---:|---|
+| Phase 0 / 5p baseline (with `evals/` collected) | 893 | never a `tests/`-only figure |
+| After 6a (`tests/` only) | 909 | the 16 statements `evals/` had been carrying |
+| **Phase 6 close** | **891** | **below both** |
+
+`agentifier/requires_reconciler.py` ends at **97%** (9 misses) against 95% when `evals/`
+was carrying it and 90% immediately after `testpaths`. The gate now measures what it
+claims to, and measures more of it.
+
+### 59.5 Final gate and off-limits
+
+| Gate | Result |
+|---|---|
+| `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| `uv run pytest --cov=spec4 …` | `4199 passed, 1 skipped`; `12421 stmts, 891 miss, 93%` |
+
+**The floor held at every one of the nine commits.** 456/456 node ids collect; no
+whole-file entry was ever in a diff; two sub-phases touched a tier-B file outside its
+listed classes and both are reported in the §51.6 template (§53.4, §57.5).
+
+§27.4's eleven complexity `noqa`s are still eleven.
+
+### 59.6 Phase 7 candidates, consolidated
+
+Everything Phase 6 logged, in the order it should be taken.
+
+| # | Item | Source | Size |
+|---|---|---|---|
+| 1 | **Promote seams — the `rename` half.** Drop the underscore, re-point the sites. Start at `session` (56.2 sites/name; `_default_session` alone is 248), then `layouts._chat`, `layouts`, `layouts.designer`, `code_scanner`, … | §55.9 | **81 names, 1,042 sites** |
+| 2 | **Promote seams — the `design seam` half.** Nine are `agentifier` phase runners and **are the same decision as** the `yield from` sub-generator backlog item — take them together. Three are `session` mutators (`_persist_artifacts` 35, `_load_working_dir` 24, `_get_agent_gen` 20) | §55.9, §27.4 | **13 names, 129 sites** |
+| 3 | **Do not promote the 24 `keep: subject is the private object` names.** The collection is the test's subject; promoting invites a rewrite that replaces a drift guard with an output check | §54.1, §55.4 | 24 names, 183 sites |
+| 4 | **The golden petition** applies to any promotion whose tests live in a §50.3 whole-file entry — import lines alone, goldens byte-identical, off-limits passes on the rest | §54.7 | pre-shaped |
+| 5 | **Production seams for stdlib calls under test.** `_usage._write_atomic`'s `os.replace`/`os.fdopen` get module-level aliases, patched by name; then **delete `module_seam` and `_ModuleSeam` from `tests/conftest.py`** and the fixture argument from the two atomicity tests | §52.5 | small |
+| 6 | **The runaway-valve message is asserted by nothing.** Its branch is covered; the text the user reads at the feature's one dead end is not — it can be replaced with anything and the suite stays green | §56.5 | one test |
+| 7 | **Type hygiene** — 290 `Any` in `src/spec4/**` | §49.5 | large |
+| 8 | **`project_manager` root-siblings inconsistency** | §27.7 | medium |
+| 9 | **PLR2004** (49 in `src/`) — the natural follow-up to 5p(b)'s magic-value work | §49.4 | medium |
+| 10 | **13 `E501` in `scripts/e2e_agentifier.py`** — predate Phase 5, outside the Rule 6 gate | §49.7 | trivial |
+| 11 | **`tests/agentifier/test_try_again.py` reads `agentifier.py` as text** for `"agentifier_*"` session keys. Survives today only because 5k moved code *within* the file; a future split breaks it **silently, as a shrinking set** | §50.2 kind 6 | one test |
+| 12 | **`spec4.layouts` exports a function named `_round_cost`, shadowing the submodule of that name** — forcing `sys.modules[...]` in `test_cost_summary.py`. A rename retires the idiom | §50.2 kind 5 | small |
+| 13 | **`tests/README.md`** is stale, and now also omits the golden/snapshot mechanism, the two env vars, `testpaths`, and `tests/_chunks.py` | §12.5, plan | small |
+
+Item 1 is the largest single input Phase 7 has and the cheapest per site; item 2 is where
+the judgment is. They are separable, and item 1 does not depend on item 2.
