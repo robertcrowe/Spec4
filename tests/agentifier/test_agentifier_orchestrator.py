@@ -10,6 +10,7 @@ from spec4.agentifier import agentifier
 from spec4.agentifier.scout import Candidate, ScoutOutcome, ScoutOutput
 from spec4.agentifier.tier_analyst import TierAnalystOutput
 from spec4.app_constants import STATE_AGENTIFIER_COMPLETE, STATE_IN_PROGRESS
+from tests._chunks import make_stream_chunk
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -114,14 +115,6 @@ def drive_panel(session: dict[str, Any], names: list[str] | None = None) -> str:
     )
     out += collect(agentifier.run("select", session, _LLM_CONFIG))
     return out
-
-
-def make_stream_chunk(content: str, finish_reason: str | None = None) -> MagicMock:
-    chunk = MagicMock()
-    chunk.choices[0].delta.content = content
-    chunk.choices[0].delta.tool_calls = None
-    chunk.choices[0].finish_reason = finish_reason
-    return chunk
 
 
 def mock_litellm_stream(text: str) -> Any:

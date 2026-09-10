@@ -9460,3 +9460,119 @@ before and after the matrix.
 | Tests | — | unchanged from §53.4: `4175 passed, 1 skipped`, `909 miss` |
 
 **Off-limits:** nothing under `tests/` touched; 456/456 collect.
+
+## 57. Phase 6g — the chunk factory
+
+§50.5(c). The one change in Phase 6 that moves the runtime.
+
+### 57.1 What landed
+
+`tests/_chunks.py` — a new shared helper, following `tests/_golden.py`'s convention
+(`from tests._chunks import …`) rather than a fixture, because the factory is called
+from module-level helpers and list comprehensions, not only from test bodies.
+
+Both per-character `MagicMock` factories are deleted and both modules import it:
+`tests/test_agents.py:49` and `tests/agentifier/test_agentifier_orchestrator.py:119`.
+They were byte-identical.
+
+### 57.2 The shape mirrors the real type, and one default is not what it looks like
+
+Fields were read off a constructed `litellm.types.utils.ModelResponseStream`, not
+assumed:
+
+| Type | Fields carried |
+|---|---|
+| `ModelResponseStream` | `id`, `created`, `model`, `object`, `system_fingerprint`, `provider_specific_fields`, `choices` |
+| `StreamingChoices` | `index`, `delta`, `finish_reason`, `logprobs`, `enhancements` |
+| `Delta` | `content`, `role`, `function_call`, `tool_calls`, `audio`, `images`, `reasoning_content`, `thinking_blocks`, `provider_specific_fields` |
+
+And the two §50.5(c) singled out:
+
+| Field | Real default | Stand-in |
+|---|---|---|
+| `_hidden_params` | `{}` — LiteLLM always attaches the dict | `{}` |
+| `usage` | **absent** — `hasattr(chunk, "usage")` is `False` | **absent**; attached only when the caller passes one |
+
+So the stand-ins are rejected by `llm._chunk_usage` and `llm._hidden_usage` **for the
+reason the real object is rejected**: `_get`'s `getattr(…, None)` yields `None` and
+`_usage_fields(None)` returns `None` on its first line; `_hidden_usage` sees a `{}` with
+no `"usage"` key. Not because a `SimpleNamespace` happens to lack a field.
+
+`make_usage()` supplies the other shape — the usage chunk LiteLLM appends under
+`include_usage`.
+
+### 57.3 The usage confirmation, both halves
+
+`uv run pytest tests/test_usage_capture.py tests/test_streaming_characterization.py
+tests/test_llm.py` → **155 passed**. All three already used their own `SimpleNamespace`
+helpers and never touched the `MagicMock` factories, so this confirms the swap disturbed
+nothing rather than that it was exercised.
+
+Which is exactly why §50.5(c) asked for the positive path separately. Two tests added to
+`tests/test_usage_capture.py::TestStreamCapture`:
+
+| Test | Asserts |
+|---|---|
+| `test_shared_factory_content_chunk_carries_no_usage` | `not hasattr(chunk, "usage")`, and the record comes back `usage_missing: True` — the negative half, via the real `complete_stream` |
+| `test_shared_factory_usage_chunk_reaches_record_usage` | a chunk carrying **real counts** produces `usage_missing: False` and `(120, 30, 150)` — the positive half |
+
+**Mutation check.** With `make_stream_chunk` altered to ignore its `usage` argument:
+
+| | Result |
+|---|---|
+| `TestStreamCapture` before the mutation | 16 passed |
+| after | **1 failed** — `test_shared_factory_usage_chunk_reaches_record_usage` |
+
+A stand-in that could only ever produce the no-usage shape would otherwise have passed
+every negative assertion in the module while severing `_record_usage` from its input.
+
+`test_magicmock_chunks_never_look_like_usage` is **kept**: it guards the hazard for
+whatever still builds a `MagicMock` chunk, and remains true.
+
+### 57.4 Runtime — paired, per §51.6
+
+Baseline and candidate measured back to back in one session, two runs each; the recorded
+figure is the delta.
+
+| | Runs | Median |
+|---|---|---:|
+| Baseline (`HEAD`, `MagicMock` chunks) | 139.21 s, 138.74 s | **138.98 s** |
+| Candidate (shared namespace factory) | 87.25 s, 87.78 s | **87.52 s** |
+| | | **−51.46 s** |
+
+**87.5 s against the ≤ 96 s target** (§51.1), with 8.5 s of headroom. No absolute figure
+from an earlier session is used or needed.
+
+`tests/test_agents.py` alone went from 40.65 s to 1.31 s together with the orchestrator
+module (§50.1 measured the file at 40.65 s on its own).
+
+**No test was pruned for this**, and none could have been — §51.6 forbids seconds as a
+pruning argument. The runtime came from changing what a stand-in costs, not from removing
+anything.
+
+### 57.5 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `220 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4177 passed, 1 skipped in 105.23s` (exit 0) |
+| Coverage | same run | `TOTAL 12421 stmts, 909 miss, 93%` — **at the §51.6 baseline** |
+
+Collected **4,178**, up 2: the two usage tests. Nothing removed.
+
+**Off-limits check:**
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | absent from the diff |
+| 456 node ids | **456 / 456 collect**, 0 failures |
+| 19 tier-B files / 33 classes | **1 file with hunks — 0 failures** |
+
+`tests/test_agents.py` is a tier-B file. Its listed classes and current ranges:
+`TestLoadDesignManifest` **2271–2298**, `TestAiFeaturesForPhaserFullSurface`
+**4962–5060**, `TestPhaserSpecReferenceDirective` **5227–5268**. The three hunks land at
+lines **18**, **49** and **3565** — the import, the deleted factory, and
+`_chunkify_stream`'s return annotation. None intersects a listed range, and the file
+carries no tier-A test. **Reported, per §51.6's template.**

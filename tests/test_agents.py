@@ -15,6 +15,7 @@ from spec4.app_constants import (
     STATE_STACK_COMPLETE,
     STATE_VISION_COMPLETE,
 )
+from tests._chunks import make_stream_chunk
 
 
 def make_session(**overrides: Any) -> dict[str, Any]:
@@ -44,14 +45,6 @@ def make_session(**overrides: Any) -> dict[str, Any]:
 
 def collect(gen: Iterable[str]) -> str:
     return "".join(gen)
-
-
-def make_stream_chunk(content: str, finish_reason: str | None = None) -> MagicMock:
-    chunk = MagicMock()
-    chunk.choices[0].delta.content = content
-    chunk.choices[0].delta.tool_calls = None
-    chunk.choices[0].finish_reason = finish_reason
-    return chunk
 
 
 def mock_litellm_stream(text: str) -> Any:
@@ -3569,7 +3562,7 @@ class TestBrainstormerUnparseableArtifact:
         assert session["brainstormer_state"] != STATE_VISION_COMPLETE
 
 
-def _chunkify_stream(text: str) -> Iterable[MagicMock]:
+def _chunkify_stream(text: str) -> Iterable[Any]:
     """Helper: turn text into per-character mock chunks plus a stop sentinel."""
     chunks = [make_stream_chunk(c) for c in text]
     chunks.append(make_stream_chunk("", finish_reason="stop"))

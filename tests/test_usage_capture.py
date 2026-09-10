@@ -34,6 +34,7 @@ from spec4.agents.designer import generate_mock_streaming
 from spec4.app_constants import FF_PROMPT, STATE_VISION_COMPLETE
 from spec4.layouts._chat import _turn_token_text
 from spec4.session import _default_session, _persist_artifacts
+from tests._chunks import make_stream_chunk, make_usage
 
 _CFG = {"model": "gpt-4o-mini", "api_key": "sk-test"}
 
@@ -233,6 +234,40 @@ class TestStreamCapture:
             out = list(llm.complete_stream(llm_config=_CFG, messages=[]))
         assert out == ["hi"]
         assert _only_record()["usage_missing"] is True
+
+    def test_shared_factory_content_chunk_carries_no_usage(self) -> None:
+        """`tests/_chunks.py` mirrors a real chunk: no `usage` attribute at all.
+
+        The negative half of the contract — `_chunk_usage` must reject it the way
+        it rejects a real content chunk, via `_get`'s `getattr(..., None)`.
+        """
+        chunk = make_stream_chunk("hi", finish_reason="stop")
+        assert not hasattr(chunk, "usage")
+        with patch("spec4.llm.litellm.completion", return_value=iter([chunk])):
+            out = list(llm.complete_stream(llm_config=_CFG, messages=[]))
+        assert out == ["hi"]
+        assert _only_record()["usage_missing"] is True
+
+    def test_shared_factory_usage_chunk_reaches_record_usage(self) -> None:
+        """The positive half, and the reason it is asserted separately.
+
+        A stand-in that could only ever produce the no-usage shape would satisfy
+        every negative assertion in this module while quietly severing
+        `_record_usage` from its input — nothing would fail, and the usage
+        pipeline would be untested. So: real counts, through the real
+        `complete_stream`, out the other side as a populated record.
+        """
+        chunks = [
+            make_stream_chunk("hi", finish_reason="stop"),
+            make_stream_chunk(usage=make_usage(120, 30)),
+        ]
+        with patch("spec4.llm.litellm.completion", return_value=iter(chunks)):
+            out = list(llm.complete_stream(llm_config=_CFG, messages=[]))
+        assert out == ["hi"]
+        rec = _only_record()
+        assert rec["usage_missing"] is False
+        counts = (rec["prompt_tokens"], rec["completion_tokens"], rec["total_tokens"])
+        assert counts == (120, 30, 150)
 
     def test_capture_failure_never_breaks_the_stream(self) -> None:
         chunks = [_delta("x", "stop"), _usage_chunk(_usage())]
