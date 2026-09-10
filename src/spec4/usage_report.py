@@ -97,41 +97,14 @@ def render_usage_table(data: dict[str, Any]) -> str:
             widths[i] = max(widths[i], len(cell))
     right = {1, 2, 3, 4, 6}
 
-    def _line(cells: tuple[str, ...]) -> str:
-        return "  ".join(
-            cell.rjust(widths[i]) if i in right else cell.ljust(widths[i])
-            for i, cell in enumerate(cells)
-        ).rstrip()
-
     lines = [
         f"Round {data.get('round', '?')}  (updated {data.get('updated_at', '?')})",
-        _line(_COLUMNS),
-        _line(tuple("-" * w for w in widths)),
+        _usage_row(_COLUMNS, widths, right),
+        _usage_row(tuple("-" * w for w in widths), widths, right),
     ]
-    lines.extend(_line(row) for row in rows)
-    missing = 0
-    unpriced = 0
-    agents = data.get("agents")
-    if isinstance(agents, dict):
-        for entry in agents.values():
-            if isinstance(entry, dict):
-                value = entry.get("calls_missing_usage")
-                if isinstance(value, int) and not isinstance(value, bool):
-                    missing += value
-                value = entry.get("calls_missing_cost")
-                if isinstance(value, int) and not isinstance(value, bool):
-                    unpriced += value
-    if missing:
-        lines.append(
-            f"note: {missing} call(s) returned no usage; their tokens are not counted."
-        )
-    if unpriced:
-        lines.append(
-            f"note: {unpriced} call(s) could not be priced; their cost is not counted."
-        )
-    notes = data.get("notes")
-    if isinstance(notes, dict) and notes.get("computed_cost_source"):
-        lines.append(f"cost_usd: {notes['computed_cost_source']}")
+    lines.extend(_usage_row(row, widths, right) for row in rows)
+    missing, unpriced = _usage_missing_counts(data)
+    _usage_footnotes(data, missing, unpriced, lines)
     return "\n".join(lines)
 
 
@@ -176,3 +149,54 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def _usage_row(
+    cells: tuple[str, ...],
+    widths: list[int],
+    right: set[int],
+) -> str:
+    """One aligned table row."""
+    return "  ".join(
+        cell.rjust(widths[i]) if i in right else cell.ljust(widths[i])
+        for i, cell in enumerate(cells)
+    ).rstrip()
+
+
+def _usage_missing_counts(
+    data: dict[str, Any],
+) -> tuple[int, int]:
+    """Calls that returned no usage, and calls that could not be priced."""
+    missing = 0
+    unpriced = 0
+    agents = data.get("agents")
+    if isinstance(agents, dict):
+        for entry in agents.values():
+            if isinstance(entry, dict):
+                value = entry.get("calls_missing_usage")
+                if isinstance(value, int) and not isinstance(value, bool):
+                    missing += value
+                value = entry.get("calls_missing_cost")
+                if isinstance(value, int) and not isinstance(value, bool):
+                    unpriced += value
+    return missing, unpriced
+
+
+def _usage_footnotes(
+    data: dict[str, Any],
+    missing: int,
+    unpriced: int,
+    lines: list[str],
+) -> None:
+    """The uncounted-tokens, unpriced-calls and cost-source notes."""
+    if missing:
+        lines.append(
+            f"note: {missing} call(s) returned no usage; their tokens are not counted."
+        )
+    if unpriced:
+        lines.append(
+            f"note: {unpriced} call(s) could not be priced; their cost is not counted."
+        )
+    notes = data.get("notes")
+    if isinstance(notes, dict) and notes.get("computed_cost_source"):
+        lines.append(f"cost_usd: {notes['computed_cost_source']}")

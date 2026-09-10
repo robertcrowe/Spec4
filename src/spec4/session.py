@@ -285,50 +285,10 @@ def _load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]:
     # pin phase_version to the old round. Only the prior product name is carried,
     # as read-only reference for the agent-select prompt; phase_version stays
     # None so the funnel resolves the new round's version.
-    new_round = project_manager.brownfield_new_round_pending(path)
-    if new_round:
-        session["_prior_app_name"] = (artifacts.get("vision") or {}).get("name")
-        artifacts = {}
-    if artifacts.get("vision"):
-        session["vision_statement"] = artifacts["vision"]
-        session["brainstormer_state"] = STATE_VISION_COMPLETE
-    if artifacts.get("feature_specs"):
-        session["feature_specs"] = artifacts["feature_specs"]
-    if artifacts.get("stack"):
-        session["stack_statement"] = artifacts["stack"]
-        session["stack_advisor_state"] = STATE_STACK_COMPLETE
-    if artifacts.get("phases"):
-        session["phases"] = artifacts["phases"]
-        session["phase_version"] = artifacts.get("phase_version")
-        session["phaser_state"] = STATE_PHASES_COMPLETE
-    if artifacts.get("code_review"):
-        session["code_review"] = artifacts["code_review"]
-        session["code_scanner_state"] = STATE_REVIEW_COMPLETE
-    ai_features = None if new_round else project_manager.load_ai_features(path)
-    if ai_features:
-        session["ai_features"] = ai_features
-        session["ai_catalog"] = _catalog_from_features(ai_features)
-        session["agentifier_state"] = STATE_AGENTIFIER_COMPLETE
-        session["agentifier_catalog_done"] = True
-        session["agentifier_breadth_chosen"] = True
-        session["agentifier_spec_done"] = True
-        session["agentifier_cross_cutting_done"] = True
-        session["agentifier_priority_done"] = True
-    elif not new_round:
-        ai_catalog = project_manager.load_ai_catalog(path)
-        if ai_catalog:
-            session["ai_catalog"] = ai_catalog
-            session["agentifier_catalog_done"] = True
-            # spec drafting not yet complete — keep STATE_IN_PROGRESS
-    deployment_plan = None if new_round else project_manager.load_deployment_plan(path)
-    if deployment_plan:
-        session["deployer_state"] = STATE_DEPLOYER_COMPLETE
-    session["_deployer_plan_existed"] = bool(deployment_plan)
-    session["_deployer_plan_markdown"] = None
-    session["_deployer_pending_plan"] = False
-    session["_deployer_pending_readme"] = False
-    session["_deployer_generating_readme"] = False
-    session["_deployer_readme_markdown"] = None
+    new_round = _load_round_artifacts(session, path, artifacts)
+    _load_ai_features(session, path, new_round)
+    # spec drafting not yet complete — keep STATE_IN_PROGRESS
+    _load_deployment_state(session, path, new_round)
     # D-PM1: picking a directory re-opens the question. `_reset_for_new_project`
     # above already restored the default, but state it here too so the intent
     # survives a future refactor of that helper. Whether the directory is
@@ -591,6 +551,84 @@ def _persist_artifacts(session: dict[str, Any]) -> None:
     session["_turn_usage"] = _summarize_turn_usage(
         session.get("active_agent"), usage_records
     )
+    _persist_spec_artifacts(session, working_dir, version)
+    _persist_plan_artifacts(session, working_dir, version)
+
+
+def _load_round_artifacts(
+    session: dict[str, Any],
+    path: str,
+    artifacts: dict[str, Any],
+) -> bool:
+    """Fold the loaded artifacts into the session; returns the new-round flag."""
+    new_round = project_manager.brownfield_new_round_pending(path)
+    if new_round:
+        session["_prior_app_name"] = (artifacts.get("vision") or {}).get("name")
+        artifacts = {}
+    if artifacts.get("vision"):
+        session["vision_statement"] = artifacts["vision"]
+        session["brainstormer_state"] = STATE_VISION_COMPLETE
+    if artifacts.get("feature_specs"):
+        session["feature_specs"] = artifacts["feature_specs"]
+    if artifacts.get("stack"):
+        session["stack_statement"] = artifacts["stack"]
+        session["stack_advisor_state"] = STATE_STACK_COMPLETE
+    if artifacts.get("phases"):
+        session["phases"] = artifacts["phases"]
+        session["phase_version"] = artifacts.get("phase_version")
+        session["phaser_state"] = STATE_PHASES_COMPLETE
+    if artifacts.get("code_review"):
+        session["code_review"] = artifacts["code_review"]
+        session["code_scanner_state"] = STATE_REVIEW_COMPLETE
+    return new_round
+
+
+def _load_ai_features(
+    session: dict[str, Any],
+    path: str,
+    new_round: bool,
+) -> None:
+    """Load the AI catalog and its derived flags, unless a new round is pending."""
+    ai_features = None if new_round else project_manager.load_ai_features(path)
+    if ai_features:
+        session["ai_features"] = ai_features
+        session["ai_catalog"] = _catalog_from_features(ai_features)
+        session["agentifier_state"] = STATE_AGENTIFIER_COMPLETE
+        session["agentifier_catalog_done"] = True
+        session["agentifier_breadth_chosen"] = True
+        session["agentifier_spec_done"] = True
+        session["agentifier_cross_cutting_done"] = True
+        session["agentifier_priority_done"] = True
+    elif not new_round:
+        ai_catalog = project_manager.load_ai_catalog(path)
+        if ai_catalog:
+            session["ai_catalog"] = ai_catalog
+            session["agentifier_catalog_done"] = True
+
+
+def _load_deployment_state(
+    session: dict[str, Any],
+    path: str,
+    new_round: bool,
+) -> None:
+    """Load the deployment plan and reset the Deployer's turn flags."""
+    deployment_plan = None if new_round else project_manager.load_deployment_plan(path)
+    if deployment_plan:
+        session["deployer_state"] = STATE_DEPLOYER_COMPLETE
+    session["_deployer_plan_existed"] = bool(deployment_plan)
+    session["_deployer_plan_markdown"] = None
+    session["_deployer_pending_plan"] = False
+    session["_deployer_pending_readme"] = False
+    session["_deployer_generating_readme"] = False
+    session["_deployer_readme_markdown"] = None
+
+
+def _persist_spec_artifacts(
+    session: dict[str, Any],
+    working_dir: Any,
+    version: Any,
+) -> None:
+    """Persist the review, vision, feature specs and AI catalog artifacts."""
     if session.get("code_scanner_state") == STATE_REVIEW_COMPLETE and session.get(
         "code_review"
     ):
@@ -615,6 +653,14 @@ def _persist_artifacts(session: dict[str, Any]) -> None:
         "stack_statement"
     ):
         project_manager.save_stack(working_dir, session["stack_statement"], version)
+
+
+def _persist_plan_artifacts(
+    session: dict[str, Any],
+    working_dir: Any,
+    version: Any,
+) -> None:
+    """Persist the stack, phases and deployment-plan artifacts."""
     if session.get("phaser_state") == STATE_PHASES_COMPLETE and session.get("phases"):
         project_manager.save_phases(
             working_dir,

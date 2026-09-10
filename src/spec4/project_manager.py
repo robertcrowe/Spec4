@@ -428,7 +428,7 @@ def agent_button_state(
     return state
 
 
-def _artifact_button_state(
+def _artifact_button_state(  # noqa: C901, E501  # the branches are the documented artifact button state machine; E501 because project_manager.py carries no per-file E501 ignore
     working_dir: str | Path | None,
     agent: str,
     session: dict[str, Any] | None = None,

@@ -430,24 +430,7 @@ def _render_topology(value: Any) -> list[str]:
         lines.append(f"- Communication pattern: {pattern}")
     if synthesis:
         lines.append(f"- Synthesis: {synthesis}")
-    if isinstance(subagents, list):
-        for item in subagents:
-            if not isinstance(item, dict):
-                continue
-            name = _clean(item.get("name"))
-            if not name:
-                continue
-            role_ = _clean(item.get("role"))
-            in_ = _clean(item.get("input"))
-            out = _clean(item.get("output"))
-            head = f"- Sub-agent `{name}`"
-            if role_:
-                head += f" — {role_}"
-            lines.append(head)
-            if in_:
-                lines.append(f"  - Input: {in_}")
-            if out:
-                lines.append(f"  - Output: {out}")
+    _subagent_lines(subagents, lines)
     return ["**Topology**", "", *lines, ""] if lines else []
 
 
@@ -497,21 +480,7 @@ def _render_graph_lines(feature: dict[str, Any]) -> list[str]:
     if requires:
         lines.append(f"- Requires: {', '.join(f'`{r}`' for r in requires)}")
 
-    analysis = feature.get("tier_analysis")
-    if isinstance(analysis, dict):
-        rationale = _clean(analysis.get("rationale"))
-        if rationale:
-            lines.append(f"- Tier rationale: {rationale}")
-        cheaper = _clean(analysis.get("compared_to_next_tier_down"))
-        if cheaper:
-            lines.append(f"- Next-cheaper tier would lose: {cheaper}")
-        if analysis.get("borderline"):
-            seams = [_clean(s) for s in (analysis.get("borderline_seams") or [])]
-            seams = [s for s in seams if s]
-            if seams:
-                lines.append(f"- Borderline — seams to watch: {'; '.join(seams)}")
-            else:
-                lines.append("- Borderline tier call.")
+    _tier_analysis_lines(feature, lines)
     decision = _clean(feature.get("tier_decision_rationale"))
     if decision:
         lines.append(f"- Tier decision (developer): {decision}")
@@ -620,3 +589,50 @@ def spec_index(ai_features: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
         for node in nodes
         if isinstance(node, dict) and _clean(node.get("id"))
     }
+
+
+def _subagent_lines(
+    subagents: Any,
+    lines: list[str],
+) -> None:
+    """One block per named sub-agent in a topology."""
+    if isinstance(subagents, list):
+        for item in subagents:
+            if not isinstance(item, dict):
+                continue
+            name = _clean(item.get("name"))
+            if not name:
+                continue
+            role_ = _clean(item.get("role"))
+            in_ = _clean(item.get("input"))
+            out = _clean(item.get("output"))
+            head = f"- Sub-agent `{name}`"
+            if role_:
+                head += f" — {role_}"
+            lines.append(head)
+            if in_:
+                lines.append(f"  - Input: {in_}")
+            if out:
+                lines.append(f"  - Output: {out}")
+
+
+def _tier_analysis_lines(
+    feature: dict[str, Any],
+    lines: list[str],
+) -> None:
+    """Tier rationale, next-cheaper-tier loss and borderline seams."""
+    analysis = feature.get("tier_analysis")
+    if isinstance(analysis, dict):
+        rationale = _clean(analysis.get("rationale"))
+        if rationale:
+            lines.append(f"- Tier rationale: {rationale}")
+        cheaper = _clean(analysis.get("compared_to_next_tier_down"))
+        if cheaper:
+            lines.append(f"- Next-cheaper tier would lose: {cheaper}")
+        if analysis.get("borderline"):
+            seams = [_clean(s) for s in (analysis.get("borderline_seams") or [])]
+            seams = [s for s in seams if s]
+            if seams:
+                lines.append(f"- Borderline — seams to watch: {'; '.join(seams)}")
+            else:
+                lines.append("- Borderline tier call.")

@@ -6688,3 +6688,89 @@ The two `ARG001` unused `session` parameters (`layouts/__init__.py:235`,
 | Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
 | Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 175.05s` (exit 0) |
 | Coverage | same run | `TOTAL 12395 stmts, 896 miss (893 + 3), 93%` |
+
+## 46. Phase 5o — root modules: six of seven, 15 helpers, 1 noqa
+
+`_artifacts.py`, `feature_specs.py`, `providers.py`, `usage_report.py`, `session.py`,
+`project_manager.py`. **`llm.py` is not in this commit** — its first attempt failed seven
+tests and was reverted; it returns as **5o2** (47, 48).
+
+### 46.1 Before and after
+
+| File | Function | C901 | Br | St | → |
+|---|---|---:|---:|---:|---|
+| `session.py` | `_persist_artifacts` | **14** | **13** | — | clear |
+| `_artifacts.py` | `merge_library_additions` | **14** | **14** | — | clear |
+| `feature_specs.py` | `_render_graph_lines` | **13** | **13** | — | clear |
+| `providers.py` | `_fetch_models` | **13** | — | — | clear |
+| `project_manager.py` | `_artifact_button_state` | **13** | — | — | **noqa** |
+| `feature_specs.py` | `_render_topology` | **12** | — | — | clear |
+| `session.py` | `_load_working_dir` | **12** | — | **51** | clear |
+| `usage_report.py` | `render_usage_table` | **12** | — | — | clear |
+
+### 46.2 The 15 helpers
+
+`_artifacts.py` — `_libraries_map`, `_library_entry`.
+`feature_specs.py` — `_subagent_lines`, `_tier_analysis_lines`.
+`providers.py` — `_fetch_openai`, `_fetch_bedrock`, `_fetch_openrouter` (the three
+largest of eight provider arms; the five short ones stay inline and the function lands
+under threshold).
+`usage_report.py` — `_usage_row` (**promoted closure**, rule 8), `_usage_missing_counts`,
+`_usage_footnotes`.
+`session.py` — `_load_round_artifacts`, `_load_ai_features`, `_load_deployment_state`,
+`_persist_spec_artifacts`, `_persist_plan_artifacts`.
+
+### 46.3 Rule 10 class 4 — the E501 case it was written for
+
+`project_manager.py` is the file 27.2 rule 10 names: it carries **no** per-file `E501`
+ignore, unlike `agents/**` and `agentifier/**`. Appending the state-machine reason to
+`def _artifact_button_state(` takes the line past 88, so `E501` joins the noqa on the
+same line, exactly as the rule prescribes:
+
+```
+def _artifact_button_state(  # noqa: C901, E501  # the branches are the documented
+artifact button state machine; E501 because project_manager.py carries no per-file
+E501 ignore
+```
+
+This is the first and only use of that clause in Phase 5.
+
+### 46.4 Coverage: 893 + 4 (rule 4, permitted case)
+
+| Site | Block it calls | Sub-phase |
+|---|---|---|
+| `agents/designer.py:738` | `_designer_accumulate_tool_calls(...)` | 5j |
+| `agents/designer.py:747` | `_designer_tool_call_followup(...)` | 5j |
+| `agentifier/agentifier.py:1315` | `_cc_store_analysis(...)` | 5k |
+| **`feature_specs.py:433`** | **`_subagent_lines(...)`, inside `_render_topology`** | **5o** |
+
+`_render_topology`'s body is never entered by the suite (lines 420–434 were already
+missed), so the call statement added at 433 is a new miss and nothing else moved. Same
+permitted shape as the other three.
+
+### 46.5 Line accounting (rule 3)
+
+**549 non-blank lines**; **543 verbatim**; 6 accounted:
+
+- **4** in `render_usage_table` — the `def _line(...)` closure line and its three call
+  sites, which rule 8's promotion turned into `_usage_row(cells, widths, right)`. The
+  captured `widths` and `right` became parameters, so each call site gained two
+  arguments; the alignment expression itself is verbatim.
+- **1** — `tier_libs.append(new_lib)` became `tier_libs.append(_library_entry(entry, name))`.
+- **1** — `def _artifact_button_state(`, now carrying the noqa.
+
+**No statement line is unaccounted for.**
+
+### 46.6 Statement counts (rule 4)
+
+Suite-wide **12395 → 12426, +31**. Misses **897 = 893 + 4**, the fourth accounted in 46.4.
+
+### 46.7 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 174.40s` (exit 0) |
+| Coverage | same run | `TOTAL 12426 stmts, 897 miss (893 + 4), 93%` |

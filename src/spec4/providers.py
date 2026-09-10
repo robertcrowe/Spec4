@@ -110,15 +110,7 @@ def _json_get(url: str, headers: dict[str, str]) -> dict[str, Any]:
 
 def _fetch_models(provider_key: str, api_key: str) -> list[str]:
     if provider_key == "openai":
-        data = _json_get(
-            "https://api.openai.com/v1/models", {"Authorization": f"Bearer {api_key}"}
-        )
-        chat_prefixes = ("gpt-", "o1", "o3", "chatgpt-")
-        return sorted(
-            m["id"]
-            for m in data.get("data", [])
-            if any(m["id"].startswith(p) for p in chat_prefixes)
-        )
+        return _fetch_openai(api_key)
 
     if provider_key == "anthropic":
         data = _json_get(
@@ -128,34 +120,7 @@ def _fetch_models(provider_key: str, api_key: str) -> list[str]:
         return [m["id"] for m in data.get("data", [])]
 
     if provider_key == "bedrock":
-        creds = bedrock_auth_kwargs(api_key)
-        region = creds.get("aws_region_name", "us-east-1")
-        if "api_key" in creds:
-            # New-style Bedrock API key — use REST API with bearer token.
-            data = _json_get(
-                f"https://bedrock.{region}.amazonaws.com/foundation-models",
-                {"Authorization": f"Bearer {creds['api_key']}"},
-            )
-            return [
-                f"bedrock/converse/{m['modelId']}"
-                for m in data.get("modelSummaries", [])
-                if "ON_DEMAND" in m.get("inferenceTypesSupported", [])
-            ]
-        # IAM or ambient credentials — use boto3/SigV4.
-        client_kwargs: dict[str, Any] = {
-            "service_name": "bedrock",
-            "region_name": region,
-        }
-        for k in ("aws_access_key_id", "aws_secret_access_key", "aws_session_token"):
-            if creds.get(k):
-                client_kwargs[k] = creds[k]
-        client = boto3.client(**client_kwargs)
-        response = client.list_foundation_models(byOutputModality="TEXT")
-        return [
-            f"bedrock/converse/{m['modelId']}"
-            for m in response.get("modelSummaries", [])
-            if "ON_DEMAND" in m.get("inferenceTypesSupported", [])
-        ]
+        return _fetch_bedrock(api_key)
 
     if provider_key == "gemini":
         data = _json_get(
@@ -188,22 +153,7 @@ def _fetch_models(provider_key: str, api_key: str) -> list[str]:
         ]
 
     if provider_key == "openrouter":
-        # The model list is public — it returns the full catalogue for a bogus
-        # bearer just as happily as for a real one. Every other provider's list
-        # call doubles as the credential check that gates the setup and
-        # per-agent flows, so on its own this one would let a wrong key through
-        # to the first real call, which fails as a bare 401 minutes later. Verify
-        # the key against an endpoint that actually requires it first.
-        if api_key:
-            _json_get(
-                "https://openrouter.ai/api/v1/key",
-                {"Authorization": f"Bearer {api_key}"},
-            )
-        data = _json_get(
-            "https://openrouter.ai/api/v1/models",
-            {"Authorization": f"Bearer {api_key}"} if api_key else {},
-        )
-        return [f"openrouter/{m['id']}" for m in data.get("data", []) if m.get("id")]
+        return _fetch_openrouter(api_key)
 
     if provider_key == "nebius":
         api_base = PROVIDERS["nebius"]["api_base"]
@@ -228,3 +178,74 @@ def provider_key_for_label(label: str) -> str:
         if info["label"] == label:
             return key
     return next(iter(PROVIDERS))
+
+
+def _fetch_openai(
+    api_key: str,
+) -> list[str]:
+    """Chat-capable OpenAI model ids."""
+    data = _json_get(
+        "https://api.openai.com/v1/models", {"Authorization": f"Bearer {api_key}"}
+    )
+    chat_prefixes = ("gpt-", "o1", "o3", "chatgpt-")
+    return sorted(
+        m["id"]
+        for m in data.get("data", [])
+        if any(m["id"].startswith(p) for p in chat_prefixes)
+    )
+
+
+def _fetch_bedrock(
+    api_key: str,
+) -> list[str]:
+    """Bedrock model ids reachable with these credentials."""
+    creds = bedrock_auth_kwargs(api_key)
+    region = creds.get("aws_region_name", "us-east-1")
+    if "api_key" in creds:
+        # New-style Bedrock API key — use REST API with bearer token.
+        data = _json_get(
+            f"https://bedrock.{region}.amazonaws.com/foundation-models",
+            {"Authorization": f"Bearer {creds['api_key']}"},
+        )
+        return [
+            f"bedrock/converse/{m['modelId']}"
+            for m in data.get("modelSummaries", [])
+            if "ON_DEMAND" in m.get("inferenceTypesSupported", [])
+        ]
+    # IAM or ambient credentials — use boto3/SigV4.
+    client_kwargs: dict[str, Any] = {
+        "service_name": "bedrock",
+        "region_name": region,
+    }
+    for k in ("aws_access_key_id", "aws_secret_access_key", "aws_session_token"):
+        if creds.get(k):
+            client_kwargs[k] = creds[k]
+    client = boto3.client(**client_kwargs)
+    response = client.list_foundation_models(byOutputModality="TEXT")
+    return [
+        f"bedrock/converse/{m['modelId']}"
+        for m in response.get("modelSummaries", [])
+        if "ON_DEMAND" in m.get("inferenceTypesSupported", [])
+    ]
+
+
+def _fetch_openrouter(
+    api_key: str,
+) -> list[str]:
+    """OpenRouter model ids."""
+    # The model list is public — it returns the full catalogue for a bogus
+    # bearer just as happily as for a real one. Every other provider's list
+    # call doubles as the credential check that gates the setup and
+    # per-agent flows, so on its own this one would let a wrong key through
+    # to the first real call, which fails as a bare 401 minutes later. Verify
+    # the key against an endpoint that actually requires it first.
+    if api_key:
+        _json_get(
+            "https://openrouter.ai/api/v1/key",
+            {"Authorization": f"Bearer {api_key}"},
+        )
+    data = _json_get(
+        "https://openrouter.ai/api/v1/models",
+        {"Authorization": f"Bearer {api_key}"} if api_key else {},
+    )
+    return [f"openrouter/{m['id']}" for m in data.get("data", []) if m.get("id")]

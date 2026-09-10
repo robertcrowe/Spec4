@@ -143,18 +143,7 @@ def merge_library_additions(
 
     # Locate (or create) the inner spec and its libraries map, tolerating both
     # the wrapped ({"stack_spec": {...}}) and bare shapes.
-    _inner = merged.get("stack_spec")
-    spec = _inner if isinstance(_inner, dict) else None
-    if spec is None:
-        if "stack_spec" in merged:
-            merged["stack_spec"] = {}
-            spec = merged["stack_spec"]
-        else:
-            spec = merged
-    libraries = spec.get("libraries")
-    if not isinstance(libraries, dict):
-        libraries = {}
-        spec["libraries"] = libraries
+    spec, libraries = _libraries_map(merged)
 
     for entry in additions:
         if not isinstance(entry, dict):
@@ -173,24 +162,7 @@ def merge_library_additions(
             for lib in tier_libs
         ):
             continue  # dedup-by-name guard
-        new_lib: dict[str, Any] = {"name": name}
-        category = str(entry.get("category", "")).strip()
-        purpose = str(entry.get("purpose", "")).strip()
-        if category:
-            new_lib["category"] = category
-        if purpose:
-            new_lib["purpose"] = purpose
-        # D-PH7d: preserve the join keys so the addition stays attributable
-        # (stack routing / NFR threading read these; an unkeyed entry is a
-        # global staple). List-of-non-empty-strings only; drop when empty.
-        for join_key in ("serves_features", "serves_capabilities", "satisfies_nfr"):
-            raw = entry.get(join_key)
-            if not isinstance(raw, list):
-                continue
-            ids = [s.strip() for s in raw if isinstance(s, str) and s.strip()]
-            if ids:
-                new_lib[join_key] = ids
-        tier_libs.append(new_lib)
+        tier_libs.append(_library_entry(entry, name))
 
     return merged
 
@@ -553,3 +525,49 @@ def load_existing_readme(working_dir: str | Path) -> str | None:
     except OSError:
         return None
     return markdown if markdown.strip() else None
+
+
+def _libraries_map(
+    merged: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Locate (or create) the inner spec and its libraries map."""
+    # Locate (or create) the inner spec and its libraries map, tolerating both
+    # the wrapped ({"stack_spec": {...}}) and bare shapes.
+    _inner = merged.get("stack_spec")
+    spec = _inner if isinstance(_inner, dict) else None
+    if spec is None:
+        if "stack_spec" in merged:
+            merged["stack_spec"] = {}
+            spec = merged["stack_spec"]
+        else:
+            spec = merged
+    libraries = spec.get("libraries")
+    if not isinstance(libraries, dict):
+        libraries = {}
+        spec["libraries"] = libraries
+    return spec, libraries
+
+
+def _library_entry(
+    entry: dict[str, Any],
+    name: str,
+) -> dict[str, Any]:
+    """One merged library entry, carrying its D-PH7d join keys."""
+    new_lib: dict[str, Any] = {"name": name}
+    category = str(entry.get("category", "")).strip()
+    purpose = str(entry.get("purpose", "")).strip()
+    if category:
+        new_lib["category"] = category
+    if purpose:
+        new_lib["purpose"] = purpose
+    # D-PH7d: preserve the join keys so the addition stays attributable
+    # (stack routing / NFR threading read these; an unkeyed entry is a
+    # global staple). List-of-non-empty-strings only; drop when empty.
+    for join_key in ("serves_features", "serves_capabilities", "satisfies_nfr"):
+        raw = entry.get(join_key)
+        if not isinstance(raw, list):
+            continue
+        ids = [s.strip() for s in raw if isinstance(s, str) and s.strip()]
+        if ids:
+            new_lib[join_key] = ids
+    return new_lib
