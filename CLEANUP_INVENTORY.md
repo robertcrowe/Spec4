@@ -9757,3 +9757,1232 @@ Everything Phase 6 logged, in the order it should be taken.
 
 Item 1 is the largest single input Phase 7 has and the cheapest per site; item 2 is where
 the judgment is. They are separable, and item 1 does not depend on item 2.
+
+## 60. Phase 7 pre-work — impact inventory before the first `src/` edit
+
+Recorded 2026-09-10 on branch `look-rework`, at `f862f65` (Phase 6 close-out). **Nothing
+under `src/`, `tests/` or `pyproject.toml` was written.** Everything that had to execute —
+the rename proof, a dry run of every rename that is not a stop, the mutation runs — ran in
+throwaway clones under the session scratchpad and was never committed; the repo's
+`git status --porcelain` was empty before and after. The only artifact is this section.
+**§60 proposes; Phase 7 decides**, and begins only on approval of §60.
+
+The scripts lived in the scratchpad and are described inline so every number can be
+re-derived. The rename check is given in full (§60.2), because Phase 7 runs it at every
+rename commit.
+
+### 60.0 Where this run's directive and the record disagree
+
+Nine points. In each the record or the plan wins, per the standing rule; where the
+directive's intent survives the correction, it is kept.
+
+**(a) The 81 live in §55.9, not §54.** The directive places the 81 rename names, their
+sites-per-name order and "§54's corrected count" in §54. §54 covers one cluster (34 names,
+and 87 sites that §55.1 corrected to 208); the 81, the split rule and the order are
+§55.9's, and the corrected count is §55.1's AST count. **§55.9 is used throughout.**
+Re-derived at `f862f65` with §55's own scripts: **1,364 sites** (§55: 1,361); rename half
+**81 rows, 1,045 sites** (§55: 1,042). All three extra sites are `_feature_names`, 6 → 9,
+added by 6z's `TestFeatureNamesGuards` (§58.2). No disposition, kind or cluster order
+changes — `agents.brainstormer` goes from 7.6 to 8.2 sites per name and stays sixth.
+
+**(b) 81 rows are 80 functions.** `_chat_layout` is listed under two clusters —
+`layouts._chat` (37 sites) and `layouts` (7) — because tests import it by both paths. One
+rename covers both; it sits in batch 2, and batch 3 carries nine names, not ten.
+
+**(c) The `Any` count is not a mypy count.** The directive asks for "the `mypy --strict`
+`Any` count that 5p(h) deferred (expected 290)". `mypy --strict` has no such count —
+explicit `Any` is legal under strict, which is why the gate is green;
+`--disallow-any-explicit` reports **1,009** errors in 84 files. The 290 is the second line
+of the survey 5p ran before writing §49.5 (recovered from that session's command log):
+`grep -rc ': Any' src/spec4/ --include=*.py`, summed — **lines containing `: Any`**. It
+reproduces exactly. The survey's first line, `grep -c ': Any\b\|-> Any\b'
+src/spec4/**/*.py`, printed 171 because bash expands `**` as `*` without `globstar` (57 of
+92 files, no root module) — it is not the figure 5p recorded. **Record wins: 290 stands,
+named for what it measures.** §60.5 classifies exactly those 290 lines and sizes the two
+populations the grep cannot see.
+
+**(d) "§59.6 item 14" is item 6, and §56.3 has a row that never ran.** §59.6 has thirteen
+items; the runaway-valve message is item 6. §56.3 announces nine mutations and tabulates
+eight: **M2 was never measured.** Its anchor, `return final_buf, new_store, no_update`,
+does not exist — the line is `return deliver_buf, new_store, no_update`
+(`callbacks/designer/__init__.py:312`) — and §56's harness printed
+`-- anchor not found --` and moved on. Measured here, M2 is caught by both classes
+(§60.5). And §56.5 / §59.6 item 6 overstate M8: the message "can be replaced with anything
+and the suite stays green" is **not** true — replacing the whole message fails two tests
+that assert `"Refresh the page"`. What nothing asserts is the *"was generated and saved"*
+clause, which is exactly what M8 removed. Corrected in §60.5.
+
+**(e) The net has three kinds.** The directive's "net references" counts sites in
+whole-file entries and tier-B classes. §50.3's rule covers the 85 tier-A and ordering node
+ids as well ("may not be edited"), though its check is collection. **Record wins:** §60.2
+counts all three (W/B/A). The rename half changes the bodies of **23 tier-A nodes** (19
+once the stops are held).
+
+**(f) Whole-file entries take §54.7, not the new petition.** The plan's Phase 7 text: *"a
+promotion whose tests live in a §50.3 whole-file entry needs the pre-shaped petition in
+§54.7."* The directive places only `test_renderer_goldens.py` under §54.7 and the other
+whole-file entries under the new rename petition, whose first check admits identifier
+substitution in test bodies. **Plan wins.** Every whole-file entry a rename reaches stays
+under §54.7 as written — import lines alone — and a rename can meet it by importing the
+public name under the old local one (`from spec4.session import default_session as
+_default_session`), so that no body line changes. Proven on one name and across 74
+(§60.2). The §60.3 petition covers what the plan does not name: tier-B classes and tier-A
+node ids. Where a whole-file entry reaches a name *by attribute*, no import can help and
+§54.7 cannot be met: three names, all stops (§60.3).
+
+**(g) A substitution rewrites string references; what it gets wrong is elsewhere.** The
+directive says string references "survive a mechanical rename silently broken". That is
+true of an AST or IDE rename, which leaves strings alone — and the break is then loud:
+`patch()` raises `AttributeError`, `monkeypatch.setattr` raises by default, a stale
+`__all__` entry trips ruff's F822, a stale `sys.modules` key raises `KeyError`. The
+mechanism §60.2 defines is a word-boundary substitution, which rewrites all 96 literal
+string references along with the code. What *it* gets wrong is different, and §60.2 lists
+each: an old name that is also a module name (4), a new name already bound where the old
+one is used (3 collisions), code outside the gate that nothing would run (`evals/`,
+`scripts/`), and tracked `.spec4/` files it must not write (Rule 2).
+
+**(h) One of the "nine agentifier phase runners" is neither.** `_stream_suppressing_json`
+is `spec4.agents._reask.stream_suppressing_json` — already public at its owner, and the
+`yield from` target of three other agents' `run` as well as agentifier's — imported into
+`agentifier.py:89` under the private alias its module docstring calls "its pre-4j name"
+(`agentifier.py:26`). §60.4 gives it its own row. The other eight are agentifier
+generators, and §60.4 writes their proposal once.
+
+**(i) The sequence omits the plan's audit.** The directive's §60.6 order ends at type
+hygiene and root-siblings. The plan's Phase 7 also carries the Phase 0 re-measurement and
+`CLEANUP_REPORT.md`, the symptom checklist, the docs and the inventory fold, and §59.6
+items 9–13 have no slot. **Plan wins:** §60.6 places them.
+
+**Untouched, as instructed:** 5p(h) type hygiene (sized in §60.5; no annotation changed);
+the `yield from` sub-generator backlog (§27.4 — sized with the agentifier seams in §60.4);
+the `project_manager` root-siblings inconsistency (§60.5); `evals/` (read for references
+only, §60.5). §27.4's eleven complexity `noqa`s are still eleven, beside the twelve
+arity-only `PLR0913`s.
+
+### 60.1 Baseline at the Phase 6 close
+
+Measured on `f862f65`, clean tree, before anything else.
+
+| Gate | Command | Result | §59 | |
+|---|---|---|---|---|
+| Ruff — promoted set `E, F, C90, PLR0912, PLR0913, PLR0915, SIM, B, ARG` | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) | same | ✅ |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) | same | ✅ |
+| Mypy, strict | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) | same | ✅ |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped` (exit 0); **4,200 collected** | 4,200 / 1 | ✅ |
+| Coverage | same run | `TOTAL 12421 stmts, 891 miss, 93%` | 891 | ✅ |
+| Off-limits | §50.3, all three kinds, fresh `--collect-only` | 188 + 85 + 183 = **456 / 456** collect, 0 failures; 0 tier-B files with hunks; no whole-file entry in the diff | 456 | ✅ |
+| `Any` — 5p(h)'s figure | `grep -rc ': Any' src/spec4/ --include=*.py`, summed | **290** lines in 47 files | 290 | ✅ |
+
+**Every figure matches §59; nothing moved between the Phase 6 close and this run.** The
+wall-clock (120.71 s) is not a comparison figure under §51.6, and none is made.
+
+The 290 by file: `agents/code_scanner/_review_render.py` 27 · `llm.py` 21 ·
+`feature_specs.py` 19 · `callbacks/designer/_wizard.py` 18 ·
+`agents/stack_advisor/_render.py` 17 · `callbacks/_artifacts.py` 16 ·
+`callbacks/designer/_refine.py` 15 · `callbacks/_setup.py`, `_gate.py`, `_chat.py` 11 each ·
+`callbacks/_nav.py` 10 · `callbacks/__init__.py` 9 · `streaming.py`,
+`callbacks/designer/_mock_gen.py` 7 each · `agents/phaser/__init__.py`,
+`agents/feature_speccer.py`, `agents/brainstormer.py`, `agentifier/subagents.py`,
+`_phase_markdown.py` 6 each · `session.py`, `layouts/designer.py`, `_usage.py` 5 each ·
+`layouts/_shared.py`, `callbacks/designer/__init__.py`, `agents/designer.py`,
+`agentifier/_seed.py` 4 each · `usage_report.py`, `app.py` 3 each ·
+`layouts/_agent_rows.py`, `agents/code_scanner/__init__.py`, `agents/_feature_context.py`,
+`agentifier/reference_verifier.py`, `agentifier/agentifier.py` 2 each · and 1 each in
+`stack_routing.py`, `layouts/_setup.py`, `layouts/_round_cost.py`,
+`layouts/_artifact_view.py`, `agents/phaser/_phase_extract.py`, `agents/_tool_probe.py`,
+`agents/_stack_context.py`, `agents/_seam_check.py`, `agents/_reask.py`,
+`agents/_phase_schema.py`, `agents/_image_probe.py`, `agents/_code_review_schema.py`,
+`agentifier/requires_reconciler.py`, `agentifier/grounding.py`. By area: `callbacks/` 112,
+`agents/` 78, root modules 70, `agentifier/` 16, `layouts/` 14.
+
+Around it, for scale — none of these is a gate figure:
+
+| Population | Count | Measure |
+|---|---:|---|
+| `: Any` lines — the 290 | 290 | 5p's grep |
+| `-> Any` return lines | 148 | `grep -rn -- '-> Any\b' src/spec4` |
+| `dict[str, Any]` | 891 lines, 972 occurrences | grep |
+| every `Any` token, imports included | 1,741 | `grep -rwo Any` |
+| `mypy --disallow-any-explicit` | 1,009 errors in 84 files | not part of the gate |
+
+Re-derived for §60.2 with §55's scripts: 1,364 sites; 81 rows / 1,045 sites `rename`;
+13 / 129 `design seam` — the only change is §60.0(a)'s +3.
+
+### 60.2 The rename half — per-name dry run
+
+Every tracked text file (`git ls-files`, minus this record) was scanned for each of the 80
+names — the tokenizer to tell code from string from comment, the AST for bindings, scopes
+and the §50.3 line ranges. Then the plan was **executed in a scratch clone and checked**:
+one name end to end as the proof, the 74 names that are not stops as a dry run, and each
+stop alone. Every finding below that bears on whether a rename works was confirmed by
+executing it.
+
+**The columns.**
+
+- **Proposed public name** — the private name without its underscore, §54.3's rule. None is
+  overridden here: where that name collides, the row is a stop and Phase 7 picks.
+- **Collision** — `yes` is a stop. The public name is already bound at module level in
+  the owner, in any module that re-exports the private name, **or in any scope that also
+  uses the private name** (the case a module-level check misses: a local variable the
+  rename would turn into `x = x(...)`); or it equals a string literal used as a component
+  id or session key. There are no star imports in `src/`. *Clash* marks a public name that
+  already exists **elsewhere** — not a Python collision and not a stop under the
+  directive's definition, but two public functions with one name; flagged for Phase 7's
+  naming review.
+- **String refs** — literal strings that reach the name: `patch("…")` targets,
+  `patch.object` / `monkeypatch.setattr` attribute strings, `__all__` entries,
+  `sys.modules` keys. Listed by file:line under each batch.
+- **Net refs W/B/A** — occurrences inside a §50.3 whole-file entry / a listed tier-B
+  class / a tier-A or ordering node, ranges read from the tree (an occurrence counts once,
+  in that order of precedence).
+- **D-refs** — a comment block or docstring that holds both the name and a D-number
+  (`D-[A-Z]{2,3}\d+`). The substitution updates them in the same commit.
+- **Sites** — §55's AST count at `f862f65` (§55's figure in brackets where it differs).
+
+#### What the scan found
+
+1. **Three collisions — stops.** `_breadth_panel` and `_retry_panel`: `_chat_layout` keeps
+   both panels in locals of the public names' spelling (`layouts/_chat.py:103–104`), so
+   the renamed lines read `breadth_panel = breadth_panel(session)`. `_agent_rows`:
+   `layouts/_agent_rows.py:302` already defines a different public `agent_rows` — the
+   data function the layout builder calls at `:425`. **All three confirmed by applying
+   them alone:** the two panels trip ruff F823 at `_chat.py:103` / `:104` and fail 34
+   tests each with `UnboundLocalError` — **mypy passes both**, so ruff and the suite are
+   what catch it; `_agent_rows` trips F811 three times and mypy `no-redef`
+   (`_agent_rows.py:407`), and the renamed builder calls itself — 34 × `RecursionError` in
+   `test_agent_rows.py`.
+2. **Three names §54.7 cannot carry — stops.** A whole-file entry reaches them by
+   attribute, where no import alias helps: `llm._record_usage(`
+   (`test_streaming_characterization.py:344`), `dmod._start_gen(` (`:402`), and
+   `project_manager._with_readme_attribution(` through the façade
+   (`test_project_manager_golden.py:168, 169, 172, 173`). Options in §60.3.
+3. **Three clashes, not collisions.** `_cost_summary` → `cost_summary` beside
+   `spec4._usage.cost_summary`; `_round_cost` → `round_cost` beside `_usage.round_cost`,
+   which the same module calls (`layouts/_round_cost.py:243`); `_revision_delta` →
+   `revision_delta` beside four per-agent public `revision_delta`s (`deployer.py:397`,
+   `stack_advisor/_stack_shape.py:27`, `designer.py:265`, `phaser/_revision.py:36`). None
+   shares a scope with the other; all three renamed cleanly in the dry run.
+4. **Four old names are also module names** — `_round_tree`, `_status_bar`, `_agent_rows`
+   and `_round_cost` are each the function *and* the submodule of that name. A plain
+   substitution would rewrite import paths and patch-string components too (loudly:
+   `ModuleNotFoundError` the moment `spec4.layouts` imports) — and, silently, eight
+   docstring and comment lines that name the module, such as `_round_tree.ROUND_ARTIFACTS`
+   (`layouts/_artifact_view.py:16, 139, 166, 358`, `_chat_actions.py:127`,
+   `_chat_panels.py:50`, `test_artifact_view.py:973`, `test_chat_open_links.py:173`). The
+   forward rename below leaves every module-path occurrence alone — **31** in the dry run.
+   And the rename flips what `spec4.layouts._X` means: today the package attribute is the
+   function (the re-export shadows the submodule); afterwards it is the submodule, so a
+   site the rename missed would get a module and fail when called — loud, and the dry run
+   found none. It also retires §59.6 item 12: once the function is `round_cost`,
+   `spec4.layouts._round_cost` resolves to the submodule again, so
+   `test_cost_summary.py:624`'s `sys.modules` idiom is no longer needed. Its key is a module
+   path and the rename leaves it; simplifying the test is a separate commit.
+5. **Code outside the gate.** `evals/` holds 7 of the names in 4 files
+   (`agentifier/run_mechanism_probe.py`, `agentifier/README.md`,
+   `phaser/declaration_alignment.py`, `scout/phantom_link_check.py`) and
+   `scripts/e2e_agentifier.py` holds `_default_session`. Nothing runs either, so a rename
+   that skipped them would break them **silently**. The substitution covers them: 5
+   files, 20 lines in the dry run. **Tracked `.spec4/` files** name 7 of the functions in
+   15 files — the dogfood rounds' phase prompts and artifacts. Rule 2 forbids writing
+   there; they are skipped and go stale by design.
+6. **`app.py` and `AGENT_KEYS`.** Batches 1–3 touch `app.py`: the imports at `:26` and
+   `:29–34`, the uses at `:92, 127, 387, 403–413`. The `from spec4.layouts import (…)`
+   block is exploded with a trailing comma, so ruff keeps its shape, and the two
+   `# noqa: E402, F401` lines D-LR1 keeps (`:74–75`, the callback imports) are not
+   touched by any batch. **In the dry run `app.py`
+   changed 15 lines, every one a name in place — no line moved, no import reordered
+   (D-LR1).** No batch touches `app_constants.py`: `AGENT_KEYS` is never in a diff.
+7. **String references: 96**, all literal — 67 `__all__` entries in `src/` (each
+   re-exporting module lists its private names), 13 `patch()` targets, 10 `patch.object`
+   attributes, 5 `monkeypatch.setattr` attributes, 1 `sys.modules` key (a module path, left
+   alone). **Dynamic references: none** — no `getattr`/`hasattr` on these names, no
+   `dir()`, `getmembers()`, `vars()` or `globals()`, no `startswith("_")` filter over
+   module members, no name built by f-string or concatenation, no star import. **An
+   independent hunt** — a separate agent, told what this scan had found and asked only for
+   what it would miss — checked 22 further patterns (registries keyed by `__name__`,
+   parametrize ids, thread names, autospec lists, entry points, clientside JS, pickling,
+   `logging` `funcName`, negative `hasattr` assertions, same-named definitions) and found
+   none that applies. Its real findings are folded in above: the module paths and the
+   dotted docstring mentions of item 4, the shadow flip, `evals/`, `.spec4/`, and a
+   measurement §60.2's check is built around — a reverse substitution applied to the
+   candidate alone differs from `HEAD` on **243 lines in 50 files**, because
+   underscore-free tokens already exist.
+8. **D-number references: 25** (name, line) pairs on 17 names, all in comments or
+   docstrings the substitution updates with the code. Three sit in net regions —
+   `test_callbacks_stream_poll.py:736` (D-PH9, `TestStreamedTokenCounter`),
+   `test_seam_check.py:386` (D-PH9, `TestExtractGraphTransport`), `test_designer.py:797`
+   (D-DM7, a `_start_gen` stop) — and are §60.3's to admit. None is in a whole-file entry.
+9. **Two text edits that are not code.** A DEV_MODE-only print names a function —
+   `agents/brainstormer.py:918`, `"[brainstormer] _format_vision_as_text failed: "` — and
+   the substitution changes that console line (not a Rule 4 surface; flagged so the diff is
+   no surprise). And `_phase_spec_preamble` is named in the module docstring of a
+   whole-file entry that imports nothing by that name (`test_project_manager_golden.py:11`);
+   §54.7 forbids the edit, so the mention goes stale.
+
+#### The forward rename
+
+As the proof and the dry run applied it. **The check, not the tool, is the contract** —
+Phase 7 may implement this any way it likes, because the check below verifies the result:
+
+1. Word-boundary substitution `old → new` in every tracked text file except
+   `CLEANUP_INVENTORY.md`, `.spec4/` (Rule 2), and `tests/golden/`, `tests/snapshots/`
+   (frozen data — no name occurs there).
+2. Leave module-path occurrences alone: the module part of `from X import`, an
+   `import X` line, a `spec4.…` string component followed by `.`, a `sys.modules` key —
+   and, for the four names that are also module names, **any** occurrence followed by `.`,
+   in code, string or comment.
+3. In the seven whole-file entries, rewrite **only** the `from … import` binding, to
+   `new as old` (§54.7). Every other line stays.
+4. `uv run ruff format src/ tests/`.
+
+#### The rename check, run at every rename commit
+
+For a rename commit `C` with parent `P`, and the batch's `old<TAB>new` list: export both
+trees; on **both**, substitute `new → old` at word boundaries in every text file except the
+record, fold `X as X` to `X`, and format with magic trailing commas ignored; then diff.
+**The diff must be empty.** A non-empty diff means the commit did more than rename.
+
+```bash
+# Run from the repo root.  P = parent, C = rename commit (unset: the working tree),
+# MAP = file of "old<TAB>new" lines for the batch.
+rename_check() {
+  local W; W=$(mktemp -d); mkdir "$W/p" "$W/c"
+  git archive "$P" | tar -x -C "$W/p"
+  if [ -n "${C:-}" ]; then git archive "$C" | tar -x -C "$W/c"
+  else git ls-files -co --exclude-standard | tar -cT - | tar -x -C "$W/c"; fi
+  for d in "$W/p" "$W/c"; do
+    while IFS=$'\t' read -r old new; do          # 1. new -> old, both sides
+      grep -rlIZw --exclude=CLEANUP_INVENTORY.md -- "$new" "$d" |
+        xargs -0r perl -pi -e "s/(?<![A-Za-z0-9_])\Q$new\E(?![A-Za-z0-9_])/$old/g"
+    done < "$MAP"
+    find "$d" -name '*.py' -print0 |               # 2. fold §54.7's `x as x`
+      xargs -0 perl -pi -e 's/\b([A-Za-z_]\w*) as \1\b/$1/g'
+    uv run ruff format -q --no-cache \
+      --config 'format.skip-magic-trailing-comma = true' "$d"   # 3. layout-blind
+  done
+  diff -ru --exclude=CLEANUP_INVENTORY.md "$W/p" "$W/c" && echo "rename check: EMPTY"
+  local rc=$?; rm -rf "$W"; return $rc
+}
+```
+
+Why each normalisation, since each is a place a false result could hide:
+
+- **The substitution runs on `P` too**, so a `new` token that existed before the rename —
+  `project_manager.round_cost`, the four `revision_delta`s — cancels instead of showing
+  as a diff. Without it, every clash in item 3 is a false stop.
+- **The alias fold** undoes §54.7's `new as old` import form. It also matches five lines
+  that were there before any rename — `import spec4.llm as llm` and three like it, and one
+  docstring's "leave it as it was found" — and folds them identically on both sides, so
+  they cancel.
+- **The formatter pass.** Dropping an underscore shortens lines, and ruff joins what it had
+  split — 8 files in the dry run. Formatting both sides with magic trailing commas ignored
+  compares content, not layout.
+
+What it does **not** prove is that the substitution was right — only that the commit *is*
+a substitution. Rightness is the gate's job: a module path renamed by mistake reverses
+cleanly and fails at import; a collision reverses cleanly and fails in ruff and the suite
+(item 1).
+
+#### The proof — `_default_session`, uncommitted, in a scratch clone at `f862f65`
+
+Batch 1's first and largest name: 248 sites, three whole-file entries, two tier-A nodes,
+three `app.py` lines.
+
+| Step | What | Result |
+|---|---|---|
+| 1 | forward rename, the rules above | 35 files, 263 lines; 3 whole-file entries by import alias; `.spec4/v0/phases/phase1-notes.md` left (Rule 2); nothing blocked |
+| 2 | `ruff format src/ tests/` | `221 files left unchanged` |
+| 3 | rename check | **EMPTY** |
+| 4 | negative A — `"search_provider": None` → `"tavily"` smuggled into `session.py` | **not empty**: the diff is that one line |
+| 5 | negative B — `>` → `>=` smuggled into an assertion inside a tier-A node the rename touches (`test_round_tree.py:773`) | **not empty**, that one line — and §60.3's checks 1 and 2 **fail** on the file |
+| 6 | both reverted | **EMPTY** |
+| 7 | the shell function above, same tree | EMPTY; with negative A re-applied, exactly that line |
+| 8 | full gate on the renamed tree | ruff ✅ · `221 files already formatted` ✅ · `no issues found in 92 source files` ✅ · `4199 passed, 1 skipped` · `12421 stmts, 891 miss, 93%` — **identical to §60.1** |
+| 9 | off-limits | 4,200 collected, **456 / 456**; §54.7 passes on all three whole-file entries (import lines alone, goldens identical, node ids unchanged); §60.3 passes on `test_round_tree.py` (two tier-A nodes) |
+| 10 | `app.py` | 3 lines — `:26`, `:92`, `:387` — names in place |
+
+Run unchanged, Phase 6's hunk check **fails** on the proof tree — *whole-file entry
+modified*, for the three entries — as it was built to. Phase 7 needs the adapted form
+(§60.3): a whole-file entry in the diff must pass §54.7.
+
+#### The same, over every rename that is not a stop — 74 names at once
+
+| | Result |
+|---|---|
+| forward rename | 102 files, 1,346 lines; **31** import-alias edits in 4 whole-file entries; **31** module-path occurrences left alone; 0 frozen-data hits; nothing blocked |
+| `ruff format` | 8 files re-wrapped; 2 of the re-wrapped lines are assertions, neither in a net region |
+| rename check | **EMPTY** |
+| petitions | §54.7 passes on 4 whole-file entries; §60.3 passes on 17 files (11 tier-B classes, 19 tier-A nodes) |
+| gate | ruff ✅ · format ✅ · mypy ✅ · `4199 passed, 1 skipped` · `891 miss` — **identical** |
+| `app.py` | 15 lines: one import, six names in the `layouts` import block, eight uses; nothing moved |
+| `app_constants.py` | untouched |
+| `evals/`, `scripts/` | 5 files, 20 lines |
+| each stop, alone | item 1's failures, and §54.7 blocked at item 2's exact lines |
+
+#### The batches
+
+Eleven, one per cluster, in §55.9's sites-per-name order — one commit each; a stop is held
+out of its batch rather than holding the batch. *Footprint* is occurrences rewritten.
+⛔ = a stop §54.7 cannot carry; ⏸ = waits for the root-siblings decision (§60.5).
+
+| Batch | Cluster | Names | Sites | Footprint tests / src / evals+scripts | Files | Touches `app.py` | `AGENT_KEYS` | Net: whole / tier-B / tier-A | Stops |
+|---:|---|---:|---:|---|---:|---|---|---|---|
+| 1 | `session` | 5 | 281 | 283 / 31 / 2 | 42 | **yes** — 26, 92, 387 | no | 3 / 0 / 3 | — |
+| 2 | `layouts._chat` | 9 | 164 | 180 / 56 / 0 | 26 | **yes** — 33, 409 | no | 1 / 4 / 9 | `_breadth_panel`, `_retry_panel` |
+| 3 | `layouts` | 9 | 145 | 197 / 78 / 0 | 35 | **yes** — 29, 30, 31, 32, 34, 127, 403, 405, 407, 413 | no | 2 / 3 / 8 | `_agent_rows` |
+| 4 | `layouts.designer` | 7 | 100 | 100 / 23 / 0 | 8 | no | no | 2 / 1 / 1 | — |
+| 5 | `agents.code_scanner` | 7 | 82 | 87 / 33 / 0 | 6 | no | no | 1 / 0 / 1 | — |
+| 6 | `agents.brainstormer` | 5 | 41 | 46 / 15 / 5 | 8 | no | no | 1 / 0 / 0 | — |
+| 7 | `agentifier.agentifier` | 20 | 140 | 173 / 106 / 8 | 22 | no | no | 1 / 0 / 0 | — |
+| 8 | `agents._seam_check` | 7 | 39 | 44 / 15 / 6 | 3 | no | no | 0 / 3 / 0 | — |
+| 9 | `callbacks.designer` | 4 | 21 | 36 / 29 / 0 | 6 | no | no | 1 / 3 / 1 | `_start_gen` |
+| 10 | `llm` | 4 | 16 | 17 / 13 / 0 | 4 | no | no | 1 / 0 / 0 | `_record_usage` |
+| 11 | `project_manager` | 3 | 9 | 11 / 24 / 0 | 6 | no | no | 1 / 1 / 0 | `_with_readme_attribution` |
+
+#### Batch 1 — `session` (5 names, 281 sites)
+
+| Owner module | Private → public | Collision | String refs | Net refs (W/B/A) | D-refs | Sites |
+|---|---|---|---|---|---:|---:|
+| `session.py` | `_default_session` → `default_session` | no | 0 | 6/0/2 | 2 | 248 |
+| `session.py` | `_reset_for_new_project` → `reset_for_new_project` | no | 0 | 2/0/0 | 1 | 14 |
+| `session.py` | `_run_agent_blocking` → `run_agent_blocking` | no | 0 | 0/0/0 | 0 | 8 |
+| `session.py` | `_validate_agent_preconditions` → `validate_agent_preconditions` | no | 0 | 0/0/1 | 2 | 7 |
+| `session.py` | `_summarize_turn_usage` → `summarize_turn_usage` | no | 0 | 0/0/0 | 0 | 4 |
+
+*Net references:* `_default_session`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py`, `test_streaming_characterization.py` — by import → `new as old` (§54.7); tier-A `test_round_tree.py::TestItClosesTheProjectView::test_the_tree_is_the_last_of_the_three`, `test_round_tree.py::TestTheCallbackRecomputes::test_it_sees_a_file_written_after_the_last_render` · `_reset_for_new_project`: whole-file `test_callback_co_presence.py` — by import → `new as old` (§54.7) · `_validate_agent_preconditions`: tier-A `test_stale_ai_features.py::test_stale_mock_allows_stack_advisor`
+
+*D-number references:* `_default_session`: agentifier/agentifier.py:2334 (D-TA1); agentifier/agentifier.py:2337 (D-TA1) · `_reset_for_new_project`: session.py:292 (D-PM1) · `_validate_agent_preconditions`: layouts/_chat_actions.py:232 (D-AR1,D-BB1,D-LR2,D-LR8); test_agent_pill_click.py:4 (D-BB1,D-BB2)
+
+*Outside `src/`+`tests/`:* `_default_session`: scripts/e2e_agentifier.py:32,392; `.spec4/` × 1 file (left — Rule 2)
+
+#### Batch 2 — `layouts._chat` (9 names, 164 sites)
+
+| Owner module | Private → public | Collision | String refs | Net refs (W/B/A) | D-refs | Sites |
+|---|---|---|---|---|---:|---:|
+| `layouts/_chat_actions.py` | `_chat_action_buttons` → `chat_action_buttons` | no | 2 (`__all__` ×2) | 0/0/2 | 2 | 39 |
+| `layouts/_chat.py` | `_chat_layout` → `chat_layout` | no | 2 (`__all__` ×2) | 7/0/4 | 0 | 37 |
+| `layouts/_chat_panels.py` | `_breadth_panel` → `breadth_panel` | **yes** — `_chat_layout` binds a local `breadth_panel` (`layouts/_chat.py:103`); renamed, that line reads `breadth_panel = breadth_panel(session)` → `UnboundLocalError` | 1 (`__all__` ×1) | 0/0/5 | 0 | 21 |
+| `layouts/_chat_actions.py` | `_token_count_text` → `token_count_text` | no | 1 (`__all__` ×1) | 0/3/0 | 0 | 16 |
+| `layouts/_chat_panels.py` | `_retry_panel` → `retry_panel` | **yes** — same, `layouts/_chat.py:104` binds a local `retry_panel` | 1 (`__all__` ×1) | 0/1/0 | 0 | 15 |
+| `layouts/_chat_panels.py` | `_cost_summary` → `cost_summary` | no — *clash*: `spec4._usage.cost_summary` is public and re-exported by `project_manager` | 1 (`__all__` ×1) | 0/0/0 | 0 | 13 |
+| `layouts/_chat_actions.py` | `_turn_token_text` → `turn_token_text` | no | 1 (`__all__` ×1) | 0/0/0 | 0 | 11 |
+| `layouts/_chat_actions.py` | `_streamed_token_count` → `streamed_token_count` | no | 1 (`__all__` ×1) | 0/5/0 | 1 | 8 |
+| `layouts/_chat_status.py` | `_agent_status_bar` → `agent_status_bar` | no | 2 (`__all__` ×2) | 0/0/1 | 1 | 4 |
+
+*String references (file:line):* `_chat_action_buttons`: layouts/__init__.py:102; layouts/_chat.py:68 · `_chat_layout`: layouts/__init__.py:103; layouts/_chat.py:69 · `_breadth_panel`: layouts/_chat.py:67 · `_token_count_text`: layouts/_chat.py:81 · `_retry_panel`: layouts/_chat.py:79 · `_cost_summary`: layouts/_chat.py:71 · `_turn_token_text`: layouts/_chat.py:83 · `_streamed_token_count`: layouts/_chat.py:80 · `_agent_status_bar`: layouts/__init__.py:101; layouts/_chat.py:66
+
+*Net references:* `_chat_action_buttons`: tier-A `test_agentifier_chars_counter.py::TestLayoutGate::test_first_post_panel_turn_shows_the_counter`, `test_agentifier_chars_counter.py::TestLayoutGate::test_pre_panel_build_shows_the_counter` · `_chat_layout`: whole-file `test_layout_contract.py` — by import → `new as old` (§54.7); tier-A `test_agent_llm_selection.py::TestModelChipPlacement::test_it_shares_a_row_with_the_status_line_and_comes_first`, `test_agent_llm_selection.py::TestModelChipPlacement::test_the_gate_still_suppresses_it`, `test_code_scanner_progress.py::TestLayout::test_elapsed_sits_beside_the_counter_in_the_action_row`, `test_cost_summary.py::TestChatPlacement::test_sits_between_the_transcript_and_the_action_row` · `_breadth_panel`: tier-A `agentifier/test_try_again.py::TestPanelButton::test_hidden_once_the_panel_is_submitted`, `agentifier/test_try_again.py::TestPanelButton::test_panel_offers_the_guidance_box` · `_token_count_text`: tier-B `test_stack_advisor_token_counter.py::TestCounterGate` · `_retry_panel`: tier-B `test_stream_error_recovery.py::TestEmptyTurnBackstop` · `_streamed_token_count`: tier-B `test_callbacks_stream_poll.py::TestStreamedTokenCounter`, `test_stack_advisor_token_counter.py::TestSuppressedStreamPublishesReceipt` · `_agent_status_bar`: tier-A `test_chat_pill_bar.py::TestTheIdsAreUnchanged::test_the_bar_holds_no_control_but_the_pills`
+
+*D-number references:* `_chat_action_buttons`: callbacks/_chat.py:48 (D-LR8); layouts/_chat_status.py:140 (D-LR8) · `_streamed_token_count`: test_callbacks_stream_poll.py:736 (D-PH9) [net] · `_agent_status_bar`: layouts/_shared.py:60 (D-LR2,D-LR9)
+
+*Outside `src/`+`tests/`:* `_chat_action_buttons`: `.spec4/` × 1 file (left — Rule 2) · `_agent_status_bar`: `.spec4/` × 2 files (left — Rule 2)
+
+#### Batch 3 — `layouts` (9 names, 145 sites)
+
+| Owner module | Private → public | Collision | String refs | Net refs (W/B/A) | D-refs | Sites |
+|---|---|---|---|---|---:|---:|
+| `layouts/__init__.py` | `_agent_select_layout` → `agent_select_layout` | no | 1 (`__all__` ×1) | 7/5/2 | 0 | 41 |
+| `layouts/_artifact_view.py` | `_artifact_view_layout` → `artifact_view_layout` | no | 2 (`__all__` ×2) | 4/0/0 | 0 | 26 |
+| `layouts/_round_tree.py` | `_round_tree` → `round_tree` | no | 2 (`__all__` ×2) | 0/0/1 | 2 | 23 |
+| `layouts/_status_bar.py` | `_status_bar` → `status_bar` | no | 2 (`__all__` ×2) | 3/2/2 | 0 | 20 |
+| `layouts/_agent_rows.py` | `_agent_rows` → `agent_rows` | **yes** — `layouts/_agent_rows.py:302` already defines a public `agent_rows` (a different function), re-exported by `layouts/__init__.py:45,88` and imported by `test_agent_rows.py:30` | 2 (`__all__` ×2) | 0/2/1 | 1 | 15 |
+| `layouts/__init__.py` | `_working_dir_layout` → `working_dir_layout` | no | 1 (`__all__` ×1) | 4/0/0 | 0 | 7 |
+| `layouts/_setup.py` | `_setup_layout` → `setup_layout` | no | 1 (`__all__` ×1) | 7/0/0 | 0 | 6 |
+| `layouts/_round_cost.py` | `_round_cost` → `round_cost` | no — *clash*: `spec4._usage.round_cost` is public (re-exported by `project_manager`) and is called from the same module, `layouts/_round_cost.py:243` | 3 (`__all__` ×2, sys.modules key ×1) | 0/0/0 | 0 | 4 |
+| `layouts/_status_bar.py` | `_status_context` → `status_context` | no | 2 (`__all__` ×2) | 5/3/2 | 0 | 3 |
+
+*String references (file:line):* `_agent_select_layout`: layouts/__init__.py:106 · `_artifact_view_layout`: layouts/__init__.py:107; layouts/_artifact_view.py:87 · `_round_tree`: layouts/__init__.py:92; layouts/_round_tree.py:63 · `_status_bar`: layouts/__init__.py:98; layouts/_status_bar.py:56 · `_agent_rows`: layouts/__init__.py:86; layouts/_agent_rows.py:54 · `_working_dir_layout`: layouts/__init__.py:105 · `_setup_layout`: layouts/__init__.py:104 · `_round_cost`: layouts/__init__.py:89; layouts/_round_cost.py:64; test_cost_summary.py:624 · `_status_context`: layouts/__init__.py:99; layouts/_status_bar.py:57
+
+*Net references:* `_agent_select_layout`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py` — by import → `new as old` (§54.7); tier-B `test_agent_rows.py::TestItLeadsTheProjectView`; tier-A `test_round_cost.py::TestPlacement::test_it_sits_between_the_rows_and_the_tree`, `test_round_tree.py::TestItClosesTheProjectView::test_the_tree_is_the_last_of_the_three` · `_artifact_view_layout`: whole-file `test_layout_contract.py` — by import → `new as old` (§54.7) · `_round_tree`: tier-A `test_round_tree.py::TestRendering::test_no_line_names_a_colour` · `_status_bar`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py` — by import → `new as old` (§54.7); tier-B `test_status_bar.py::TestOnlyThePathEverGivesUpSpace`; tier-A `test_artifact_view.py::TestTheNavEntry::test_it_is_plain_text_with_no_colour_of_its_own`, `test_status_bar.py::TestStatusBarLayout::test_no_nav_entry_names_a_colour` · `_agent_rows`: tier-B `test_agent_rows.py::TestAMissingUsageEntry`; tier-A `test_agent_rows.py::TestTheButtonRoutesLikeTheOldOnes::test_the_action_carries_the_existing_agent_select_id` · `_working_dir_layout`: whole-file `test_layout_contract.py` — by import → `new as old` (§54.7) · `_setup_layout`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py` — by import → `new as old` (§54.7) · `_status_context`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py` — by import → `new as old` (§54.7); tier-B `test_status_bar.py::TestOnlyThePathEverGivesUpSpace`; tier-A `test_status_bar.py::TestTheBarOpensSetup::test_it_is_dressed_as_the_directory_is`, `test_status_bar.py::TestTheModelSlotCarriesTheEffort::test_the_suffixed_slot_still_refuses_to_truncate`
+
+*D-number references:* `_round_tree`: layouts/_artifact_view.py:16 (D-LR2); layouts/_artifact_view.py:868 (D-LR4) · `_agent_rows`: layouts/_artifact_view.py:139 (D-LR3)
+
+*Outside `src/`+`tests/`:* `_agent_select_layout`: `.spec4/` × 1 file (left — Rule 2) · `_round_tree`: `.spec4/` × 11 files (left — Rule 2) · `_agent_rows`: `.spec4/` × 4 files (left — Rule 2) · `_round_cost`: `.spec4/` × 4 files (left — Rule 2)
+
+*Hazards:* `_round_tree` is also the module `spec4.layouts._round_tree` — module-path occurrences must be left alone · `_status_bar` is also the module `spec4.layouts._status_bar` — module-path occurrences must be left alone · `_agent_rows` is also the module `spec4.layouts._agent_rows` — module-path occurrences must be left alone · `_round_cost` is also the module `spec4.layouts._round_cost` — module-path occurrences must be left alone
+
+#### Batch 4 — `layouts.designer` (7 names, 100 sites)
+
+| Owner module | Private → public | Collision | String refs | Net refs (W/B/A) | D-refs | Sites |
+|---|---|---|---|---|---:|---:|
+| `layouts/designer.py` | `_step6_content` → `step6_content` | no | 0 | 8/0/1 | 0 | 28 |
+| `layouts/designer.py` | `_step7_content` → `step7_content` | no | 0 | 6/1/0 | 0 | 20 |
+| `layouts/designer.py` | `_step2_content` → `step2_content` | no | 0 | 10/0/0 | 0 | 14 |
+| `layouts/designer.py` | `_step4_content` → `step4_content` | no | 0 | 6/1/0 | 0 | 13 |
+| `layouts/designer.py` | `_step5_content` → `step5_content` | no | 0 | 6/0/0 | 0 | 11 |
+| `layouts/designer.py` | `_step3_content` → `step3_content` | no | 0 | 4/1/0 | 0 | 8 |
+| `layouts/designer.py` | `_step1_content` → `step1_content` | no | 0 | 4/0/0 | 0 | 6 |
+
+*Net references:* `_step6_content`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py` — by import → `new as old` (§54.7); tier-A `test_cost_summary.py::TestDesignerPlacement::test_preview_step_shows_the_strip` · `_step7_content`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py` — by import → `new as old` (§54.7); tier-B `test_designer_wizard_register.py::TestNoBackToTheProjectView` · `_step2_content`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py` — by import → `new as old` (§54.7) · `_step4_content`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py` — by import → `new as old` (§54.7); tier-B `test_designer_wizard_register.py::TestNoBackToTheProjectView` · `_step5_content`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py` — by import → `new as old` (§54.7) · `_step3_content`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py` — by import → `new as old` (§54.7); tier-B `test_designer_wizard_register.py::TestNoBackToTheProjectView` · `_step1_content`: whole-file `test_callback_co_presence.py`, `test_layout_contract.py` — by import → `new as old` (§54.7)
+
+#### Batch 5 — `agents.code_scanner` (7 names, 82 sites)
+
+| Owner module | Private → public | Collision | String refs | Net refs (W/B/A) | D-refs | Sites |
+|---|---|---|---|---|---:|---:|
+| `agents/code_scanner/_review_render.py` | `_format_review_as_text` → `format_review_as_text` | no | 1 (`__all__` ×1) | 7/0/0 | 0 | 40 |
+| `agents/code_scanner/_scan.py` | `_gather_project_context` → `gather_project_context` | no | 1 (`__all__` ×1) | 0/0/0 | 0 | 20 |
+| `agents/code_scanner/_scan.py` | `_collect_files` → `collect_files` | no | 3 (`__all__` ×1, patch.object attr ×2) | 0/0/1 | 0 | 7 |
+| `agents/code_scanner/__init__.py` | `_extract_review_json` → `extract_review_json` | no | 1 (`__all__` ×1) | 0/0/0 | 0 | 6 |
+| `agents/code_scanner/_scan.py` | `_approx_tokens` → `approx_tokens` | no | 1 (`__all__` ×1) | 0/0/0 | 0 | 5 |
+| `agents/code_scanner/__init__.py` | `_build_update_scan_seed` → `build_update_scan_seed` | no | 1 (`__all__` ×1) | 0/0/0 | 0 | 2 |
+| `agents/code_scanner/__init__.py` | `_build_fresh_scan_seed` → `build_fresh_scan_seed` | no | 1 (`__all__` ×1) | 0/0/0 | 0 | 2 |
+
+*String references (file:line):* `_format_review_as_text`: agents/code_scanner/__init__.py:67 · `_gather_project_context`: agents/code_scanner/__init__.py:68 · `_collect_files`: agents/code_scanner/__init__.py:64; test_code_scanner_progress.py:88,117 · `_extract_review_json`: agents/code_scanner/__init__.py:66 · `_approx_tokens`: agents/code_scanner/__init__.py:61 · `_build_update_scan_seed`: agents/code_scanner/__init__.py:63 · `_build_fresh_scan_seed`: agents/code_scanner/__init__.py:62
+
+*Net references:* `_format_review_as_text`: whole-file `test_renderer_goldens.py` — by import → `new as old` (§54.7) · `_collect_files`: tier-A `test_code_scanner_progress.py::TestScanIsNarrated::test_first_chunk_arrives_before_the_walk`
+
+#### Batch 6 — `agents.brainstormer` (5 names, 41 sites)
+
+| Owner module | Private → public | Collision | String refs | Net refs (W/B/A) | D-refs | Sites |
+|---|---|---|---|---|---:|---:|
+| `agents/brainstormer.py` | `_format_vision_as_text` → `format_vision_as_text` | no | 1 (patch target ×1) | 5/0/0 | 0 | 11 |
+| `agents/brainstormer.py` | `_apply_revision_history` → `apply_revision_history` | no | 0 | 0/0/0 | 0 | 10 |
+| `agents/brainstormer.py` | `_feature_names` → `feature_names` | no — `"feature_names"` occurs only as dict-key strings in `evals/scout/run_scout_probe.py:306,382,413` | 0 | 0/0/0 | 0 | 9 (§55: 6) |
+| `agents/brainstormer.py` | `_assign_feature_ids` → `assign_feature_ids` | no | 0 | 0/0/0 | 1 | 9 |
+| `agents/brainstormer.py` | `_stamp_revision_block` → `stamp_revision_block` | no | 0 | 0/0/0 | 0 | 2 |
+
+*String references (file:line):* `_format_vision_as_text`: test_agents.py:992
+
+*Net references:* `_format_vision_as_text`: whole-file `test_renderer_goldens.py` — by import → `new as old` (§54.7)
+
+*D-number references:* `_assign_feature_ids`: test_feature_ids.py:3 (D-BS2)
+
+*Outside `src/`+`tests/`:* `_feature_names`: evals/scout/phantom_link_check.py:23,38,62,77,84
+
+#### Batch 7 — `agentifier.agentifier` (20 names, 140 sites)
+
+| Owner module | Private → public | Collision | String refs | Net refs (W/B/A) | D-refs | Sites |
+|---|---|---|---|---|---:|---:|
+| `agentifier/_render.py` | `_build_ai_features` → `build_ai_features` | no | 2 (`__all__` ×2) | 0/0/0 | 3 | 26 |
+| `agentifier/_seed.py` | `_build_seed_message` → `build_seed_message` | no | 2 (`__all__` ×2) | 0/0/0 | 0 | 25 |
+| `agentifier/agentifier.py` | `_reselection_pool_from_features` → `reselection_pool_from_features` | no | 0 | 0/0/0 | 2 | 10 |
+| `agentifier/agentifier.py` | `_extract_cross_cutting_analysis` → `extract_cross_cutting_analysis` | no | 12 (patch target ×12) | 0/0/0 | 0 | 8 |
+| `agentifier/_seed.py` | `_candidates_from_dicts` → `candidates_from_dicts` | no | 2 (`__all__` ×2) | 0/0/0 | 1 | 7 |
+| `agentifier/_render.py` | `_merge_revision_snapshot` → `merge_revision_snapshot` | no | 2 (`__all__` ×2) | 0/0/0 | 0 | 7 |
+| `agentifier/_render.py` | `_revision_delta` → `revision_delta` | no — *clash*: four per-agent public `revision_delta`s already exist (`deployer.py:397`, `stack_advisor/_stack_shape.py:27`, `designer.py:265`, `phaser/_revision.py:36`) | 2 (`__all__` ×2) | 0/0/0 | 0 | 7 |
+| `agentifier/_seed.py` | `_candidates_to_dicts` → `candidates_to_dicts` | no | 2 (`__all__` ×2) | 0/0/0 | 1 | 6 |
+| `agentifier/agentifier.py` | `_is_spec_confirmed` → `is_spec_confirmed` | no | 0 | 0/0/0 | 0 | 6 |
+| `agentifier/_render.py` | `_removed_feature_heads_up` → `removed_feature_heads_up` | no | 2 (`__all__` ×2) | 0/0/0 | 0 | 5 |
+| `agentifier/agentifier.py` | `_breadth_candidates` → `breadth_candidates` | no | 0 | 0/0/0 | 0 | 5 |
+| `agentifier/_render.py` | `_format_catalog_as_text` → `format_catalog_as_text` | no | 2 (`__all__` ×2) | 5/0/0 | 0 | 5 |
+| `agentifier/agentifier.py` | `_existing_workflow_for_entry` → `existing_workflow_for_entry` | no | 0 | 0/0/0 | 0 | 4 |
+| `agentifier/agentifier.py` | `_feature_specs_for_session` → `feature_specs_for_session` | no | 0 | 0/0/0 | 0 | 4 |
+| `agentifier/_seed.py` | `_analyses_to_dicts` → `analyses_to_dicts` | no | 2 (`__all__` ×2) | 0/0/0 | 0 | 3 |
+| `agentifier/agentifier.py` | `_linked_features_for_entry` → `linked_features_for_entry` | no | 0 | 0/0/0 | 0 | 3 |
+| `agentifier/_render.py` | `_format_spec_as_text` → `format_spec_as_text` | no | 2 (`__all__` ×2) | 3/0/0 | 0 | 3 |
+| `agentifier/_render.py` | `_parse_priority_edits` → `parse_priority_edits` | no | 2 (`__all__` ×2) | 0/0/0 | 0 | 2 |
+| `agentifier/_render.py` | `_format_priority_table` → `format_priority_table` | no | 2 (`__all__` ×2) | 0/0/0 | 0 | 2 |
+| `agentifier/_seed.py` | `_vision_mvp_feature_names` → `vision_mvp_feature_names` | no | 2 (`__all__` ×2) | 0/0/0 | 0 | 2 |
+
+*String references (file:line):* `_build_ai_features`: agentifier/_render.py:31; agentifier/agentifier.py:148 · `_build_seed_message`: agentifier/_seed.py:58; agentifier/agentifier.py:149 · `_extract_cross_cutting_analysis`: agentifier/test_streaming_e2e.py:357,386,523,572,648,655,683,689,788; integration/test_pipeline_greenfield.py:348,374,403 · `_candidates_from_dicts`: agentifier/_seed.py:64; agentifier/agentifier.py:155 · `_merge_revision_snapshot`: agentifier/_render.py:40; agentifier/agentifier.py:167 · `_revision_delta`: agentifier/_render.py:42; agentifier/agentifier.py:173 · `_candidates_to_dicts`: agentifier/_seed.py:66; agentifier/agentifier.py:157 · `_removed_feature_heads_up`: agentifier/_render.py:41; agentifier/agentifier.py:172 · `_format_catalog_as_text`: agentifier/_render.py:33; agentifier/agentifier.py:160 · `_analyses_to_dicts`: agentifier/_seed.py:56; agentifier/agentifier.py:147 · `_format_spec_as_text`: agentifier/_render.py:38; agentifier/agentifier.py:165 · `_parse_priority_edits`: agentifier/_render.py:39; agentifier/agentifier.py:168 · `_format_priority_table`: agentifier/_render.py:37; agentifier/agentifier.py:164 · `_vision_mvp_feature_names`: agentifier/_seed.py:70; agentifier/agentifier.py:175
+
+*Net references:* `_format_catalog_as_text`: whole-file `test_renderer_goldens.py` — by import → `new as old` (§54.7) · `_format_spec_as_text`: whole-file `test_renderer_goldens.py` — by import → `new as old` (§54.7)
+
+*D-number references:* `_build_ai_features`: agentifier/test_edge_persistence.py:133 (D-EP2); agentifier/test_edge_persistence.py:6 (D-EP1,D-EP2,D-EP3,D-EP4); agentifier/test_vision_grounding.py:204 (D-AC1) · `_reselection_pool_from_features`: agentifier/test_edge_persistence.py:209 (D-EP3); agentifier/test_edge_persistence.py:8 (D-EP1,D-EP2,D-EP3,D-EP4) · `_candidates_from_dicts`: agentifier/test_edge_persistence.py:5 (D-EP1,D-EP2,D-EP3,D-EP4) · `_candidates_to_dicts`: agentifier/test_edge_persistence.py:5 (D-EP1,D-EP2,D-EP3,D-EP4)
+
+*Outside `src/`+`tests/`:* `_build_ai_features`: evals/agentifier/README.md:42; evals/agentifier/run_mechanism_probe.py:13,66,229 · `_candidates_to_dicts`: evals/agentifier/run_mechanism_probe.py:71,232 · `_analyses_to_dicts`: evals/agentifier/run_mechanism_probe.py:72,233
+
+#### Batch 8 — `agents._seam_check` (7 names, 39 sites)
+
+| Owner module | Private → public | Collision | String refs | Net refs (W/B/A) | D-refs | Sites |
+|---|---|---|---|---|---:|---:|
+| `agents/_seam_check.py` | `_check_declaration_alignment` → `check_declaration_alignment` | no | 0 | 0/14/0 | 0 | 15 |
+| `agents/_seam_check.py` | `_check_table_provenance` → `check_table_provenance` | no | 0 | 0/0/0 | 0 | 5 |
+| `agents/_seam_check.py` | `_parse_graph` → `parse_graph` | no | 0 | 0/0/0 | 0 | 5 |
+| `agents/_seam_check.py` | `_check_feature_coverage` → `check_feature_coverage` | no | 0 | 0/2/0 | 0 | 4 |
+| `agents/_seam_check.py` | `_format_advisory` → `format_advisory` | no | 0 | 0/1/0 | 0 | 4 |
+| `agents/_seam_check.py` | `_check_endpoint_provenance` → `check_endpoint_provenance` | no | 0 | 0/0/0 | 0 | 3 |
+| `agents/_seam_check.py` | `_extract_graph` → `extract_graph` | no | 3 (patch.object attr ×3) | 0/4/0 | 1 | 3 |
+
+*String references (file:line):* `_extract_graph`: test_seam_check.py:148,153,162
+
+*Net references:* `_check_declaration_alignment`: tier-B `test_seam_check.py::TestDeclarationAlignment`, `test_seam_check.py::TestDeclarationAlignmentTwoArraySchema` · `_check_feature_coverage`: tier-B `test_seam_check.py::TestDeclarationAlignment` · `_format_advisory`: tier-B `test_seam_check.py::TestDeclarationAlignment` · `_extract_graph`: tier-B `test_seam_check.py::TestExtractGraphTransport`
+
+*D-number references:* `_extract_graph`: test_seam_check.py:386 (D-PH9) [net]
+
+*Outside `src/`+`tests/`:* `_check_declaration_alignment`: evals/phaser/declaration_alignment.py:65,197 · `_check_feature_coverage`: evals/phaser/declaration_alignment.py:66,197 · `_extract_graph`: evals/phaser/declaration_alignment.py:67,239
+
+#### Batch 9 — `callbacks.designer` (4 names, 21 sites)
+
+| Owner module | Private → public | Collision | String refs | Net refs (W/B/A) | D-refs | Sites |
+|---|---|---|---|---|---:|---:|
+| `callbacks/designer/_mock_gen.py` | `_extract_html` → `extract_html` | no | 1 (`__all__` ×1) | 0/0/0 | 0 | 8 |
+| `callbacks/designer/_mock_gen.py` | `_start_gen` → `start_gen` ⛔ | no | 10 (`__all__` ×1, setattr attr ×4, patch.object attr ×5) | 1/5/1 | 2 | 8 |
+| `callbacks/designer/_mock_gen.py` | `_expected_stream_chars` → `expected_stream_chars` | no | 1 (`__all__` ×1) | 0/0/0 | 0 | 4 |
+| `callbacks/designer/_mock_gen.py` | `_persist_manifest` → `persist_manifest` | no | 2 (`__all__` ×1, setattr attr ×1) | 0/2/0 | 1 | 1 |
+
+*String references (file:line):* `_extract_html`: callbacks/designer/__init__.py:88 · `_start_gen`: callbacks/designer/__init__.py:90; test_designer.py:820,918,1146,1200,2140,2269,2283,2297,2307 · `_expected_stream_chars`: callbacks/designer/__init__.py:87 · `_persist_manifest`: callbacks/designer/__init__.py:89; test_designer.py:1019
+
+*Net references:* `_start_gen`: whole-file `test_streaming_characterization.py` — **by attribute — §54.7 cannot be met**; tier-B `test_designer.py::TestCapturePassesPlanningContext`, `test_designer.py::TestRefinePersistsManifest`, `test_designer.py::TestRetryReproducesTheDraw`; tier-A `test_designer.py::TestMockDeliveryAck::test_delivery_preserves_prior_store_keys` · `_persist_manifest`: tier-B `test_designer.py::TestRefinePersistsManifest`
+
+*D-number references:* `_start_gen`: callbacks/designer/__init__.py:290 (D-DM8); test_designer.py:797 (D-DM7) [net] · `_persist_manifest`: callbacks/designer/_wizard.py:121 (D-DM7)
+
+#### Batch 10 — `llm` (4 names, 16 sites)
+
+| Owner module | Private → public | Collision | String refs | Net refs (W/B/A) | D-refs | Sites |
+|---|---|---|---|---|---:|---:|
+| `llm.py` | `_is_effort_rejected_error` → `is_effort_rejected_error` | no | 0 | 0/0/0 | 0 | 5 |
+| `llm.py` | `_is_tool_incompatible_error` → `is_tool_incompatible_error` | no | 0 | 0/0/0 | 0 | 5 |
+| `llm.py` | `_history_has_tool_use` → `history_has_tool_use` | no | 0 | 0/0/0 | 0 | 4 |
+| `llm.py` | `_record_usage` → `record_usage` ⛔ | no | 0 | 1/0/0 | 0 | 2 |
+
+*Net references:* `_record_usage`: whole-file `test_streaming_characterization.py` — **by attribute — §54.7 cannot be met**
+
+#### Batch 11 — `project_manager` (3 names, 9 sites)
+
+| Owner module | Private → public | Collision | String refs | Net refs (W/B/A) | D-refs | Sites |
+|---|---|---|---|---|---:|---:|
+| `_artifacts.py` | `_write_text_if_changed` → `write_text_if_changed` ⏸ | no | 1 (`__all__` ×1) | 0/0/0 | 0 | 4 |
+| `_artifacts.py` | `_with_readme_attribution` → `with_readme_attribution` ⛔ | no | 1 (`__all__` ×1) | 4/0/0 | 0 | 4 |
+| `_phase_markdown.py` | `_phase_spec_preamble` → `phase_spec_preamble` ⏸ | no | 1 (`__all__` ×1) | 1/1/0 | 1 | 1 |
+
+*String references (file:line):* `_write_text_if_changed`: project_manager.py:166 · `_with_readme_attribution`: project_manager.py:165 · `_phase_spec_preamble`: project_manager.py:140
+
+*Net references:* `_with_readme_attribution`: whole-file `test_project_manager_golden.py` — **by attribute — §54.7 cannot be met** · `_phase_spec_preamble`: whole-file `test_project_manager_golden.py` — a docstring mention only — no import to re-bind; goes stale; tier-B `test_project_manager.py::TestPreambleTwoAltitudesAndSurfaces`
+
+*D-number references:* `_phase_spec_preamble`: agents/_seam_check.py:341 (D-PH2)
+
+### 60.3 Net-file impact and the rename petition
+
+#### What the rename half cannot avoid editing
+
+Summed from §60.2's net columns, and checked by the dry run's petition pass.
+
+| | All 80 names | Without the six stops (74) |
+|---|---:|---:|
+| Names that reach the net | 39 | 33 |
+| Whole-file entries (of 7) | **5** — 116 occurrences | **4** — import lines only: 31 alias edits |
+| Tier-B classes (of 33) | **15** in 9 files — 53 occurrences | **11** in 8 files |
+| Tier-A / ordering nodes (of 85) | **23** in 13 files | **19** (one inside a touched tier-B class) |
+| Floor files touched (of 53) | 24 | 21 |
+
+The whole-file entries, one by one:
+
+| Entry | Names | How it reaches them | Under §54.7 |
+|---|---:|---|---|
+| `test_layout_contract.py` | 15 | `from spec4.… import _x`, bare uses | import alias — passes |
+| `test_callback_co_presence.py` | 13 | same | import alias — passes |
+| `test_renderer_goldens.py` | 4 | same (`_format_{catalog,spec,review,vision}_as_text`) | import alias — passes (§54.7 as already defined) |
+| `test_streaming_characterization.py` | 3 | `_default_session` by import; `llm._record_usage(` `:344` and `dmod._start_gen(` `:402` **by attribute** | alias for the first; **cannot be met** for the other two |
+| `test_project_manager_golden.py` | 2 | `project_manager._with_readme_attribution(` `:168–173` **by attribute**; `_phase_spec_preamble` only in the module docstring (`:11`) | **cannot be met** for the first; the docstring goes stale |
+| `test_app_import_smoke.py`, `test_import_layering.py` | 0 | — | untouched |
+
+#### The rename petition
+
+In §54.7's shape, three mechanical checks, for the net entries the plan's §54.7 rule does
+not already govern:
+
+> **Rename petition — Phase 7 may edit a §50.3 tier-B class or tier-A / ordering node for
+> a rename on the §60.2 list if and only if all three hold, file by file:**
+>
+> 1. **The diff inside the net file is identifier substitution alone.** §60.2's rename
+>    check, restricted to that file, is empty.
+> 2. **Every assertion is identical under the substitution.** Every `assert` statement and
+>    every call to an `assert*` method in the file, with the batch's `new → old`
+>    substitution applied, is token-for-token the one at the parent commit, in the same
+>    order.
+> 3. **The off-limits check passes for every other entry.** 456 / 456 node ids collect;
+>    every whole-file entry in the diff passes §54.7; and no whole-file entry, tier-B class
+>    or tier-A node that holds none of the batch's old names at the parent commit has a
+>    hunk.
+>
+> Any one of the three failing means it is not this petition — stop and ask.
+
+**Whole-file entries are outside this petition.** They stay under §54.7 as written — the
+plan's Phase 7 rule — `tests/test_renderer_goldens.py` included, not redefined. A rename
+meets §54.7 by re-binding the import (`from m import new as _old`), so no line but the
+import changes.
+
+**Why tokens rather than bytes in check 2.** The directive's word is "byte-identical".
+Shortening a name lets ruff re-join a line it had wrapped, so a byte comparison would stop
+a rename whose assertion changed only in layout. In the dry run no assertion inside a net
+region was re-wrapped, so bytes would have passed too — but two assertions outside the
+net were (`test_vision_grounding.py`, `test_chat_pill_bar.py`), and the next batch's may
+not be outside. Tokens compare what an assertion *says*.
+
+**It has been run, both ways.** On the proof it passes, and it fails — checks 1 and 2 —
+on the smuggled `>=` (§60.2, step 5). On the 74-name dry run it passes on all 17 files it
+applies to, with §54.7 passing on the four whole-file entries.
+
+**The off-limits check needs one adaptation for Phase 7.** Phase 6's hunk half stops on
+*any* whole-file entry in the diff. Phase 7's reads: a whole-file entry in the diff must
+pass §54.7; a tier-B class or tier-A node with a hunk must pass this petition; and a hunk
+in any net entry that holds none of the batch's old names is a stop, as before.
+
+#### The three names §54.7 cannot carry — options, not a decision
+
+`_start_gen`, `_record_usage` and `_with_readme_attribution` are reached by attribute from
+Phase 1 files. Three ways through, each with its cost:
+
+| Option | What changes | Cost |
+|---|---|---|
+| **Leave them private** | nothing; they stay on §55's list as *promote, blocked by the net* | the tests keep their private reach; no petition |
+| **Petition by node id** (§50.5(a)) | `llm._record_usage(` → `llm.record_usage(` at `test_streaming_characterization.py:344`; `dmod._start_gen(` → `dmod.start_gen(` at `:402`; four `project_manager._with_readme_attribution(` lines in `test_project_manager_golden.py` | six assertion-bearing or setup lines in two Phase 1 files — outside both petitions' shape, so a ruling per node |
+| **Keep a private alias in `src/`** (`_start_gen = start_gen`) | one line per name in the owner | reintroduces the compatibility aliasing Phase 4j retired, for the net's sake |
+
+### 60.4 The seam half — one proposal per seam, no decisions
+
+The thirteen `design seam` names of §55.9 and the `_usage.py` production seam of §52.5.
+**§60.4 proposes; Phase 7 decides.** Each row gives the current caller and its size, the
+public seam the code would support, what it would stop depending on, the test sites that
+would move, and the one mutation check the Phase 7 commit would run (§51.6). Sizes are
+`ast.stmt` counts with the `def` included — the convention that reproduces §55.3's 45 for
+`brainstormer.run` and 15 for `agentifier.run` — and physical lines from `def` to the end.
+The mutation outcomes were derived by reading code and tests; **none was run here**.
+
+**Two of the thirteen are not what §55.9's rule made them.**
+
+- **`_load_working_dir` does not mutate its argument.** Line 239 rebinds the local
+  `session` to the fresh dict `_reset_for_new_project` returns, and every later write
+  lands on that dict — §55.9's syntactic rule matched those writes on the rebound name.
+  Run here: after the call the input equals its deep copy, and the result is a new dict.
+  It is a function of its inputs, which is the rename half's rule.
+- **`_stream_suppressing_json` is a private alias** of a generator already public at its
+  owner, whose yield protocol four callers already rely on. Promoting it is dropping the
+  alias.
+
+On this reading the design-seam half is **eleven** seams and the rename half could take
+two more names. Phase 7 decides both.
+
+**The session mutators and the brainstormer seam share one shape.** For each, the honest
+proposal is *promote as-is*, with a documented contract naming exactly the session keys it
+may write — no `TypedDict` (the plan forbids it), no key renamed (Rule 4) — pinned by a new
+key-set test, which is also its mutation check. None would stop depending on anything in
+production; the tests stop depending on the private name. The alternative each could
+take — returning a delta instead of writing — is recorded in its row with its cost.
+
+| Seam | Owner — statements / lines | Caller(s) — statements / lines | Proposal | Sites that move | Mutation check |
+|---|---|---|---|---|---|
+| `_persist_artifacts` | `session.py:519` — 15 / 37 | `_poll_finalise` (`callbacks/_chat.py:576`, 13 / 31) — sole | promote as-is; five-key contract | 35 direct; 8 `_chat` patch strings stay | append `session["project_mode"] = None` → a new key-set test fails |
+| `_get_agent_gen` | `session.py:363` — 29 / 81 | six turn-starters in `callbacks/_chat.py` (8–25 st) and `_run_agent_blocking` (tests only) — no sole caller | promote as-is; one eager write, session identity | 20 direct; 14 `_chat` patch strings stay | pass `dict(session)` to `brainstormer.run` (`:427`) → a new identity test fails |
+| `_load_working_dir` | `session.py:225` — 12 / 75 | `_resolve_root` (10 / 31), `on_browser_navigate` (11 / 26), `on_dir_select` (12 / 19) — no sole caller | promote as-is: returns a new dict, never mutates — **rename half** | 24 direct | load in place at `:239` → a new non-mutation test fails |
+| `_rehydrate_vision_from_disk` | `agents/brainstormer.py:634` — 13 / 27 | `brainstormer.run` (`:663`, 45 / 101) — sole | promote as-is; three-key contract | 4 | `session["feature_specs"] = None` before `:651`'s return → a whole-dict test fails |
+| `_stream_suppressing_json` | `agents/_reask.py:169`, public — 33 / 85 | `_run_catalog_phase` (via the alias) and `run` in `stack_advisor`, `brainstormer`, `code_scanner` | drop the alias — a rename | none; 2 lines re-pointed, patch-shaped | `seed=pre_stream_chars` → `seed=0` (`agentifier.py:2062`) → 5 tests fail |
+| `_run_catalog_phase` | `agentifier.py:1624` — 178 / 486 | `run` (`:2525`), `_handle_reentry` (`:2454`) | (a), or the main case for (b) | 5; 2 `patch.object` stay | `:1727` → `if False:` → 1 test fails |
+| `_run_spec_phase` | `:1056` — 36 / 66 | `run` — sole | (a); already (b)-shaped | 16 | the FF branch moved past the review check (D-AF1) → 2 fail |
+| `_run_cross_cutting_phase` | `:1255` — 73 / 130 | `run` — sole | (a) or (b) | 8 | `:1335` → `if False:` → 3 fail |
+| `_run_priority_phase` | `:1475` — 47 / 82 | `run` — sole | (a) | 2 | confirmation read before edits (`:1504`) → 1 fails |
+| `_handle_reentry` | `:2410` — 37 / 93 | `run` — sole | (a); a transition | 3 | the reset moved below the delegation → 1 fails |
+| `_finalize_specs` | `:691` — 51 / 105 | three functions in `agentifier.py` | (a); a transition | 3; 1 `patch()` stays | preserved features appended, not prepended (`:715`) → 1 fails |
+| `_begin_priority_phase` | `:1387` — 34 / 81 | three functions, four sites | (a); a transition | 2; 1 `patch()` stays | an empty overlay at `:1441` → 3 fail |
+| `_complete_agentifier` | `:841` — 33 / 86 | three functions, five sites | (a), or a plain `-> str` | 6 | `:902` dropped from the pop tuple → 1 fails |
+| `_usage._write_atomic` — §52.5's production seam | `_usage.py:345` — 12 / 19 | `save_usage` (`:438`, 30 / 73) — sole | module-level `_replace`, `_fdopen`; `module_seam` deleted | none; 2 patches re-pointed | `:359` back to `os.replace(…)` → the new test fails `DID NOT RAISE`, the old form passes |
+
+#### The session mutators
+
+**`_persist_artifacts`** (`session.py:519`; 15 statements, 37 lines; not a generator). Its
+sole production caller is `_poll_finalise` (`callbacks/_chat.py:576`; 13 statements, 31
+lines), which reaches it through `_chat`'s import binding once per turn, behind
+`streaming.claim_finalise`. In place it may write five keys — `phase_version` (only when
+`None`), `_turn_usage`, `_deployer_plan_existed`, `_deployer_plan_markdown`,
+`_deployer_readme_markdown` — and it drains the process-global usage sink and writes
+`.spec4/` files. **Proposal:** promote as-is, `persist_artifacts(session: dict[str, Any]) ->
+None`, with that key set as the documented contract (the name under-describes the usage
+flush — Phase 7's call). It would stop depending on nothing. Taking `usage_records` as a
+parameter would remove the sink dependency but changes behaviour: with no `working_dir`
+the records would be drained and discarded instead of left for the next turn. **Sites:**
+all 35 direct ones move (6 imports, 29 calls); the 8
+`spec4.callbacks._chat._persist_artifacts` patch strings stay patch-shaped, re-pointed —
+they isolate the poll, not the seam. **Mutation:** append `session["project_mode"] = None`,
+a write outside the contract that would wipe D-PM1's session-only answer every turn. A new
+key-set test beside `TestPersistArtifacts` fails; the 29 direct calls pass.
+
+**`_get_agent_gen`** (`session.py:363`; 29 statements, 81 lines). It contains no `yield`:
+it runs at call time and returns the agent's `run()` generator. Seven production callers,
+so no sole caller — six turn-starters in `callbacks/_chat.py` (`on_init_turn`,
+`on_chat_submit`, `on_fast_forward`, `_start_retry_turn`, `on_breadth_submit`,
+`on_breadth_try_again`; 8–25 statements) and `_run_agent_blocking` (`session.py:466`),
+which only tests reach. Its one eager write is `_stream_status` (`:404`), after the model
+check and before the unknown-agent `ValueError` (`:439`); the returned generator mutates
+the same dict later. **Proposal:** promote as-is, `get_agent_gen(user_input: str | None,
+session: dict[str, Any]) -> Generator[str, None, None]`, documenting that write and the
+session identity. It would stop depending on nothing; returning the seed instead of
+writing it would push the write into seven call sites. One wrinkle for Phase 7: the
+`ValueError` fires after the seed is written. **Sites:** all 20 direct ones move; the 14
+`_chat` patch strings stay — the mock is their assertion. **Mutation:** pass `dict(session)`
+to `brainstormer.run` (`:427`), so the agent mutates a copy and every Brainstormer write is
+lost at finalise. A new identity test — `run.call_args[0][1] is session`, over the six
+dispatch arms — fails. **No test pins that identity today:** the seed and dispatch tests
+all pass under the mutation.
+
+**`_load_working_dir`** (`session.py:225`; 12 statements, 75 lines). Three callers in
+`callbacks/__init__.py`, so no sole caller: `_resolve_root` (`:325`; 10, 31),
+`on_browser_navigate` (`:365`; 11, 26), `on_dir_select` (`:436`; 12, 19). **It does not
+mutate its argument** (above): it reads only the ten `_PRESERVED_SETUP_KEYS` and returns a
+new dict. The non-mutation is load-bearing — `on_browser_navigate`'s `_no_change` compares
+the result with the input (`callbacks/__init__.py:393–395`). **Proposal:** promote as-is,
+`load_working_dir(path: str, session: dict[str, Any]) -> dict[str, Any]`, documented as
+returning a new dict and never mutating its input; a `Mapping[str, Any]` parameter would
+make that mypy-checked. It would stop depending on nothing — it already depends only on the
+ten keys — and on this reading it belongs in the rename half. **Sites:** all 24 move (4
+imports, 20 calls), no patch strings; one sits in a tier-A node
+(`test_session.py::TestLoadWorkingDir::test_picking_a_directory_reopens_the_question`,
+D-PM1) — §60.3 for a rename, §50.5(a) for anything more. **Mutation:** load in place at
+`:239` (`session.clear(); session.update(fresh)`). A new non-mutation test fails, as would
+a `/setup` deep-link router test through `_no_change`; the existing tests pass.
+
+#### The brainstormer seam
+
+**`_rehydrate_vision_from_disk`** (`agents/brainstormer.py:634`; 13 statements, 27 lines;
+not a generator). Sole caller `brainstormer.run` (`:678`; `run` is 45 statements, 101
+lines, carries a C901/PLR0912 `noqa` and is on §27.4's backlog), itself reached through
+`session._get_agent_gen`. With a truthy `working_dir` it writes exactly
+`vision_statement`, `brainstormer_state` and `feature_specs`, all three on every call; with
+none it writes nothing and reads no disk. No disk write, LLM call, sink or registry.
+**Proposal:** promote as-is, `rehydrate_vision_from_disk(session: dict[str, Any]) -> None`,
+with that three-key contract. It is not tied to the `yield from` decision: it is not a
+generator, and `run` changes only by the renamed call. The alternative — a pure reader
+returning `(vision, state, specs)`, with the guard and the writes moved into `run` — would
+add a branch and three statements to a `noqa`'d function; recorded, not proposed.
+**Sites:** all four move (`test_vision_disk_reconciliation.py:90, 103, 114, 124`); no patch
+strings. **Mutation:** insert `session["feature_specs"] = None` before the early `return` at
+`:651`, breaking "no working dir leaves the session as it is". Today's `:108` test passes —
+it checks two keys, and its fixture's `feature_specs` is already `None`; a whole-dict
+assertion with seeded specs fails. **Recorded, not acted on:** the vision resolves through
+`active_version`, which prefers `session["phase_version"]`, and `feature_specs` through
+`latest_phase_version`, which ignores it; with `phase_version` pinned below the newest
+round, the two come from different rounds. Whether that state is reachable was not
+checked, so it is not logged as a bug.
+
+#### The alias
+
+**`_stream_suppressing_json`** → `stream_suppressing_json` (`agents/_reask.py:169`; 33
+statements, 85 lines; 3 `yield`). Already public at its owner, with four production
+callers, each by `yield from`: agentifier's `_run_catalog_phase` (`:2052`, through the
+alias; 178 statements, 486 lines) and `run` in `stack_advisor` (`:113`), `brainstormer`
+(`:728`) and `code_scanner` (`:271`). Its yield protocol is committed already — a
+shared-helper seam, not a ninth agentifier phase runner. **Proposal:** nothing to design:
+document the contract it already keeps (it writes only `_stream_received_chars` and
+`_stream_status`, and always exhausts `chunks`) and drop the alias — `agentifier.py:89`
+imports the public name and `:2052` calls it. That is a rename §60.2's check verifies, and
+it could ride with batch 7. **Sites:** none move; `test_chars_counter_seed.py:150, 156`
+stay patch-shaped, re-pointed — they spy the `seed` `_run_catalog_phase` passes, which is
+visible only where agentifier looks the name up. The site is inside the tier-A node
+`TestBreadthTurnSeedsTheCounter::test_counter_does_not_dip_below_the_progress_text`
+(D-AT3), so §60.3 applies. **Mutation:** `seed=pre_stream_chars` → `seed=0` at
+`agentifier.py:2062`, breaking D-AT3; `:159` fails, and so do `:107`, `:114`, `:143` and
+`:217`.
+
+#### The eight agentifier generators — one proposal, written against the sub-generator backlog
+
+**The protocol today.** All eight are `Generator[str, None, None]`, as are
+`agentifier.run` (`:2505`; 15 statements) and the backlog's three turns — `deployer.run`,
+`brainstormer.run`, `code_scanner.run` — which share its `(user_input, session,
+llm_config)` signature. They yield display text only: progress banners, error strings,
+streamed deltas (through `stream_suppressing_json`), the final display block. No sentinel,
+nothing sent in, every `return` bare; `streaming.start` concatenates the chunks and ignores
+the return value (`streaming.py:259–262`). **Nothing flows back to `run`:** state travels
+only through the live session — the done-flags `run` routes on (`:2524–2533`),
+`agentifier_messages`, `_display_override` (applied by the poll, `callbacks/_chat.py:596–599`),
+`_stream_status`, `_stream_received_chars`. And the phases chain *past* `run` inside one
+turn: spec → `_finalize_specs` → `_begin_priority_phase` → `_complete_agentifier`, each by
+`yield from`.
+
+**One decision, two shapes it could take.**
+
+- **(a) Promote as-is.** Signatures and `Generator[str, None, None]` stay; each function
+  documents the session keys it may write; the tests re-point by identifier substitution,
+  with §60.3 covering the tier-A sites. No `src/` dependency changes — and the backlog
+  stays open.
+- **(b) The backlog split.** Step sub-generators typed `Generator[str, None, int]`,
+  returning the turn's received-character total, driven as `total = yield from step(...)`.
+  The shape is already in the repo: `_reask.stream_counting` (`:305–335`), consumed by
+  `deployer.run` at `:664` — the only value-returning `yield from` in any turn today. Under
+  (b), `_run_catalog_phase` stops hand-threading its `pre_stream_chars` local (17 lines)
+  through four `_session_counter` sites, and the rule-12 `noqa`s at `:1255` and `:1624` are
+  re-measured.
+
+**What (b) shares with the backlog's three turns:** the entry guards (`user_input is None`
+→ `replay_last_assistant`), the three sub-generators every turn is built from (replay;
+`stream_suppressing_json` / `stream_counting` over `llm.stream_turn`;
+`reask_for_artifact`), and the session side-channels. That is why §55.9 calls it one
+decision: a contract published now under (a) is the contract (b) would then have to
+change. Session keys stay byte-identical either way (Rule 4); no `TypedDict`.
+
+**Four of the eight are not phase runners.** `_run_catalog_phase`, `_run_spec_phase`,
+`_run_cross_cutting_phase` and `_run_priority_phase` are the phases `run` dispatches to.
+`_handle_reentry` is the re-entry transition; `_finalize_specs` (spec → cross-cutting) and
+`_begin_priority_phase` (cross-cutting → priority) are transitions; `_complete_agentifier`
+is the terminal completion step. All callers are inside `agentifier.py`; a promotion would
+also extend its `__all__` (`:145`), whose comment today lists "the three names the
+orchestrator itself publishes". And §55.9's "five of which already carry rule-12
+complexity `noqa`s" is **two**: `_run_catalog_phase` (`:1624`) and
+`_run_cross_cutting_phase` (`:1255`). Five is the size of §27.4's backlog entry — those
+two plus `deployer.run`, `brainstormer.run` and `code_scanner.run`.
+
+**`_run_catalog_phase`** (`agentifier.py:1624`; 178 statements, 486 lines; 17 `yield`, 7
+`yield from`; §27.4 entry nine). Two callers: `run` (`:2525`) and `_handle_reentry`
+(`:2454`, the stale rediscovery). **Seam:** `run_catalog_phase(user_input, session,
+llm_config) -> Generator[str, None, None]` under (a). It is the main case for (b): six
+blocks would become steps returning the character total — Scout (`:1686–1716`), the
+zero-candidate completion (`:1717–1798`), Linker (`:1805–1867`), Composer (`:1872–1916`),
+the breadth-selection turn (`:1934–2044`), the tier-review stream (`:2049–2109`). Its
+`agentifier_messages` seeds are LLM prompt text and stay frozen (Rule 4). **Sites:** the 5
+in `test_revision.py` move; `test_reselection.py:136, 178` (`patch.object`) stay
+patch-shaped, re-pointed — they isolate `_handle_reentry`'s stale branch from the real
+phase. **Mutation:** `:1727` `if session.get("agentifier_revision"):` → `if False:`;
+`test_zero_new_candidates_finalises_carried_forward` fails,
+`test_non_revision_zero_completes_empty` passes.
+
+**`_run_spec_phase`** (`:1056`; 36 statements, 66 lines; 1 `yield`, 5 `yield from`; no
+`noqa`). Sole caller `run` (`:2527`). Already split into sub-generators
+(`_ff_sweep_specs`, `_handle_spec_ff_review`, `_draft_and_show_spec`, `_finalize_specs`) —
+the repo's working example of (b), minus a return value. **Seam:**
+`run_spec_phase(user_input, session, llm_config) -> Generator[str, None, None]`.
+**Sites:** all 16 in `test_ff_sweep.py` move (the import and 15 calls); six sit in five
+tier-A nodes of `TestSweepFailureHandling` (D-AF5, D-AF6, D-AF7) — §60.3 under (a),
+§50.5(a) if a call changes shape. **Mutation:** move the FF branch (`:1086–1088`) into the
+not-pending `else` arm, so FF is honoured only after the review check — breaking D-AF1;
+`test_ff_while_pending_sweeps_instead_of_revising` and `test_ff_press_resumes_after_pause`
+fail, the other six FF tests pass.
+
+**`_run_cross_cutting_phase`** (`:1255`; 73 statements, 130 lines; 7 `yield`, 5 `yield
+from`; §27.4 entry ten). Sole caller `run` (`:2529`). **Seam:** `run_cross_cutting_phase(…)`
+under (a). Under (b), the analyst-rerun block (`:1279–1320`) and the topic-revision block
+(`:1358–1380`) become steps beside `_handle_cc_ff_review` — and the rerun block is the same
+step as `_finalize_specs:755–790` except for its UI strings, which a shared step would take
+as parameters. **Sites:** all 8 in `test_ff_sweep.py` move. **Mutation:** `:1335` `if
+session.get("agentifier_cross_cutting_ff_review"):` → `if False:`;
+`test_review_confirm_begins_priority`, `test_review_revision_reruns_named_topic` and
+`test_review_locked_topic_rejected` fail, the three FF-sweep tests pass.
+
+**`_run_priority_phase`** (`:1475`; 47 statements, 82 lines; 2 `yield`, 2 `yield from`; no
+`noqa`). Sole caller `run` (`:2531`). Deterministic — no LLM call, network or disk. Its
+`_llm_config` is unused, kept only for `run`'s uniform three-argument dispatch, which a
+documented phase-runner signature would record. **Seam:** `run_priority_phase(user_input,
+session, _llm_config) -> Generator[str, None, None]`. **Sites:** both in
+`test_prioritizer.py` move (one helper serving ten tests). **Mutation:** at `:1504`, read
+confirmation before edits (`if not edits.saw_pair or _is_spec_confirmed(user_input):`) — the
+defect the comment at `:1501–1503` names; `test_edit_wins_over_affirmative_prefix_collision`
+fails, the other nine pass.
+
+**`_handle_reentry`** (`:2410`; 37 statements, 93 lines; 1 `yield`, 2 `yield from`) — the
+re-entry transition `run` (`:2533`, the sole caller) takes once all four done-flags are
+set. It demotes `agentifier_state`, then either resets and delegates to
+`_run_catalog_phase(None, …)` (stale inputs) or arms the reselection panel; its
+`_user_input` is unused (§27.5e). **Seam:** `handle_reentry(…)` as-is; if
+`_run_catalog_phase` is promoted, the module-global lookup at `:2454` and the two
+`patch.object` strings follow it. **Sites:** all 3 in `test_reselection.py` move.
+**Mutation:** move `:2446–2447` (the reset and the acknowledgement write) below the `yield
+from` at `:2454`; `test_stale_reentry_clears_candidate_pool` fails,
+`test_vision_newer_resets_and_rediscovers` passes.
+
+**`_finalize_specs`** (`:691`; 51 statements, 105 lines; 4 `yield`, 1 `yield from`) — the
+spec → cross-cutting transition: it stores the six-key `ai_features` (a frozen shape, Rule
+4), sets `agentifier_spec_done`, runs the Cross-Cutting Analyst and yields the first topic,
+or chains to `_begin_priority_phase`. Three callers: `_run_spec_phase` (`:1108`),
+`_handle_spec_ff_review` (`:1202`), `_run_catalog_phase` (`:1977`). **Seam:**
+`finalize_specs(session, llm_config)` as-is; under (b) its analyst block (`:755–795`) shares
+a step with the cross-cutting rerun. **Sites:** the 3 direct ones move
+(`test_reselection.py:219`, `test_search_level.py:529, 557`); `test_ff_sweep.py:158`'s
+`patch()` stays, re-pointed. **Mutation:** `:715` `list(preserved) + features` →
+`features + list(preserved)`; `test_preserved_prepended_and_flags_cleared` fails.
+
+**`_begin_priority_phase`** (`:1387`; 34 statements, 81 lines; 2 `yield`, 1 `yield from`) —
+the cross-cutting → priority transition: one Prioritizer draw, the overlay and
+normalisation, the table — or `_complete_agentifier` when there are no features. Callers:
+`_finalize_specs` (`:752`), `_handle_cc_ff_review` (`:972`), `_run_cross_cutting_phase`
+(`:1291`, `:1350`). **Seam:** `begin_priority_phase(session, llm_config)` as-is. **Sites:**
+both in `test_prioritizer.py` move (one helper, seven tests); `test_ff_sweep.py:301`'s
+`patch()` stays, re-pointed; `conftest.py:52` patches the collaborator `_call_prioritizer`
+and is unaffected. **Mutation:** pass `{}` as the overlay at `:1441`; the three overlay
+tests fail, the four banner and short-circuit tests pass.
+
+**`_complete_agentifier`** (`:841`; 33 statements, 86 lines; 1 `yield`, no `yield from`) —
+the terminal completion step and the single finalisation locus. It mutates `ai_features`
+in place and re-stores it, writes `agentifier_state`, `agentifier_stale_acknowledged`,
+`agentifier_priority_done`, `_display_override` and `agentifier_artifact_msg_count`, appends
+to `agentifier_messages`, and pops the six `agentifier_revision*` /
+`agentifier_carried_forward` keys. Five call sites: `_begin_priority_phase` (`:1403`),
+`_run_priority_phase` (`:1506`), `_run_catalog_phase` (`:1765`, `:1787`, `:1959`).
+**Seam:** `complete_agentifier(session, display=None)` as-is — or, the one case where the
+generator protocol is incidental (it yields once and never delegates), a plain `-> str` with
+callers writing `yield complete_agentifier(…)`: a contract change, Phase 7's to take.
+**Sites:** all 6 move (`test_revision.py:206, 217, 224, 230, 248`; `test_try_again.py:534`).
+**Mutation:** drop `"agentifier_revision_delta",` from the pop tuple (`:902`);
+`test_revision_state_cleared` fails, `test_carried_forward_merged_and_stamped` passes.
+
+#### The `_usage.py` production seam (§52.5)
+
+**`_usage._write_atomic`** (`_usage.py:345`; 12 statements, 19 lines) has one caller,
+`save_usage` (`:438`; 30 statements, 73 lines, under `_USAGE_LOCK`), and is not
+re-exported. It makes four `os` calls — `fdopen` (`:355`), `fsync` (`:358`), `replace`
+(`:359`), `unlink` (`:362`) — and no other module in `src/spec4` writes atomically.
+**Seam:** `_write_atomic` stays private and unchanged; two module-level aliases,
+`_replace = os.replace` and `_fdopen = os.fdopen`, are called at `:359` and `:355`. Both
+are needed, as §52.5's candidate text says (its code example shows only `_replace`):
+`test_partial_content_write_never_reaches_the_file` fails `fdopen` mid-write, and nothing
+else could inject that without patching a stdlib attribute. The underscores stay — they
+are module-private test seams, and a bare `replace` on `spec4._usage` would read as API.
+**What the tests stop depending on:** `spec4._usage` binding `os` as a module name, and
+`module_seam` / `_ModuleSeam` — `tests/conftest.py:57–114` goes, with `import importlib`
+(`:25`) and `Callable` (`:28`), which only that code used. No other test uses the fixture.
+**Sites:** none move to a direct call — failing a stdlib call is patch-shaped by nature;
+`test_usage_capture.py:854` becomes `patch("spec4._usage._replace",
+side_effect=OSError("boom"))` and `:878` `patch("spec4._usage._fdopen",
+side_effect=_broken_fdopen)`. **Mutation:** revert `:359` to `os.replace(tmp_name, path)`,
+bypassing the alias — the new test fails `DID NOT RAISE` while the old `module_seam` form
+passes; and on the unmutated new code the old form fails, so the test form pins the binding.
+The companion for the second alias is `:355` back to `os.fdopen(`. The `src/` and test
+edits must land in one commit. Strict mypy is clean on a scratch copy with the aliases;
+coverage gains two statements, both executed at import.
+
+**§52.5's audit clause, answered: one unrecorded case, and two of a neighbouring kind.**
+`tests/test_root_routing.py:384` — `monkeypatch.setattr(pathlib.Path, "is_dir", boom)` —
+makes `project_manager.directory_opens` (`project_manager.py:364`) fail on demand by
+replacing `Path.is_dir` **for the whole process** while the test runs: §52.1's hazard
+class, and not in the record. It is a method call, so a module-level alias does not fit;
+the in-repo precedent is `layouts/_artifact_view.py`'s function-wrapper seams (`_resolve`
+`:251`, `_stat` `:263`), which tests patch by name. And `test_designer.py:967` and `:1012`
+set `Thread` on the stdlib `threading` module through `spec4.callbacks.designer` and
+`._mock_gen` — process-global as well, though they suppress or inline the worker thread
+rather than fail a call. §52.5's grep checked only the `patch("…")` string form, which is
+why it saw none of the three. Sized here, not scheduled: one candidate seam
+(`directory_opens`) and two sites to classify. In passing, `_usage.py:3–5`'s docstring
+still says `project_manager` "re-exports every name defined here"; since 4j it re-exports
+9 of them.
+
+### 60.5 Sizing the deferrals
+
+#### Type hygiene — the 290
+
+**What the 290 lines hold.** 454 annotated targets — a Dash callback declares every
+parameter on one line — of which **440 are bare `Any`**; the other 14 are
+`dict[str, Any]`-shaped parameters sharing a line with one. By kind: 416 parameters, 22
+variables, 14 `**kwargs`, 2 `*args`. **233 of the 454 are Dash callback parameters.** The
+commonest names: `session` 80, `n` 53, `value` 37, `store` 22, `prefs` 11,
+`image_support` 10, `working_dir` 8.
+
+**How they were classified — by reading, re-checked adversarially, cross-checked by rule.**
+One agent per area (`agents/` + `agentifier/`, top-level `callbacks/`, `callbacks/designer/`
++ `layouts/`, root modules) classified every line after reading the function and its
+producers: its callers and, for a callback, the `Input`/`State` prop bound to each
+parameter. A second agent per area was told to refute every "genuinely typeable" type
+against those producers — Dash passes `None` before the first interaction;
+pattern-matching inputs arrive as lists — and every "load-bearing" reason, and returned the
+corrected set. Each area's rows match its grep lines one for one: **290 of 290, none
+missing, none extra.** The verifiers changed **10** rows. Four changed class —
+`stack_advisor/_render.py:64` (JSON edge → typeable, `str`), `app.py:391` (load-bearing →
+typeable, `html.Div | list[Any]`), `llm.py:499` and `:548` (load-bearing → typeable,
+`Iterable[Any]` / `AsyncIterable[Any]`) — and six corrected a reason or a citation. Two
+verifiers applied **every** proposed annotation in their area to a scratch copy and ran
+strict mypy: **0 errors** (27 edits across 16 files; 45 annotations), and a deliberately
+wrong type produced the expected `arg-type` error. Separately, a mechanical pass classified
+each bare-`Any` target by rule — a callback parameter by the prop it is bound to, anything
+else by name and by what a local is read from. It agrees with the reading on **237 of
+290** lines; where they differ the rule was the naive one (`search_config` is a
+`SearchConfig` dataclass, not a session dict; `agentifier/subagents.py`'s protocol members
+are heterogeneous by design).
+
+**A premise corrected on the way.** Both passes were told that Dash and litellm objects are
+`Any` because pyproject's `ignore_missing_imports` override covers them. **They are not:**
+dash 4.1.0 and litellm 1.82.0 ship `py.typed`, and the override only silences a module mypy
+cannot find — the mypy cache shows it analysing both. Of the overridden packages the
+verifiers checked, only `dash_mantine_components`, `boto3` and `jsonschema` ship no types.
+So "no stubs" is no reason for a Dash or litellm row.
+The load-bearing litellm rows stand on duck-typed reading instead (`_get`, `getattr`), and
+the one first-party place that erases litellm's typed return to `Any` is
+`_send_with_effort_fallback`'s `tuple[Any, str | None]` (`llm.py:170`, `:189–191`) —
+outside the 290, because 5p's grep matches `: Any`, not `tuple[Any`.
+
+| Class | Lines | Where they sit | Proposal |
+|---|---:|---|---|
+| **session-dict edge** | **90** | Dash callback signatures in `callbacks/` (89) — the store and session payloads they are bound to — and `app.py:372` | **Phase 8.** Typing it is the session `TypedDict` the plan bars from cleanup (§27.5(h)) |
+| **JSON artifact edge** | **107** | the renderers and artifact readers — `agents/` 61, root modules 40, `layouts/` 4, one each in `agentifier/` and `callbacks/` | **Phase 8.** `TypedDict`s for the artifact schemas, where the schema *is* the design |
+| **genuinely typeable** | **58** | `callbacks/` 20, `agents/` 14, root modules 12, `agentifier/` 10, `layouts/` 2 | **Phase 7** |
+| **load-bearing** | **35** | root 17 (litellm usage, response and chunk values read through `_get`/`getattr`; `**extra_kwargs` passthroughs), `layouts/` 8 (`**kwargs` into the untyped `dmc`), `agentifier/` 5 (the `SubAgent` protocol's heterogeneous inputs), `agents/` 3, `callbacks/` 2 | **Stays**, with its reason beside it where it is not obvious |
+
+**The 58, by proposed type:** `str | None` 11 · `dict[str, Any]` 5 · `int | None` 5 · `str`
+5 · `SearchConfig | None` 4 · `SearchConfig | str | None` 3 · `dict[str, Any] | None` 3 ·
+`bool | None` 3 · `list[str | None]` 2 · `int` 2 · one each of `ComposerOutput`,
+`Candidate`, `TierAnalystOutput`, `DesignerSession`, `AsyncIterable[str]`,
+`Iterable[Any]`, `AsyncIterable[Any]`, `html.Div | list[Any]`, `pathlib.Path | None`,
+`float | None`, `str | dict[str, str] | None` and `Awaitable[_T] -> _T` · and three lines
+that carry several parameters (`agents/designer.py:601`, `app.py:427`, `llm.py:356`). They
+come from three places: Dash callback inputs bound to a fixed-type prop (`n_clicks` → `int
+| None`; `provider_label`, `refine_text` → `str | None`; `annotations` → `list[str |
+None]`; `image_support` → `bool | None`, stale `localStorage` values included, since every
+writer the store ever had emitted `bool | None`); first-party types that already exist
+(`SearchConfig`, `Candidate`, `ComposerOutput`, `TierAnalystOutput`, `DesignerSession`);
+and values with a single writer type (`working_dir`, `version`, `agent`).
+
+**Caveats the verifiers kept, for the Phase 7 commit.** `received`, `status` and
+`working_dir` read straight out of the live session type cleanly without a `TypedDict`, but
+the type rests on today's writer set rather than being enforced where the value is made.
+The two schema validators' `data: dict[str, Any]` (`_code_review_schema.py:516`,
+`_phase_schema.py:131`) narrows a check that accepts any JSON — true of today's producers.
+And strict does not enable `warn_unreachable`, so an `isinstance` branch that a narrower
+type makes dead goes dead silently (`_review_render.py:57`).
+
+**Beyond the 58.** Another 81 lines are callback signatures classed by their store
+parameter, and on them sit **107 prop-bound inputs** the mechanical pass types by their
+prop — `n` ×51, `n_clicks_list` ×6, `n_clicks` ×5, `model` ×5, `provider_label` ×4 and so
+on. Typing them is the same work, but each line keeps its `Any` for the store, so the 290
+would not move. In `callbacks/designer/` and `layouts/` the verifier applied those partial
+annotations as well — mypy-clean; elsewhere they are unverified.
+
+**The proposal.** Phase 7 takes the **genuinely typeable** class — the 58 lines, which takes
+5p's figure from 290 to 232 — and, if it chooses, the 107 prop-bound inputs beside them.
+Its check is strict mypy after each replacement; because mypy is already clean, a narrower
+type is only as good as the producer evidence behind it, which the verify pass supplies
+line by line. The session-dict and JSON-artifact edges defer to **Phase 8**, where the
+question is a `TypedDict` design, not cleanup. One scope question Phase 7 can settle first:
+13 of `callbacks/designer/`'s session-edge rows carry only the Designer wizard's own store,
+which `agents/designer.py:132–137` already partly models as the `DesignerSession`
+`TypedDict` — whether §27.5(h)'s prohibition, written for "the session dict", reaches that
+store is a ruling, not a measurement. Load-bearing stays.
+
+**Where it goes in the order** (§60.6): after the seam decisions and before root-siblings,
+the plan's order, and nothing forces it earlier — the typeable lines are overwhelmingly
+callback signatures and helpers that no rename or seam proposal touches. Before
+root-siblings has a reason of its own: 11 of the 290 sit in two of the four modules the
+move would relocate (`_phase_markdown.py` 6, `_usage.py` 5), and annotating before the move
+keeps each diff to one concern.
+
+**Outside the 290**, for Phase 8's sizing and not classified here: **148** `-> Any` return
+lines, the same four shapes on the return side; and **891** `dict[str, Any]` lines (972
+occurrences), session-dict or JSON artifact edges by construction.
+
+#### The `project_manager` root-siblings inconsistency
+
+**The inconsistency.** Phase 4b split `project_manager.py` into four concern modules and
+left them at the package root — `src/spec4/_paths.py` (199 lines), `_artifacts.py` (580),
+`_phase_markdown.py` (518), `_usage.py` (438) — with `project_manager.py` (487) as the
+façade whose `__all__` is load-bearing under strict mypy's no-implicit-re-export. Phases
+4c–4e did the same kind of split the other way: `agents/code_scanner/`,
+`agents/stack_advisor/`, `agents/phaser/` became packages with their pieces inside. So one
+concern's four modules sit loose among unrelated root modules, and
+`src/spec4/_artifacts.py` sits one import line from the unrelated
+`src/spec4/callbacks/_artifacts.py` (548 lines of Dash callbacks) — the cost §27.7 named.
+Converting `project_manager` to a package the way 4c–4e did is a move, no logic.
+
+**The sites** — every tracked reference to the four modules by path, **16 lines in 5
+files**: `project_manager.py:8, 10, 12, 13` (its docstring) and `:42, 70, 82, 87` (its
+imports); `_artifacts.py:28, 35`; `_usage.py:24`; `tests/conftest.py:84, 85, 95` (the
+`module_seam` docstring and example); `tests/test_usage_capture.py:854, 878` (the two
+`module_seam("spec4._usage.os", …)` calls). Nothing in `evals/`, `scripts/` or the docs.
+None of the five is a §50.3 entry. For contrast, `callbacks/_artifacts.py` — which would
+*not* move — is reached from `callbacks/__init__.py:17, 89` and seven test lines in three
+files.
+
+**It interacts, so batch 11 waits.** All three `project_manager` rename names live in root
+siblings — `_write_text_if_changed` and `_with_readme_attribution` in `_artifacts.py`,
+`_phase_spec_preamble` in `_phase_markdown.py` — so the rename and the move edit the same
+definitions and the same import lines in `project_manager.py`. **Batch 11 waits for the
+root-siblings decision, as the directive requires**; and it is one of the three
+`_with_readme_attribution` stops anyway. The `_usage.py` seam (§60.4) touches a root
+sibling too: after a conversion its patch target `spec4._usage._replace` becomes
+`spec4.project_manager._usage._replace` — one string at two sites, which the move would
+re-point in the same commit. That is the smaller churn, so the seam is not held back.
+
+#### M8, M2 and the caught-by-neither cells
+
+Re-run at `f862f65` in a scratch clone, each mutation against both classes and the full
+suite, `callbacks/designer/__init__.py` restored byte-identical after each:
+
+| Mutation | `TestMockBuffers` (net) | `TestMockDeliveryAck` | Full suite |
+|---|---|---|---|
+| none — the control | | | `4199 passed, 1 skipped` |
+| **M2**, the corrected anchor: the delivery tick returns `True` (interval off) instead of `no_update` | **FAIL** — `test_a_generation_from_start_to_acknowledged_delivery` | **FAIL** — `test_delivers_step6_payload_while_store_is_at_step_5` | 2 failed |
+| **M8**, exactly as §56 defined it: `"The mock was generated and saved, but this page "` → `"Generation failed. "` | PASS | PASS | **`4199 passed`** — caught by nothing |
+| M8b: the whole four-fragment message → `"Generation failed."` | FAIL | FAIL | 2 failed |
+| M8c: only `"Refresh the page … Retry to regenerate."` removed | FAIL | FAIL | 2 failed |
+
+So **§56.3's M2 row reads FAIL | FAIL**, and **M8 is the only caught-by-neither cell — in
+the whole suite, not just the two classes.** The two tests that do catch M8b/M8c are
+`test_designer.py::TestMockDeliveryAck::test_runaway_valve_reports_the_saved_mock` (`:1543`)
+and its twin in `test_streaming_characterization.py` (`:559`); both assert only
+`"Refresh the page" in buf["error"]`.
+
+**The acceptance check for the test that pins M8:**
+
+1. Under **M8**, the new test fails and nothing else does — the suite goes from 0 to 1
+   failure.
+2. Under M8b and M8c, the new test fails alongside the two that already catch them.
+3. Unmutated, the suite is green.
+4. Positive paired with negative (§51.6): it asserts the saved-mock clause is **present**
+   in the error, beside what the existing test already asserts is absent afterwards — the
+   buffer popped, the interval off.
+
+It belongs in `tests/test_designer.py::TestMockDeliveryAck`, which is neither a whole-file
+entry nor a tier-B class; its one tier-A node, `test_delivery_preserves_prior_store_keys`,
+is untouched. The twin in `test_streaming_characterization.py` is whole-file net and stays
+as it is.
+
+**One harness rule, proposed for Phase 7's mutation checks:** an anchor that does not match
+is an **error**, not a skip. §56's harness printed `-- anchor not found --` and continued,
+and a mutation that never ran sat in a matrix titled "nine mutations" for a sub-phase and
+a close-out.
+
+#### `evals/`
+
+**Still outside the gate and outside collection.** `testpaths = ["tests"]`
+(`pyproject.toml:81`); **0 of the 4,200** collected node ids is under `evals/`; the gate's
+`ruff check src/ tests/` and `mypy src/` do not reach it. The `tests/conftest.py`
+dependency §51.3 recorded is **unchanged in content** — `_EVAL_SCRIPTS` still puts
+`evals/scout/` on `sys.path` for `tests/agentifier/test_fanout_baseline.py` — but it now
+sits at **`:124–126`**, not `:65`: 6b's addendum added `module_seam` above it. The only
+line removed from `conftest.py` since `a86a2ee` is an import.
+
+**New since §51: `evals/` imports seven of the rename names** (§60.2 item 5). Outside
+collection, nothing would notice them break — which is why §60.2's substitution covers
+`evals/` and `scripts/` rather than trusting the gate to.
+
+### 60.6 Proposed sub-phase order and the gate per commit
+
+**What every sub-phase inherits.** The full gate green at its commit — `ruff check` with the
+promoted set, `ruff format --check`, `mypy src/` strict, `pytest --cov=spec4`; the floor at
+**456** and the off-limits check in both halves, in §60.3's adapted form; coverage
+**≤ 891 misses** on `tests/` alone; the tier-B allowed-and-reported template (§51.6);
+runtime claimed only as a paired same-session delta; nothing pruned for seconds; negative
+assertions paired with positive; one mutation per seam. It also assumes Rule 1 as relaxed
+for Phases 5 and 6 (§50.5(e)) — one commit and one report per sub-phase — which needs
+confirming for Phase 7.
+
+| # | Sub-phase | Scope | Commits | The check that proves it | Petition |
+|---|---|---|---:|---|---|
+| 7a | Rename batch 1 — `session` | 5 names, 281 sites (6 with `_load_working_dir`, if §60.4's reading is taken); `app.py:26, 92, 387` | 1 | rename check; gate | §54.7 × 3 whole-file entries; §60.3 × 2 files (3 tier-A nodes; +1 in `test_session.py` with `_load_working_dir`) |
+| 7b | batch 2 — `layouts._chat` | 7 of 9 — the two panel collisions held | 1 | rename check; `app.py:33, 409` | §54.7 × 1; §60.3 × 7 files |
+| 7c | batch 3 — `layouts` | 8 of 9 — `_agent_rows` held; three module-shadow names | 1 | rename check; `app.py` 8 lines; import-layering test | §54.7 × 2; §60.3 × 5 files |
+| 7d | batch 4 — `layouts.designer` | 7 | 1 | rename check | §54.7 × 2; §60.3 × 2 files |
+| 7e | batch 5 — `agents.code_scanner` | 7 | 1 | rename check | §54.7 (`test_renderer_goldens.py`); §60.3 × 1 file |
+| 7f | batch 6 — `agents.brainstormer` | 5 | 1 | rename check | §54.7 (`test_renderer_goldens.py`) |
+| 7g | batch 7 — `agentifier.agentifier` | 20 — 21 if §60.4's reading of `_stream_suppressing_json` (drop the alias) is taken | 1 | rename check | §54.7 (`test_renderer_goldens.py`); §60.3 for the alias's one tier-A site |
+| 7h | batch 8 — `agents._seam_check` | 7 | 1 | rename check | §60.3 × 1 file (3 tier-B classes) |
+| 7i | batch 9 — `callbacks.designer` | 3 of 4 — `_start_gen` held | 1 | rename check | §60.3 × 1 file (`TestRefinePersistsManifest`) |
+| 7j | batch 10 — `llm` | 3 of 4 — `_record_usage` held | 1 | rename check | none |
+| — | the six stops | a ruling: another name for each collision; one of §60.3's three options for each blocked name | 0 until ruled | per ruling | §50.5(a), by node id, if a blocked name is to move |
+| 7k | `_usage.py` production seam | §60.4's last row | 1 | §60.4's mutation check; coverage per file (`_usage.py`); `module_seam` gone from `conftest.py` | none — no §50.3 entry touched |
+| 7l | M8 pinned | one test in `TestMockDeliveryAck` | 1 | §60.5's acceptance check | none |
+| 7m | §59.6 item 11 — `test_try_again.py`'s source-text reader re-expressed against a key registry | one test | 1 | a key literal moved out of `agentifier.py` must still be seen — today the set shrinks silently | none |
+| 7n | the seam decisions | §60.4 — the two session mutators, the brainstormer seam, the eight agentifier generators with the `yield from` backlog | 4 under shape (a) — one per mutator, one for the brainstormer seam, one for the agentifier eight; under (b), one per converted turn | one mutation per seam (§60.4's column); coverage per touched file | §60.3 where a site changes by identifier substitution alone (`test_ff_sweep.py` × 5 tier-A nodes); §50.5(a), by node id, where a call changes shape |
+| 7o | type hygiene | §60.5's 58 genuinely typeable lines (the 290 → 232); optionally the 107 prop-bound callback inputs on mixed lines | 2 — `callbacks/`, then the rest | strict mypy clean with each replacement (already shown on a scratch copy for two of the four areas); gate; coverage unchanged | none |
+| 7p | root-siblings | the decision; if converting, `project_manager/` becomes a package — 4 modules moved, 16 reference lines | 1 | `git diff -M` shows four pure moves plus import lines; the import-layering test; gate | none — none of the 5 files is a §50.3 entry |
+| 7q | batch 11 — `project_manager` | 2 of 3 — `_with_readme_attribution` held | 1 | rename check | §60.3 × 1 file (`TestPreambleTwoAltitudesAndSurfaces`) |
+| 7r | §59.6 items 9–10 | PLR2004 (49 in `src/`); 13 E501 in `scripts/e2e_agentifier.py` | 1–2 | each rule's own count, to zero or a justified `noqa` | none |
+| 7z | the plan's audit | Phase 0's measurements re-run (vulture, deptry, rule-set statistics, layering); `CLEANUP_REPORT.md`; the seven symptoms; `README.md`'s tree, `tests/README.md` (item 13), `CLAUDE.md`; the inventory folded into `BACKLOG.md` | 1+ | the report's before/after | — |
+
+**Where the order departs from a straight reading of the list, and why.**
+
+- **Renames first, in batch order** — the cheapest work per site, with no dependency on
+  the seams (§59.6: "item 1 does not depend on item 2"). A stop is held out of its batch,
+  never holding the batch.
+- **§59.6 item 11 immediately before the seam decisions.** The agentifier seam decision is
+  the one change likely to move code *out of* `agentifier.py` — a sub-generator split —
+  and item 11's reader breaks silently, as a shrinking set, the moment that happens.
+  Everything before it keeps code in place: the renames change identifiers, never an
+  `"agentifier_*"` literal.
+- **Type hygiene after the seams, before root-siblings** — the plan's order, argued in
+  §60.5: nothing forces it earlier, since the typeable lines are overwhelmingly callback
+  signatures no rename or seam touches, and 11 of the 290 sit in two modules the
+  root-siblings move would relocate.
+- **Root-siblings after type hygiene** — the plan's order — **and batch 11 after
+  root-siblings** (§60.5).
+- **The audit last**, because it measures the result.
+
+**Mode.** The renames fit the plan's "Sonnet 5, auto": every step is mechanical and
+checked by the rename check and the petitions. The seam decisions and the stop rulings are
+judgment — plan mode.
+
+**Stopping here.** Committed as `cleanup: Phase 7 pre-work (§60)`, `CLEANUP_INVENTORY.md`
+only. Phase 7 begins on approval of §60.
