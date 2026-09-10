@@ -7264,6 +7264,12 @@ Measured wall time by directory and largest file (each includes the ~4.2 s start
 
 #### Proposed targets (proposals only — Phase 6 does not set them here)
 
+> **Superseded by §50.5.** Both proposals below were amended on approval. The floor is
+> **456**, not 273 — §50.5(a) adopted the tier-B reading. The runtime target is
+> restated against the post-`testpaths` baseline — §50.5(b). This subsection is left as
+> written because it is the reasoning the amendments were made against; **§50.5 is what
+> Phase 6 runs under.**
+
 **Count floor: 273.**
 
 Below this number Phase 6 may not take the suite. It is the union of §50.3's three
@@ -7647,7 +7653,11 @@ Phase 6 may prune and reshape tests. The net that made Phases 2–5 safe is not 
 Enumerated here so the exclusion is checkable by `git diff --stat` rather than by
 argument.
 
-Built from three sources and unioned; **273 tests across 53 files**.
+Built from three sources and unioned. **Amended by §50.5: the floor is the tier-A +
+tier-B union, 456 tests across 53 files.** The tier-A subset — 273 tests across 42
+files — is retained below as written and is no longer the floor on its own. (The
+as-committed text read "273 tests across 53 files"; 53 is the A+B file count, 42 the
+tier-A one. Corrected here, nothing else in §50.3 changes.)
 
 #### Source 1 — added or extended by Phase 1
 
@@ -7701,13 +7711,12 @@ AST, at three tiers, so the boundary is a fact rather than a judgement:
 | B | Its **class's** name or docstring cites one; the test's own does not | 183 | 19 |
 | C | Only its **module** docstring cites one | 698 | 39 |
 
-**Tier A is what the floor uses**, because it is the directive's literal wording and
-because a test that names its D-number is a test whose author intended it as that
-decision's lock. Tier B is a defensible wider reading and is recorded so the floor can
-be raised to **456** by decision rather than by re-measurement. Tier C is **not**
-proposed for the net: a module docstring citing a D-number does not make each of its
-698 tests a lock on it, and including it would freeze 22% of the suite against a phase
-whose purpose is to prune.
+**Tiers A and B are both in the net** — §50.5 adopted the wider reading, so the floor
+is 456. Tier A is enumerated per test below; tier B is enumerated per class, which is
+its natural granularity (the class docstring names the D-number and every test under it
+inherits the attribution). Tier C is **not** in the net: a module docstring citing a
+D-number does not make each of its 698 tests a lock on it, and including it would
+freeze 22% of the suite against a phase whose purpose is to prune.
 
 | File | Node id | D-number(s) |
 |---|---|---|
@@ -7787,6 +7796,143 @@ whose purpose is to prune.
 
 **73 tests.**
 
+#### Source 2 (continued) — tier B: tests whose *class* cites a D-number
+
+Adopted into the net by §50.5. Enumerated per class, because that is where the
+attribution lives: the class docstring or name cites the D-number and every test
+under it is in the net. **All tests in each class listed here are off-limits**, so a
+`git diff --stat` over the class is the check, the same as for the whole-file entries.
+
+**`test_project_manager.py`** — 29 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestPhaseSpecPreamble` | 13 | D-PS2, D-PS4 |
+| `TestPreambleTwoAltitudesAndSurfaces` | 6 | D-PH5 |
+| `TestRenderPhaseStackRoutingAndNfr` | 5 | D-PH3, D-PH4 |
+| `TestSessionIsBrownfield` | 5 | D-PM1 |
+
+**`test_agent_rows.py`** — 22 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestAMissingUsageEntry` | 7 | D-AR3 |
+| `TestItLeadsTheProjectView` | 6 | D-LR11 |
+| `TestTheSixActionVariants` | 9 | D-AR1 |
+
+**`test_seam_check.py`** — 18 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestDeclarationAlignment` | 9 | D-PS15 |
+| `TestDeclarationAlignmentTwoArraySchema` | 5 | D-PH2 |
+| `TestExtractGraphTransport` | 4 | D-PH9 |
+
+**`test_agents.py`** — 16 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestAiFeaturesForPhaserFullSurface` | 8 | D-PS3 |
+| `TestLoadDesignManifest` | 4 | D-SC5 |
+| `TestPhaserSpecReferenceDirective` | 4 | D-PS14 |
+
+**`test_status_bar.py`** — 16 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestOnlyThePathEverGivesUpSpace` | 7 | D-LR10 |
+| `TestTheStylesheetPinsWhatTheLayoutMarks` | 9 | D-LR10 |
+
+**`test_stack_advisor_token_counter.py`** — 15 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestCounterGate` | 8 | D-SC62 |
+| `TestSuppressedStreamPublishesReceipt` | 7 | D-SC60 |
+
+**`test_designer.py`** — 12 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestCapturePassesPlanningContext` | 5 | D-DM7 |
+| `TestRefinePersistsManifest` | 2 | D-DM9 |
+| `TestRetryReproducesTheDraw` | 5 | D-DM8 |
+
+**`test_agent_llm_selection.py`** — 10 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestOfferedEfforts` | 10 | D-EF2 |
+
+**`test_phase_coverage.py`** — 7 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestExcludedDisposition` | 3 | D-PH1, D-PH2 |
+| `TestProductDependencyOrdering` | 4 | D-PH2 |
+
+**`test_stream_error_recovery.py`** — 6 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestEmptyTurnBackstop` | 6 | D-ER2 |
+
+**`test_designer_wizard_register.py`** — 5 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestNoBackToTheProjectView` | 5 | D-LR8 |
+
+**`test_feature_specs.py`** — 5 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestPhaseSpecFields` | 5 | D-PS13 |
+
+**`test_stack_routing.py`** — 5 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestDerivedNfrIds` | 5 | D-SC2 |
+
+**`test_project_mode.py`** — 4 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestDesignerFollowsTheAnswer` | 4 | D-PM1 |
+
+**`integration/test_chat_frame_e2e.py`** — 3 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestTheBackRoutesHaveLiveEquivalents` | 3 | D-LR8 |
+
+**`test_callbacks_stream_poll.py`** — 3 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestStreamedTokenCounter` | 3 | D-PH9 |
+
+**`test_round_tree.py`** — 3 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestUsageIsNeverStale` | 3 | D-LR3 |
+
+**`test_chat_open_links.py`** — 2 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestTheOpenButtonsRegister` | 2 | D-LR2 |
+
+**`test_deployer_env_and_semantics.py`** — 2 tests
+
+| Class (all its tests) | Tests | D-number(s) |
+|---|---:|---|
+| `TestEarlierGuidanceSurvives` | 2 | D-DE8 |
+
+**183 tests in 19 files, across 33 classes.**
+
 #### Source 3 — regression locks added during Phases 2–5
 
 Collected by comparing test-function names in `8b277fd` against `HEAD` for every
@@ -7803,10 +7949,13 @@ listed here only so the diff over §50.3 is not surprised by it.
 
 #### The rule for Phase 6
 
-> **The files and node ids in §50.3 may not be edited, renamed, moved, or deleted.**
-> Phase 6's close-out proves it with `git diff --stat` over the list: the seven
-> whole-file entries must show zero changed lines, and the 85 named node ids must still
-> collect under their current ids.
+> **The files, classes and node ids in §50.3 may not be edited, renamed, moved, or
+> deleted.** Every sub-phase commit proves it with `git diff --stat` over the list: the
+> seven whole-file entries and the 33 tier-B classes must show zero changed lines, and
+> the 85 named tier-A / ordering node ids must still collect under their current ids.
+> **Phase 6 may not lower the floor.** If a specific net test should be pruned or
+> rewritten, petition by node id with the reason and **stop for approval before
+> touching it** (§50.5).
 
 Where a §50.2 row lands on a §50.3 file it is marked **keep** — 96 coupling rows,
 listed at the end of §50.2. The net wins over decoupling. Notably
@@ -7816,15 +7965,21 @@ untouchable: reaching into `_STREAMS` and `_USAGE_RECORDS` **is** what it is for
 
 The floor as a number and as a list:
 
-| Component | Tests |
-|---|---:|
-| Source 1 — the five Phase 1 modules, whole-file | 131 |
-| Source 2 — `test_callback_co_presence.py`, whole-file | 50 |
-| Source 3 — `test_import_layering.py`, whole-file | 7 |
-| Source 2 — tier-A D-numbered tests outside the above | 73 |
-| Source 2 — named co-presence/ordering tests in three further files | 12 |
-| **Count floor** | **273** |
-| (alternative, adding tier B) | (456) |
+| Component | Tests | Files |
+|---|---:|---:|
+| Source 1 — the five Phase 1 modules, whole-file | 131 | 5 |
+| Source 2 — `test_callback_co_presence.py`, whole-file | 50 | 1 |
+| Source 3 — `test_import_layering.py`, whole-file | 7 | 1 |
+| Source 2 — tier-A D-numbered tests outside the above | 73 | 34 |
+| Source 2 — named co-presence/ordering tests, less one already in tier A | 12 | 3 |
+| *tier-A subtotal* | *273* | *42* |
+| Source 2 — tier-B classes outside the above (33 classes) | 183 | 19 |
+| **Count floor (§50.5)** | **456** | **53** |
+
+456 is **10.7%** of the 4,257 collected tests. One test —
+`test_code_scanner_progress.py::TestLayout::test_pre_panel_agentifier_pairs_counter_with_elapsed`
+— qualifies as both a named ordering test and a tier-A D-number test, and is counted
+once; that is why the ordering row reads 12 and not 13.
 
 ### 50.4 Gate check
 
@@ -7857,5 +8012,165 @@ one stale. One patch that can no longer fail, three that name a module which no 
 performs the operation, and 583 private-name sites in eleven clusters. Zero
 `inspect.getsource`, zero `importlib.reload`, one documented `sys.modules`. **48 s of
 the 140 is `MagicMock` auto-child construction in two chunk factories**, recoverable
-with no assertion change and nothing in the net touched. The net itself is 273 tests in
-53 files — 6.4% of the suite.
+with no assertion change and nothing in the net touched. The net itself is **456 tests
+in 53 files — 10.7% of the suite** (§50.5 raised it from the tier-A 273; that subset
+spans 42 files).
+
+### 50.5 Amendments on approval — the terms Phase 6 runs under
+
+§50 approved 2026-09-09 with five amendments. They are binding on Phase 6 and take
+precedence over §50.1's proposals where the two differ. §50.1's targets were
+*proposals*; what follows are the *terms*.
+
+#### (a) The floor is 456, not 273
+
+The tier-B reading is adopted as **both the count floor and the off-limits set**:
+a test whose *class* name or docstring cites a D-number is in the net, the same as one
+that cites it itself. §50.3's enumeration now covers all 456 — tier A per test (73),
+tier B per class (183 tests in 33 classes), plus the 200 whole-file and ordering
+entries. The 273 tier-A list stands unchanged as the subset it always was.
+
+**Phase 6 may not lower the floor.** Not by argument in a sub-phase report, and not by
+a collection count that happens to land above it. If a specific net test should be
+pruned or rewritten:
+
+1. Petition **by node id**, with the reason.
+2. **Stop for approval before touching it.**
+
+That is a hard stop, not a notification. It applies to a rename and a move as much as
+to a deletion — the check is `git diff --stat` over the list, and a moved test fails it
+the same way a deleted one does.
+
+#### (b) `testpaths` goes first, and alone
+
+**Phase 6's first commit adds `testpaths = ["tests"]` to `pyproject.toml` and nothing
+else.** No `src/` change, no test change, no factory change, no coupling rewrite.
+
+`pyproject.toml` has no `[tool.pytest.ini_options]` block at all today, so the first
+commit creates it holding that one key.
+
+Then, before anything else is touched, re-run §50.1's three-pass measurement:
+
+```
+uv run pytest -q --durations=40 -p no:cacheprovider
+```
+
+and record, as a **§50.1 addendum**:
+
+- the re-baselined collected / passed / skipped counts,
+- the median wall-clock over the three runs,
+- the count floor and the runtime target **restated against those numbers**.
+
+The arithmetic to expect, so a surprise is visible as a surprise: 4,257 − 82 = **4,175
+collected**, of which 4,174 pass and 1 skips; ~139.9 s − ~2.6 s ≈ **137 s median**. The
+floor is unchanged at 456 — every one of those 456 is under `tests/` — but as a share
+of the suite it goes from 10.7% of 4,257 to **10.9% of 4,175**, and the runtime target
+of 95 s should be restated as **≤ 92 s** to keep the same headroom. **If the
+re-baselined numbers do not match that arithmetic, stop and report rather than
+reconcile**, exactly as §50.4 required.
+
+`evals/` remains outside the Rule 6 gate and is now outside collection too. Note that
+`tests/conftest.py:65` still puts `evals/scout/` on `sys.path` for
+`tests/agentifier/test_fanout_baseline.py` — **that import stays**; `testpaths` scopes
+collection, not the path, and removing it would break a passing test.
+
+**Nothing else moves until the addendum is written.**
+
+#### (c) The chunk factory mirrors the real litellm type, not the tests' reach
+
+The `SimpleNamespace` swap is approved in principle. The hazard it must not carry
+forward: **a `MagicMock` auto-child satisfies an attribute the real object never has**,
+so a test can pass today against a field litellm does not send. A namespace built only
+from the attributes the tests happen to reach for would preserve that — silently, and
+with the mock gone there would be nothing left to blame.
+
+So the replacement mirrors **`litellm.types.utils.ModelResponseStream`** and its
+`StreamingChoices` / `Delta` members — every field the real type carries, and no
+others. Verified against the installed litellm by constructing a real
+`ModelResponseStream` and reading its fields:
+
+| Type | Fields the namespace must carry |
+|---|---|
+| `ModelResponseStream` | `id`, `created`, `model`, `object`, `system_fingerprint`, `provider_specific_fields`, `choices` (+ `usage`, which litellm attaches under `include_usage`) |
+| `StreamingChoices` | `index`, `delta`, `finish_reason`, `logprobs`, `enhancements` |
+| `Delta` | `content`, `role`, `function_call`, `tool_calls`, `audio`, `images`, `reasoning_content`, `thinking_blocks`, `provider_specific_fields` |
+
+What production actually reads off a chunk, for the record — the namespace must satisfy
+all of it, and an `AttributeError` anywhere else is the point:
+
+| Site | Read |
+|---|---|
+| `llm.py:713` | `chunk.choices` (truthiness), `chunk.choices[0].delta.content` |
+| `llm.py:887–892` | `chunk.choices[0]`, `choice.delta.tool_calls`, `choice.delta.content` |
+| `llm.py:908–920` | `tc.index`, `tc.id`, `tc.function`, `tc.function.name`, `tc.function.arguments` |
+| `llm.py:477–487` (`_chunk_usage`) | `chunk.usage`, filtered through `_usage_fields` |
+| `llm.py:489–495` (`_hidden_usage`) | `chunk._hidden_params`, gated on `isinstance(hidden, dict)` |
+
+The last two are why the swap is safe on the usage path and why it must still be
+checked: under `MagicMock`, `chunk.usage` and `chunk._hidden_params` are truthy
+auto-children today, and both helpers already reject them — `_usage_fields` returns
+`None` for anything without real counts, and `_hidden_usage` requires an actual `dict`.
+A namespace carrying `usage=None` and no `_hidden_params` reaches the same result by
+the honest route. **Confirm that with the usage tests specifically**, not by the suite's
+green alone.
+
+**State the shape in a comment on the factory and cite the litellm type it mirrors**,
+so the next person to add a field knows where the list came from. Both factories change
+together — `tests/test_agents.py:49` and
+`tests/agentifier/test_agentifier_orchestrator.py:119` define the same one.
+
+#### (d) §50.2 work happens in this order
+
+Three steps, in sequence, each its own sub-phase commit.
+
+**1. The three `spec4.project_manager.os.*` strings — first.** `patch(...)` on
+`spec4.project_manager.os.replace` and `.os.fdopen` resolves to the **stdlib `os`
+module** and patches it **process-wide**: for the duration, every other file write in
+that test — `tmp_path` fixtures, the golden writer, pytest's own bookkeeping — runs
+through the mock. That the tests pass is not evidence the blast radius is empty. Rewrite
+to the call site's seam. After 4b the atomic writer is `src/spec4/_usage.py:346–359`, so
+the seam is `spec4._usage.os.replace` / `spec4._usage.os.fdopen`. Sites:
+`tests/test_usage_capture.py:815` and `:838`. The third string —
+`spec4.callbacks.designer.project_manager.load_prior_mock`
+(`tests/test_designer_fullscreen.py:97`) — is the same rewrite-to-the-seam shape but
+carries no process-wide risk; it goes in this commit for coherence, not urgency.
+
+**2. `patch("spec4.callbacks._chat.streaming.pop")` — second, and it is a question
+before it is an edit.** The assertion is vacuous: `_chat.py` never references
+`streaming.pop`, so `mock_pop.assert_not_called()` cannot fail. **The invariant it
+guarded may not be vacuous.** So, in order:
+
+- Determine whether the chat path is **still required not to pop the stream**. §12.2
+  and §14 are the evidence: the entry must survive the done-poll so a second racing poll
+  returns an `==` terminal store and `finalised` latches once. If popping would break
+  that, the requirement is live.
+- **If yes:** rewrite to a real assertion at the seam — one that fails if the chat path
+  ever pops. Assert on the observable consequence (the entry still present and
+  `finalised` after the done branch), not on a mock's call count, so it cannot go vacuous
+  again the next time the call site moves.
+- **If no:** drop it, and **record why in the sub-phase report** — which requirement was
+  checked, against which section, and what made it dead.
+
+Either way the surrounding tests keep every other assertion.
+
+**3. The eleven private-name clusters — last, `spec4.agentifier.agentifier` first.**
+34 names, 87 sites, the largest coupling in the suite. Nothing in this step starts
+before steps 1 and 2 are committed green.
+
+#### (e) Rule 1 is relaxed for Phase 6, as it was for Phase 5
+
+- **Commit per sub-phase.** Not one commit for the phase.
+- **Report per sub-phase**, in `CLEANUP_INVENTORY.md` **§51 onward**.
+- **Gate green at each commit** — `ruff check`, `ruff format --check`, `mypy src/`,
+  `pytest --cov=spec4`, all four, every commit.
+- **The floor and the off-limits list are checked by `git diff --stat` at each commit**,
+  not once at the close-out. A sub-phase that touches a net file is not a sub-phase to
+  be reconciled later; it stops there.
+
+#### What is unchanged
+
+Everything else in §50 stands as written: §50.0's five disagreements, §50.1's
+measurements and the 48.3 s finding, §50.2's full coupling inventory and its
+dispositions, §50.3's sources and enumeration, §50.4's gate. The deferred items stay
+deferred — 5p(h) type hygiene, the six sub-generator backlog entries, the
+`project_manager` root-siblings inconsistency.
