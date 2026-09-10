@@ -61,40 +61,40 @@ def _fake_stream(*chunks: str) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# _collect_files — the walk, split out so run() can report on it
+# collect_files — the walk, split out so run() can report on it
 # ---------------------------------------------------------------------------
 
 
 class TestCollectFiles:
     def test_returns_project_files(self, tmp_path: pathlib.Path) -> None:
         root = pathlib.Path(_make_project(tmp_path))
-        names = {p.name for p in code_scanner._collect_files(root)}
+        names = {p.name for p in code_scanner.collect_files(root)}
         assert {"pyproject.toml", "README.md", "main.py"} <= names
 
     def test_skips_vendored_directories(self, tmp_path: pathlib.Path) -> None:
         root = pathlib.Path(_make_project(tmp_path))
-        rels = {str(p.relative_to(root)) for p in code_scanner._collect_files(root)}
+        rels = {str(p.relative_to(root)) for p in code_scanner.collect_files(root)}
         assert not any(r.startswith("node_modules") for r in rels)
 
     def test_empty_directory_returns_empty_list(self, tmp_path: pathlib.Path) -> None:
-        assert code_scanner._collect_files(tmp_path) == []
+        assert code_scanner.collect_files(tmp_path) == []
 
     def test_context_accepts_a_precomputed_walk(self, tmp_path: pathlib.Path) -> None:
         # run() walks the tree itself to report the count, then hands the
         # result to the formatter — the tree must not be walked twice.
         root = pathlib.Path(_make_project(tmp_path))
-        files = code_scanner._collect_files(root)
+        files = code_scanner.collect_files(root)
         with patch.object(
-            code_scanner, "_collect_files", side_effect=AssertionError("re-walked")
+            code_scanner, "collect_files", side_effect=AssertionError("re-walked")
         ):
-            context = code_scanner._gather_project_context(str(root), files)
+            context = code_scanner.gather_project_context(str(root), files)
         assert "pyproject.toml" in context
 
     def test_context_still_walks_when_not_supplied(
         self, tmp_path: pathlib.Path
     ) -> None:
         root = _make_project(tmp_path)
-        assert "pyproject.toml" in code_scanner._gather_project_context(root)
+        assert "pyproject.toml" in code_scanner.gather_project_context(root)
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +114,7 @@ class TestScanIsNarrated:
             assert seen, "nothing was yielded before the directory walk"
             return []
 
-        with patch.object(code_scanner, "_collect_files", _slow_walk):
+        with patch.object(code_scanner, "collect_files", _slow_walk):
             with patch.object(code_scanner.llm, "stream_turn", _fake_stream("draft")):
                 for chunk in code_scanner.run(None, session, {"model": "m"}):
                     seen.append(chunk)
@@ -129,7 +129,7 @@ class TestScanIsNarrated:
 
     def test_narration_reports_the_file_count(self, tmp_path: pathlib.Path) -> None:
         root = _make_project(tmp_path)
-        n = len(code_scanner._collect_files(pathlib.Path(root)))
+        n = len(code_scanner.collect_files(pathlib.Path(root)))
         session = _session(root)
         with patch.object(code_scanner.llm, "stream_turn", _fake_stream("draft")):
             out = "".join(code_scanner.run(None, session, {"model": "m"}))
@@ -493,10 +493,10 @@ class TestLayout:
 
 class TestApproxTokens:
     def test_four_chars_per_token(self) -> None:
-        assert code_scanner._approx_tokens("x" * 400) == 100
+        assert code_scanner.approx_tokens("x" * 400) == 100
 
     def test_empty_string(self) -> None:
-        assert code_scanner._approx_tokens("") == 0
+        assert code_scanner.approx_tokens("") == 0
 
 
 class TestWaitIsNamed:
@@ -517,12 +517,10 @@ class TestWaitIsNamed:
 
     def test_reports_the_request_size(self, tmp_path: pathlib.Path) -> None:
         root = _make_project(tmp_path)
-        files = code_scanner._collect_files(pathlib.Path(root))
-        seed = code_scanner._build_fresh_scan_seed(root, files)
+        files = code_scanner.collect_files(pathlib.Path(root))
+        seed = code_scanner.build_fresh_scan_seed(root, files)
         system = code_scanner.llm.build_system_prompt(code_scanner.SYSTEM_PROMPT, None)
-        expected = code_scanner._approx_tokens(system) + code_scanner._approx_tokens(
-            seed
-        )
+        expected = code_scanner.approx_tokens(system) + code_scanner.approx_tokens(seed)
         out = self._narration(tmp_path, {"model": "m"})
         assert f"~{expected:,} tokens" in out
 
@@ -531,9 +529,9 @@ class TestWaitIsNamed:
     ) -> None:
         """The system prompt is the larger half of the request — it must count."""
         root = _make_project(tmp_path)
-        files = code_scanner._collect_files(pathlib.Path(root))
-        seed_only = code_scanner._approx_tokens(
-            code_scanner._build_fresh_scan_seed(root, files)
+        files = code_scanner.collect_files(pathlib.Path(root))
+        seed_only = code_scanner.approx_tokens(
+            code_scanner.build_fresh_scan_seed(root, files)
         )
         out = self._narration(tmp_path, {"model": "m"})
         assert f"~{seed_only:,} tokens" not in out

@@ -6,7 +6,7 @@ how much of each to read, and the assembly of that evidence into the single
 markdown block the seed messages carry. Pure filesystem and string work --
 no LLM, no session, no Dash.
 
-``_approx_tokens`` is here rather than beside ``run`` because it is the last
+``approx_tokens`` is here rather than beside ``run`` because it is the last
 of the budgets: the same display-only sizing that the ``_MAX_*`` constants
 above enforce, reported back to the user (D-SC-P2).
 
@@ -144,10 +144,10 @@ def _read_text_safely(path: pathlib.Path, limit: int) -> str | None:
         return None
 
 
-def _collect_files(root: pathlib.Path) -> list[pathlib.Path]:
+def collect_files(root: pathlib.Path) -> list[pathlib.Path]:
     """Walk the project tree, skipping vendored/build directories.
 
-    Split out of `_gather_project_context` so `run()` can perform the walk
+    Split out of `gather_project_context` so `run()` can perform the walk
     itself, report the file count as progress, and hand the result back for
     formatting instead of walking the tree twice (D-SC-P1).
     """
@@ -162,14 +162,14 @@ def _collect_files(root: pathlib.Path) -> list[pathlib.Path]:
     return all_files
 
 
-def _gather_project_context(
+def gather_project_context(
     working_dir: str, all_files: list[pathlib.Path] | None = None
 ) -> str:
     root = pathlib.Path(working_dir)
     lines: list[str] = [f"## Project Directory: `{root}`\n"]
 
     if all_files is None:
-        all_files = _collect_files(root)
+        all_files = collect_files(root)
 
     if not all_files:
         lines.append("The directory appears to be empty (no non-hidden files found).\n")
@@ -340,7 +340,7 @@ def _format_deployment_signals(
     return out
 
 
-def _approx_tokens(text: str) -> int:
+def approx_tokens(text: str) -> int:
     """Rough token count for display only (D-SC-P2).
 
     Four characters per token is the usual English-prose rule of thumb and is

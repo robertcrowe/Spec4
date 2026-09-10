@@ -26,7 +26,7 @@ from spec4.agents.brainstormer import (
     _VISION_REVIEW_FOOTER,
     _format_vision_as_text,
 )
-from spec4.agents.code_scanner import _format_review_as_text
+from spec4.agents.code_scanner import format_review_as_text as _format_review_as_text
 from spec4.agents.stack_advisor import _format_stack_as_text
 from tests._golden import assert_golden, load_fixture
 

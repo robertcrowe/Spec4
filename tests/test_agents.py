@@ -1378,22 +1378,22 @@ class TestCodeScanner:
         assert session["code_review"] is None
 
     def test_extract_review_json_valid(self) -> None:
-        from spec4.agents.code_scanner import _extract_review_json
+        from spec4.agents.code_scanner import extract_review_json
 
         text = '```json\n{"code_review": {"is_software_project": true}}\n```'
-        assert _extract_review_json(text) == {
+        assert extract_review_json(text) == {
             "code_review": {"is_software_project": True}
         }
 
     def test_extract_review_json_no_code_review_key_returns_none(self) -> None:
-        from spec4.agents.code_scanner import _extract_review_json
+        from spec4.agents.code_scanner import extract_review_json
 
-        assert _extract_review_json('```json\n{"name": "App"}\n```') is None
+        assert extract_review_json('```json\n{"name": "App"}\n```') is None
 
     def test_extract_review_json_invalid_json_returns_none(self) -> None:
-        from spec4.agents.code_scanner import _extract_review_json
+        from spec4.agents.code_scanner import extract_review_json
 
-        assert _extract_review_json("```json\n{bad}\n```") is None
+        assert extract_review_json("```json\n{bad}\n```") is None
 
     def test_initialises_code_scanner_messages_if_missing(self) -> None:
         session = make_session(
@@ -1425,7 +1425,7 @@ class TestCodeScanner:
         )
 
     def test_brownfield_display_heals_stale_persisted_content(self) -> None:
-        # Simulate a session persisted from before _format_review_as_text was
+        # Simulate a session persisted from before format_review_as_text was
         # fixed: msgs already has the synthetic pair but the assistant content
         # was generated from notes-as-string (single-char bullets).
         review = {"code_review": {"notes": "Directory is flat"}}
@@ -1465,23 +1465,23 @@ class TestCodeScanner:
         assert "Code Review Complete" in output2
 
     def test_format_review_notes_as_string_renders_as_single_bullet(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {"code_review": {"notes": "Directory is flat, no CI found"}}
-        result = _format_review_as_text(review)
+        result = format_review_as_text(review)
         assert "- Directory is flat, no CI found" in result
         assert "- D\n" not in result
 
     def test_format_review_langs_as_string_renders_correctly(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {"code_review": {"languages": "Python", "frameworks": []}}
-        result = _format_review_as_text(review)
+        result = format_review_as_text(review)
         assert "Python" in result
         assert "- P\n" not in result
 
     def test_format_review_renders_schema_v1_fields(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1540,7 +1540,7 @@ class TestCodeScanner:
                 },
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "**Project Type:** web application" in out
         assert "**Existing self-description:** A planning tool." in out
         assert "_(from README.md)_" in out
@@ -1565,7 +1565,7 @@ class TestCodeScanner:
         assert "Continue to Brainstormer" in out
 
     def test_format_review_renders_empty_project(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1574,13 +1574,13 @@ class TestCodeScanner:
                 "summary": "Directory is empty.",
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "Code Review Complete" in out
         assert "Directory is empty." in out
         assert "Brainstormer" in out
 
     def test_format_review_renders_protocols_implemented(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1601,7 +1601,7 @@ class TestCodeScanner:
                 ],
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "**Protocols Implemented:**" in out
         assert "A2A Protocol v1.0" in out
         assert "`arrg/a2a/`" in out
@@ -1609,10 +1609,10 @@ class TestCodeScanner:
         assert "`arrg/mcp/`" in out
         # Absent → heading omitted.
         bare = {"code_review": {"is_software_project": True, "project_type": "CLI"}}
-        assert "**Protocols Implemented:**" not in _format_review_as_text(bare)
+        assert "**Protocols Implemented:**" not in format_review_as_text(bare)
 
     def test_format_review_renders_ai_capabilities(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1629,7 +1629,7 @@ class TestCodeScanner:
                 ],
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "**AI Capabilities:**" in out
         assert "anthropic [llm_api]" in out
         assert "Claude client drafting replies" in out
@@ -1637,7 +1637,7 @@ class TestCodeScanner:
         assert "- chromadb" in out
         # Absent → heading omitted.
         bare = {"code_review": {"is_software_project": True, "project_type": "CLI"}}
-        assert "**AI Capabilities:**" not in _format_review_as_text(bare)
+        assert "**AI Capabilities:**" not in format_review_as_text(bare)
 
     def test_system_prompt_documents_ai_capabilities(self) -> None:
         from spec4.agents.code_scanner import SYSTEM_PROMPT
@@ -1649,7 +1649,7 @@ class TestCodeScanner:
         assert "agent_framework" in SYSTEM_PROMPT
 
     def test_format_review_renders_persistence(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1665,7 +1665,7 @@ class TestCodeScanner:
                 },
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "**Persistence:**" in out
         assert "PostgreSQL (primary)" in out
         assert "Redis (cache)" in out
@@ -1674,10 +1674,10 @@ class TestCodeScanner:
         assert "`migrations/`" in out
         # Absent → heading omitted.
         bare = {"code_review": {"is_software_project": True, "project_type": "CLI"}}
-        assert "**Persistence:**" not in _format_review_as_text(bare)
+        assert "**Persistence:**" not in format_review_as_text(bare)
 
     def test_format_review_renders_env_vars(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1693,7 +1693,7 @@ class TestCodeScanner:
                 ],
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "**Environment Variables:**" in out
         assert "`DATABASE_URL`" in out and "(required)" in out
         assert "Postgres connection string" in out
@@ -1702,7 +1702,7 @@ class TestCodeScanner:
 
     def test_format_review_env_vars_never_leak_values(self) -> None:
         """Even if a malformed entry slips a value in, the renderer ignores it."""
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1710,12 +1710,12 @@ class TestCodeScanner:
                 "env_vars": [{"name": "SECRET_KEY", "value": "leaked-secret"}],
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "`SECRET_KEY`" in out
         assert "leaked-secret" not in out
 
     def test_format_review_renders_deployment(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1731,7 +1731,7 @@ class TestCodeScanner:
                 },
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "**Deployment:**" in out
         assert "docker" in out
         assert "`Dockerfile`" in out
@@ -1742,10 +1742,10 @@ class TestCodeScanner:
         assert "`infra/`" in out
         # Absent → heading omitted.
         bare = {"code_review": {"is_software_project": True}}
-        assert "**Deployment:**" not in _format_review_as_text(bare)
+        assert "**Deployment:**" not in format_review_as_text(bare)
 
     def test_format_review_renders_api_surface(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1764,7 +1764,7 @@ class TestCodeScanner:
                 ],
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "**API Surface:**" in out
         assert "[http]" in out and "GET /users/:id" in out
         assert "users.get_user" in out
@@ -1772,7 +1772,7 @@ class TestCodeScanner:
         assert "Fetch a user by ID" in out
 
     def test_format_review_renders_auth(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1784,17 +1784,17 @@ class TestCodeScanner:
                 },
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "**Authentication:**" in out
         assert "oauth" in out
         assert "Auth0" in out
         assert "authlib" in out
         # Absent → heading omitted.
         bare = {"code_review": {"is_software_project": True}}
-        assert "**Authentication:**" not in _format_review_as_text(bare)
+        assert "**Authentication:**" not in format_review_as_text(bare)
 
     def test_format_review_test_coverage_summary_preferred_over_lists(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1809,12 +1809,12 @@ class TestCodeScanner:
                 },
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "10 modules covered; UI layer uncovered" in out
         assert "should_be_ignored" not in out
 
     def test_format_review_ui_summary_has_ui_false_shows_none(self) -> None:
-        from spec4.agents.code_scanner import _format_review_as_text
+        from spec4.agents.code_scanner import format_review_as_text
 
         review = {
             "code_review": {
@@ -1822,14 +1822,14 @@ class TestCodeScanner:
                 "ui_summary": {"has_ui": False, "kind": "none"},
             }
         }
-        out = _format_review_as_text(review)
+        out = format_review_as_text(review)
         assert "**UI:** none" in out
 
     def test_update_mode_seeds_with_prior_review(self) -> None:
-        from spec4.agents.code_scanner import _build_update_scan_seed
+        from spec4.agents.code_scanner import build_update_scan_seed
 
         prior = {"code_review": {"is_software_project": True, "project_type": "CLI"}}
-        seed = _build_update_scan_seed("/tmp/does-not-matter", prior)
+        seed = build_update_scan_seed("/tmp/does-not-matter", prior)
         assert "Update mode instructions" in seed
         assert "Prior code review on disk" in seed
         assert "project_type" in seed
@@ -1853,92 +1853,92 @@ class TestCodeScanner:
 
 
 # ---------------------------------------------------------------------------
-# _gather_project_context tests
+# gather_project_context tests
 # ---------------------------------------------------------------------------
 
 
 class TestGatherProjectContext:
     def test_empty_dir_reports_empty(self, tmp_path: Any) -> None:
-        from spec4.agents.code_scanner import _gather_project_context
+        from spec4.agents.code_scanner import gather_project_context
 
-        result = _gather_project_context(str(tmp_path))
+        result = gather_project_context(str(tmp_path))
         assert "empty" in result.lower()
 
     def test_source_files_appear_in_tree(self, tmp_path: Any) -> None:
-        from spec4.agents.code_scanner import _gather_project_context
+        from spec4.agents.code_scanner import gather_project_context
 
         (tmp_path / "main.py").write_text("print('hello')")
-        result = _gather_project_context(str(tmp_path))
+        result = gather_project_context(str(tmp_path))
         assert "main.py" in result
 
     def test_git_dir_is_skipped(self, tmp_path: Any) -> None:
-        from spec4.agents.code_scanner import _gather_project_context
+        from spec4.agents.code_scanner import gather_project_context
 
         git_dir = tmp_path / ".git"
         git_dir.mkdir()
         (git_dir / "config").write_text("[core]")
-        result = _gather_project_context(str(tmp_path))
+        result = gather_project_context(str(tmp_path))
         assert "config" not in result
 
     def test_readme_content_included_under_labeled_section(self, tmp_path: Any) -> None:
-        from spec4.agents.code_scanner import _gather_project_context
+        from spec4.agents.code_scanner import gather_project_context
 
         (tmp_path / "README.md").write_text("# My Project\n\nA cool app.\n")
-        result = _gather_project_context(str(tmp_path))
+        result = gather_project_context(str(tmp_path))
         assert "### README Excerpt" in result
         assert "My Project" in result
 
     def test_source_file_sample_included(self, tmp_path: Any) -> None:
-        from spec4.agents.code_scanner import _gather_project_context
+        from spec4.agents.code_scanner import gather_project_context
 
         (tmp_path / "app.py").write_text("def main():\n    pass\n")
-        result = _gather_project_context(str(tmp_path))
+        result = gather_project_context(str(tmp_path))
         assert "def main" in result
 
     def test_ci_workflow_files_detected(self, tmp_path: Any) -> None:
-        from spec4.agents.code_scanner import _gather_project_context
+        from spec4.agents.code_scanner import gather_project_context
 
         wf_dir = tmp_path / ".github" / "workflows"
         wf_dir.mkdir(parents=True)
         (wf_dir / "ci.yml").write_text("name: CI\non: push\n")
         # need at least one non-CI file or _gather returns the empty placeholder
         (tmp_path / "main.py").write_text("print('x')")
-        result = _gather_project_context(str(tmp_path))
+        result = gather_project_context(str(tmp_path))
         assert "### CI / Workflow Files" in result
         assert "ci.yml" in result
 
     def test_dockerfile_detected_as_deployment_signal(self, tmp_path: Any) -> None:
-        from spec4.agents.code_scanner import _gather_project_context
+        from spec4.agents.code_scanner import gather_project_context
 
         (tmp_path / "Dockerfile").write_text("FROM python:3.12\n")
         (tmp_path / "main.py").write_text("print('x')")
-        result = _gather_project_context(str(tmp_path))
+        result = gather_project_context(str(tmp_path))
         assert "### Deployment Signals" in result
         assert "Dockerfile" in result
 
     def test_terraform_directory_detected_as_deployment_signal(
         self, tmp_path: Any
     ) -> None:
-        from spec4.agents.code_scanner import _gather_project_context
+        from spec4.agents.code_scanner import gather_project_context
 
         tf_dir = tmp_path / "terraform"
         tf_dir.mkdir()
         (tf_dir / "main.tf").write_text('resource "null_resource" "x" {}\n')
         (tmp_path / "main.py").write_text("print('x')")
-        result = _gather_project_context(str(tmp_path))
+        result = gather_project_context(str(tmp_path))
         assert "Terraform configuration detected" in result
 
     def test_entrypoint_files_prioritized_in_source_samples(
         self, tmp_path: Any
     ) -> None:
-        from spec4.agents.code_scanner import _gather_project_context
+        from spec4.agents.code_scanner import gather_project_context
 
         # Create many alphabetically-earlier files so plain-alpha ordering
         # would push 'main.py' past the 8-file priority cutoff.
         for i in range(10):
             (tmp_path / f"a_aux_{i}.py").write_text(f"# helper {i}\n")
         (tmp_path / "main.py").write_text("def main():\n    pass\n")
-        result = _gather_project_context(str(tmp_path))
+        result = gather_project_context(str(tmp_path))
         # main.py should be sampled (and labeled as an entrypoint candidate)
         assert "main.py" in result
         assert "entrypoint candidate" in result

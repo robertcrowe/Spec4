@@ -11816,3 +11816,168 @@ write. Afterwards it checks that the record before the append is a byte-for-byte
 of the record after. A guard also lists every hunk in this record's diff that deletes
 lines, and fails on any blank-line deletion. Both run at every sub-phase commit from 7e
 on.
+
+### 64.11 Recorded at review, by 7e's commit
+
+- **The amended commit is `95c504c94669537cfaf63394d1eecf8981369605`** (`95c504c`). It
+  replaces `ea123d6b260c629cd4b9538b433e653139491561` (`ea123d6`). Its parent is unchanged
+  (`4127700`), and its `src/` and `tests/` trees are identical to `ea123d6`'s. Against
+  `ea123d6` it adds 33 lines to this record and changes nothing else: the four blank lines
+  and §64.10. Against its parent, the guard finds one hunk that deletes lines (the old
+  wording of check 1) and no blank-line deletion. The rename check on `95c504c` is empty,
+  and 456 / 456 collect.
+- **§64.2's check is the standing form.** It applies to every remaining batch whose new
+  names form a family, and it runs before the substitution. It covers:
+  - the plain form as a token, in identifiers and strings;
+  - its hyphen, spaced and cased forms;
+  - Dash ids;
+  - callback and function names of the same pattern.
+
+  7e applies it (§65.2).
+
+## 65. Phase 7e — rename batch 5: `agents.code_scanner`, seven names
+
+§60.7(j) 7e: one commit, default mode, under the rename check. Seven private names in the
+Code Scanner package take their underscore-free spelling. §64.2's collision check ran
+first, in the standing form that §64.11 records.
+
+### 65.1 What landed
+
+| Private | Public | Owner (`agents/code_scanner/`) | Tests / `src/` | Net / note |
+|---|---|---|---:|---|
+| `_format_review_as_text` | `format_review_as_text` | `_review_render.py` | 41 / 8 | whole-file `test_renderer_goldens.py`, by import alias (§54.7) |
+| `_gather_project_context` | `gather_project_context` | `_scan.py` | 21 / 6 | |
+| `_collect_files` | `collect_files` | `_scan.py` | 10 / 5 | tier-A `test_first_chunk_arrives_before_the_walk`; two `patch.object` attribute strings |
+| `_extract_review_json` | `extract_review_json` | `__init__.py` | 6 / 2 | |
+| `_approx_tokens` | `approx_tokens` | `_scan.py` | 5 / 6 | |
+| `_build_update_scan_seed` | `build_update_scan_seed` | `__init__.py` | 2 / 3 | |
+| `_build_fresh_scan_seed` | `build_fresh_scan_seed` | `__init__.py` | 2 / 3 | |
+| | | | **87 / 33** | §55's figure is 82; §60.2 records both |
+
+- **Footprint: 6 files, all under `src/` and `tests/`.** There are 120 occurrences at
+  `95c504c`. 114 were rewritten. The other six are call uses in
+  `test_renderer_goldens.py`, which keep the old spelling behind the §54.7 alias. The
+  substitution changed 112 lines; ruff then joined one statement (§65.6), giving 112
+  insertions and 114 deletions. Nothing in `scripts/`, `evals/`, the docs or `.spec4/` names
+  these functions.
+- **String references: 9, rewritten with the code.**
+  - Seven are `__all__` entries (`__init__.py:61–68`). RUF022 is not selected, so they
+    are rewritten in place and no entry moves.
+  - Two are `patch.object(code_scanner, "collect_files", …)` attribute names
+    (`test_code_scanner_progress.py:88` and `:117`). A patch target is not a frozen
+    surface under Rule 4: it names the function, and it follows it.
+- **No module-path occurrences, and no shadow flip.** The package's modules are `_prompt`,
+  `_review_render` and `_scan`. None of them shares a name with the seven.
+- **`_extract_and_validate_review` keeps its underscore.** It sits in the same `__all__`
+  but is not on §60.2's list. §18.2 records why it stayed in `__init__.py`: it is the turn
+  loop's own step, called twice from `run` and nowhere else.
+- **D-number comments: two, updated in this commit by the substitution.** Two docstrings
+  that cite a D-number name a renamed function:
+  - `_scan.py:9` names ``approx_tokens``; its citation, D-SC-P2, is at `:11`;
+  - `_scan.py:150` reads "Split out of `gather_project_context` …"; its citation, D-SC-P1,
+    is at `:152`.
+
+  The D-SC-P1, D-SC-P2, D-SC-P3 and D-SC18a comments in `__init__.py` name no renamed
+  function, and no D-number citation elsewhere names one. None went stale.
+- **`app.py` (D-LR1): untouched.** Nothing in it names these functions.
+- **Node ids unchanged.** Some test names spell the new names, as §65.2 lists. None of
+  them is at a word boundary, so neither direction of the substitution reaches it. 4,200
+  collected.
+
+### 65.2 The family check, in the standing form (§64.11)
+
+`build_fresh_scan_seed` and `build_update_scan_seed` form a two-member family. The check
+covered all seven names, before the substitution, at `95c504c`, over every tracked text
+file except this record:
+
+| Form | Result |
+|---|---|
+| the plain form as a token, in identifiers and strings | **no occurrence** of any of the seven new names |
+| hyphen, spaced and cased forms | **no collision** (details below) |
+| Dash ids | **none** spells `scan-seed`, `review-json`, `collect-files`, `approx-tokens`, `project-context` or `review-as-text` |
+| callback and function names of the pattern | **no other definition** in `src/`, `tests/`, `scripts/` or `evals/` |
+
+Neither scan-seed name, and not `format_review_as_text`, turns up in any hyphen, spaced or
+cased form. The other four names appear only inside test names and one comment:
+
+- `TestGatherProjectContext` (`test_agents.py:1860`);
+- `TestCollectFiles` (`test_code_scanner_progress.py:68`);
+- `TestApproxTokens` (`:494`);
+- `test_extract_review_json_valid` and two siblings (`test_agents.py:1380`, `:1388`,
+  `:1393`);
+- the prose comment `# ... gather project context ...` (`agentifier/README.md:44`).
+
+Each test name holds the new name only inside a longer identifier. The word-boundary
+substitution cannot reach it in either direction, and the node ids stay as they are.
+
+### 65.3 The rename check — empty
+
+- The §60.2 shell function, run with `P=HEAD` over the working tree, printed `rename check: EMPTY`.
+- The scratch implementation printed the same.
+
+This batch has no documented exception.
+
+### 65.4 Petitions, by kind
+
+| Kind | Where | Result |
+|---|---|---|
+| §54.7, whole-file | `test_renderer_goldens.py`: one import binding re-aliased, `format_review_as_text as _format_review_as_text`, 85 columns | import line alone · goldens identical · node ids unchanged — **passes**. As §60.3 says, this file stays under §54.7 and is not redefined |
+| §60.3, tier-A | `test_code_scanner_progress.py::TestScanIsNarrated::test_first_chunk_arrives_before_the_walk` (106–120), line `:117` | reverse diff empty inside the node · assertions token-identical — **passes** |
+
+The tier-A hunk changes a string, not a name: `"_collect_files"` becomes
+`"collect_files"`, the attribute that `patch.object` replaces. The rename check
+reverse-substitutes at word boundaries in all text, strings included, so check 1 covers
+the hunk. The line is a `with`, not an assertion.
+
+### 65.5 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | 1 in the diff, under §54.7, passing |
+| 456 node ids | **456 / 456 collect**; 4,200 collected |
+| 19 tier-B files / 33 classes | **1 file with hunks, `test_agents.py`.** None of its 61 hunks lies inside a listed class. Each is reported below in §51.6's template |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_agents.py` | `TestLoadDesignManifest` **2271–2298**; `TestAiFeaturesForPhaserFullSurface` **4962–5060**; `TestPhaserSpecReferenceDirective` **5227–5268** | 61 — 1381, 1384, 1389, 1391, 1394, 1396, 1428, 1468, 1471, 1476, 1479, 1484, 1543, 1568, 1577, 1583, 1604, 1612, 1615, 1632, 1640, 1652, 1668, 1677, 1680, 1696, 1705, 1713, 1718, 1734, 1745, 1748, 1767, 1775, 1787, 1794, 1797, 1812, 1817, 1825, 1829, 1832, 1856, 1862, 1864, 1868, 1871, 1875, 1880, 1884, 1887, 1892, 1895, 1899, 1906, 1911, 1915, 1922, 1928, 1934, 1941 | **none inside a listed class** |
+
+- **`test_code_scanner_progress.py` is not a tier-B file.** It has 15 hunks. One is the
+  petitioned node's; the other 14 are outside any listed node. They include the second
+  `patch.object` string, at `:88`, in `TestCollectFiles::test_context_accepts_a_precomputed_walk`.
+
+### 65.6 One statement ruff joined, outside the net
+
+| Line | Enclosing test | Net? |
+|---|---|---|
+| `test_code_scanner_progress.py:523`: `expected = code_scanner.approx_tokens(system) + code_scanner.approx_tokens(seed)` | `TestWaitIsNamed::test_reports_the_request_size` | no. The file is not tier-B, and the node is not listed |
+
+This join is the shortening kind. The name lost a character at each of its two uses, so
+the three-line statement now fits on one line of exactly 88 columns. It is an
+assignment, not an assertion. No line grew, so there is no E501.
+
+### 65.7 Record changes carried in this commit
+
+- **§64.11, recorded at review:**
+  - the amended commit's hash, `95c504c`, which replaces `ea123d6`;
+  - the ruling that §64.2's check is the standing form for batches whose new names are a
+    family.
+- **Both sections went in through the fixed append step (§64.10).** It checked the record
+  before the append as a byte-for-byte prefix of the record after. The guard finds no hunk
+  in this record's diff that deletes a line.
+
+### 65.8 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped` (exit 0); 4,200 collected |
+| Coverage | same run | `TOTAL 12421 stmts, 891 miss, 93%` — identical to §60.1, at the ≤ 891 ceiling |
+
+### 65.9 What this sub-phase did not do
+
+- It changes no test beyond the substitution, and it has no documented exception.
+- It leaves `_extract_and_validate_review`, and the package's other private helpers, as they are.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.

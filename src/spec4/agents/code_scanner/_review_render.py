@@ -1,6 +1,6 @@
 """Rendering a validated ``code_review`` artifact as chat-transcript text.
 
-``_format_review_as_text`` and the seven section renderers it delegates to,
+``format_review_as_text`` and the seven section renderers it delegates to,
 plus the small coercion helpers (``_as_str_list``, ``_name_label``,
 ``_style_value``, ``_normalize_style_for_renderer``) that guard against the
 shapes an LLM actually returns. Output only -- nothing here reads the
@@ -97,7 +97,7 @@ def _format_empty_review(cr: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _format_review_as_text(review: dict[str, Any]) -> str:
+def format_review_as_text(review: dict[str, Any]) -> str:
     cr = review.get("code_review", {})
     if cr.get("is_software_project") is False:
         return _format_empty_review(cr)

@@ -11,7 +11,7 @@ self-contained concerns into siblings, one module each:
   block the seeds carry, and the size budgets that bound both.
 * :mod:`spec4.agents.code_scanner._prompt` -- the frozen ``SYSTEM_PROMPT``.
 * :mod:`spec4.agents.code_scanner._review_render` --
-  ``_format_review_as_text`` and its section renderers.
+  ``format_review_as_text`` and its section renderers.
 
 The import path ``spec4.agents.code_scanner`` is unchanged. Phase 4j then
 moved every importer onto the owning module and dropped the re-exports
@@ -50,28 +50,28 @@ from spec4.agents._turn_flow import (
 from spec4.app_constants import STATE_REVIEW_COMPLETE
 
 from spec4.agents.code_scanner._prompt import SYSTEM_PROMPT
-from spec4.agents.code_scanner._review_render import _format_review_as_text
+from spec4.agents.code_scanner._review_render import format_review_as_text
 from spec4.agents.code_scanner._scan import (
-    _approx_tokens,
-    _collect_files,
-    _gather_project_context,
+    approx_tokens,
+    collect_files,
+    gather_project_context,
 )
 
 __all__ = [
-    "_approx_tokens",
-    "_build_fresh_scan_seed",
-    "_build_update_scan_seed",
-    "_collect_files",
+    "approx_tokens",
+    "build_fresh_scan_seed",
+    "build_update_scan_seed",
+    "collect_files",
     "_extract_and_validate_review",
-    "_extract_review_json",
-    "_format_review_as_text",
-    "_gather_project_context",
+    "extract_review_json",
+    "format_review_as_text",
+    "gather_project_context",
     "run",
     "SYSTEM_PROMPT",
 ]
 
 
-def _extract_review_json(text: str) -> dict[str, Any] | None:
+def extract_review_json(text: str) -> dict[str, Any] | None:
     data = extract_json_block(text)
     return data if data is not None and "code_review" in data else None
 
@@ -114,10 +114,10 @@ def _extract_and_validate_review(
     return data, []
 
 
-def _build_fresh_scan_seed(
+def build_fresh_scan_seed(
     working_dir: str, all_files: list[pathlib.Path] | None = None
 ) -> str:
-    context = _gather_project_context(working_dir, all_files)
+    context = gather_project_context(working_dir, all_files)
     return (
         "Please introduce yourself as CodeScanner, then analyze this project "
         "directory and produce the full draft review in one shot as described in "
@@ -126,12 +126,12 @@ def _build_fresh_scan_seed(
     )
 
 
-def _build_update_scan_seed(
+def build_update_scan_seed(
     working_dir: str,
     prior_review: dict[str, Any],
     all_files: list[pathlib.Path] | None = None,
 ) -> str:
-    context = _gather_project_context(working_dir, all_files)
+    context = gather_project_context(working_dir, all_files)
     prior_json = json.dumps(prior_review, indent=2)
     return (
         "Please introduce yourself as CodeScanner. The user has asked you to "
@@ -189,7 +189,7 @@ def run(  # noqa: C901, PLR0912, PLR0915  # nine-yield generator; the surviving 
                 and session.get("code_scanner_artifact_msg_count") == len(msgs)
                 and session.get("code_review") is not None
             ):
-                display = _format_review_as_text(session["code_review"])
+                display = format_review_as_text(session["code_review"])
                 msgs[-1]["content"] = display
                 session["_display_override"] = display
                 yield display
@@ -205,7 +205,7 @@ def run(  # noqa: C901, PLR0912, PLR0915  # nine-yield generator; the surviving 
                 existing_review is not None
                 and session.get("code_scanner_state") == STATE_REVIEW_COMPLETE
             ):
-                display = _format_review_as_text(existing_review)
+                display = format_review_as_text(existing_review)
                 msgs.append(
                     {
                         "role": "user",
@@ -240,7 +240,7 @@ def run(  # noqa: C901, PLR0912, PLR0915  # nine-yield generator; the surviving 
             pre_stream_chars += len(intro_line)
             yield intro_line
 
-            all_files = _collect_files(pathlib.Path(working_dir))
+            all_files = collect_files(pathlib.Path(working_dir))
             n = len(all_files)
             count_line = (
                 f"- Indexed **{n}** file{'' if n == 1 else 's'} — reading "
@@ -255,7 +255,7 @@ def run(  # noqa: C901, PLR0912, PLR0915  # nine-yield generator; the surviving 
             # before its first token is dominated by prefill over this request.
             # Nothing runs locally in that window, so name the size and the
             # model rather than leaving "analyzing…" to imply local work.
-            approx = _approx_tokens(system) + _approx_tokens(seed)
+            approx = approx_tokens(system) + approx_tokens(seed)
             model = llm_config.get("model") or "the configured model"
             done_line = (
                 f"\nScan complete — sent ~{approx:,} tokens to "
@@ -342,9 +342,9 @@ def _scanner_seed(
 ) -> str:
     """Build and append the scan seed; re-scan variant when a prior review exists."""
     if existing_review is not None:
-        seed = _build_update_scan_seed(working_dir, existing_review, all_files)
+        seed = build_update_scan_seed(working_dir, existing_review, all_files)
     else:
-        seed = _build_fresh_scan_seed(working_dir, all_files)
+        seed = build_fresh_scan_seed(working_dir, all_files)
     msgs.append({"role": "user", "content": seed})
     return seed
 
@@ -382,7 +382,7 @@ def _scanner_commit(
     session: dict[str, Any], msgs: list[dict[str, Any]], review: dict[str, Any]
 ) -> None:
     """Render first, then commit the review to the session."""
-    display = _format_review_as_text(review)
+    display = format_review_as_text(review)
     session["code_scanner_state"] = STATE_REVIEW_COMPLETE
     session["code_review"] = review
     msgs[-1]["content"] = display
