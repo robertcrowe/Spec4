@@ -6988,3 +6988,874 @@ instead of two on a never-taken path) and the unused parameters that were delete
 `uv run ruff check .` reports 13 findings, all `E501` in `scripts/e2e_agentifier.py`.
 They **predate Phase 5** — `E` was always selected and `scripts/` never carried an
 ignore — and sit outside the Rule 6 gate. Left for Phase 7.
+
+## 50. Phase 6 pre-work — measurement and coupling inventory (read-only)
+
+Recorded 2026-09-09 on branch `look-rework`, at `a86a2ee` (Phase 5p). Nothing under
+`src/` or `tests/` was written. No formatter ran, no `noqa` changed. The only artifact
+is this section. Phase 6 does not start until §50 is approved.
+
+Everything measured here was measured mechanically; the scripts lived in the session
+scratchpad and are described inline so each number can be re-derived.
+
+### 50.0 Where this run's directive and the record disagree
+
+Four disagreements. In each the record wins, per the standing rule.
+
+**(a) The Phase 1 figures.** The directive gives Phase 1 as *3028 passed, ~65 s*.
+§12.6 records `4249 passed, 1 skipped in 172.63s`, and §12.3 restates it as "4249
+passed + 1 skipped in ~176 s". 3028/65 s matches nothing in §1–§49. **§12.6 is used
+throughout §50.1.**
+
+**(b) "Confirm zero skips and zero xfails as at the Phase 1 baseline."** The Phase 1
+baseline was **not** zero skips — §12.6 records one, and it is the same one today.
+There is therefore nothing to attribute to Phases 2–5. Zero xfails is correct and
+confirmed: the suite contains no `xfail` marker of any kind. Detail in §50.1.
+
+**(c) "Sum the `sleep` seconds separately; that is the cheapest runtime to recover and
+Phase 6 will want it first."** Measured, and it is not. The whole suite sleeps
+**12.97 s across 171 calls**, and none of it appears in the 40 slowest tests. The
+cheapest recoverable runtime by a wide margin is a per-character `MagicMock` chunk
+factory in two test modules, measured at **48–49 s** of a 139 s run. §50.1 reports the
+sleep sum as asked and then reports what actually dominates.
+
+**(d) `inspect.getsource` is no longer in the suite.** The directive names
+`tests/test_designer.py::TestRefinePersistsManifest::test_persist_is_not_gated_on_the_draw_kind`
+as a known instance. It was rewritten at 5m under rule 2's structural exception
+(§44.4), and §43 already recorded that the pattern "occurs exactly once in the suite".
+An AST sweep of all 127 Python files under `tests/` finds **zero** `inspect.getsource`
+calls. Kind 3 of §50.2 is empty and the behaviour question it asks is answered
+from §44.4.
+
+**(e) `evals/` is not actually outside the suite.** The directive holds `evals/`
+outside this run, and §49.4 records `evals/**` as outside the Rule 6 gate for linting.
+But there is **no `[tool.pytest.ini_options]` block in `pyproject.toml`** and no
+`pytest.ini`, `setup.cfg` or `tox.ini` — so a bare `uv run pytest` collects from the
+repo root, and **four modules under `evals/` contribute 82 of the 4,257 collected
+tests**: `evals/agentifier/test_mechanism_scoring.py` (25),
+`evals/scout/test_relevance_judge.py` (20), `evals/scout/test_phantom_link_check.py`
+(19), `evals/phaser/test_requires_inversion.py` (18). They run in 2.59 s and pass.
+`tests/conftest.py:65` already puts `evals/scout/` on `sys.path` for
+`tests/agentifier/test_fanout_baseline.py`, so the two trees are entangled by import as
+well as by collection. **Nothing under `evals/` was read, written, or reasoned about
+beyond this measurement**, and §50.2's sweep is `tests/`-only as instructed — verified
+harmless: an AST pass over the four files finds **zero** patches, zero `patch.object`,
+and zero private-name imports, so no coupling row is missing. Phase 6 needs to know
+that "the suite" and "`tests/`" are not the same 4,257 tests. **Recorded, not acted on.**
+
+**Untouched, as instructed:** 5p(h) type hygiene (290 `Any`, §49.5); the six
+sub-generator backlog entries (§27.4); the `project_manager` root-siblings
+inconsistency; `evals/` beyond the count above. §27.4's eleven complexity `noqa`s are
+still eleven —
+`grep -rn "noqa: \(C901\|PLR09\)" src/` returns the same eleven functions §27.4 names,
+plus the twelve arity-only `PLR0913`s.
+
+### 50.1 Baseline measurement and targets
+
+#### Counts
+
+Three runs of `uv run pytest -q --durations=40 -p no:cacheprovider`, back to back:
+
+| Run | Result | pytest-reported | wall |
+|---|---|---:|---:|
+| 1 | `4256 passed, 1 skipped` | 139.14 s | 144.17 s |
+| 2 | `4256 passed, 1 skipped` | 139.91 s | 144.27 s |
+| 3 | `4256 passed, 1 skipped` | 140.98 s | 145.12 s |
+| **median** | | **139.91 s** | **144.27 s** |
+
+`--collect-only` reports **4257 collected** — of which **4,175 are under `tests/` and
+82 under `evals/`** (§50.0(e)). Zero xfailed, zero deselected, zero errors. Wall exceeds pytest's own figure by a constant ~4.2 s — that is `uv`
+resolution plus interpreter and conftest import, measured separately as 4.23 s for a
+one-file `--collect-only`.
+
+**The one skip**, unchanged since Phase 1:
+
+```
+SKIPPED [1] tests/test_session.py:721: Designer has no chat turn; it draws from its wizard
+```
+
+It is a `pytest.skip()` inside a parametrization over `AGENT_KEYS`; the Designer arm
+has no chat turn to exercise. Four other `pytest.skip()` calls exist and did not fire:
+`tests/test_root_routing.py:373` (skips when the test runs as a user that can read
+mode-000 directories) and one per browser-E2E module (skips when no browser is
+available — all three found one here).
+
+**Zero xfails**: `grep -rn "xfail" tests/` returns nothing.
+
+#### Delta against Phase 1
+
+| | Phase 1 (§12.6) | now | delta |
+|---|---:|---:|---:|
+| passed | 4249 | 4256 | **+7** |
+| skipped | 1 | 1 | 0 |
+| collected | 4250 | 4257 | **+7** |
+| runtime (with `--cov`) | 172.63 s | 174.98 s | +2.35 s |
+| runtime (no `--cov`) | — | 139.91 s | — |
+
+The +7 is attributable exactly, not estimated. Comparing the set of test-function
+qualified names in `git show 8b277fd:<file>` against `HEAD` for every one of the 45
+test files touched between *Phase 1 followup* and `a86a2ee`:
+
+| Sub-phase | File | Tests added | Tests removed |
+|---|---|---:|---:|
+| Phase 4 pre-work (§15.3) | `tests/test_import_layering.py` | **+7** | 0 |
+| everything else in Phases 2–5 | 44 files | 0 | 0 |
+
+**No test was deleted anywhere in Phases 2–5.** The other 44 files were modified in
+place — import-path updates from the 4a–4j splits, and 5p(f)'s lint-only fixes (8
+SIM300, 8 B905, 1 SIM105, §49.4). One test *body* was rewritten: §44.4's
+`getsource` case, same name, same file.
+
+#### The 40 slowest
+
+From run 1. Cause categories are as the directive defines them, with one addition:
+`mock`, for time spent constructing `unittest.mock` objects. It is not in the
+directive's list because the directive did not anticipate it dominating.
+
+| s | phase | node id | cause |
+|---:|---|---|---|
+| 5.15 | setup | `integration/test_page_slot_e2e.py::TestClickingTheChatBoxAfterTheArtifactView::test_the_frame_is_still_there` | subprocess |
+| 4.60 | call | `test_agents.py::TestPhaseCompleteness::test_fresh_incomplete_set_triggers_retry_then_completes` | mock |
+| 4.46 | setup | `integration/test_chat_frame_e2e.py::TestTheTranscriptScrollsIndependently::test_the_transcript_overflows_its_own_box` | subprocess |
+| 4.40 | setup | `integration/test_artifact_view_e2e.py::TestOpeningStackJson::test_the_tree_lists_the_round_s_artifacts` | subprocess |
+| 4.35 | call | `integration/test_page_slot_e2e.py::TestClickingTheChatBoxAfterTheArtifactView::test_the_frame_is_still_there` | subprocess |
+| 3.63 | call | `test_app_import_smoke.py::TestAppImportsCleanly::test_the_app_constructs_and_registers_everything` | subprocess |
+| 3.57 | call | `test_agents.py::TestPhaserCoverageEnforcement::test_infra_after_consumer_triggers_retry` | mock |
+| 3.38 | call | `test_app_import_smoke.py::TestAppImportsCleanly::test_version_flag_prints_and_exits_zero` | subprocess |
+| 3.25 | call | `test_agents.py::TestPhaseCompleteness::test_completeness_applies_with_prior_phases` | mock |
+| 2.62 | call | `test_agents.py::TestPhaserCoverageEnforcement::test_missing_mvp_feature_triggers_retry_then_completes` | mock |
+| 1.88 | call | `test_agents.py::TestPhaserImplementedMarker::test_marker_appended_to_last_phase_only` | mock |
+| 1.85 | call | `test_agents.py::TestPhaserImplementedMarker::test_marker_not_duplicated_when_already_present` | mock |
+| 1.72 | call | `test_agents.py::TestPhaserValidationRetry::test_retry_uses_response_format_when_supported` | mock |
+| 1.71 | call | `test_agents.py::TestPhaserValidationRetry::test_invalid_phase_triggers_retry` | mock |
+| 1.19 | call | `test_agents.py::TestPhaserCoverageEnforcement::test_complete_coverage_completes_the_set` | mock |
+| 1.19 | call | `test_agents.py::TestPhaserCoverageEnforcement::test_no_catalog_leaves_coverage_inert` | mock |
+| 1.15 | call | `test_agents.py::TestPhaserCoverageEnforcement::test_deferred_feature_is_surfaced_as_advisory` | mock |
+| 1.01 | call | `test_agents.py::TestPhaserValidationRetry::test_retry_failure_drops_exchange_and_emits_fallback` | mock |
+| 0.99 | call | `test_agents.py::TestPhaserValidationRetry::test_valid_phase_does_not_retry` | mock |
+| 0.97 | call | `test_agents.py::TestPhaserValidationRetry::test_display_override_is_rendered_markdown` | mock |
+| 0.93 | call | `test_agents.py::TestPhaserStackAdditionCaptureAcrossTurn::test_block_before_search_is_captured_stripped_and_concatenated` | mock |
+| 0.87 | setup | `integration/test_chat_frame_e2e.py::TestTheBackRoutesHaveLiveEquivalents::test_no_back_control_is_left_on_the_frame` | subprocess |
+| 0.80 | call | `test_agents.py::TestPhaser::test_phases_json_sets_state_complete` | mock |
+| 0.76 | setup | `integration/test_chat_frame_e2e.py::TestTheCompletedRunsCostStrip::test_it_is_three_lines_labelled_an_estimate` | subprocess |
+| 0.75 | setup | `integration/test_chat_frame_e2e.py::TestTheCompletedRunsCostStrip::test_the_figures_render_in_monospace` | subprocess |
+| 0.73 | call | `test_stack_shape_resilience.py::test_render_failure_leaves_no_display_override` | mock |
+| 0.71 | call | `test_stack_shape_resilience.py::test_flat_libraries_no_longer_crashes_the_turn` | mock |
+| 0.70 | setup | `integration/test_chat_frame_e2e.py::TestTheRenderedFrame::test_the_model_name_renders_in_monospace` | subprocess |
+| 0.68 | setup | `integration/test_chat_frame_e2e.py::TestTheRenderedFrame::test_the_active_agent_is_marked` | subprocess |
+| 0.67 | setup | `integration/test_chat_frame_e2e.py::TestTheTranscriptScrollsIndependently::test_it_scrolls_rather_than_clipping` | subprocess |
+| 0.66 | setup | `integration/test_chat_frame_e2e.py::TestTheCompletedRunsCostStrip::test_it_wears_the_same_class_as_the_project_view_s` | subprocess |
+| 0.66 | setup | `integration/test_chat_frame_e2e.py::TestTheRenderedFrame::test_user_turns_are_filled_and_agent_turns_are_not` | subprocess |
+| 0.66 | call | `integration/test_chat_frame_e2e.py::TestAtAShortViewport::test_it_still_scrolls_itself` | subprocess |
+| 0.65 | setup | `integration/test_chat_frame_e2e.py::TestTheCompletedRunsCostStrip::test_it_renders_under_the_transcript` | subprocess |
+| 0.65 | setup | `integration/test_artifact_view_e2e.py::TestALargeArtifact::test_the_whole_file_is_four_dom_nodes_not_four_thousand` | subprocess |
+| 0.65 | setup | `integration/test_artifact_view_e2e.py::TestALargeArtifact::test_every_line_is_numbered` | subprocess |
+| 0.64 | setup | `integration/test_chat_frame_e2e.py::TestTheRenderedFrame::test_the_pipeline_reads_as_seven_plain_labels` | subprocess |
+| 0.64 | setup | `integration/test_artifact_view_e2e.py::TestOpeningAPhaseFile::test_markdown_is_shown_as_written` | subprocess |
+| 0.64 | setup | `integration/test_chat_frame_e2e.py::TestTheTranscriptScrollsIndependently::test_the_composer_is_still_on_screen_under_it` | subprocess |
+| 0.64 | setup | `integration/test_artifact_view_e2e.py::TestDownload::test_it_is_disabled_with_nothing_selected` | subprocess |
+
+Top-40 total **67.16 s**, 48% of a 139 s run.
+
+| Cause | seconds in the top 40 |
+|---|---:|
+| `mock` | **30.87** |
+| `subprocess` (browser E2E: server subprocess + webdriver) | 29.28 |
+| `subprocess` (`test_app_import_smoke.py`, the D-LR1 startup probe) | 7.01 |
+| `sleep` | **0.00** |
+| `network`, `tmp_path` I/O, `import`, `unknown` | 0.00 |
+
+#### The `sleep` category, as asked
+
+`grep -rn "time\.sleep(" tests/` finds **17 call sites in 13 files**. Measured by
+wrapping `time.sleep` in a pytest plugin loaded from the scratchpad (no tree edit) and
+running exactly those 13 files: **171 calls, 12.97 s slept**, out of 64.31 s for that
+subset. The sites are polling loops around daemon threads (0.005–0.05 s) and three
+0.2 s webdriver settles in the E2E modules.
+
+12.97 s is 9% of the run and every second of it is a real wait on another thread or a
+browser. It is **not** the cheapest recoverable runtime; recovering it means replacing
+poll loops with `threading.Event` waits, which is a rewrite of the concurrency harness.
+
+#### What actually dominates, and what it costs to remove
+
+`tests/test_agents.py:49`:
+
+```python
+def make_stream_chunk(content: str, finish_reason: str | None = None) -> MagicMock:
+    chunk = MagicMock()
+    chunk.choices[0].delta.content = content
+    ...
+```
+
+and `mock_litellm_stream` / `_chunkify_stream` built on it produce **one `MagicMock`
+per character** of streamed text. Each one, on those three attribute chains, spawns
+four or five auto-child mocks. A phase-block fixture is several thousand characters,
+streamed twice.
+
+Three measurements:
+
+1. **A warm `cProfile` of the single slowest test.** 20,713 `MagicMock` children
+   created; 4.29 s of the 7.08 s profiled sample inside `mock._mock_set_magics`, 2.23 s
+   inside `NonCallableMock.__init__`. No `spec4` frame appears in the top 20.
+2. **Suite-wide count**, same plugin technique: **216,428 mock instantiations** in one
+   full run.
+3. **The direct experiment.** A scratchpad pytest plugin replaces `make_stream_chunk`
+   with a `SimpleNamespace` of the same shape, in memory, at
+   `pytest_collection_finish`. Nothing on disk changes, no assertion changes.
+
+| | tests | result | pytest time |
+|---|---:|---|---:|
+| `tests/test_agents.py` baseline | 293 | passed | **40.65 s** |
+| `tests/test_agents.py` with plain-namespace chunks | 293 | passed | **0.64 s** |
+| full suite baseline | 4257 | `4256 passed, 1 skipped` | **139.14 s** |
+| full suite with plain-namespace chunks | 4257 | `4256 passed, 1 skipped` | **90.83 s** |
+
+A micro-benchmark of the two chunk shapes over 5,000 chunks, built and read exactly as
+`llm.stream_turn` reads them: **MagicMock 4.253 s, SimpleNamespace 0.008 s.**
+
+**48.3 s of a 139 s run is the cost of `MagicMock`'s auto-child machinery, in two test
+modules** (`tests/test_agents.py:49` and
+`tests/agentifier/test_agentifier_orchestrator.py:119`, which defines the same factory).
+Same tests, same assertions, same pass/skip counts.
+
+#### Per-file test counts
+
+126 collected files — **122 under `tests/`, 4 under `evals/`** (§50.0(e)).
+`pytest --collect-only -q | cut -d: -f1 | sort | uniq -c | sort -rn`:
+
+| Tests | File | Over 150? |
+|---:|---|---|
+| 293 | `tests/test_agents.py` | **split candidate** |
+| 215 | `tests/test_stack_render_totality.py` | **split candidate** |
+| 213 | `tests/test_artifact_view.py` | **split candidate** |
+| 162 | `tests/test_designer.py` | **split candidate** |
+| 155 | `tests/test_agent_llm_selection.py` | **split candidate** |
+| 125 | `tests/test_designer_wizard_register.py` | |
+| 118 | `tests/test_project_manager.py` | |
+| 90 | `tests/agentifier/test_prioritizer.py` | |
+| 77 | `tests/test_usage_capture.py` | |
+| 77 | `tests/test_agent_rows.py` | |
+| 75 | `tests/test_round_tree.py` | |
+| 74 | `tests/test_layout_contract.py` | |
+| 71 | `tests/test_session.py` | |
+| 67 | `tests/test_status_bar.py` | |
+| 67 | `tests/agentifier/test_agentifier_orchestrator.py` | |
+
+Five files over 150, holding **1,038 tests — 24% of the suite in 4% of the files.**
+`tests/test_agents.py` alone is 40.65 s of a 139 s run today (7% of the tests, 29% of
+the runtime), which is the mock finding above and not a reason to split it.
+`tests/test_stack_render_totality.py` and `tests/test_artifact_view.py`, the next two
+largest, cost 0.5 s and 1.4 s respectively — they are large but not slow.
+
+Measured wall time by directory and largest file (each includes the ~4.2 s startup):
+
+| Target | wall | tests |
+|---|---:|---:|
+| `tests/integration/` | 61.70 s | 86 |
+| `tests/test_agents.py` | 44.91 s | 293 |
+| `tests/agentifier/` | 14.54 s | 721 |
+| `tests/test_usage_capture.py` | 6.82 s | 77 |
+| `tests/test_designer.py` | 5.81 s | 162 |
+| `tests/test_artifact_view.py` | 5.57 s | 213 |
+| `tests/test_agent_llm_selection.py` | 5.01 s | 155 |
+| `tests/test_stack_render_totality.py` | 4.66 s | 215 |
+| `evals/` (all four modules) | 4.21 s | 82 |
+
+#### Proposed targets (proposals only — Phase 6 does not set them here)
+
+**Count floor: 273.**
+
+Below this number Phase 6 may not take the suite. It is the union of §50.3's three
+sources, de-duplicated (a test counted once even when it qualifies twice):
+
+| Component | Tests |
+|---|---:|
+| The five Phase 1 modules, whole-file (§12.1; still exactly the 131 Phase 1 wrote) | 131 |
+| `tests/test_callback_co_presence.py`, whole-file (the id contract) | 50 |
+| `tests/test_import_layering.py`, whole-file (Phase 4's layering contract, §15.3) | 7 |
+| Tests whose own name or docstring cites a D-number, outside the above | 73 |
+| The named co-presence/ordering assertions in three further files | 12 |
+| **Floor** | **273** |
+
+*Justification:* it is the Phase 1 net (131) plus every standing contract file (57)
+plus every invariant test that names the decision it guards (85), and nothing else. It
+is 6.4% of the suite, so it constrains Phase 6 almost not at all — which is the point:
+the floor exists to make one specific mistake impossible, not to cap the pruning.
+
+A second reading is available and **not** proposed: including tests whose *class*
+docstring cites a D-number adds 183, giving **456**. §50.3 lists that tier separately
+so Robert can raise the floor to 456 with one word if he prefers the wider net.
+
+**Runtime target: median ≤ 95 s, pytest-reported, no `--cov`.**
+
+*Justification:* from 139.91 s, a single change to two chunk factories was measured at
+**−48.3 s** (139.14 → 90.83, same 4256/1). That one change alone clears the target with
+5 s of headroom. It touches `tests/test_agents.py:49` and
+`tests/agentifier/test_agentifier_orchestrator.py:119` — neither is in §50.3, and
+neither assertion changes.
+
+The recoverable-seconds breakdown behind the figure:
+
+| Source | seconds | in §50.3? |
+|---|---:|---|
+| Per-character `MagicMock` chunk factories → plain namespaces | **48.3** | no |
+| `tests/integration/` browser E2E (57.5 s of the residue) | 0 — **not proposed** | no, but see below |
+| `test_app_import_smoke.py` subprocess (7.0 s) | 0 — **not proposed** | **yes** — Phase 1 net |
+| `time.sleep` poll loops | 0 — **not proposed** (12.97 s, and a concurrency rewrite) | mixed |
+| **Total proposed** | **48.3** | |
+
+Two of those are deliberately left at zero. `test_app_import_smoke.py` is Phase 1 net
+and is a subprocess *on purpose* — it exists to exercise D-LR1's import ordering as at
+startup (§12.1), which an in-process import cannot do. `tests/integration/` is the
+largest single block left (57.5 s) but its server must stay a subprocess: an in-process
+Dash server drains the callback registry and breaks three other test modules. Neither
+is proposed, so the target does not require touching anything in §50.3.
+
+After the one proposed change the suite is ~91 s, of which ~57.5 s is
+`tests/integration/`. **A documented `-m "not slow"` inner loop (the plan's own Phase 6
+bullet) then costs ~33 s, not ~82 s** — the marker is worth more after the chunk fix
+than before it.
+
+### 50.2 Layout-coupling list
+
+Every way `tests/` reaches into module layout by string, found by AST-walking all 127
+Python files under it rather than by grep, so multi-line and decorator forms are
+included. The table is keyed by **target string** with its sites listed, not one row
+per site: 599 patch-string sites collapse to 61 distinct targets, and the per-site rows
+would carry no information the site list does not.
+
+`resolves-today` was checked by executing mock's own resolution algorithm — import the
+longest importable dotted prefix, then walk the remaining attributes.
+
+#### Kind 1 — `patch("spec4.…")` string-path patches
+
+**599 sites, 61 distinct targets. All 61 resolve.** 60 are `spec4.*`; one is
+`litellm.acompletion` (18 sites), patched by its own name.
+
+Beyond resolution, each target was checked for **liveness**: does any production code
+read that attribute off that object at call time? A patch whose attribute nothing reads
+still passes — silently, forever.
+
+| Target (sites) | Resolves | Owner if not the named module | 5-sub-phase | Disposition |
+|---|---|---|---|---|
+| `spec4.llm.litellm.completion` (163) | yes | `litellm.completion` | 5o2 | keep |
+| `spec4.agentifier.agentifier._call_scout` (25) | yes | — | 5k | keep |
+| `spec4.agentifier.agentifier._call_tier_analyst` (21) | yes | — | 5k | keep |
+| `spec4.agentifier.scout.complete_stream` (20) | yes | — | none | keep |
+| `spec4.agentifier.tier_analyst.complete_stream` (20) | yes | — | none | keep |
+| `spec4.callbacks._chat.streaming.start` (18) | yes | `spec4.streaming.start` | 5m | keep |
+| `spec4.llm.search` (18) | yes | — | 5o2 | keep |
+| `spec4.agentifier.spec_drafter.acomplete` (17) | yes | — | none | keep |
+| `spec4.callbacks._chat.streaming.get` (17) | yes | `spec4.streaming.get` | 5m | keep |
+| `spec4.agentifier.agentifier._registry.stream` (16) | yes | `SubAgentRegistry.stream` (instance attr) | 5k | keep |
+| `spec4.session.project_manager` (16) | yes | — | 5o | keep |
+| `spec4.llm_selection.probe_image_support` (15) | yes | — | none | keep |
+| `spec4.llm_selection.probe_tool_support` (15) | yes | — | none | keep |
+| `spec4.agentifier.cross_cutting_analyst.acomplete` (14) | yes | — | none | keep |
+| `spec4.callbacks._chat._get_agent_gen` (14) | yes | — | 5m | keep |
+| `spec4.llm_selection.supports_reasoning_effort` (14) | yes | — | none | keep |
+| `spec4.agentifier.agentifier._extract_cross_cutting_analysis` (12) | yes | — | 5k | keep |
+| `spec4.llm.litellm.get_supported_openai_params` (11) | yes | `litellm.…` | 5o2 | keep |
+| `spec4.providers._json_get` (11) | yes | — | 5o | keep |
+| `spec4.llm.litellm.acompletion` (8) | yes | `litellm.acompletion` | 5o2 | keep |
+| `spec4.agents.phaser.run_seam_check` (8) | yes | — | 5i | keep |
+| `spec4.callbacks._chat._persist_artifacts` (8) | yes | — | 5m | keep |
+| `spec4.agentifier.composer.complete_stream` (7) | yes | — | 5l | keep |
+| `spec4.agentifier.prioritizer.complete_stream` (6) | yes | — | none | keep |
+| `spec4.callbacks._artifacts.ctx` (6) | yes | — | 5m | keep |
+| `spec4.agentifier.linker.complete_stream` (5) | yes | — | 5l | keep |
+| `spec4.session.brainstormer.run` (5) | yes | `spec4.agents.brainstormer.run` | 5j | keep |
+| `spec4.session.stack_advisor.run` (5) | yes | `spec4.agents.stack_advisor.run` | 5j | keep |
+| `spec4.websearch._list_tools_async` (5) | yes | — | 5p | keep |
+| `spec4.agentifier.agentifier._call_linker` (4) | yes | — | 5k | keep |
+| `spec4.llm.complete_stream` (4) | yes | — | 5o2 | keep |
+| `spec4.llm.stream_turn` (4) | yes | — | 5o2 | keep |
+| `spec4.callbacks._nav.ctx` (3) | yes | — | 5m | keep |
+| `spec4.callbacks._setup.providers.list_models` (3) | yes | `spec4.providers.list_models` | 5m | keep |
+| `spec4.callbacks.designer.ctx` (3) | yes | — | 5m | keep |
+| `spec4.llm.supports_response_format` (3) | yes | — | 5o2 | keep |
+| `spec4.providers._fetch_models` (3) | yes | — | 5o | keep |
+| `spec4.providers.boto3.client` (3) | yes | `boto3.client` | 5o | keep |
+| `spec4.session.phaser.run` (3) | yes | `spec4.agents.phaser.run` | 5i | keep |
+| `spec4.websearch._call_search_async` (3) | yes | — | 5p | keep |
+| `spec4.agentifier.agentifier._DEV_MODE` (2) | yes | — | 5k | keep |
+| `spec4.agents.deployer.llm.stream_turn` (2) | yes | `spec4.llm.stream_turn` | 5i | keep |
+| `spec4.agents.phaser.llm.stream_turn` (2) | yes | `spec4.llm.stream_turn` | 5i | keep |
+| `spec4.agents.stack_advisor.llm.stream_turn` (2) | yes | `spec4.llm.stream_turn` | 5j | keep |
+| **`spec4.callbacks._chat.streaming.pop` (2)** | yes | `spec4.streaming.pop` | 5m / 4g2 | **drop as dead** |
+| `spec4.agentifier.agentifier._begin_priority_phase` (1) | yes | — | 5k | keep |
+| `spec4.agentifier.agentifier._call_composer` (1) | yes | — | 5k | keep |
+| `spec4.agentifier.agentifier._call_prioritizer` (1) | yes | — | 5k | keep |
+| `spec4.agentifier.agentifier._finalize_specs` (1) | yes | — | 5k | keep |
+| `spec4.agents.brainstormer._format_vision_as_text` (1) | yes | — | 5c | keep |
+| `spec4.callbacks.designer._wizard.revision_delta` (1) | yes | — | 5m | keep |
+| **`spec4.callbacks.designer.project_manager.load_prior_mock` (1)** | yes | `spec4.project_manager.load_prior_mock` | 4h / 5m | **rewrite to public seam** |
+| `spec4.llm._usage_fields` (1) | yes | — | 5o2 | keep |
+| `spec4.llm.litellm.completion_cost` (1) | yes | `litellm.completion_cost` | 5o2 | keep |
+| `spec4.project_manager.load_feature_specs` (1) | yes | façade re-export (`_artifacts`) | 4b / 5o | keep |
+| **`spec4.project_manager.os.fdopen` (1)** | yes | `os.fdopen` (stdlib, globally) | **4b** | **rewrite to public seam** |
+| **`spec4.project_manager.os.replace` (1)** | yes | `os.replace` (stdlib, globally) | **4b** | **rewrite to public seam** |
+| `spec4.project_manager.save_usage` (1) | yes | façade re-export (`_usage`) | 4b / 5o | keep |
+| `spec4.session.code_scanner.run` (1) | yes | `spec4.agents.code_scanner.run` | 5j | keep |
+| `spec4.session.project_manager.load_spec4_artifacts` (1) | yes | `spec4.project_manager.load_spec4_artifacts` | 5o | keep |
+| `litellm.acompletion` (18) | yes | third-party, by its own name | — | keep |
+
+**Twenty-one targets are indirect** — the string names one module and the patch lands
+on an attribute of another, because the named module did `import X` and the test is
+patching where the name is looked up. That is the correct mock idiom and is **not**
+a defect; the `Owner` column records it so Phase 6 does not mistake it for one. The
+four flagged rows are the cases where the named module no longer looks the name up at
+all:
+
+- **`spec4.callbacks._chat.streaming.pop` — the one dead patch in the suite.**
+  `src/spec4/callbacks/_chat.py` contains no reference to `streaming.pop`; the done
+  branch reads via `get()` and eviction moved into `start()`. Both sites
+  (`tests/test_callbacks_stream_poll.py:53` and `:148`) exist only to assert
+  `mock_pop.assert_not_called()` — an assertion that **cannot fail**, because nothing
+  calls it through that module. §12.4 item 9 already recorded that `streaming.pop` has
+  no production caller and (in Phase 3) that the function itself stays. The two
+  `patch`/`assert_not_called` pairs go; the surrounding tests keep every other
+  assertion and both remain meaningful.
+- **`spec4.project_manager.os.fdopen` / `os.replace`.** After 4b the atomic writer
+  lives in `src/spec4/_usage.py:346–359`; `project_manager.py` has no `os.fdopen` or
+  `os.replace`. Both strings resolve to the **stdlib `os` module** and patch it
+  process-wide, so the tests still exercise the writer — by accident of `os` being
+  shared, not by design. Rewriting to `spec4._usage.os.replace` scopes the patch to the
+  module that performs the write. Sites: `tests/test_usage_capture.py:815, 838`.
+- **`spec4.callbacks.designer.project_manager.load_prior_mock`.** The readers after
+  4h are `callbacks/designer/_mock_gen.py:211` and `_wizard.py:161`; the package
+  `__init__` neither calls it nor is on the path between them. The patch works only
+  because both names bind the same `spec4.project_manager` module object. Site:
+  `tests/test_designer_fullscreen.py:97`.
+
+`spec4.project_manager.load_feature_specs` and `.save_usage` sit in the same shape but
+are **keep**: `project_manager.py` is a deliberate façade after 4b (§17), re-exporting
+both in `__all__`, and five production modules read them off it by that name. The
+façade is the public seam.
+
+#### Kind 2 — `patch.object(…)`
+
+**111 sites, 32 distinct (object, attribute) pairs. All 32 resolve.** The object is a
+local name; it was resolved through the test module's own import table.
+
+| Object.attribute (sites) | Resolves to | 5-sub-phase | Disposition |
+|---|---|---|---|
+| `providers.list_models` (13) | `spec4.providers.list_models` | 5o | keep |
+| `code_scanner.llm.stream_turn` (11) | `spec4.llm.stream_turn` | 5j / 5o2 | keep |
+| `agentifier._call_scout` (5) | `spec4.agentifier.agentifier._call_scout` | 5k | keep |
+| `agentifier.project_manager.load_prior_ai_features` (5) | `spec4.project_manager.…` | 5k / 5o | keep |
+| `dmod._refine._start_gen` (5) | `spec4.callbacks.designer._refine._start_gen` | 5m | keep |
+| `llm_selection.offered_efforts` (5) | `spec4.llm_selection.offered_efforts` | none | keep |
+| `artifact_view_callbacks.ctx` (4) | `spec4.callbacks._artifacts.ctx` | 5m | keep |
+| `brainstormer.llm.build_system_prompt` (4) | `spec4.llm.build_system_prompt` | 5c/5j / 5o2 | keep |
+| `deployer.llm.build_system_prompt` (4) | `spec4.llm.build_system_prompt` | 5i / 5o2 | keep |
+| `deployer.llm.stream_turn` (4) | `spec4.llm.stream_turn` | 5i / 5o2 | keep |
+| `_seam_check.complete_stream` (4) | `spec4.agents._seam_check.complete_stream` | 5h | keep |
+| `version_check.urllib.request.urlopen` (4) | `urllib.request.urlopen` | none | keep |
+| `agentifier.project_manager.detect_stale_inputs` (3) | `spec4.project_manager.…` | 5k / 5o | keep |
+| `agentifier.project_manager.resolve_phase_version` (3) | `spec4.project_manager.…` | 5k / 5o | keep |
+| `agentifier.project_manager.latest_implemented_version` (3) | `spec4.project_manager.…` | 5k / 5o | keep |
+| `brainstormer.llm.stream_turn` (3) | `spec4.llm.stream_turn` | 5c/5j / 5o2 | keep |
+| `_seam_check._extract_graph` (3) | `spec4.agents._seam_check._extract_graph` | 5h | keep |
+| `_seam_check.supports_response_format` (3) | `spec4.agents._seam_check.…` | 5h | keep |
+| `brainstormer.run` (3) | `spec4.agents.brainstormer.run` | 5j | keep |
+| `version_check.fetch_latest_version` (3) | `spec4.version_check.…` | none | keep |
+| `version_check.check_for_update` (3) | `spec4.version_check.…` | none | keep |
+| `agentifier._run_catalog_phase` (2) | `spec4.agentifier.agentifier._run_catalog_phase` | 5k | keep |
+| `code_scanner._collect_files` (2) | `spec4.agents.code_scanner._collect_files` | 5h/5j | keep |
+| `deployer.project_manager.load_deployment_plan` (2) | `spec4.project_manager.…` | 5i / 5o | keep |
+| `dmod.ctx` (2) | `spec4.callbacks.designer.ctx` | 5m | keep |
+| `stack_advisor._format_stack_as_text` (2) | `spec4.agents.stack_advisor.…` | 5a | keep |
+| `agentifier._stream_suppressing_json` (1) | `spec4.agentifier.agentifier.…` | 5k | keep |
+| `agentifier.load_patterns` (1) | `spec4.agentifier.agentifier.load_patterns` | 5l | keep |
+| `agentifier._registry.stream` (1) | `SubAgentRegistry.stream` | 5k | keep |
+| `code_scanner.llm.supports_response_format` (1) | `spec4.llm.…` | 5j / 5o2 | keep |
+| `websearch.validate` (1) | `spec4.websearch.validate` | 5p | keep |
+| `llm_selection.default_provider_model` (1) | `spec4.llm_selection.…` | none | keep |
+
+No dead entries and nothing stale. `patch.object` is structurally safer than the string
+form here: the object is imported, so a moved name fails at import time rather than
+resolving to something that no longer matters. **That is the shape kind 1's rewrites
+should move toward.**
+
+#### Kind 3 — `inspect.getsource(`
+
+**Zero uses.** See §50.0(d). The one instance §43 recorded —
+`tests/test_designer.py`'s `TestRefinePersistsManifest`, asserting
+`"_persist_manifest(" in inspect.getsource(_start_gen)` — was rewritten at 5m (§44.4).
+The behaviour it stood in for is **D-DM9** — *a refine draw must still persist the
+manifest; persistence is not gated on the draw kind*. §44.4 replaced the two source
+substrings with a behavioural assertion in the same file, class and test name: run
+`_start_gen` on a refine draw with `_persist_manifest` patched and assert it was called.
+So the answer to "is a behavioural test already covering it elsewhere in the file" is
+that the rewrite **is** that test — there was no second one, and there is no residue to
+clean up. Nothing else in the suite reads Python source through `inspect`.
+
+#### Kind 4 — private-name imports and private attribute access
+
+`from spec4.<x> import _<name>` plus `<module>._<name>` on an imported module,
+excluding dunders and excluding names that are themselves modules.
+
+**583 sites, 176 distinct private names, across 35 target modules.** Grouped by target
+module; a module with more than five private names imported by tests is one
+`rewrite to public seam` **cluster**, not five individual rewrites.
+
+| Target module | Names | Sites | 5-sub-phase | Disposition |
+|---|---:|---:|---|---|
+| `spec4.agentifier.agentifier` | **34** | 87 | 5k | **cluster** |
+| `spec4.layouts._chat` | **14** | 43 | 5n / 4f | **cluster** |
+| `spec4.session` | **10** | 57 | 5o | **cluster** |
+| `spec4.callbacks.designer` | **10** | 90 | 5m / 4h | **cluster** |
+| `spec4.project_manager` | **8** | 22 | 5o / 4b | **cluster** |
+| `spec4.agents.brainstormer` | **8** | 26 | 5c, 5j | **cluster** |
+| `spec4.layouts` | **7** | 18 | 5n | **cluster** |
+| `spec4.agents.code_scanner` | **7** | 44 | 5b, 5h, 5j / 4c | **cluster** |
+| `spec4.layouts.designer` | **7** | 24 | 5n | **cluster** |
+| `spec4.agents._seam_check` | **6** | 6 | 5h | **cluster** |
+| `spec4.llm` | **6** | 25 | 5o2 | **cluster** |
+| `spec4.agents.phaser` | 5 | 24 | 5i / 4e | keep |
+| `spec4.agents.feature_speccer` | 4 | 19 | 5h | keep |
+| `spec4.agentifier.linker` | 4 | 4 | 5l | keep |
+| `spec4.agentifier.scout` | 4 | 7 | none | keep |
+| `spec4.agentifier.tier_analyst` | 4 | 4 | none | keep |
+| `spec4.agentifier.spec_drafter` | 3 | 4 | none | keep |
+| `spec4.layouts._agent_rows` | 3 | 3 | 5n | keep |
+| `spec4.agents.deployer` | 3 | 9 | 5i | keep |
+| `spec4.layouts._status_bar` | 3 | 4 | 5n | keep |
+| `spec4.agents.stack_advisor` | 3 | 9 | 5a, 5j / 4d | keep |
+| `spec4.streaming` | 2 | 25 | Phase 3 | **keep — §50.3** |
+| `spec4.agentifier.composer` | 2 | 2 | 5l | keep |
+| `spec4.agentifier.cross_cutting_analyst` | 2 | 2 | none | keep |
+| `spec4.agentifier.prioritizer` | 2 | 2 | none | keep |
+| `spec4.callbacks` | 2 | 2 | 5m / 4g | keep |
+| `spec4.layouts._shared` | 2 | 2 | 5n | keep |
+| `spec4.feature_specs` | 2 | 2 | 5o | keep |
+| `spec4.layouts._artifact_view` | 2 | 2 | 5n | keep |
+| `spec4.websearch` | 2 | 8 | 5p | keep |
+| `spec4.agentifier.pattern_loader` | 1 | 2 | 5l | keep |
+| `spec4.agents._phase_coverage` | 1 | 1 | 5h | keep |
+| `spec4.layouts._round_cost` | 1 | 1 | 5n | keep |
+| `spec4.layouts._round_tree` | 1 | 1 | 5n | keep |
+| `spec4.layouts._setup` | 1 | 2 | 5n | keep |
+
+**Eleven clusters**, covering 117 of the 176 names and 442 of the 583 sites. Every one
+sits on a module a Phase 4 split or a Phase 5 sub-phase moved, which is why they are
+clusters: each is a module whose *internal shape* the tests have memorised. Three are
+worth naming:
+
+- **`spec4.agentifier.agentifier` — 34 private names.** The single largest coupling in
+  the suite. 5k decomposed its three phase runners and 5l its siblings; the tests reach
+  past all of it. The public seam is `run()` and the sub-agent registry.
+- **`spec4.callbacks.designer` — 10 names, 90 sites.** 4h turned this module into a
+  package and 5m decomposed it; three of the ten "names" are the *submodules*
+  (`_mock_gen`, `_refine`, `_wizard`) reached through the package `__init__`.
+- **`spec4.layouts._chat` — 14 names, 43 sites.** 4f split this file into three
+  siblings; the tests import pill constants and panel builders by private name.
+
+`spec4.streaming` is marked **keep** despite the count: its two names are `_STREAMS`
+and `_USAGE_RECORDS`, and 25 of its sites are in
+`tests/test_streaming_characterization.py`, which is Phase 1 net (§50.3). The net wins.
+
+#### Kind 5 — `sys.modules[` and `importlib.reload(`
+
+**One `sys.modules` use, zero `importlib.reload` uses.**
+
+| Site | Target | Reason given | Disposition |
+|---|---|---|---|
+| `tests/test_cost_summary.py:624` (`TestOneRenderer::test_both_surfaces_call_the_one_renderer`) | `sys.modules["spec4.layouts._round_cost"]` | **Stated, in a comment above the line:** "By `sys.modules`, not `import … as`: `spec4.layouts` re-exports the `_round_cost` *function*, which shadows the submodule of that name on the package." | keep |
+
+The reason is exact and still true: `spec4.layouts` exports a function named
+`_round_cost`, so `from spec4.layouts import _round_cost` cannot reach the module. The
+test then `monkeypatch.setattr`s `cost_strip_lines` on it to prove both screens call the
+one renderer. A rename of either the function or the submodule would remove the need
+for the idiom — a Phase 7 naming note, not a Phase 6 rewrite. **No reload anywhere**,
+which also means no test depends on import-order side effects.
+
+#### Kind 6 — assertions on `__name__` / `__module__` / `__qualname__` / `__file__`
+
+**49 sites. 45 are `type(component).__name__` or `.__module__` on Dash components** —
+that is component-class identity ("this row is a `Group`, not a `Stack`"), which is
+rendered-output assertion, not module layout. `keep`, all of them; two of the 45 are
+`type(c).__module__.startswith("dash_mantine_components")` in the two wizard-register
+modules, same category.
+
+**Four read `__file__` on a production module:**
+
+| Site | Expression | What it reads | 5-sub-phase | Disposition |
+|---|---|---|---|---|
+| `tests/test_deployer_invariants.py:43` | `Path(deployer.__file__).read_text()` | `deployer.py` **source text**, asserted for prompt strings | 5i | keep |
+| `tests/agentifier/test_try_again.py:44,74,79` | `Path(agentifier.__file__).read_text()`, regex `"(agentifier_[a-z_]+)"` | `agentifier.py` **source text**, for the set of session keys it names | **5k** | keep, with a note |
+| `tests/test_artifact_view.py:1467` | `Path(artifact_view.__file__).parent.parent / "assets" / "v3.css"` | locates the **stylesheet**, not Python | 5n | keep |
+| `tests/test_status_bar.py:338` | `Path(app_module.__file__).parent / "assets" / "v3.css"` | locates the **stylesheet**, not Python | — | keep |
+
+The last two use `__file__` only as a path anchor and read CSS; §43 already ruled that
+category legitimate. The first is §43's row, which passed unmodified through 5i's
+398→173-line decomposition because prompt strings move verbatim.
+
+**The `test_try_again.py` reader is new since §43 was written** and belongs on that
+list: it regexes `agentifier.py`'s source for `"agentifier_*"` session-key literals and
+asserts the set. It survives today because 5k moved code *within* `agentifier.py`. It
+would break silently — as a shrinking set, not an error — if a future split moved a
+phase runner into a sibling, exactly the way 4c–4i moved code. Phase 6 should note it;
+the assertion is better expressed against `app_constants` or a key registry than
+against a file's text.
+
+#### Counts per kind
+
+| Kind | Distinct targets | Sites | Resolve today | Flagged |
+|---|---:|---:|---|---|
+| 1 `patch("spec4.…")` | 61 | 599 | **61 / 61** | 1 dead, 3 stale |
+| 2 `patch.object(…)` | 32 | 111 | **32 / 32** | 0 |
+| 3 `inspect.getsource(` | 0 | 0 | — | 0 |
+| 4 private names | 176 | 583 | n/a (import-time) | 11 clusters |
+| 5 `sys.modules[` / `reload` | 1 / 0 | 1 | 1 / 1 | 0 (reason stated) |
+| 6 dunder on production objects | 4 | 49 | 4 / 4 | 1 note |
+| **Total** | | **1,343** | | |
+
+**Nothing in the suite is broken and nothing resolves to a name that has moved.**
+Phase 5 moved 250+ helpers without leaving a single unresolvable patch string — the
+per-sub-phase gates caught them as they happened. The staleness that did accumulate is
+the quieter kind: one patch that can no longer fail, three that name a module which no
+longer performs the operation, and 583 sites that have memorised private layout.
+
+#### The ten test files with the highest coupling totals
+
+| Total | patch-string | patch.object | private-name | dunder | File | In §50.3? |
+|---:|---:|---:|---:|---:|---|---|
+| 142 | 79 | 0 | 63 | 0 | `tests/test_agents.py` | no |
+| 85 | 10 | 9 | 66 | 0 | `tests/test_designer.py` | no |
+| **58** | 1 | 0 | 57 | 0 | `tests/test_streaming_characterization.py` | **yes — keep** |
+| 57 | 41 | 7 | 9 | 0 | `tests/test_agent_llm_selection.py` | partly (4 node ids) |
+| 56 | 21 | 0 | 35 | 0 | `tests/agentifier/test_agentifier_orchestrator.py` | no |
+| 55 | 40 | 0 | 15 | 0 | `tests/test_llm.py` | no |
+| 50 | 32 | 1 | 17 | 0 | `tests/test_usage_capture.py` | no |
+| 37 | 26 | 0 | 10 | 1 | `tests/agentifier/test_try_again.py` | no |
+| 34 | 30 | 0 | 4 | 0 | `tests/agentifier/test_streaming_e2e.py` | no |
+| 34 | 0 | 14 | 20 | 0 | `tests/test_code_scanner_progress.py` | partly (6 node ids) |
+
+86 of 122 test modules carry at least one coupling row. **96 of the 1,343 rows land on
+a §50.3 file** (`test_streaming_characterization.py` 58, `test_layout_contract.py` 14,
+`test_callback_co_presence.py` 14, `test_renderer_goldens.py` 6,
+`test_project_manager_golden.py` 4; `test_app_import_smoke.py` and
+`test_import_layering.py` carry none). **All 96 are `keep` regardless of what the
+coupling analysis says about them** — the net wins over decoupling.
+
+### 50.3 Phase 1 net: the off-limits list
+
+Phase 6 may prune and reshape tests. The net that made Phases 2–5 safe is not prunable.
+Enumerated here so the exclusion is checkable by `git diff --stat` rather than by
+argument.
+
+Built from three sources and unioned; **273 tests across 53 files**.
+
+#### Source 1 — added or extended by Phase 1
+
+`git diff --stat aff7246..8b277fd -- tests/` (*Phase 0 complete* → *Phase 1 followup*):
+**52 files changed, 4,706 insertions, 0 deletions.** Phase 1 added only; it edited no
+existing test file, exactly as §12 claims.
+
+| File | Tests today | Source | Invariant guarded |
+|---|---:|---|---|
+| `tests/test_layout_contract.py` | 74 | 1 | The component-id snapshot over 72 screens — Rule 4 for component ids, in the direction `test_callback_co_presence.py` does not cover. Plus a smoke assertion that every layout serialises. |
+| `tests/test_renderer_goldens.py` | 22 | 1 | Byte-exact output of all five artifact renderers. This is what let 5a/5b/5c/5d/5e decompose 60+ render functions with a mechanical check. |
+| `tests/test_project_manager_golden.py` | 17 | 1 | `render_phase_markdown` / `parse_phase_markdown` round-trip, frontmatter format, `save_phases` file set and stale-file removal, `save_readme` footer idempotence. |
+| `tests/test_streaming_characterization.py` | 16 | 1 | Contents of the three Phase 3 state containers at every transition (§12.2). This is the test that made Phase 3 possible. |
+| `tests/test_app_import_smoke.py` | 2 | 1 | **D-LR1** as at startup, in a subprocess whose first import is `spec4.app`: litellm env, both callback modules imported, registry populated, `page-content` carrying `disable_n_clicks`, and `--version`. |
+| `tests/_golden.py` | (helper) | 1 | `assert_golden` / `load_fixture` and the `SPEC4_UPDATE_GOLDENS` escape hatch. |
+| `tests/snapshots/component_ids.json` | (data) | 1 | The checked-in id contract: 72 screens, reviewed by eye. |
+| `tests/golden/*.md` (25), `tests/golden/fixtures/*.json` (20) | (data) | 1 | The pinned outputs and their inputs. |
+
+**131 tests.** Still exactly the 131 Phase 1 wrote — no test was added to or removed
+from these five files in Phases 2–5.
+
+#### Source 2 — standing contract files and ordering assertions
+
+| File / node id | Tests | Source | Invariant guarded |
+|---|---:|---|---|
+| `tests/test_callback_co_presence.py` — **whole file** | 50 | 2 | The id contract. Walks the real callback registry against every layout the app can render and fails any callback that is *half* present. Dash silences this class of bug at definition time; only the rendered tree shows it. It caught the model-gate/chip bug. |
+| `test_code_scanner_progress.py::TestScanIsNarrated::test_first_chunk_arrives_before_the_walk` | 1 | 2 | The intro is yielded **before** the slow directory walk. |
+| `test_code_scanner_progress.py::TestScanIsNarrated::test_narration_closes_before_the_llm_text` | 1 | 2 | `out.index("Scan complete") < out.index("DRAFT-BODY")`. |
+| `test_code_scanner_progress.py::TestLayout::test_complete_state_keeps_its_buttons_and_gains_the_counter` | 1 | 2 | Open sits immediately before the Download it belongs to. |
+| `test_code_scanner_progress.py::TestLayout::test_elapsed_sits_beside_the_counter_in_the_action_row` | 1 | 2 | `ids.index("chat-elapsed") == ids.index("chat-token-count") + 1`. |
+| `test_code_scanner_progress.py::TestLayout::test_pre_panel_agentifier_pairs_counter_with_elapsed` | 1 | 2 | Same adjacency on the Agentifier pre-panel. |
+| `test_code_scanner_progress.py::TestElapsedTicker::test_ticker_repaints_after_every_render` | 1 | 2 | The ticker is not short-circuited between renders. |
+| `test_cost_summary.py::TestStripNumbers::test_it_mounts_all_three_lines` | 1 | 2 | The three cost-strip lines and their order. |
+| `test_cost_summary.py::TestChatPlacement::test_sits_between_the_transcript_and_the_action_row` | 1 | 2 | `chat-scroll-area < cost-summary-card < chat-token-count`. |
+| `test_cost_summary.py::TestDesignerPlacement::test_preview_step_shows_the_strip` | 1 | 2 | `mock-iframe < cost-summary-card`. |
+| `test_agent_llm_selection.py::TestAgentKeys::test_seven_user_facing_agents` | 1 | 2 | `len(AGENT_KEYS) == 7`. |
+| `test_agent_llm_selection.py::TestAgentKeys::test_matches_the_agent_select_rows` | 1 | 2 | `tuple(key for key, *_ in _AGENT_ROWS) == AGENT_KEYS` — row order **is** key order. |
+| `test_agent_llm_selection.py::TestModelChipPlacement::test_it_shares_a_row_with_the_status_line_and_comes_first` | 1 | 2 | `ids == ["btn-agent-llm-chip", "chat-status-line"]`. |
+| `test_agent_llm_selection.py::TestModelChipPlacement::test_the_gate_still_suppresses_it` | 1 | 2 | The chip is suppressed while the gate is open — the other half of the co-presence bug. |
+
+**62 tests** (50 + 12).
+
+#### Source 2 (continued) — every test whose own name or docstring cites a D-number
+
+**105 distinct D-numbers are referenced across `tests/`.** Attribution was computed by
+AST, at three tiers, so the boundary is a fact rather than a judgement:
+
+| Tier | Definition | Tests | Files |
+|---|---|---:|---:|
+| **A** | The **test's own** name or docstring cites a D-number | **73** | 34 |
+| B | Its **class's** name or docstring cites one; the test's own does not | 183 | 19 |
+| C | Only its **module** docstring cites one | 698 | 39 |
+
+**Tier A is what the floor uses**, because it is the directive's literal wording and
+because a test that names its D-number is a test whose author intended it as that
+decision's lock. Tier B is a defensible wider reading and is recorded so the floor can
+be raised to **456** by decision rather than by re-measurement. Tier C is **not**
+proposed for the net: a module docstring citing a D-number does not make each of its
+698 tests a lock on it, and including it would freeze 22% of the suite against a phase
+whose purpose is to prune.
+
+| File | Node id | D-number(s) |
+|---|---|---|
+| `agentifier/test_chars_counter_seed.py` | `TestBreadthTurnSeedsTheCounter::test_counter_does_not_dip_below_the_progress_text` | D-AT3 |
+| `agentifier/test_ff_sweep.py` | `TestSweepFailureHandling::test_failure_dump_written_in_dev_mode` | D-AF7 |
+| `agentifier/test_ff_sweep.py` | `TestSweepFailureHandling::test_ff_press_resumes_after_pause` | D-AF5 |
+| `agentifier/test_ff_sweep.py` | `TestSweepFailureHandling::test_loop_path_failure_appends_error_to_messages` | D-AF5 |
+| `agentifier/test_ff_sweep.py` | `TestSweepFailureHandling::test_persistent_failure_pauses_with_partial_review` | D-AF5 |
+| `agentifier/test_ff_sweep.py` | `TestSweepFailureHandling::test_retry_once_recovers_transient_failure` | D-AF6 |
+| `agentifier/test_try_again.py` | `TestPanelButton::test_hidden_once_the_panel_is_submitted` | D-TA6 |
+| `agentifier/test_try_again.py` | `TestPanelButton::test_panel_offers_the_guidance_box` | D-TA7 |
+| `test_agent_llm_selection.py` | `TestGateButtonEmphasis::test_no_gate_component_names_a_colour_beyond_neutral` | D-LR2 |
+| `test_agent_llm_selection.py` | `TestGateEffortOptions::test_it_keys_on_the_draft_provider_not_the_default_s` | D-EF4 |
+| `test_agent_pill_click.py` | `TestNoEnabledButtonIsRefused::test_every_enabled_button_navigates` | D-BB3 |
+| `test_agent_rows.py` | `TestLastModelEffort::test_an_agent_that_has_not_run_is_still_blank` | D-AR3 |
+| `test_agent_rows.py` | `TestTheButtonRoutesLikeTheOldOnes::test_the_action_carries_the_existing_agent_select_id` | D-AR2 |
+| `test_agent_rows.py` | `TestTheSixActionVariants::test_continue_is_the_same_button_as_start` | D-AR1 |
+| `test_agent_rows.py` | `TestTheSixActionVariants::test_no_button_names_a_colour_but_needs_update` | D-LR2 |
+| `test_agentifier_chars_counter.py` | `TestLayoutGate::test_first_post_panel_turn_shows_the_counter` | D-AT2 |
+| `test_agentifier_chars_counter.py` | `TestLayoutGate::test_pre_panel_build_shows_the_counter` | D-AT5 |
+| `test_app_constants.py` | `TestDarkTheme::test_primary_color_is_the_registered_accent` | D-LR2 |
+| `test_artifact_view.py` | `TestArtifactControls::test_neither_button_names_a_colour_of_its_own` | D-LR2 |
+| `test_artifact_view.py` | `TestTheAllowedSet::test_usage_json_has_no_producer` | D-LR3 |
+| `test_artifact_view.py` | `TestTheHeader::test_it_names_no_colour_of_its_own` | D-LR2 |
+| `test_artifact_view.py` | `TestTheMissingMessage::test_usage_json_names_no_producer` | D-LR3 |
+| `test_artifact_view.py` | `TestTheNavEntry::test_it_is_plain_text_with_no_colour_of_its_own` | D-LR2 |
+| `test_artifact_view.py` | `TestTheRoundSelector::test_it_names_no_colour_of_its_own` | D-LR2 |
+| `test_chat_action_row_emphasis.py` | `TestTheWarnTone::test_re_scan_is_the_row_s_only_coloured_action` | D-LR2 |
+| `test_chat_pill_bar.py` | `TestTheIdsAreUnchanged::test_the_bar_holds_no_control_but_the_pills` | D-LR8 |
+| `test_chat_pill_bar.py` | `TestTheStylesheetDrawsThem::test_the_active_state_uses_the_navs_mechanism` | D-LR2 |
+| `test_chat_transcript_blocks.py` | `TestMonospaceFigures::test_none_of_them_carries_a_colour` | D-LR2 |
+| `test_code_scanner_progress.py` | `TestLayout::test_elapsed_renders_even_when_the_agent_has_no_buttons` | D-AT5 |
+| `test_code_scanner_progress.py` | `TestLayout::test_pre_panel_agentifier_pairs_counter_with_elapsed` | D-AT5 |
+| `test_cross_cutting_relocation.py` | `TestDeployerContextDropsRelocatedKeys::test_catalog_provider_recommendation_not_surfaced` | D-DE7 |
+| `test_deployer_ai_channel.py` | `test_catalog_provider_strategy_is_not_rendered` | D-DE7 |
+| `test_deployer_env_and_semantics.py` | `TestEnvironmentIsAssembledNotAsked::test_brownfield_code_review_keeps_precedence` | D-DE9 |
+| `test_designer.py` | `TestManifestInstruction::test_capture_manifest_directive_has_its_planning_inputs` | D-DM7 |
+| `test_designer.py` | `TestManifestInstruction::test_refine_includes_manifest_directive` | D-DM9 |
+| `test_designer.py` | `TestMockDeliveryAck::test_delivery_preserves_prior_store_keys` | D-DM8 |
+| `test_designer_wizard_register.py` | `TestOnePrimaryPerStep::test_the_primary_takes_the_theme_accent` | D-LR2 |
+| `test_designer_wizard_register.py` | `TestStepRow::test_the_row_comes_from_the_shared_renderer` | D-LR9 |
+| `test_entry_screens.py` | `TestThePickerHasOneEmphasis::test_select_is_the_only_filled_action` | D-LR2 |
+| `test_feature_speccer_generative.py` | `TestReceiptCounter::test_counter_climbs_and_seeds_from_pre_call_value` | D-BS10 |
+| `test_phaser_seed_inputs.py` | `test_prompt_hardened_exclusion_and_addition_join_keys` | D-PH7 |
+| `test_phaser_seed_inputs.py` | `test_retry_drain_publishes_cumulative_received_count` | D-PH9 |
+| `test_phaser_seed_inputs.py` | `test_seed_vision_block_states_supersession` | D-PH7 |
+| `test_phaser_seed_inputs.py` | `test_silent_retry_yields_status_line_and_prompt_names_coordinators` | D-PH2, D-PH6 |
+| `test_project_manager.py` | `TestPhaseSpecPreamble::test_budgets_and_eval_approach_never_reach_the_coder` | D-PS13 |
+| `test_round_cost.py` | `TestPlacement::test_it_sits_between_the_rows_and_the_tree` | D-LR11 |
+| `test_round_cost.py` | `TestUnknownIsNotZero::test_an_empty_round_says_no_activity_not_unknown_price` | D-RC1 |
+| `test_round_tree.py` | `TestItClosesTheProjectView::test_the_tree_is_the_last_of_the_three` | D-LR11 |
+| `test_round_tree.py` | `TestRendering::test_no_line_names_a_colour` | D-LR2 |
+| `test_round_tree.py` | `TestTheCallbackRecomputes::test_it_sees_a_file_written_after_the_last_render` | D-LR4 |
+| `test_session.py` | `TestLoadWorkingDir::test_picking_a_directory_reopens_the_question` | D-PM1 |
+| `test_setup_wizard_register.py` | `TestEffortSelect::test_the_value_is_keyed_on_the_resolved_provider_and_model` | D-EF4 |
+| `test_setup_wizard_register.py` | `TestOnePrimaryPerStep::test_the_primary_takes_the_theme_accent` | D-LR2 |
+| `test_setup_wizard_register.py` | `TestStepIndicator::test_the_indicator_comes_from_the_shared_renderer` | D-LR9 |
+| `test_stack_ai_features_context.py` | `test_rejected_block_preserves_the_spine_features_ordinary_stack` | D-SC56 |
+| `test_stack_exemplar_demonstrates_linkage.py` | `test_every_licensed_field_is_demonstrated_where_its_prose_licenses_it` | D-SC50 |
+| `test_stack_exemplar_demonstrates_linkage.py` | `test_every_project_specific_exemplar_id_is_domain_loaded` | D-SC52 |
+| `test_stack_persistence_block.py` | `test_at_least_one_exemplar_collection_holds_no_entity` | D-SC50 |
+| `test_stack_persistence_block.py` | `test_every_exemplar_collection_says_what_it_holds_or_what_it_is_for` | D-SC51 |
+| `test_stack_persistence_block.py` | `test_every_exemplar_library_carries_a_purpose` | D-SC27 |
+| `test_stack_persistence_block.py` | `test_exemplar_infra_entry_points_at_its_library` | D-SC22, D-SC36 |
+| `test_stack_persistence_block.py` | `test_exemplar_nfr_ids_are_domain_loaded` | D-SC23 |
+| `test_stack_render_totality.py` | `test_legacy_string_languages_still_render` | D-SC26 |
+| `test_stack_render_totality.py` | `test_unknown_top_level_key_still_renders` | D-SC33 |
+| `test_stack_shape_resilience.py` | `test_flat_libraries_list_passes_through_untouched` | D-SC27 |
+| `test_stack_shape_resilience.py` | `test_keyed_libraries_fold_into_the_flat_list` | D-SC27 |
+| `test_stale_ai_features.py` | `test_stale_mock_allows_stack_advisor` | D-BB1, D-SC5 |
+| `test_status_bar.py` | `TestOnlyThePathEverGivesUpSpace::test_the_path_keeps_its_monospace_and_names_no_colour` | D-LR2 |
+| `test_status_bar.py` | `TestStatusBarLayout::test_no_nav_entry_names_a_colour` | D-LR2 |
+| `test_status_bar.py` | `TestTheBarOpensSetup::test_it_is_dressed_as_the_directory_is` | D-LR2 |
+| `test_status_bar.py` | `TestTheModelSlotCarriesTheEffort::test_the_suffixed_slot_still_refuses_to_truncate` | D-LR10 |
+| `test_visual_register.py` | `TestNoMarketingChrome::test_the_exception_is_one_line` | D-LR2 |
+| `test_visual_register.py` | `TestSingleAccent::test_no_layout_module_hard_codes_the_accent` | D-LR2 |
+
+**73 tests.**
+
+#### Source 3 — regression locks added during Phases 2–5
+
+Collected by comparing test-function names in `8b277fd` against `HEAD` for every
+touched test file. **Seven tests, one file, one sub-phase.**
+
+| File / node id | Tests | Source | Invariant guarded |
+|---|---:|---|---|
+| `tests/test_import_layering.py` — **whole file** | 7 | 3 | The `ast`-based layering contract §6.3 chose over import-linter (§15.3): `layouts` never imports `callbacks`; the agent side never imports the Dash side; nothing imports `app`; a private callback module never imports its own package. Plus three tests of the walk itself, so the contract cannot pass by finding nothing. |
+
+Nothing else in Phases 2–5 added a test. §44.4's `getsource` rewrite replaced a test
+body in place — same file, class and name — and is **not** a source-3 addition; the
+test it replaced was not Phase 1 net and the rewritten form is not net either. It is
+listed here only so the diff over §50.3 is not surprised by it.
+
+#### The rule for Phase 6
+
+> **The files and node ids in §50.3 may not be edited, renamed, moved, or deleted.**
+> Phase 6's close-out proves it with `git diff --stat` over the list: the seven
+> whole-file entries must show zero changed lines, and the 85 named node ids must still
+> collect under their current ids.
+
+Where a §50.2 row lands on a §50.3 file it is marked **keep** — 96 coupling rows,
+listed at the end of §50.2. The net wins over decoupling. Notably
+`tests/test_streaming_characterization.py` is the third-most-coupled file in the suite
+(58 rows, 57 of them private-name access to `spec4.streaming`) and is nonetheless
+untouchable: reaching into `_STREAMS` and `_USAGE_RECORDS` **is** what it is for.
+
+The floor as a number and as a list:
+
+| Component | Tests |
+|---|---:|
+| Source 1 — the five Phase 1 modules, whole-file | 131 |
+| Source 2 — `test_callback_co_presence.py`, whole-file | 50 |
+| Source 3 — `test_import_layering.py`, whole-file | 7 |
+| Source 2 — tier-A D-numbered tests outside the above | 73 |
+| Source 2 — named co-presence/ordering tests in three further files | 12 |
+| **Count floor** | **273** |
+| (alternative, adding tier B) | (456) |
+
+### 50.4 Gate check
+
+The promoted gate as it stood at 5p, run on the tree as found.
+
+| Gate | Command | Result | §49.7 | Match |
+|---|---|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) | same | ✅ |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) | same | ✅ |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) | same | ✅ |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4256 passed, 1 skipped in 174.98s` (exit 0) | `4256 passed, 1 skipped in 170.46s` | ✅ (counts) |
+| Coverage | same run | `TOTAL 12421 stmts, 893 miss, 93%` | same | ✅ |
+
+Every figure matches the end of §49 exactly. The only difference is wall-clock
+(174.98 s vs 170.46 s, 2.6%), which is machine variance on the same 4,257 tests — the
+three uninstrumented runs in §50.1 spread 139.14–140.98 s across the same tree.
+
+`git status --porcelain` is empty before and after: the three `pytest` runs, the two
+instrumented runs and the two experiment runs wrote only `.coverage`, which is
+gitignored and was restored from the pre-run copy.
+
+**Nothing changed between 5p and this run.** Phase 6 starts from `a86a2ee` as recorded.
+
+#### What Phase 6 inherits, in one paragraph
+
+4,257 tests in 126 files (4,175 in `tests/`, 82 in `evals/` — §50.0(e)), 139.9 s
+median. No broken coupling — all 61 patch strings and
+all 32 `patch.object` targets resolve, and Phase 5 moved 250+ helpers without leaving
+one stale. One patch that can no longer fail, three that name a module which no longer
+performs the operation, and 583 private-name sites in eleven clusters. Zero
+`inspect.getsource`, zero `importlib.reload`, one documented `sys.modules`. **48 s of
+the 140 is `MagicMock` auto-child construction in two chunk factories**, recoverable
+with no assertion change and nothing in the net touched. The net itself is 273 tests in
+53 files — 6.4% of the suite.
