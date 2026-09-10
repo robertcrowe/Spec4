@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable, Iterator
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 from dash import no_update
 
+from spec4 import streaming
 from spec4.callbacks import on_stream_poll
 from spec4.layouts._chat import (
     _breadth_panel,
@@ -48,10 +52,7 @@ class TestStreamPollMissingEntry:
         """Entry missing means another poll already finalised — must not clobber."""
         session = _session_with_stream()
 
-        with (
-            patch("spec4.callbacks._chat.streaming.get", return_value=None),
-            patch("spec4.callbacks._chat.streaming.pop") as mock_pop,
-        ):
+        with patch("spec4.callbacks._chat.streaming.get", return_value=None):
             result = on_stream_poll(1, session)
 
         assert result[0] is no_update, (
@@ -59,7 +60,6 @@ class TestStreamPollMissingEntry:
             "not rebuild from stale session snapshot"
         )
         assert result[1] == 0
-        mock_pop.assert_not_called()
 
     def test_missing_entry_does_not_return_session_dict(self) -> None:
         """Confirm the return value is not a dict (i.e. not a stale session rebuild)."""
@@ -136,23 +136,95 @@ class TestStreamPollNormalDone:
 # ---------------------------------------------------------------------------
 
 
+def _wait_until(predicate: Callable[[], bool], timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        assert time.monotonic() < deadline, "timed out waiting for a transition"
+        time.sleep(0.005)
+
+
 class TestStreamPollDoneFinalisation:
-    def test_done_branch_does_not_pop(self) -> None:
-        """Done branch must read via get(), not pop() — eviction is now in start()."""
-        session = _session_with_stream()
-        done_entry = _fake_stream_entry("result text", done=True)
+    @pytest.fixture(autouse=True)
+    def _clean_streams(self) -> Iterator[None]:
+        """The real container is used below; leave it as it was found."""
+        streaming._STREAMS.clear()
+        yield
+        streaming._STREAMS.clear()
 
-        with (
-            patch("spec4.callbacks._chat.streaming.get", return_value=done_entry),
-            patch("spec4.callbacks._chat._persist_artifacts", return_value=None),
-            patch("spec4.callbacks._chat.streaming.pop") as mock_pop,
-        ):
-            result = on_stream_poll(1, session)
+    def test_done_branch_leaves_the_entry_for_a_racing_poll(self) -> None:
+        """The done branch reads the entry; it must not remove it.
 
-        mock_pop.assert_not_called()
-        assert isinstance(result[0], dict)
-        assert result[0]["_stream_id"] is None
-        assert result[1] == 0
+        Asserted on the consequence, not on a call. The previous form patched
+        ``streaming.pop`` and asserted it was never called — an assertion that
+        **cannot fail**, because ``callbacks/_chat.py`` holds no reference to
+        ``streaming.pop`` at all (CLEANUP_INVENTORY.md §50.2). It went vacuous
+        silently when the call site moved.
+
+        What the invariant actually protects, per the comment at
+        ``callbacks/_chat.py`` and ``streaming.start``: eviction happens at the
+        next ``start()``, so a second poll racing into this branch still finds
+        the entry, reads the same authoritative session, and returns an equal
+        terminal store — while the finalisation behind it runs exactly once.
+        Remove the entry here and the second poll takes the missing-entry path
+        and returns ``no_update`` instead of the terminal store.
+
+        This runs against the real container, so "still present" is observable.
+        """
+        agent_sess = _default_session()
+        agent_sess["_display_override"] = None
+        agent_sess["vision_statement"] = {"name": "TestApp"}
+
+        def _gen() -> Any:
+            yield "result text"
+
+        stream_id = streaming.start(_gen(), agent_sess)
+        _wait_until(lambda: (streaming.get(stream_id) or {}).get("done") is True)
+
+        session = _session_with_stream(_stream_id=stream_id)
+        with patch("spec4.callbacks._chat._persist_artifacts", return_value=None):
+            first = on_stream_poll(1, session)
+            survived = streaming.get(stream_id)
+            second = on_stream_poll(1, _session_with_stream(_stream_id=stream_id))
+
+        assert survived is not None, (
+            "the done branch removed the entry; a racing poll would fall to the "
+            "missing-entry path and return no_update instead of the terminal store"
+        )
+        assert isinstance(first[0], dict) and isinstance(second[0], dict)
+        assert first[0]["_stream_id"] is None
+        assert first[1] == 0
+        assert first[0] == second[0], (
+            "two racing done-branch polls must return equal terminal stores"
+        )
+        assert first[0]["vision_statement"] == {"name": "TestApp"}
+
+        entry = streaming.get(stream_id)
+        assert entry is not None, "the entry must survive both polls"
+        assert entry["finalised"] is True, "the first poll must latch the finalise"
+        assert streaming.claim_finalise(stream_id) is False, (
+            "the finalise latch must be one-shot across racing polls"
+        )
+
+    def test_the_next_start_is_what_evicts_the_finished_entry(self) -> None:
+        """The other half of the contract: the entry does go, just not here.
+
+        Without this, "never pop" could be satisfied by never evicting at all,
+        which leaks every finished stream for the life of the process.
+        """
+
+        def _gen() -> Any:
+            yield "done"
+
+        stream_id = streaming.start(_gen(), _default_session())
+        _wait_until(lambda: (streaming.get(stream_id) or {}).get("done") is True)
+        assert streaming.get(stream_id) is not None
+
+        live_id = streaming.start(_gen(), _default_session())
+
+        assert streaming.get(stream_id) is None, (
+            "start() must evict entries the done branch deliberately left behind"
+        )
+        assert streaming.get(live_id) is not None
 
     def test_two_done_polls_return_identical_terminal_store(self) -> None:
         """Two racing done-branch polls must produce byte-identical terminal stores."""

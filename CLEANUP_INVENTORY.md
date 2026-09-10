@@ -8651,3 +8651,101 @@ candidate**:
 > and the fixture argument from the two atomicity tests. The proxy exists only because
 > Phase 6 is test-only. Audit at the same time whether any other production module has a
 > stdlib call that tests need to fail on demand.
+
+## 53. Phase 6c — `streaming.pop`: the question, then the assertion
+
+§50.5(d) step 2. One file, `tests/test_callbacks_stream_poll.py`. No production change.
+
+### 53.1 The question: is the chat path still required not to pop?
+
+**Yes.** The evidence is not inferential — the requirement is written down in three
+places in `src/`, and §12.2 pins the container behaviour it depends on.
+
+| Source | What it says |
+|---|---|
+| `callbacks/_chat.py:487` | *"Read (do NOT pop) the agent-mutated session from the live entry. Eviction happens at the next `start()`; leaving the entry in place means two polls racing into this branch both read the same authoritative session and return a byte-identical terminal store"* |
+| `streaming.start:238` | *"Done-branch polls now READ the entry (get) without removing it, so finalisation is idempotent across racing polls — eviction therefore has to happen here at `start()`, not in `pop()`"* |
+| `streaming.claim_finalise` docstring | why re-entrancy is safe only for idempotent work: the persist funnel drains the process-global usage sink, so a second run would wipe the turn's token readout |
+| §12.2 (Phase 1 net) | *"The next `start()` evicts every `done` entry and only those"*; *"`claim_finalise` is True once then False; it does not evict"* |
+
+The invariant is live, load-bearing, and has a named failure mode: pop here and a racing
+poll falls to the missing-entry path, returning `no_update` instead of the terminal
+store. So this is the **"if yes"** branch of §50.5(d) — rewrite to a real assertion, not
+a deletion.
+
+### 53.2 What was vacuous, and what replaced it
+
+Two sites patched `spec4.callbacks._chat.streaming.pop`. `callbacks/_chat.py` holds no
+reference to `streaming.pop` at all, so `mock_pop.assert_not_called()` could not fail.
+
+**`TestStreamPollMissingEntry::test_missing_entry_returns_no_update`** — the patch and
+its assertion are **dropped**. That test's subject is the missing-entry path returning
+`no_update`; its own assertions cover it, and the pop assertion added nothing even in
+principle, because that branch returns before reaching any container call. No rename.
+
+**`TestStreamPollDoneFinalisation::test_done_branch_does_not_pop`** → renamed
+**`test_done_branch_leaves_the_entry_for_a_racing_poll`** and rewritten against the
+**real container**. The old form patched `streaming.get` to return a fake dict, so the
+entry's survival was not observable even in principle. The new form calls the real
+`streaming.start()`, waits for `done`, then runs two polls and asserts the consequences:
+
+| Assertion | Guards |
+|---|---|
+| `streaming.get(id)` is not None after the first poll | the entry survives the branch |
+| `first[0] == second[0]` | a racing poll returns an **equal terminal store** |
+| `first[0]["_stream_id"] is None`, `vision_statement` carried | it is the *terminal* store, not `no_update` |
+| `entry["finalised"] is True` | the first poll latched the finalise |
+| `claim_finalise(id) is False` | the latch is **one-shot across racing polls** |
+
+**A second test was added**, `test_the_next_start_is_what_evicts_the_finished_entry`,
+because "never pop" is only half the contract: satisfied alone, it is also satisfied by
+never evicting at all, which leaks every finished stream for the life of the process.
+It asserts the finished entry is gone after the next `start()` and the new one is live.
+
+A class-scoped autouse fixture clears `_STREAMS` before and after, so using the real
+container leaks no state into the rest of the module.
+
+### 53.3 Both new assertions were mutation-tested
+
+Passing is not evidence, given what was just replaced. Each invariant was broken and the
+tests re-run. No `src/` edit: the callback's `streaming` name is rebound to a stand-in
+whose `get()` also removes — the observable consequence of a pop in the branch.
+
+| Test | Under the mutation |
+|---|---|
+| **old** `test_done_branch_does_not_pop` | **passed** — confirming it was vacuous |
+| **new** `test_done_branch_leaves_the_entry_for_a_racing_poll` | **failed**: *"the done branch removed the entry; a racing poll would fall to the missing-entry path…"* |
+
+And for the eviction half, with `_STREAMS` replaced by a dict whose `__delitem__` is a
+no-op (i.e. `start()` stops evicting):
+
+| Test | Under the mutation |
+|---|---|
+| **new** `test_the_next_start_is_what_evicts_the_finished_entry` | **failed** |
+
+### 53.4 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4175 passed, 1 skipped in 171.91s` (exit 0) |
+| Coverage | same run | `TOTAL 12421 stmts, 909 miss, 93%` — **at the §51.6 baseline** |
+
+Collected **4,176**, up 1: one test renamed and rewritten, one added, none removed. The
+count floor of 456 is untouched.
+
+**Off-limits check:**
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | absent from the diff |
+| 456 node ids | **456 / 456 collect**, 0 failures |
+| 19 tier-B files / 33 classes | **1 file with hunks — 0 failures** |
+
+`tests/test_callbacks_stream_poll.py` **is** a tier-B file, and this is the first
+exercise of §50.5(a)'s allowed-and-reported case. Its listed class is
+`TestStreamedTokenCounter` (D-PH9), **lines 735–755**. The nine hunks land at lines 5–6,
+10, 13, 55, 62, 139–145, 147–175, 177–178 and 180–227 — all far above it, none inside
+it, and the three D-PH9 tests are byte-identical. **Reported, as the rule requires.**
