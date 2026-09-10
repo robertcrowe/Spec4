@@ -8398,3 +8398,71 @@ at whitespace when parsing collect output, because parameter ids contain spaces
 (`test_layout_contract.py` has `[working_dir: browsing a directory]`); doing so collapses
 distinct ids and undercounts the whole-file entries — 125 instead of 188, in the first
 version of this check.
+
+### 51.6 Ruling — Rule 6 amended, and two new standing rules
+
+Ruled 2026-09-09 on §51.2. Binding from here.
+
+#### Rule 6, amended: the `tests/`-only baseline is 909
+
+Phase 0's 893 was measured with `evals/` collected and was **never a `tests/`-only
+figure**. The gate now measures what it claims to measure.
+
+- **The Rule 6 baseline is 909 misses**, on `tests/` alone, `--cov=spec4`.
+- **No sub-phase commit may exceed it.** Same ratchet as before, new number.
+- The per-module Phase 0 / Phase 1 floors are unchanged **except** for the two modules
+  §51.2 names, which re-baseline to their `tests/`-only figures:
+  `agentifier/requires_reconciler.py` **90%** (26 miss) and `agents/brainstormer.py`
+  **96%** (10 miss).
+
+#### And the 15 statements come back under test before Phase 6 closes
+
+The second reading of §51.2 was right about the thing that matters. A substantive block
+of `requires_reconciler.py` is guarded **only by an eval script outside the gate**. Phase
+6 does not touch `src/`, so it is not urgent — but the moment a `src`-touching phase
+begins, that block is unprotected. It is therefore a **Phase 6 exit condition**, not a
+Phase 7 backlog item.
+
+**Sub-phase 6z, last.** It ports the eval's assertions on those statements into
+`tests/agentifier/` as characterisation tests, **named per arm**:
+
+| Arm | Statements |
+|---|---|
+| `_norm_chunk` stemming | 156 |
+| the stem-length guard | 263 |
+| the producer-margin tie-break | 306, 353 |
+| the S3 **dominant** overlap arm | 363, 365, 366 |
+| the S3 **reverse** arms, including **uncorroborated-not-classified** | 368, 369 |
+| S1 trigger matching | 488 |
+| S2 trigger matching with the **vision-feature cap** | 518–523, 525 |
+| plus the one `agents/brainstormer.py` statement | 284 |
+
+**Exit check: misses ≤ 893 on `tests/` alone** — the number the old gate was pretending
+to have, now earned.
+
+**Do not pull 6z earlier.** The coupling work is the phase; 6z depends on nothing in it
+and would only serialise against it.
+
+#### New rule: runtime is measured in pairs, and the figure is the delta
+
+Every runtime comparison from here on is a **paired measurement — baseline and candidate
+in the same session** — and **the recorded figure is the delta, not the absolute.**
+§51.1's control run is the pattern; it is now the rule. An absolute figure compared
+against a number taken hours earlier is machine weather, and §51.1 is the worked example
+of it costing an afternoon's confidence: 4 s of the 6.6 s "regression" was the machine,
+and the rest was my own arithmetic.
+
+The ≤ 96 s target stands, read as *"the paired delta must reach ≤ 96 s from that
+session's own baseline"*.
+
+#### New rule: pruning is never justified by seconds
+
+**A test is dropped for redundancy, coupling, or vacuity. Never for being slow.**
+
+A test's standalone time is an **upper bound** on what deleting it saves, and usually a
+loose one — §51.1 measured 82 tests whose standalone cost was 2.59 s and whose marginal
+cost inside a full run was **0.4 s**, because the rest was import warm-up the suite had
+already paid.
+
+**Any 6x report citing runtime as a reason to drop a test gets that reason struck.**
+Runtime is an outcome of this phase, not an argument within it.
