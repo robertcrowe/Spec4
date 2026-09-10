@@ -43,7 +43,7 @@ from typing import Any
 from dash import ALL, Input, Output, State, callback, ctx, no_update
 
 from spec4 import llm_selection, project_manager
-from spec4.layouts._status_bar import _status_context, _status_nav_class
+from spec4.layouts._status_bar import status_context, _status_nav_class
 from spec4.app_constants import (
     FF_PROMPT,
     PATH_TO_PHASE,
@@ -226,7 +226,7 @@ def on_status_bar(session: Any, prefs: Any) -> Any:
     on_settings = phase_now == "setup"
     on_artifacts = phase_now == "artifacts"
     return (
-        _status_context(working_dir, round_number, provider, model, connected, effort),
+        status_context(working_dir, round_number, provider, model, connected, effort),
         _status_nav_class(not on_settings and not on_artifacts),
         _status_nav_class(on_artifacts),
         _status_nav_class(on_settings),
@@ -286,7 +286,7 @@ def on_status_bar_setup(model_n: Any, settings_n: Any, session: Any) -> Any:
     replaced in one place only — ``on_setup_connect``, when the wizard
     advances to Model selection with a fresh list — and nowhere earlier.
 
-    ``available_models`` is the field ``_setup_layout`` branches on to show
+    ``available_models`` is the field ``setup_layout`` branches on to show
     Provider, so clearing it is what "open at step 1" means; it is the same
     write the Model step's Back button makes (``on_setup_back_provider``),
     with a phase and a URL added. The two error fields are cleared so a
@@ -436,7 +436,7 @@ def _needs_restoring(
 def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
     if not n:
         return no_update, no_update, no_update
-    # `_working_dir_layout` shows home when the browsed path cannot be opened,
+    # `working_dir_layout` shows home when the browsed path cannot be opened,
     # so selecting anything else here would open a directory the developer was
     # never looking at — a remembered-but-gone path, most of all.
     path = session.get("browser_path")

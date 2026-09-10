@@ -21,7 +21,7 @@ from spec4.callbacks import (
     on_setup_search_connect,
     on_setup_search_skip,
 )
-from spec4.layouts._setup import _setup_layout
+from spec4.layouts._setup import setup_layout
 
 
 def _find(component: Any, component_id: str) -> Any:
@@ -41,7 +41,7 @@ def _find(component: Any, component_id: str) -> Any:
 
 
 def _session(**extra: Any) -> dict[str, Any]:
-    # available_models + model set → _setup_layout renders the search step.
+    # available_models + model set → setup_layout renders the search step.
     session: dict[str, Any] = {
         "available_models": ["m"],
         "model": "m",
@@ -53,19 +53,19 @@ def _session(**extra: Any) -> dict[str, Any]:
 
 class TestLayout:
     def test_renders_a_provider_select_with_both_options(self) -> None:
-        page = _setup_layout(_session(), {})
+        page = setup_layout(_session(), {})
         select = _find(page, "setup-search-provider")
         assert select is not None
         assert select.data == ["Tavily", "Exa"]
 
     def test_defaults_to_tavily(self) -> None:
-        page = _setup_layout(_session(), {})
+        page = setup_layout(_session(), {})
         assert _find(page, "setup-search-provider").value == "Tavily"
         assert _find(page, "setup-search-key").label == "Tavily API Key"
 
     def test_saved_provider_and_key_are_restored(self) -> None:
         prefs = {"search_provider": "exa", "search_key": "exa-abc"}
-        page = _setup_layout(_session(), prefs)
+        page = setup_layout(_session(), prefs)
         assert _find(page, "setup-search-provider").value == "Exa"
         key_field = _find(page, "setup-search-key")
         assert key_field.value == "exa-abc"
@@ -74,16 +74,16 @@ class TestLayout:
     def test_pre_exa_saved_key_still_populates_the_field(self) -> None:
         # The old preference name. Without this the developer's saved key
         # appears to have been thrown away by the upgrade.
-        page = _setup_layout(_session(), {"tavily_key": "tvly-old"})
+        page = setup_layout(_session(), {"tavily_key": "tvly-old"})
         assert _find(page, "setup-search-key").value == "tvly-old"
         assert _find(page, "setup-search-provider").value == "Tavily"
 
     def test_unknown_saved_provider_falls_back_to_default(self) -> None:
-        page = _setup_layout(_session(), {"search_provider": "bing"})
+        page = setup_layout(_session(), {"search_provider": "bing"})
         assert _find(page, "setup-search-provider").value == "Tavily"
 
     def test_skip_and_connect_buttons_are_present(self) -> None:
-        page = _setup_layout(_session(), {})
+        page = setup_layout(_session(), {})
         assert _find(page, "btn-setup-search-skip") is not None
         assert _find(page, "btn-setup-search-connect") is not None
 

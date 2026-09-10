@@ -41,7 +41,7 @@ from spec4.layouts._setup import (
     SETUP_STEP_CLASS,
     SETUP_STEPS,
     SETUP_STEPS_CLASS,
-    _setup_layout,
+    setup_layout,
     model_field,
     provider_key_fields,
 )
@@ -149,7 +149,7 @@ def _variant(button: Any) -> str:
 
 
 def _provider_step(**prefs: Any) -> Any:
-    return _setup_layout({"available_models": None, "model": None}, dict(prefs))
+    return setup_layout({"available_models": None, "model": None}, dict(prefs))
 
 
 def _model_step(session: Any = None, prefs: Any = None) -> Any:
@@ -159,7 +159,7 @@ def _model_step(session: Any = None, prefs: Any = None) -> Any:
         "provider": "openai",
     }
     base.update(session or {})
-    return _setup_layout(base, dict(prefs or {}))
+    return setup_layout(base, dict(prefs or {}))
 
 
 def _search_step(session: Any = None, prefs: Any = None) -> Any:
@@ -169,7 +169,7 @@ def _search_step(session: Any = None, prefs: Any = None) -> Any:
         "provider": "openai",
     }
     base.update(session or {})
-    return _setup_layout(base, dict(prefs or {}))
+    return setup_layout(base, dict(prefs or {}))
 
 
 def _steps() -> list[tuple[str, Any]]:

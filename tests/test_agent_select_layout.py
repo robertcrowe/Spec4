@@ -11,7 +11,7 @@ import json
 import pathlib
 from typing import Any
 
-from spec4.layouts import _agent_select_layout
+from spec4.layouts import agent_select_layout
 from spec4.session import default_session, load_working_dir
 
 
@@ -53,7 +53,7 @@ class TestNewRoundAlerts:
     ) -> None:
         _implemented_v0_with_mock(tmp_path)
         session = load_working_dir(str(tmp_path), _base_session())
-        texts = _alert_texts(_agent_select_layout(session))
+        texts = _alert_texts(agent_select_layout(session))
         assert any(
             "previous version of ShelfLife has been implemented" in t
             and "CodeScanner" in t
@@ -63,7 +63,7 @@ class TestNewRoundAlerts:
     def test_suppresses_empty_directory_alert(self, tmp_path: pathlib.Path) -> None:
         _implemented_v0_with_mock(tmp_path)
         session = load_working_dir(str(tmp_path), _base_session())
-        texts = _alert_texts(_agent_select_layout(session))
+        texts = _alert_texts(agent_select_layout(session))
         assert not any("project directory is empty" in t for t in texts)
 
     def test_suppresses_loaded_from_alert(self, tmp_path: pathlib.Path) -> None:
@@ -71,7 +71,7 @@ class TestNewRoundAlerts:
         # Loaded-from alert would fire without the new-round suppression.
         _implemented_v0_with_mock(tmp_path)
         session = load_working_dir(str(tmp_path), _base_session())
-        texts = _alert_texts(_agent_select_layout(session))
+        texts = _alert_texts(agent_select_layout(session))
         assert not any("Loaded from .spec4/" in t for t in texts)
 
     def test_falls_back_when_no_prior_name(self, tmp_path: pathlib.Path) -> None:
@@ -81,5 +81,5 @@ class TestNewRoundAlerts:
         (v0 / "vision.json").write_text(json.dumps({"description": "no name"}))
         (v0 / "IMPLEMENTED").write_text("")
         session = load_working_dir(str(tmp_path), _base_session())
-        texts = _alert_texts(_agent_select_layout(session))
+        texts = _alert_texts(agent_select_layout(session))
         assert any("Your previous version has been implemented" in t for t in texts)

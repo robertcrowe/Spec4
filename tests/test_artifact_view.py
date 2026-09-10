@@ -53,7 +53,7 @@ from spec4.callbacks import (
     on_round_tree_line,
     on_status_bar,
 )
-from spec4.layouts import _artifact_view_layout
+from spec4.layouts import artifact_view_layout
 from spec4.layouts._agent_rows import AGENT_DISPLAY_NAMES
 from spec4.layouts._artifact_view import (
     BODY_ID,
@@ -94,7 +94,7 @@ from spec4.layouts._round_tree import (
     line_id,
     rendered_tree_lines,
 )
-from spec4.layouts._status_bar import ARTIFACTS_PATH, NAV_ORDER, _status_bar
+from spec4.layouts._status_bar import ARTIFACTS_PATH, NAV_ORDER, status_bar
 from spec4.session import default_session
 
 # Every reviewed artifact whose relative path is the same in every round. The
@@ -278,7 +278,7 @@ def _nav_labels() -> list[str]:
     """
     return [
         child.children
-        for child in _nav(_status_bar()).children
+        for child in _nav(status_bar()).children
         if type(child).__name__ in ("Link", "A", "Button")
     ]
 
@@ -352,7 +352,7 @@ class TestTheRoute:
 class TestTheNavEntry:
     def test_the_entry_is_present(self) -> None:
         assert "Artifacts" in _nav_labels()
-        assert "status-bar-nav-artifacts" in _ids(_status_bar())
+        assert "status-bar-nav-artifacts" in _ids(status_bar())
 
     def test_it_sits_between_project_and_settings(self) -> None:
         """The order the Artifact Links specification fixes."""
@@ -367,7 +367,7 @@ class TestTheNavEntry:
     def test_it_points_at_the_route(self) -> None:
         entry = next(
             child
-            for child in _nav(_status_bar()).children
+            for child in _nav(status_bar()).children
             if getattr(child, "id", None) == "status-bar-nav-artifacts"
         )
         assert entry.href == ARTIFACTS_PATH
@@ -377,7 +377,7 @@ class TestTheNavEntry:
         """D-LR2: the accent arrives from the theme primary, never from here."""
         entry = next(
             child
-            for child in _nav(_status_bar()).children
+            for child in _nav(status_bar()).children
             if getattr(child, "id", None) == "status-bar-nav-artifacts"
         )
         assert entry.children == "Artifacts"
@@ -405,7 +405,7 @@ class TestTheNavEntry:
 
 class TestTheScreen:
     def test_it_renders_the_three_new_ids(self) -> None:
-        ids = _ids(_artifact_view_layout(default_session()))
+        ids = _ids(artifact_view_layout(default_session()))
         assert {
             "artifact-view-root",
             "artifact-view-sidebar",
@@ -414,7 +414,7 @@ class TestTheScreen:
 
     def test_it_is_two_panes_on_one_grid(self) -> None:
         """The mock's shape: a selector column and a content column."""
-        root = _artifact_view_layout(default_session())
+        root = artifact_view_layout(default_session())
         assert root.className == "artifact-layout"
         assert [child.id for child in root.children] == [
             "artifact-view-sidebar",
@@ -423,7 +423,7 @@ class TestTheScreen:
 
     def test_the_selector_pane_is_the_round_select_above_the_tree(self) -> None:
         """In that order: pick a round, then pick a file within it."""
-        root = _artifact_view_layout(default_session())
+        root = artifact_view_layout(default_session())
         sidebar = root.children[0]
         assert [type(child).__name__ for child in sidebar.children] == [
             "Div",
@@ -443,7 +443,7 @@ class TestTheScreen:
         """
         _make_round(tmp_path, 1, ["stack.json"])
         session = {**default_session(), "working_dir": str(tmp_path)}
-        root = _artifact_view_layout(session)
+        root = artifact_view_layout(session)
         assert line_id("stack.json") in _pattern_ids(root)
 
     def test_the_tree_carries_its_own_ids_not_the_project_view_s(
@@ -458,19 +458,19 @@ class TestTheScreen:
         """
         _make_round(tmp_path, 1, ["stack.json"])
         session = {**default_session(), "working_dir": str(tmp_path)}
-        ids = _ids(_artifact_view_layout(session))
+        ids = _ids(artifact_view_layout(session))
         assert set(ARTIFACT_TREE_IDS) <= ids
         assert not set(PROJECT_TREE_IDS) & ids
 
     def test_the_content_pane_shows_its_empty_state(self) -> None:
         """Nothing is selected, so nothing is opened on the developer's behalf."""
-        root = _artifact_view_layout(default_session())
+        root = artifact_view_layout(default_session())
         assert EMPTY_CONTENT in _text(root.children[1])
 
     def test_an_empty_pane_has_an_empty_header(self) -> None:
         """No file, nothing to say about one. The header keeps its slot so the
         pane does not jump when a file is chosen."""
-        root = _artifact_view_layout(default_session())
+        root = artifact_view_layout(default_session())
         header = _by_id(root, HEADER_ID)
         assert header.children == []
         assert _text(header) == ""
@@ -492,12 +492,12 @@ class TestTheScreen:
             "selected_round": 1,
             "selected_file": "../../etc/passwd",
         }
-        assert rejection_message(1) in _text(_artifact_view_layout(session))
+        assert rejection_message(1) in _text(artifact_view_layout(session))
         assert reads == []
 
     def test_it_uses_no_icon_component(self) -> None:
         """dash-iconify stays unused — text only, like the rest of the app."""
-        stack = [_artifact_view_layout(default_session())]
+        stack = [artifact_view_layout(default_session())]
         seen = []
         while stack:
             node = stack.pop()
@@ -1091,7 +1091,7 @@ class TestTheRoundSelector:
     """Every round on disk, recomputed on every render."""
 
     def _strip(self, working_dir: pathlib.Path, **session: Any) -> Any:
-        layout = _artifact_view_layout(
+        layout = artifact_view_layout(
             {**default_session(), "working_dir": str(working_dir), **session}
         )
         return _by_id(layout, ROUND_SELECT_ID)
@@ -1185,7 +1185,7 @@ class TestTheRoundSelector:
         """Switching rounds updates the tree, not only the pane."""
         _make_round(tmp_path, 0, ["phases/phase1.md"])
         _make_round(tmp_path, 1, ["phases/phase7.md"])
-        layout = _artifact_view_layout(
+        layout = artifact_view_layout(
             {
                 **default_session(),
                 "working_dir": str(tmp_path),
@@ -1278,7 +1278,7 @@ class TestTheHeader:
         assert self._header(project, "../../etc/passwd") == []
 
     def test_it_is_one_line_in_the_mono_class(self, project: pathlib.Path) -> None:
-        layout = _artifact_view_layout(
+        layout = artifact_view_layout(
             {
                 **default_session(),
                 "working_dir": str(project),
@@ -1492,7 +1492,7 @@ class TestTheContentPane:
 
     def test_the_body_carries_the_declared_id(self, tmp_path: pathlib.Path) -> None:
         _make_round(tmp_path, 1, ["stack.json"])
-        layout = _artifact_view_layout(
+        layout = artifact_view_layout(
             {
                 **default_session(),
                 "working_dir": str(tmp_path),
@@ -1542,7 +1542,7 @@ class TestTheMissingMessage:
     ) -> None:
         """Shown in the tree and explained when selected — both halves."""
         _make_round(tmp_path, 1, ["stack.json"])
-        layout = _artifact_view_layout(
+        layout = artifact_view_layout(
             {
                 **default_session(),
                 "working_dir": str(tmp_path),
@@ -1741,13 +1741,13 @@ class TestSwitchingRounds:
             2,
             self._session(project, selected_round=1, selected_file="phases/phase1.md"),
         )
-        text = _text(_artifact_view_layout(session))
+        text = _text(artifact_view_layout(session))
         assert EMPTY_CONTENT in text
         assert rejection_message(2) not in text
 
     def test_switching_rounds_redraws_the_tree(self, project: pathlib.Path) -> None:
         session = self._choose(2, self._session(project, selected_round=1))
-        layout = _artifact_view_layout(session)
+        layout = artifact_view_layout(session)
         assert ".spec4/v2/" in _text(_by_id(layout, ARTIFACT_TREE_IDS.head))
         assert line_id("phases/phase1.md") not in _pattern_ids(layout)
 
@@ -1842,7 +1842,7 @@ class TestThePaneCallback:
             "selected_file": "stack.json",
         }
         header, body = on_artifact_pane("artifact-view-content", session)
-        layout = _artifact_view_layout(session)
+        layout = artifact_view_layout(session)
         assert _text(header) == _text(_by_id(layout, HEADER_ID))
         assert _text(body) == _text(_by_id(layout, BODY_ID))
 
@@ -2009,7 +2009,7 @@ class TestMockHtmlForStore:
 
 class TestTheDownloadButtonOnScreen:
     def _layout(self, working_dir: pathlib.Path, **session: Any) -> Any:
-        return _artifact_view_layout(
+        return artifact_view_layout(
             {**default_session(), "working_dir": str(working_dir), **session}
         )
 
@@ -2044,7 +2044,7 @@ class TestTheDownloadButtonOnScreen:
     def test_the_download_component_is_on_the_screen(
         self, tmp_path: pathlib.Path
     ) -> None:
-        assert DOWNLOAD_ID in _ids(_artifact_view_layout(default_session()))
+        assert DOWNLOAD_ID in _ids(artifact_view_layout(default_session()))
 
 
 class TestTheOpenRenderedButtonOnScreen:
@@ -2056,7 +2056,7 @@ class TestTheOpenRenderedButtonOnScreen:
         return tmp_path
 
     def _layout(self, project: pathlib.Path, selected_file: str | None) -> Any:
-        return _artifact_view_layout(
+        return artifact_view_layout(
             {
                 **default_session(),
                 "working_dir": str(project),
@@ -2163,7 +2163,7 @@ class TestTheContentPaneHead:
         """`HEADER_ID` sits beside the controls, not above or inside them —
         both are ultimately children of the same flex row."""
         _make_round(tmp_path, 1, ["stack.json"])
-        layout = _artifact_view_layout(
+        layout = artifact_view_layout(
             {
                 **default_session(),
                 "working_dir": str(tmp_path),

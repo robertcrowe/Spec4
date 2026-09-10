@@ -618,9 +618,9 @@ class TestOneRenderer:
         one of them is wording its lines somewhere else.
         """
         _write_usage(tmp_path, [_call("brainstormer", cost=0.02)])
-        # By `sys.modules`, not `import ... as`: `spec4.layouts` re-exports the
-        # `_round_cost` *function*, which shadows the submodule of that name on
-        # the package.
+        # By `sys.modules`, not `import ... as`: written when `spec4.layouts`
+        # re-exported a `_round_cost` function that shadowed this submodule. The
+        # function is `round_cost` now; the lookup still reaches the submodule.
         module = sys.modules["spec4.layouts._round_cost"]
 
         monkeypatch.setattr(

@@ -62,7 +62,7 @@ from spec4.layouts._round_tree import (
     LANE_LABELS,
     PHASES_DIR,
     _phase_files,
-    _round_tree,
+    round_tree,
 )
 from spec4.layouts._shared import _sep
 
@@ -84,7 +84,7 @@ __all__ = [
     "UNREADABLE",
     "AllowedArtifact",
     "ArtifactResolution",
-    "_artifact_view_layout",
+    "artifact_view_layout",
     "_round_select",
     "allowed_artifacts",
     "artifact_controls",
@@ -858,7 +858,7 @@ def _round_select(
 # ---------------------------------------------------------------------------
 
 
-def _artifact_view_layout(session: dict[str, Any]) -> html.Div:
+def artifact_view_layout(session: dict[str, Any]) -> html.Div:
     """The Artifact View screen: a selector pane and a content pane.
 
     The left pane is the round selector above the app's round tree, drawn in
@@ -894,7 +894,7 @@ def _artifact_view_layout(session: dict[str, Any]) -> html.Div:
             html.Aside(
                 [
                     _round_select(working_dir, session, round_number),
-                    _round_tree(
+                    round_tree(
                         working_dir,
                         round_number,
                         linked=True,

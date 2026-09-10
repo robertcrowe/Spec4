@@ -450,7 +450,7 @@ def _setup_search_layout(
     )
 
 
-def _setup_layout(
+def setup_layout(
     session: dict[str, Any],
     prefs: dict[str, Any],
     image_support: bool | None = None,

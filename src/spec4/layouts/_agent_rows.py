@@ -51,7 +51,7 @@ __all__ = [
     "_AGENT_ROWS",
     "_action_class",
     "_agent_action_button",
-    "_agent_rows",
+    "build_agent_rows",
     "agent_row_id",
     "agent_rows",
     "round_usage",
@@ -404,7 +404,7 @@ def _head() -> html.Thead:
     )
 
 
-def _agent_rows(
+def build_agent_rows(
     working_dir: str | Path | None,
     round_number: int | None,
     session: dict[str, Any] | None = None,

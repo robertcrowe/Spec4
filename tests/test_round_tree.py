@@ -27,7 +27,7 @@ from spec4 import project_manager
 from spec4.app_constants import PATH_TO_PHASE
 from spec4.app_constants import AGENT_KEYS
 from spec4.callbacks import on_round_tree, on_round_tree_line
-from spec4.layouts import _agent_select_layout, _round_tree, round_tree_lines
+from spec4.layouts import agent_select_layout, round_tree, round_tree_lines
 from spec4.layouts._round_tree import (
     ARTIFACT_LANES,
     LINE_TYPE,
@@ -435,15 +435,15 @@ def _line_paths(tree: Any) -> list[str]:
 class TestRendering:
     def test_it_renders_its_ids(self, round_dir: pathlib.Path) -> None:
         assert {"round-tree", "round-tree-head", "round-tree-list"} <= _ids(
-            _round_tree(round_dir, 0)
+            round_tree(round_dir, 0)
         )
 
     def test_the_heading_names_the_round_folder(self, round_dir: pathlib.Path) -> None:
-        tree = _round_tree(round_dir, 3)
+        tree = round_tree(round_dir, 3)
         assert ".spec4/v3/" in _text(tree)
 
     def test_one_line_per_artifact(self, round_dir: pathlib.Path) -> None:
-        tree = _round_tree(round_dir, 0)
+        tree = round_tree(round_dir, 0)
         listing = next(
             node
             for node in tree.children
@@ -452,16 +452,16 @@ class TestRendering:
         assert len(listing.children) == len(_ALL_ARTIFACTS)
 
     def test_every_path_is_monospace(self, round_dir: pathlib.Path) -> None:
-        classes = _class_names(_round_tree(round_dir, 0))
+        classes = _class_names(round_tree(round_dir, 0))
         assert classes.count("mono") == len(_ALL_ARTIFACTS)
 
     def test_each_line_carries_its_lane_class(self, round_dir: pathlib.Path) -> None:
-        classes = _class_names(_round_tree(round_dir, 0))
+        classes = _class_names(round_tree(round_dir, 0))
         for path, lane in ARTIFACT_LANES.items():
             assert f"name lane-{lane}" in classes, path
 
     def test_the_legend_names_all_three_lanes(self, round_dir: pathlib.Path) -> None:
-        tree = _round_tree(round_dir, 0)
+        tree = round_tree(round_dir, 0)
         legend = next(
             node
             for node in tree.children
@@ -480,7 +480,7 @@ class TestRendering:
         self, round_dir: pathlib.Path
     ) -> None:
         """Legend and lines cannot drift: one class list, used twice."""
-        classes = set(_class_names(_round_tree(round_dir, 0)))
+        classes = set(_class_names(round_tree(round_dir, 0)))
         for lane in LANES:
             assert f"swatch lane-{lane}" in classes
 
@@ -488,7 +488,7 @@ class TestRendering:
         self, round_dir: pathlib.Path
     ) -> None:
         """Only the exceptions get a token, per the design mock."""
-        assert "present" not in _text(_round_tree(round_dir, 0))
+        assert "present" not in _text(round_tree(round_dir, 0))
 
     def test_the_exceptions_are_labelled_in_words(
         self, round_dir: pathlib.Path
@@ -498,13 +498,13 @@ class TestRendering:
         newer = (base / "design" / "mock.html").stat().st_mtime + 1000
         os.utime(base / "vision.json", (newer, newer))
 
-        text = _text(_round_tree(round_dir, 0))
+        text = _text(round_tree(round_dir, 0))
         assert STATUS_MISSING in text
         assert STATUS_NEEDS_UPDATE in text
 
     def test_it_uses_no_icon_and_no_emoji(self, round_dir: pathlib.Path) -> None:
         """Status is a text token — the mock draws no glyphs here."""
-        tree = _round_tree(round_dir, 0)
+        tree = round_tree(round_dir, 0)
         stack = [tree]
         names = []
         while stack:
@@ -526,7 +526,7 @@ class TestRendering:
         call site that has not thought about links keeps the tree it had. This
         is the other half of the inversion below: the link form is opt-in.
         """
-        tree = _round_tree(round_dir, 0)
+        tree = round_tree(round_dir, 0)
         stack = [tree]
         while stack:
             node = stack.pop()
@@ -548,7 +548,7 @@ class TestRendering:
         wants happens not to be a link is worse than one where nothing is,
         because there is nothing on screen saying which lines lead anywhere.
         """
-        tree = _round_tree(round_dir, 0, linked=True)
+        tree = round_tree(round_dir, 0, linked=True)
         expected = {line.path for line in rendered_tree_lines(round_dir, 0)}
         assert _line_ids(tree) == {line_id(path)["index"] for path in expected}
 
@@ -559,7 +559,7 @@ class TestRendering:
         does nothing, with no error anywhere, so the id dict is asserted whole
         rather than by its `index` alone.
         """
-        listing = _listing(_round_tree(round_dir, 0, linked=True))
+        listing = _listing(round_tree(round_dir, 0, linked=True))
         for row in listing.children:
             control = row.children
             assert control.id == line_id(control.id["index"])
@@ -574,8 +574,8 @@ class TestRendering:
         `is-stale` modifiers are computed once and are the same in both forms,
         so the two trees cannot drift in anything but clickability.
         """
-        plain = _listing(_round_tree(round_dir, 0)).children
-        linked = _listing(_round_tree(round_dir, 0, linked=True)).children
+        plain = _listing(round_tree(round_dir, 0)).children
+        linked = _listing(round_tree(round_dir, 0, linked=True)).children
         assert len(plain) == len(linked)
         for plain_row, linked_row in zip(plain, linked, strict=False):
             assert plain_row.className == linked_row.className
@@ -592,14 +592,14 @@ class TestRendering:
         moves the app, not the document — so it is the same choice `.sb-dir`
         makes for the status bar's directory field.
         """
-        listing = _listing(_round_tree(round_dir, 0, linked=True))
+        listing = _listing(round_tree(round_dir, 0, linked=True))
         for row in listing.children:
             assert type(row.children).__name__ == "Button"
 
     def test_no_line_names_a_colour(self, round_dir: pathlib.Path) -> None:
         """D-LR2: lane and accent both arrive through classes, never props."""
         stack: list[Any] = [
-            _round_tree(round_dir, 0, linked=True, selected="vision.json")
+            round_tree(round_dir, 0, linked=True, selected="vision.json")
         ]
         while stack:
             node = stack.pop()
@@ -618,14 +618,14 @@ class TestTheSelectedLine:
 
     def test_the_selected_line_is_marked(self, round_dir: pathlib.Path) -> None:
         listing = _listing(
-            _round_tree(round_dir, 0, linked=True, selected="vision.json")
+            round_tree(round_dir, 0, linked=True, selected="vision.json")
         )
         marked = [row for row in listing.children if "is-selected" in row.className]
         assert len(marked) == 1
         assert "vision.json" in _text(marked[0])
 
     def test_nothing_is_marked_by_default(self, round_dir: pathlib.Path) -> None:
-        listing = _listing(_round_tree(round_dir, 0, linked=True))
+        listing = _listing(round_tree(round_dir, 0, linked=True))
         assert not any("is-selected" in row.className for row in listing.children)
 
     def test_a_selection_that_is_not_in_the_tree_marks_nothing(
@@ -633,15 +633,13 @@ class TestTheSelectedLine:
     ) -> None:
         """No line is invented for it, and no other line is marked instead."""
         listing = _listing(
-            _round_tree(round_dir, 0, linked=True, selected="not/a/file.json")
+            round_tree(round_dir, 0, linked=True, selected="not/a/file.json")
         )
         assert not any("is-selected" in row.className for row in listing.children)
 
     def test_the_mark_is_a_class_not_a_colour(self, round_dir: pathlib.Path) -> None:
         """The same mechanism `sb-nav-link--active` uses in the header."""
-        listing = _listing(
-            _round_tree(round_dir, 0, linked=True, selected="usage.json")
-        )
+        listing = _listing(round_tree(round_dir, 0, linked=True, selected="usage.json"))
         row = next(r for r in listing.children if "is-selected" in r.className)
         assert getattr(row, "color", None) is None
         assert getattr(row, "style", None) is None
@@ -734,7 +732,7 @@ class TestThePhaseFilesExpand:
         base = project_manager.get_version_dir(round_dir, 0)
         (base / "phases" / "phase2.md").write_text("# a phase\n")
 
-        ids = _line_ids(_round_tree(round_dir, 0, linked=True))
+        ids = _line_ids(round_tree(round_dir, 0, linked=True))
         assert "phases/phase1.md" in ids
         assert "phases/phase2.md" in ids
         assert "phases/" not in ids
@@ -767,7 +765,7 @@ class TestItClosesTheProjectView:
         an absolute index.
         """
         session = {**default_session(), "working_dir": str(round_dir)}
-        view = _agent_select_layout(session)
+        view = agent_select_layout(session)
         ids = [getattr(child, "id", None) for child in view.children]
         assert ids.index("round-tree") > ids.index("agent-rows")
         assert ids.index("round-tree") > ids.index("round-cost")
@@ -783,13 +781,13 @@ class TestItClosesTheProjectView:
         """
         session = {**default_session(), "working_dir": str(round_dir)}
         expected = [line.path for line in rendered_tree_lines(round_dir, 0)]
-        assert _line_paths(_agent_select_layout(session)) == expected
+        assert _line_paths(agent_select_layout(session)) == expected
 
     def test_the_existing_project_view_ids_survive(
         self, round_dir: pathlib.Path
     ) -> None:
         session = {**default_session(), "working_dir": str(round_dir)}
-        view = _agent_select_layout(session)
+        view = agent_select_layout(session)
         # The change-provider button left with the status bar's model slot
         # taking over; the seven action buttons carry pattern-matching ids,
         # so they are collected by shape rather than by name.
@@ -806,7 +804,7 @@ class TestItClosesTheProjectView:
         ones they can click.
         """
         session = {**default_session(), "working_dir": str(round_dir)}
-        view = _agent_select_layout(session)
+        view = agent_select_layout(session)
         assert _line_ids(view)
 
     def test_every_line_in_the_view_is_a_link(self, round_dir: pathlib.Path) -> None:
@@ -833,7 +831,7 @@ class TestItClosesTheProjectView:
         }
         assert expected == from_table | from_disk
 
-        ids = _line_ids(_agent_select_layout(session))
+        ids = _line_ids(agent_select_layout(session))
         assert ids == expected
         assert len(ids) == len(ROUND_ARTIFACTS) - 1 + len(from_disk)
 

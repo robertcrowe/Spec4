@@ -30,7 +30,7 @@ import dash_mantine_components as dmc
 
 from spec4 import project_manager
 from spec4.app_constants import PROJECT_MODE_EXISTING, PROJECT_MODE_NEW
-from spec4.layouts import _agent_select_layout, _working_dir_layout
+from spec4.layouts import agent_select_layout, working_dir_layout
 from spec4.session import default_session
 
 STYLESHEET = (
@@ -106,7 +106,7 @@ def _filled(button: Any) -> bool:
 def _picker(tmp_path: pathlib.Path, **overrides: Any) -> Any:
     session = {**default_session(), "browser_path": str(tmp_path)}
     session.update(overrides)
-    return _working_dir_layout(session)
+    return working_dir_layout(session)
 
 
 def _find(component: Any, component_id: Any) -> Any:
@@ -125,7 +125,7 @@ def _question(tmp_path: pathlib.Path) -> Any:
         "phase": "agent_select",
     }
     assert project_manager.needs_project_mode(tmp_path, session)
-    return _agent_select_layout(session)
+    return agent_select_layout(session)
 
 
 # ---------------------------------------------------------------------------
@@ -468,7 +468,7 @@ class TestTheQuestionIsStillAskedOncePerSession:
             }
             ids = {
                 getattr(n, "id", None)
-                for n in _flatten(_agent_select_layout(session))
+                for n in _flatten(agent_select_layout(session))
                 if isinstance(getattr(n, "id", None), str)
             }
             assert "btn-project-mode-existing" not in ids
@@ -490,8 +490,8 @@ class TestTheQuestionIsStillAskedOncePerSession:
             "phase": "agent_select",
         }
         before = dict(session)
-        _agent_select_layout(session)
-        _agent_select_layout(session)
+        agent_select_layout(session)
+        agent_select_layout(session)
         assert session == before
         assert session["project_mode"] is None
         assert project_manager.needs_project_mode(tmp_path, session)

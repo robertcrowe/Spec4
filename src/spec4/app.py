@@ -26,12 +26,12 @@ from spec4.app_constants import DARK_THEME, GOOGLE_FONTS, PHASE_ROOT
 from spec4.session import default_session
 from spec4.layouts import (
     STATUS_BAR_HEIGHT,
-    _status_bar,
-    _working_dir_layout,
-    _setup_layout,
-    _agent_select_layout,
+    status_bar,
+    working_dir_layout,
+    setup_layout,
+    agent_select_layout,
     chat_layout,
-    _artifact_view_layout,
+    artifact_view_layout,
 )
 from spec4.layouts.designer import designer_layout
 
@@ -124,7 +124,7 @@ app.layout = dmc.MantineProvider(
         ),
         dmc.AppShell(
             children=[
-                dmc.AppShellHeader(_status_bar()),
+                dmc.AppShellHeader(status_bar()),
                 dmc.AppShellMain(
                     dmc.Container(
                         # `disable_n_clicks`: an html component with an id counts
@@ -400,17 +400,17 @@ def render_page(
         ):
             session = {**session, "browser_path": prefs["working_dir"]}
             new_session = session
-        content = _working_dir_layout(session)
+        content = working_dir_layout(session)
     elif phase == "setup":
-        content = _setup_layout(session, prefs, image_support, tool_support)
+        content = setup_layout(session, prefs, image_support, tool_support)
     elif phase == "agent_select":
-        content = _agent_select_layout(session)
+        content = agent_select_layout(session)
     elif phase == "chat":
         content = chat_layout(session, prefs)
     elif phase == "designer":
         content = designer_layout(session, prefs)
     elif phase == "artifacts":
-        content = _artifact_view_layout(session)
+        content = artifact_view_layout(session)
     else:
         content = []
     return content, (render_count or 0) + 1, new_session

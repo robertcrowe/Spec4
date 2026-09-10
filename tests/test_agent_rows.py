@@ -27,7 +27,7 @@ import pytest
 
 from spec4 import project_manager
 from spec4.app_constants import AGENT_KEYS
-from spec4.layouts import _agent_rows, _agent_select_layout, agent_rows
+from spec4.layouts import build_agent_rows, agent_select_layout, agent_rows
 from spec4.layouts._agent_rows import (
     ACTION_BUTTON_PROPS,
     ACTION_LABELS,
@@ -200,7 +200,7 @@ def _button(row: Any) -> Any:
 
 class TestTheRowsAreThePipeline:
     def test_there_are_exactly_seven_rows(self, tmp_path: pathlib.Path) -> None:
-        rendered = _agent_rows(tmp_path, 0, _session(tmp_path))
+        rendered = build_agent_rows(tmp_path, 0, _session(tmp_path))
         assert len(_rows_of(rendered)) == 7
         assert len(agent_rows(tmp_path, 0, _session(tmp_path))) == 7
 
@@ -210,7 +210,7 @@ class TestTheRowsAreThePipeline:
 
     def test_the_rendered_order_is_agent_keys(self, tmp_path: pathlib.Path) -> None:
         """The order survives rendering, not just the data function."""
-        rendered = _agent_rows(tmp_path, 0, _session(tmp_path))
+        rendered = build_agent_rows(tmp_path, 0, _session(tmp_path))
         ids = [getattr(row, "id", None) for row in _rows_of(rendered)]
         assert ids == [agent_row_id(key) for key in AGENT_KEYS]
 
@@ -231,7 +231,7 @@ class TestEachRowsCells:
     def test_each_row_names_its_agent_and_artifact(
         self, tmp_path: pathlib.Path
     ) -> None:
-        rendered = _agent_rows(tmp_path, 0, _session(tmp_path))
+        rendered = build_agent_rows(tmp_path, 0, _session(tmp_path))
         for key, row in zip(AGENT_KEYS, _rows_of(rendered), strict=False):
             assert _text(_cell(row, "agent")) == AGENT_DISPLAY_NAMES[key]
             assert _text(_cell(row, "produces")) == AGENT_PRODUCES[key]
@@ -251,19 +251,19 @@ class TestEachRowsCells:
     def test_the_artifact_model_and_token_cells_are_monospace(
         self, tmp_path: pathlib.Path
     ) -> None:
-        rendered = _agent_rows(tmp_path, 0, _session(tmp_path))
+        rendered = build_agent_rows(tmp_path, 0, _session(tmp_path))
         for row in _rows_of(rendered):
             for name in ("produces", "model", "tokens"):
                 assert "mono" in _cell(row, name).className.split()
 
     def test_each_row_exposes_an_action_button(self, tmp_path: pathlib.Path) -> None:
-        rendered = _agent_rows(tmp_path, 0, _session(tmp_path))
+        rendered = build_agent_rows(tmp_path, 0, _session(tmp_path))
         for row in _rows_of(rendered):
             button = _button(_cell(row, "action"))
             assert _text(button) in set(ACTION_LABELS.values())
 
     def test_the_columns_are_in_the_mocks_order(self, tmp_path: pathlib.Path) -> None:
-        rendered = _agent_rows(tmp_path, 0, _session(tmp_path))
+        rendered = build_agent_rows(tmp_path, 0, _session(tmp_path))
         first = _rows_of(rendered)[0]
         classes = [(cell.className or "").split()[0] for cell in first.children]
         assert classes == ["agent", "produces", "model", "tokens", "action"]
@@ -276,7 +276,7 @@ class TestEachRowsCells:
         Emoji are caught by codepoint rather than by listing the seven the old
         table used, so a different one cannot slip back in.
         """
-        rendered = _agent_rows(usage_missing_one, 0, _session(usage_missing_one))
+        rendered = build_agent_rows(usage_missing_one, 0, _session(usage_missing_one))
         text = _text(rendered)
         assert "Step" not in text
         assert not any(ord(ch) > 0x2000 for ch in text), text
@@ -328,13 +328,13 @@ class TestTheActionIsNotReDerived:
         )
 
     def test_the_label_follows_the_state(self, two_state_project: pathlib.Path) -> None:
-        rendered = _agent_rows(two_state_project, 0, _session(two_state_project))
+        rendered = build_agent_rows(two_state_project, 0, _session(two_state_project))
         rows = agent_rows(two_state_project, 0, _session(two_state_project))
         for row, node in zip(rows, _rows_of(rendered), strict=False):
             assert _text(_button(node)) == ACTION_LABELS[row.action]
 
     def test_only_not_ready_is_disabled(self, two_state_project: pathlib.Path) -> None:
-        rendered = _agent_rows(two_state_project, 0, _session(two_state_project))
+        rendered = build_agent_rows(two_state_project, 0, _session(two_state_project))
         rows = agent_rows(two_state_project, 0, _session(two_state_project))
         for row, node in zip(rows, _rows_of(rendered), strict=False):
             assert _button(node).disabled == (row.action == _NOT_READY)
@@ -351,14 +351,14 @@ class TestTheButtonRoutesLikeTheOldOnes:
         previous agent-select buttons used, so nothing about navigation is
         re-derived here.
         """
-        rendered = _agent_rows(tmp_path, 0, _session(tmp_path))
+        rendered = build_agent_rows(tmp_path, 0, _session(tmp_path))
         ids = [_button(_cell(row, "action")).id for row in _rows_of(rendered)]
         assert ids == [{"type": "agent-pill", "agent": key} for key in AGENT_KEYS]
 
     def test_the_project_view_still_carries_all_seven(
         self, tmp_path: pathlib.Path
     ) -> None:
-        view = _agent_select_layout(_session(tmp_path))
+        view = agent_select_layout(_session(tmp_path))
         found = {
             node.id["agent"]
             for node in _walk(view)
@@ -599,7 +599,7 @@ class TestContinueForAnInProgressAgent:
         assert rows["designer"].action == _CONTINUE
         assert rows["designer"].disabled is False
 
-        rendered = _rows_of(_agent_rows(project, 0, session))
+        rendered = _rows_of(build_agent_rows(project, 0, session))
         by_id = {r.id: r for r in rendered}
         assert _text(_button(by_id["agent-row-designer"])) == "Continue"
 
@@ -652,7 +652,7 @@ class TestAMissingUsageEntry:
     def test_the_omitted_agent_renders_blank_and_does_not_raise(
         self, usage_missing_one: pathlib.Path
     ) -> None:
-        rendered = _agent_rows(usage_missing_one, 0, _session(usage_missing_one))
+        rendered = build_agent_rows(usage_missing_one, 0, _session(usage_missing_one))
         row = _rows_of(rendered)[AGENT_KEYS.index("agentifier")]
         assert _text(_cell(row, "model")) == ""
         assert _text(_cell(row, "tokens")) == ""
@@ -684,7 +684,7 @@ class TestAMissingUsageEntry:
         self, usage_missing_one: pathlib.Path
     ) -> None:
         """The whole point of blank: a zero would read as "ran, cost nothing"."""
-        rendered = _agent_rows(usage_missing_one, 0, _session(usage_missing_one))
+        rendered = build_agent_rows(usage_missing_one, 0, _session(usage_missing_one))
         for key in ("agentifier", "designer", "stack_advisor", "phaser"):
             row = _rows_of(rendered)[AGENT_KEYS.index(key)]
             assert _text(_cell(row, "tokens")) == ""
@@ -736,7 +736,7 @@ class TestItLeadsTheProjectView:
     def test_the_rows_are_the_first_element(
         self, two_state_project: pathlib.Path
     ) -> None:
-        view = _agent_select_layout(_session(two_state_project))
+        view = agent_select_layout(_session(two_state_project))
         assert getattr(view.children[0], "id", None) == "agent-rows"
 
     def test_the_three_surfaces_are_in_order(
@@ -744,7 +744,7 @@ class TestItLeadsTheProjectView:
     ) -> None:
         """Rows, then cost, then tree — asserted against the rendered
         children, so a block moved anywhere in the stack fails here."""
-        view = _agent_select_layout(_session(two_state_project))
+        view = agent_select_layout(_session(two_state_project))
         top_level = [getattr(child, "id", None) for child in view.children]
         found = [
             node_id
@@ -758,13 +758,13 @@ class TestItLeadsTheProjectView:
     ) -> None:
         """The rows are still ``AGENT_KEYS``, in ``AGENT_KEYS`` order, as
         rendered on the project view rather than in isolation."""
-        view = _agent_select_layout(_session(two_state_project))
+        view = agent_select_layout(_session(two_state_project))
         ids = [getattr(row, "id", None) for row in _rows_of(view)]
         assert ids == [agent_row_id(key) for key in AGENT_KEYS]
 
     def test_the_marketing_prose_is_gone(self, two_state_project: pathlib.Path) -> None:
         """The heading and the two-bullet introduction the rows replace."""
-        text = _text(_agent_select_layout(_session(two_state_project)))
+        text = _text(agent_select_layout(_session(two_state_project)))
         assert "Where Should We Begin?" not in text
         assert "Choose an agent:" not in text
 
@@ -773,7 +773,7 @@ class TestItLeadsTheProjectView:
     ) -> None:
         """The status bar's model slot and Settings item are the route now,
         on every screen, so the view no longer carries its own copy."""
-        view = _agent_select_layout(_session(two_state_project))
+        view = agent_select_layout(_session(two_state_project))
         ids = {
             node.id
             for node in _walk(view)
@@ -814,7 +814,7 @@ def _effort_record(
 
 def _model_cell(project: pathlib.Path, agent: str) -> str:
     """The rendered text of one row's Last model cell."""
-    rendered = _agent_rows(project, 0, _session(project))
+    rendered = build_agent_rows(project, 0, _session(project))
     row = next(
         node
         for node in _walk(rendered)

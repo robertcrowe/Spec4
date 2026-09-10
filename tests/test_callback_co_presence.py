@@ -32,9 +32,9 @@ import spec4.app as app_module
 from spec4 import providers
 from spec4.app_constants import AGENT_KEYS, STATE_VISION_COMPLETE
 from spec4.callbacks import on_gate_chip, on_gate_connect, on_gate_pick
-from spec4.layouts import _AGENT_ROWS, _agent_select_layout
+from spec4.layouts import _AGENT_ROWS, agent_select_layout as _agent_select_layout
 from spec4.layouts._chat import CHAT_ARTIFACTS
-from spec4.layouts._status_bar import _status_context
+from spec4.layouts._status_bar import status_context as _status_context
 from spec4.layouts.designer import (
     _step1_content,
     _step2_content,

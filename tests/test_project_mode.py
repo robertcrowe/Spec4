@@ -21,7 +21,7 @@ from typing import Any
 
 from spec4 import project_manager
 from spec4.app_constants import PROJECT_MODE_EXISTING, PROJECT_MODE_NEW
-from spec4.layouts import _agent_select_layout
+from spec4.layouts import agent_select_layout
 from spec4.session import default_session, load_working_dir
 
 
@@ -159,7 +159,7 @@ class TestNeedsProjectMode:
 class TestAgentsGate:
     def test_question_replaces_the_agent_list(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
-        ids = _ids(_agent_select_layout(_session(tmp_path)))
+        ids = _ids(agent_select_layout(_session(tmp_path)))
         assert "btn-project-mode-existing" in ids
         assert "btn-project-mode-new" in ids
         assert not any(
@@ -168,23 +168,23 @@ class TestAgentsGate:
 
     def test_question_names_the_skeleton_case(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
-        text = _text(_agent_select_layout(_session(tmp_path)))
+        text = _text(agent_select_layout(_session(tmp_path)))
         assert "uv init" in text
 
     def test_question_says_it_will_be_asked_again(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
-        text = _text(_agent_select_layout(_session(tmp_path)))
+        text = _text(agent_select_layout(_session(tmp_path)))
         assert "asked again" in text
 
     def test_empty_directory_skips_the_question(self, tmp_path: pathlib.Path) -> None:
-        ids = _ids(_agent_select_layout(_session(tmp_path)))
+        ids = _ids(agent_select_layout(_session(tmp_path)))
         assert "btn-project-mode-existing" not in ids
         assert any(isinstance(i, dict) and i.get("type") == "agent-pill" for i in ids)
 
     def test_answering_reveals_the_agent_list(self, tmp_path: pathlib.Path) -> None:
         (tmp_path / "main.py").write_text("x")
         for mode in (PROJECT_MODE_EXISTING, PROJECT_MODE_NEW):
-            layout = _agent_select_layout(_session(tmp_path, project_mode=mode))
+            layout = agent_select_layout(_session(tmp_path, project_mode=mode))
             ids = _ids(layout)
             assert "btn-project-mode-existing" not in ids
             pills = [
@@ -196,7 +196,7 @@ class TestAgentsGate:
 class TestGuidanceFollowsTheAnswer:
     def _text_for(self, tmp_path: pathlib.Path, mode: str | None) -> str:
         (tmp_path / "main.py").write_text("x")
-        return _text(_agent_select_layout(_session(tmp_path, project_mode=mode)))
+        return _text(agent_select_layout(_session(tmp_path, project_mode=mode)))
 
     def test_existing_nudges_code_scanner(self, tmp_path: pathlib.Path) -> None:
         text = self._text_for(tmp_path, PROJECT_MODE_EXISTING)
@@ -215,7 +215,7 @@ class TestGuidanceFollowsTheAnswer:
     def test_empty_directory_keeps_its_own_guidance(
         self, tmp_path: pathlib.Path
     ) -> None:
-        text = _text(_agent_select_layout(_session(tmp_path)))
+        text = _text(agent_select_layout(_session(tmp_path)))
         assert "directory is empty" in text
 
 

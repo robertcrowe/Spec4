@@ -40,13 +40,13 @@ from spec4.app_constants import (
 from spec4.layouts._agent_rows import (
     _AGENT_ROWS,
     _agent_action_button,
-    _agent_rows,
+    build_agent_rows,
     agent_row_id,
     agent_rows,
 )
-from spec4.layouts._artifact_view import _artifact_view_layout
+from spec4.layouts._artifact_view import artifact_view_layout
 from spec4.layouts._chat import agent_status_bar, chat_action_buttons, chat_layout
-from spec4.layouts._setup import _setup_layout
+from spec4.layouts._setup import setup_layout
 from spec4.layouts._shared import (
     _card,
     _error,
@@ -54,12 +54,12 @@ from spec4.layouts._shared import (
     _reformat_inline_lists,
 )
 from spec4.layouts._round_cost import (
-    _round_cost,
+    round_cost,
     round_cost_lines,
 )
 from spec4.layouts._round_tree import (
     LINE_TYPE,
-    _round_tree,
+    round_tree,
     _round_tree_head,
     _round_tree_lines_children,
     line_id,
@@ -69,8 +69,8 @@ from spec4.layouts._round_tree import (
 from spec4.layouts._status_bar import (
     STATUS_BAR_HEIGHT,
     STATUS_EMPTY,
-    _status_bar,
-    _status_context,
+    status_bar,
+    status_context,
     _status_nav_class,
 )
 
@@ -83,28 +83,28 @@ __all__ = [
     "STATUS_EMPTY",
     "_AGENT_ROWS",
     "_agent_action_button",
-    "_agent_rows",
+    "build_agent_rows",
     "agent_row_id",
     "agent_rows",
-    "_round_cost",
+    "round_cost",
     "round_cost_lines",
     "LINE_TYPE",
-    "_round_tree",
+    "round_tree",
     "_round_tree_head",
     "_round_tree_lines_children",
     "line_id",
     "rendered_tree_lines",
     "round_tree_lines",
-    "_status_bar",
-    "_status_context",
+    "status_bar",
+    "status_context",
     "_status_nav_class",
     "agent_status_bar",
     "chat_action_buttons",
     "chat_layout",
-    "_setup_layout",
-    "_working_dir_layout",
-    "_agent_select_layout",
-    "_artifact_view_layout",
+    "setup_layout",
+    "working_dir_layout",
+    "agent_select_layout",
+    "artifact_view_layout",
 ]
 
 
@@ -113,7 +113,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
-def _working_dir_layout(session: dict[str, Any]) -> html.Div:
+def working_dir_layout(session: dict[str, Any]) -> html.Div:
     """The directory picker, and one of the two destinations the root resolves to.
 
     ``dir_error`` is why it is on screen rather than the project view: the root
@@ -304,7 +304,7 @@ def _project_mode_layout(_session: dict[str, Any]) -> html.Div:
     )
 
 
-def _agent_select_layout(session: dict[str, Any]) -> html.Div:
+def agent_select_layout(session: dict[str, Any]) -> html.Div:
     if project_manager.needs_project_mode(session.get("working_dir"), session):
         return _project_mode_layout(session)
 
@@ -358,14 +358,14 @@ def _agent_select_layout(session: dict[str, Any]) -> html.Div:
     # by `on_round_cost`, the tree from project_manager's dependency graph by
     # `on_round_tree`.
     children = [
-        _agent_rows(working_dir, round_number, session),
-        _round_cost(working_dir, round_number),
+        build_agent_rows(working_dir, round_number, session),
+        round_cost(working_dir, round_number),
         # `linked=True`: every line opens the file it names in the Artifact
         # View. The tree is the app's index of the round, so the line a
         # developer is already reading is the natural way in — which is why
         # this is the same renderer the Artifact View draws, told to link,
         # rather than a project-view tree and an artifact-view tree.
-        _round_tree(working_dir, round_number, linked=True),
+        round_tree(working_dir, round_number, linked=True),
     ]
 
     if error:

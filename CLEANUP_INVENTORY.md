@@ -11452,3 +11452,163 @@ here.
 - It changes no test beyond the substitution itself, and no local variable.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.
+
+## 63. Phase 7c — rename batch 3: `layouts`, nine names
+
+§60.7(j) 7c: one commit, default mode, under the rename check. Plain nouns throughout, as
+§62.6 recorded. The batch's one prefixed name is its one collision, `build_agent_rows`.
+
+### 63.1 What landed
+
+| Private | Public | Owner | Sites | Net / note |
+|---|---|---|---:|---|
+| `_agent_select_layout` | `agent_select_layout` | `layouts/__init__.py` | 41 | two whole-file entries, by import alias; tier-B `TestItLeadsTheProjectView`; two tier-A nodes |
+| `_artifact_view_layout` | `artifact_view_layout` | `layouts/_artifact_view.py` | 26 | whole-file `test_layout_contract.py` |
+| `_round_tree` | `round_tree` | `layouts/_round_tree.py` | 23 | one tier-A node; also a module name |
+| `_status_bar` | `status_bar` | `layouts/_status_bar.py` | 20 | two whole-file entries; tier-B `TestOnlyThePathEverGivesUpSpace`; two tier-A nodes; also a module name |
+| `_agent_rows` | `build_agent_rows` | `layouts/_agent_rows.py` | 15 | **the collision**, §60.7(b); tier-B `TestAMissingUsageEntry`; one tier-A node; also a module name |
+| `_working_dir_layout` | `working_dir_layout` | `layouts/__init__.py` | 7 | whole-file `test_layout_contract.py` |
+| `_setup_layout` | `setup_layout` | `layouts/_setup.py` | 6 | two whole-file entries |
+| `_round_cost` | `round_cost` | `layouts/_round_cost.py` | 4 | a clash, not a collision (§60.2 item 3); also a module name; the batch's one documented exception (§63.2) |
+| `_status_context` | `status_context` | `layouts/_status_bar.py` | 3 | two whole-file entries; tier-B `TestOnlyThePathEverGivesUpSpace`; two tier-A nodes |
+| | | | **145** | §55.9's 152 for the cluster, less `_chat_layout`'s seven, which went in batch 2 |
+
+- **Footprint:** 25 files, all under `src/` and `tests/`. The substitution changed 209
+  lines; ruff joined two lines (§63.5); the documented exception rewrites one three-line
+  comment. That gives 211 insertions and 215 deletions. Nothing in `scripts/` or `evals/`
+  references these names. **Left**, under Rule 2: the tracked `.spec4/` mentions of
+  `_agent_select_layout`, `_round_tree`, `_agent_rows` and `_round_cost`.
+- **Module paths left alone: 40 occurrences.** Four of the nine names are also module
+  names. The forward rename left every occurrence that names the module:
+  - the module part of `from … import`;
+  - `spec4.layouts._X.…` patch-string components;
+  - the `sys.modules` key at `test_cost_summary.py:624`;
+  - all eight dotted docstring and comment mentions from §60.2 item 4 (`_round_tree.ROUND_ARTIFACTS` and the like).
+- **The shadow flip, confirmed at runtime.** `spec4.layouts._round_cost`, `._status_bar`,
+  `._round_tree` and `._agent_rows` are now the submodules. `round_cost`, `status_bar`,
+  `round_tree` and `build_agent_rows` are the functions. This retires §59.6 item 12's
+  reason for the `sys.modules` idiom. The idiom still works, and simplifying it is a
+  separate commit.
+- **`round_cost`, the clash.** `layouts/_round_cost.py` now defines `round_cost` and calls
+  `project_manager.round_cost(…)` by attribute (`:243`). Two public functions share the
+  name, in different modules, with no scope in common — as §60.2 recorded. The hyphenated
+  forms `round-tree`, `status-bar` and `round-cost` that turn up in the tree are the
+  component ids and CSS classes of the elements these functions build. The substitution
+  cannot touch them.
+- **String references: 15 `__all__` entries,** rewritten with the code. The `sys.modules`
+  key names the module and is left.
+- **D-number comments: none needed changing.** This batch's three D-number citations —
+  `layouts/_artifact_view.py:16` (D-LR2), `:868` (D-LR4), `:139` (D-LR3) — name the
+  *modules* `_round_tree` and `_agent_rows`, which keep their names. So none went stale.
+- **`app.py` (D-LR1): ten lines changed, each a name in place.** Five are names in the
+  `from spec4.layouts import (…)` block (`:29–32`, `:34`) and five are uses (`:127`,
+  `:403`, `:405`, `:407`, `:413`). No import moved, and the `# noqa: E402, F401` lines at
+  `:74–75` are untouched.
+
+### 63.2 The rename check — one documented exception
+
+**Why there is one.** Renaming `_round_cost` → `round_cost` flips what
+`spec4.layouts._round_cost` means. Until now that package attribute was the function —
+its re-export shadowed the submodule of the same name. From this commit on it is the
+submodule. The comment at `tests/test_cost_summary.py:621–623` explained the test's
+`sys.modules` lookup by exactly that shadowing. Substituted mechanically it would read
+"re-exports the `round_cost` *function*, which shadows the submodule of that name", which
+is false. Under §62.2's ruling — a rename that forces a non-substitution edit gets the edit,
+shown in full, and no stale reference is left behind — the comment is corrected. The
+`sys.modules` line is a module path and is unchanged. Simplifying the idiom stays a
+separate commit (§60.2 item 4).
+
+The check, as recorded: the §60.2 shell function, `P=HEAD`, over the working tree. Only
+the temp-dir prefixes of the paths are shortened here.
+
+```
+diff -ru '--exclude=CLEANUP_INVENTORY.md' p/tests/test_cost_summary.py c/tests/test_cost_summary.py
+@@ -616,9 +616,9 @@
+         one of them is wording its lines somewhere else.
+         """
+         _write_usage(tmp_path, [_call("brainstormer", cost=0.02)])
+-        # By `sys.modules`, not `import ... as`: `spec4.layouts` re-exports the
+-        # `_round_cost` *function*, which shadows the submodule of that name on
+-        # the package.
++        # By `sys.modules`, not `import ... as`: written when `spec4.layouts`
++        # re-exported a `_round_cost` function that shadowed this submodule. The
++        # function is `_round_cost` now; the lookup still reaches the submodule.
+         module = sys.modules["spec4.layouts._round_cost"]
+```
+
+The check shows the reverse-substituted view, so the new comment's `round_cost` prints as
+`_round_cost` in its last line. The committed text is:
+
+```
+        # By `sys.modules`, not `import ... as`: written when `spec4.layouts`
+        # re-exported a `_round_cost` function that shadowed this submodule. The
+        # function is `round_cost` now; the lookup still reaches the submodule.
+```
+
+The scratch implementation prints the same single hunk.
+
+**Where it sits.** `test_cost_summary.py` is not a tier-B file, and the comment is in
+`TestOneRenderer::test_both_surfaces_call_the_one_renderer`, which is not a listed node. So
+it needs no petition and no §51.6 entry.
+
+### 63.3 Petitions, by kind
+
+| Kind | Where | Result |
+|---|---|---|
+| §54.7, whole-file | `test_callback_co_presence.py`, `test_layout_contract.py` — 8 import bindings re-aliased between them | import lines alone · goldens identical · node ids unchanged — **passes**, both |
+| §60.3, tier-B | `test_agent_rows.py::TestAMissingUsageEntry` (649–719) — `:655`, `:687` (`build_agent_rows`) | each hunk a one-line name substitution · reverse diff empty inside the class · assertions token-identical — **passes** |
+| §60.3, tier-B | `test_agent_rows.py::TestItLeadsTheProjectView` (727–795) — `:739`, `:747`, `:761`, `:767`, `:776` (`agent_select_layout`) | **passes** |
+| §60.3, tier-B | `test_status_bar.py::TestOnlyThePathEverGivesUpSpace` (232–330) — `:269`, `:303`, `:308` (`status_context`); `:294`, `:330` (`status_bar`) | **passes** |
+| §60.3, tier-A | `test_agent_rows.py::TestTheButtonRoutesLikeTheOldOnes::test_the_action_carries_the_existing_agent_select_id` (345–356) | **passes** |
+| §60.3, tier-A | `test_artifact_view.py::TestTheNavEntry::test_it_is_plain_text_with_no_colour_of_its_own` (376–385) | **passes** |
+| §60.3, tier-A | `test_round_cost.py::TestPlacement::test_it_sits_between_the_rows_and_the_tree` (401–412) | **passes** |
+| §60.3, tier-A | `test_round_tree.py::TestItClosesTheProjectView::test_the_tree_is_the_last_of_the_three` (760–771), `::TestRendering::test_no_line_names_a_colour` (599–613) | **passes** |
+| §60.3, tier-A | `test_status_bar.py` — `TestOnlyThePathEverGivesUpSpace::test_the_path_keeps_its_monospace_and_names_no_colour` (325–330, also inside the tier-B class), `TestStatusBarLayout::test_no_nav_entry_names_a_colour` (197–201), `TestTheBarOpensSetup::test_it_is_dressed_as_the_directory_is` (779–785), `TestTheModelSlotCarriesTheEffort::test_the_suffixed_slot_still_refuses_to_truncate` (704–713) | **passes** |
+
+### 63.4 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | 2 in the diff, both under §54.7, both passing |
+| 456 node ids | **456 / 456 collect**; 4,200 collected |
+| 19 tier-B files / 33 classes | **4 files with hunks.** The 12 hunks inside listed classes are §63.3's §60.3 hunks, each holding one of the batch's old names. Every other hunk is outside a listed class and is reported below in §51.6's template |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_agent_rows.py` | `TestTheSixActionVariants` **376–472**; `TestAMissingUsageEntry` **649–719**; `TestItLeadsTheProjectView` **727–795** | 21 — 30, 203, 213, 234, 254, 260, 266, 279, 331, 337, 354, 361, 602, 655, 687, 739, 747, 761, 767, 776, 817 | **INSIDE: 655→TestAMissingUsageEntry, 687→TestAMissingUsageEntry, 739→TestItLeadsTheProjectView, 747→TestItLeadsTheProjectView, 761→TestItLeadsTheProjectView, 767→TestItLeadsTheProjectView, 776→TestItLeadsTheProjectView** |
+| `test_project_mode.py` | `TestDesignerFollowsTheAnswer` **274–316** | 8 — 24, 162, 171, 176, 180, 187, 199, 218 | **none inside a listed class** |
+| `test_round_tree.py` | `TestUsageIsNeverStale` **260–302** | 27 — 30, 438, 442, 446, 455, 459, 464, 483, 491, 501, 507, 529, 551, 562, 577–578, 595, 602, 621, 628, 636, 642, 735, 768, 784, 790, 807, 834 | **none inside a listed class** |
+| `test_status_bar.py` | `TestOnlyThePathEverGivesUpSpace` **232–330**; `TestTheStylesheetPinsWhatTheLayoutMarks` **333–404** | 32 — 3, 22, 35, 133, 137, 148, 161, 167, 173, 179, 186, 191, 199, 206, 213, 218, 269, 294, 303, 308, 330, 610, 687, 693, 700, 709, 718, 726, 777, 781, 814, 870 | **INSIDE: 269→TestOnlyThePathEverGivesUpSpace, 294→TestOnlyThePathEverGivesUpSpace, 303→TestOnlyThePathEverGivesUpSpace, 308→TestOnlyThePathEverGivesUpSpace, 330→TestOnlyThePathEverGivesUpSpace** |
+
+### 63.5 Two lines ruff joined, both outside the net
+
+Both joins are the shortening kind. A name one character shorter let a three-line call fit
+on one line:
+
+| Line | Enclosing test | Net? |
+|---|---|---|
+| `test_round_tree.py:642` — `listing = _listing(round_tree(round_dir, 0, linked=True, selected="usage.json"))` | `TestTheSelectedLine::test_the_mark_is_a_class_not_a_colour` | no |
+| `test_status_bar.py:693` — `slot = self._slot(status_context("/a/b", 1, "anthropic", "m", True, effort))` | `TestTheModelSlotCarriesTheEffort::test_the_default_leaves_the_model_alone` | no — the class's listed node is `test_the_suffixed_slot_still_refuses_to_truncate` (704–713) |
+
+No E501: `build_agent_rows`, the one name that got longer, pushes no line past 88 columns,
+as §62's pre-scan found.
+
+### 63.6 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped` (exit 0); 4,200 collected |
+| Coverage | same run | `TOTAL 12421 stmts, 891 miss, 93%` — identical to §60.1, at the ≤ 891 ceiling |
+
+### 63.7 What this sub-phase did not do
+
+- It leaves the `sys.modules` idiom in `test_cost_summary.py` in place; only its comment
+  was corrected.
+- It changes no test beyond the substitution and that one comment.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.
+- `layouts/` keeps exactly three prefixed public names, all collision names:
+  `render_breadth_panel`, `render_retry_panel` and `build_agent_rows` (§62.6).

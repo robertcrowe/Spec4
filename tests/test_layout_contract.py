@@ -38,13 +38,13 @@ from dash.development.base_component import Component
 from spec4 import project_manager
 from spec4.app_constants import STATE_VISION_COMPLETE
 from spec4.layouts import (
-    _agent_select_layout,
-    _artifact_view_layout,
+    agent_select_layout as _agent_select_layout,
+    artifact_view_layout as _artifact_view_layout,
     chat_layout as _chat_layout,
-    _setup_layout,
-    _status_bar,
-    _status_context,
-    _working_dir_layout,
+    setup_layout as _setup_layout,
+    status_bar as _status_bar,
+    status_context as _status_context,
+    working_dir_layout as _working_dir_layout,
 )
 from spec4.layouts.designer import (
     _step1_content,

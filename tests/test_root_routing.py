@@ -98,7 +98,7 @@ def _picker_path(session: dict[str, Any]) -> Any:
     no longer exists. The assertions are unchanged: what the picker *shows* is
     still what is checked.
     """
-    stack: list[Any] = [layouts._working_dir_layout(session)]
+    stack: list[Any] = [layouts.working_dir_layout(session)]
     while stack:
         node = stack.pop()
         if isinstance(node, (list, tuple)):

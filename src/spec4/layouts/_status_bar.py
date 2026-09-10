@@ -6,7 +6,7 @@ after the model when one is set — then the four nav links and the running
 version. It is mounted once in the app shell (``app.layout``), so its ids are
 shell ids and its callback can never be half-rendered.
 
-The four values are not baked in here. ``_status_bar`` renders the frame and
+The four values are not baked in here. ``status_bar`` renders the frame and
 its own empty state; the callback in ``spec4.callbacks`` fills the context line
 from the two browser stores every time either one changes, which is what stops
 the bar showing a stale directory after the developer switches projects.
@@ -53,8 +53,8 @@ __all__ = [
     "STATUS_EMPTY",
     "_dir_field",
     "_model_field",
-    "_status_bar",
-    "_status_context",
+    "status_bar",
+    "status_context",
     "_status_nav_class",
 ]
 
@@ -183,7 +183,7 @@ def _model_field(text: str, slot_name: str) -> html.Button:
     )
 
 
-def _status_context(  # noqa: PLR0913  # the status-bar field set, one parameter per field
+def status_context(  # noqa: PLR0913  # the status-bar field set, one parameter per field
     working_dir: str | None,
     round_number: int | None,
     provider: str | None,
@@ -252,7 +252,7 @@ def _status_nav_class(active: bool) -> str:
     return "sb-nav-link sb-nav-link--active" if active else "sb-nav-link"
 
 
-def _status_bar() -> html.Div:
+def status_bar() -> html.Div:
     """The application header: wordmark, context line, nav, version.
 
     Nav is exactly four items, in the order the Artifact Links specification
@@ -284,7 +284,7 @@ def _status_bar() -> html.Div:
                         className="wordmark",
                     ),
                     html.Span(
-                        _status_context(None, None, None, None, False),
+                        status_context(None, None, None, None, False),
                         id="status-bar-context",
                         className="sb-ctx mono",
                     ),

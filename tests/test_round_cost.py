@@ -28,7 +28,7 @@ import pytest
 
 from spec4 import project_manager
 from spec4.callbacks import on_round_cost
-from spec4.layouts import _agent_select_layout, _round_cost, round_cost_lines
+from spec4.layouts import agent_select_layout, round_cost, round_cost_lines
 from spec4.layouts._round_cost import COST_LABEL, NO_CALLS, _unpriced_name
 from spec4.layouts._shared import PRICE_SOURCE_FALLBACK, price_source_note
 from spec4.session import default_session
@@ -407,7 +407,7 @@ class TestPlacement:
         foot of the page. ``tests/test_agent_rows.py`` asserts the whole stack;
         this pins the strip's own place in it.
         """
-        ids = _ids(_agent_select_layout(_session(tmp_path)))
+        ids = _ids(agent_select_layout(_session(tmp_path)))
         assert ids.index("agent-rows") < ids.index("round-cost")
         assert ids.index("round-cost") < ids.index("round-tree")
 
@@ -421,7 +421,7 @@ class TestPlacement:
             root = tmp_path / fixture
             root.mkdir()
             _FIXTURES[fixture](root)
-            ids = _ids(_round_cost(str(root), 0))
+            ids = _ids(round_cost(str(root), 0))
             assert ids == [
                 "round-cost",
                 "round-cost-line",
@@ -432,7 +432,7 @@ class TestPlacement:
     def test_the_figures_are_monospace(self, tmp_path: pathlib.Path) -> None:
         """Consistent with the status bar and the round tree: a column of
         digits only lines up in a monospace face."""
-        components = _by_id(_round_cost(str(tmp_path), 0))
+        components = _by_id(round_cost(str(tmp_path), 0))
         assert "mono" in components["round-cost-line"].className
         assert "mono" in components["round-cost-unpriced"].className
         # The disclaimer is prose, not a figure, and is deliberately not mono.
@@ -444,7 +444,7 @@ class TestPlacement:
         """The card's id belongs to the chat frame, where
         ``tests/test_cost_summary.py`` asserts its position."""
         _priced(tmp_path)
-        assert "cost-summary-card" not in _ids(_agent_select_layout(_session(tmp_path)))
+        assert "cost-summary-card" not in _ids(agent_select_layout(_session(tmp_path)))
 
     def test_the_first_paint_matches_what_the_callback_writes(
         self, tmp_path: pathlib.Path
@@ -455,7 +455,7 @@ class TestPlacement:
         painted = [
             component.children
             for component in (
-                _by_id(_round_cost(str(tmp_path), 0))[name]
+                _by_id(round_cost(str(tmp_path), 0))[name]
                 for name in (
                     "round-cost-line",
                     "round-cost-unpriced",

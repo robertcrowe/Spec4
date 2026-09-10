@@ -1,6 +1,6 @@
 """The shell is a status bar and four nav links, and nothing else.
 
-Two altitudes here. The first calls ``_status_bar()`` directly and asserts on
+Two altitudes here. The first calls ``status_bar()`` directly and asserts on
 the component tree it returns — what is present, what the nav says, and what
 the marketing-era shell left behind that must not come back. The second drives
 ``on_status_bar`` the way Dash does, since the bar's whole job is to be right
@@ -19,7 +19,7 @@ from spec4 import __version__
 from spec4.app_constants import PATH_TO_PHASE, PHASE_ROOT
 from spec4.callbacks import on_status_bar
 from spec4 import llm_selection
-from spec4.layouts import STATUS_EMPTY, _status_bar
+from spec4.layouts import STATUS_EMPTY, status_bar
 from spec4.layouts._status_bar import (
     ARTIFACTS_PATH,
     NAV_ORDER,
@@ -32,7 +32,7 @@ from spec4.layouts._status_bar import (
     SLOT_ROUND,
     SLOT_VERSION,
     _dir_field,
-    _status_context,
+    status_context,
 )
 from spec4.session import default_session
 
@@ -130,11 +130,11 @@ def _text(children: Any) -> str:
 
 class TestStatusBarLayout:
     def test_the_status_bar_id_is_present(self) -> None:
-        assert "status-bar" in _ids(_status_bar())
+        assert "status-bar" in _ids(status_bar())
 
     def test_it_renders_all_four_fields(self) -> None:
         """The context line, the version, and the ids the callback writes to."""
-        ids = _ids(_status_bar())
+        ids = _ids(status_bar())
         assert {
             "status-bar-context",
             "status-bar-version",
@@ -145,7 +145,7 @@ class TestStatusBarLayout:
         } <= ids
 
     def test_the_nav_is_exactly_project_artifacts_settings_docs(self) -> None:
-        assert _nav_labels(_status_bar()) == [
+        assert _nav_labels(status_bar()) == [
             "Project",
             "Artifacts",
             "Settings",
@@ -158,37 +158,37 @@ class TestStatusBarLayout:
         They are pinned to each other so the register cannot be changed in one
         place and asserted from the other.
         """
-        assert _nav_labels(_status_bar()) == list(NAV_ORDER)
+        assert _nav_labels(status_bar()) == list(NAV_ORDER)
 
     def test_artifacts_sits_between_project_and_settings(self) -> None:
         """The position the Artifact Links specification fixes, not merely its
         presence: the entry is a second way into the open project, so it goes
         beside Project rather than beside the app's own configuration."""
-        labels = _nav_labels(_status_bar())
+        labels = _nav_labels(status_bar())
         assert labels.index("Project") < labels.index("Artifacts")
         assert labels.index("Artifacts") < labels.index("Settings")
 
     def test_artifacts_is_an_in_app_route(self) -> None:
         """A ``dcc.Link`` to the routing table's path, not a page reload."""
-        entry = _nav(_status_bar()).children[1]
+        entry = _nav(status_bar()).children[1]
         assert type(entry).__name__ == "Link"
         assert entry.href == ARTIFACTS_PATH
         assert PATH_TO_PHASE[ARTIFACTS_PATH] == "artifacts"
 
     def test_docs_is_the_one_external_link(self) -> None:
-        docs = _nav(_status_bar()).children[3]
+        docs = _nav(status_bar()).children[3]
         assert docs.href.startswith("https://")
         assert docs.target == "_blank"
 
     def test_settings_is_a_button_not_a_route(self) -> None:
         """It restarts the wizard, which is a session reset and not a URL.
 
-        `_setup_layout` branches on session fields, so a `dcc.Link` to
+        `setup_layout` branches on session fields, so a `dcc.Link` to
         `/setup` would open whichever step the session happened to be on.
         The button carries the id `on_status_bar` marks active and the one
         `on_status_bar_setup` fires from; it has no href to be followed.
         """
-        settings = _nav(_status_bar()).children[2]
+        settings = _nav(status_bar()).children[2]
         assert type(settings).__name__ == "Button"
         assert settings.id == "status-bar-nav-settings"
         assert settings.children == "Settings"
@@ -196,26 +196,26 @@ class TestStatusBarLayout:
 
     def test_no_nav_entry_names_a_colour(self) -> None:
         """D-LR2: the active accent is the theme primary, never a local prop."""
-        for entry in _nav(_status_bar()).children:
+        for entry in _nav(status_bar()).children:
             assert getattr(entry, "color", None) is None
             assert getattr(entry, "style", None) is None
 
     def test_the_version_is_the_running_one(self) -> None:
         versions = [
             node.children
-            for node in _nav(_status_bar()).children
+            for node in _nav(status_bar()).children
             if getattr(node, "id", None) == "status-bar-version"
         ]
         assert versions == [__version__]
 
     def test_the_mono_fields_are_marked_monospace(self) -> None:
         """Working directory, provider/model and version ride in JetBrains Mono."""
-        classes = " ".join(_class_names(_status_bar()))
+        classes = " ".join(_class_names(status_bar()))
         assert classes.count("mono") >= 2
 
     def test_it_uses_no_icon_component(self) -> None:
         """dash-iconify is not used by anything this round — text only."""
-        stack = [_status_bar()]
+        stack = [status_bar()]
         seen = []
         while stack:
             node = stack.pop()
@@ -266,7 +266,7 @@ class TestOnlyThePathEverGivesUpSpace:
 
     def _filled(self) -> dict[str, set[str]]:
         return self._slots(
-            _status_context("/home/dev/Projects/spec4/Spec4", 2, "anthropic", "m", True)
+            status_context("/home/dev/Projects/spec4/Spec4", 2, "anthropic", "m", True)
         )
 
     def test_every_value_on_the_line_is_its_own_slot(self) -> None:
@@ -291,7 +291,7 @@ class TestOnlyThePathEverGivesUpSpace:
         """It is the one slot that lives in the nav rather than on the line."""
         version = next(
             node
-            for node in _nav(_status_bar()).children
+            for node in _nav(status_bar()).children
             if getattr(node, "id", None) == "status-bar-version"
         )
         classes = set(version.className.split())
@@ -300,12 +300,12 @@ class TestOnlyThePathEverGivesUpSpace:
 
     def test_the_empty_path_is_still_the_path_slot(self) -> None:
         """The em dash shrinks in the same place a real path would."""
-        slots = self._slots(_status_context(None, None, None, None, False))
+        slots = self._slots(status_context(None, None, None, None, False))
         assert SLOT_PATH in slots
 
     def test_not_connected_is_one_pinned_slot_not_two(self) -> None:
         """It replaces the provider and the model, and it is one phrase."""
-        slots = self._slots(_status_context("/a/b", 0, None, None, False))
+        slots = self._slots(status_context("/a/b", 0, None, None, False))
         assert SLOT_PROVIDER not in slots
         assert SLOT_MODEL not in slots
         assert SLOT_CLASS in slots[SLOT_CONNECTION]
@@ -327,7 +327,7 @@ class TestOnlyThePathEverGivesUpSpace:
         button = _dir_field("/a/b")
         assert "sb-dir" in button.className
         assert getattr(button, "style", None) is None
-        assert "mono" in " ".join(_class_names(_status_bar()))
+        assert "mono" in " ".join(_class_names(status_bar()))
 
 
 class TestTheStylesheetPinsWhatTheLayoutMarks:
@@ -607,7 +607,7 @@ class TestStatusBarCallback:
         It has been told nothing, so the one thing it must not do is suggest a
         working model.
         """
-        assert NOT_CONNECTED in _text(_status_bar())
+        assert NOT_CONNECTED in _text(status_bar())
 
     def test_a_per_agent_override_does_not_replace_the_default(
         self, tmp_path: pathlib.Path
@@ -684,22 +684,20 @@ class TestTheModelSlotCarriesTheEffort:
 
     def test_a_real_level_is_appended(self) -> None:
         slot = self._slot(
-            _status_context("/a/b", 1, "anthropic", "claude-sonnet-5", True, "high")
+            status_context("/a/b", 1, "anthropic", "claude-sonnet-5", True, "high")
         )
         assert slot.children == "claude-sonnet-5 · high"
 
     def test_the_default_leaves_the_model_alone(self) -> None:
         for effort in ("default", llm_selection.DEFAULT_EFFORT):
-            slot = self._slot(
-                _status_context("/a/b", 1, "anthropic", "m", True, effort)
-            )
+            slot = self._slot(status_context("/a/b", 1, "anthropic", "m", True, effort))
             assert slot.children == "m"
 
     def test_the_effort_is_optional_at_the_call_site(self) -> None:
         """The unfilled bar and the tests that predate the field still call
         this with five arguments."""
         assert (
-            self._slot(_status_context("/a/b", 1, "anthropic", "m", True)).children
+            self._slot(status_context("/a/b", 1, "anthropic", "m", True)).children
             == "m"
         )
 
@@ -708,7 +706,7 @@ class TestTheModelSlotCarriesTheEffort:
         and only the path may shrink (D-LR10)."""
         classes = set(
             self._slot(
-                _status_context("/a/b", 1, "anthropic", "m", True, "high")
+                status_context("/a/b", 1, "anthropic", "m", True, "high")
             ).className.split()
         )
         assert SLOT_CLASS in classes
@@ -717,7 +715,7 @@ class TestTheModelSlotCarriesTheEffort:
     def test_the_line_it_sits_on_is_still_monospace(self) -> None:
         context = next(
             node
-            for node in _flatten(_status_bar())
+            for node in _flatten(status_bar())
             if getattr(node, "id", None) == "status-bar-context"
         )
         assert "mono" in set(context.className.split())
@@ -725,7 +723,7 @@ class TestTheModelSlotCarriesTheEffort:
     def test_an_empty_model_is_still_the_em_dash(self) -> None:
         """A connected session with no model name renders the empty state, not
         a bare separator."""
-        slot = self._slot(_status_context("/a/b", 1, "anthropic", None, True, "high"))
+        slot = self._slot(status_context("/a/b", 1, "anthropic", None, True, "high"))
         assert slot.children == STATUS_EMPTY
 
 
@@ -776,11 +774,11 @@ class TestTheBarOpensSetup:
 
     def test_the_unfilled_bar_already_carries_it(self) -> None:
         """Present from the first render, so it is in `app.layout` itself."""
-        assert self._ID in _ids(_status_bar())
+        assert self._ID in _ids(status_bar())
 
     def test_it_is_dressed_as_the_directory_is(self) -> None:
         """D-LR2 and the bar's own rule: no chrome, no colour, the same font."""
-        button = self._button(_status_context("/a/b", 0, "anthropic", "m", True))
+        button = self._button(status_context("/a/b", 0, "anthropic", "m", True))
         assert type(button).__name__ == "Button"
         assert "sb-dir" in button.className.split()
         assert getattr(button, "style", None) is None
@@ -813,7 +811,7 @@ class TestTheBarOpensSetup:
         )
         assert pathname == "/setup"
         assert new_session["phase"] == "setup"
-        # Step 1 is what `_setup_layout` shows when there is no model list.
+        # Step 1 is what `setup_layout` shows when there is no model list.
         assert new_session["available_models"] is None
         assert new_session["setup_error"] is None
         assert new_session["agent_select_error"] is None
@@ -869,7 +867,7 @@ class TestTheBarOpensSetup:
     ) -> None:
         """Advancing to Model selection replaces the connection — not before.
 
-        The Provider step is shown over a live `model`, and `_setup_layout`
+        The Provider step is shown over a live `model`, and `setup_layout`
         would skip straight to Search if Connect left it set; the list just
         fetched may also be another provider's. So a *successful* Connect
         clears the model and its config, and a failed one clears nothing —

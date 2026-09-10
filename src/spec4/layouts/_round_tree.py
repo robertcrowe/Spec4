@@ -60,7 +60,7 @@ __all__ = [
     "STATUS_PRESENT",
     "TreeArtifact",
     "TreeLine",
-    "_round_tree",
+    "round_tree",
     "_round_tree_head",
     "_round_tree_lines_children",
     "line_id",
@@ -517,7 +517,7 @@ def _legend(legend_id: str = PROJECT_TREE_IDS.legend) -> html.Ul:
     )
 
 
-def _round_tree(
+def round_tree(
     working_dir: str | Path | None,
     round_number: int | None,
     *,

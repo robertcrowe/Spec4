@@ -75,7 +75,7 @@ def on_setup_connect(  # noqa: PLR0913  # parameters are the callback's Input/St
             "available_models": models,
             # This is where a previous connection ends, and the only place.
             # The bar's model slot and Settings open the wizard *over* a live
-            # connection (`on_status_bar_setup`), and `_setup_layout` would
+            # connection (`on_status_bar_setup`), and `setup_layout` would
             # skip straight to Search while `model` is still set; the list
             # just fetched may also belong to a different provider than the
             # model that was running. A failed Connect below changes neither

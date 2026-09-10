@@ -61,7 +61,7 @@ __all__ = [
     "CostFigures",
     "CostStripIds",
     "RoundCost",
-    "_round_cost",
+    "round_cost",
     "cost_strip_lines",
     "round_cost_lines",
     "run_cost_lines",
@@ -309,7 +309,7 @@ def _cost_strip(lines: RoundCost, ids: CostStripIds, label: str) -> html.Section
     )
 
 
-def _round_cost(
+def round_cost(
     working_dir: str | Path | None, round_number: int | None
 ) -> html.Section:
     """The round-cost strip, between the agent rows and the tree (D-LR11).

@@ -158,7 +158,7 @@ def step_row(
 # Cost wording — the pieces every cost surface in the app is built from
 # ---------------------------------------------------------------------------
 #
-# The frames live elsewhere: `_round_cost` draws the three-line strip that both
+# The frames live elsewhere: `round_cost` draws the three-line strip that both
 # the project view and the chat frame wear. What is here is the wording those
 # lines are assembled from — the money format, the token readout, the sentence
 # about calls that could not be priced — so that a reworded caveat lands on
