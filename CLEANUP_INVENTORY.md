@@ -10375,8 +10375,10 @@ not already govern:
 > **Rename petition — Phase 7 may edit a §50.3 tier-B class or tier-A / ordering node for
 > a rename on the §60.2 list if and only if all three hold, file by file:**
 >
-> 1. **The diff inside the net file is identifier substitution alone.** §60.2's rename
->    check, restricted to that file, is empty.
+> 1. **The diff inside the net entry is identifier substitution alone.** §60.2's rename
+>    check, restricted to the listed tier-B class or tier-A node, is empty. A hunk
+>    elsewhere in the same file is not under this check. It is either allowed-and-reported
+>    in §51.6's template, which check 3 governs, or it is the batch's documented exception.
 > 2. **Every assertion is identical under the substitution.** Every `assert` statement and
 >    every call to an `assert*` method in the file, with the batch's `new → old`
 >    substitution applied, is token-for-token the one at the parent commit, in the same
@@ -10387,6 +10389,11 @@ not already govern:
 >    hunk.
 >
 > Any one of the three failing means it is not this petition — stop and ask.
+
+*Check 1 was amended at 7d (§64.7), per the ruling on 7b.* It first read "the diff inside
+the net file". The ruling meant the net entry, and the text above now says so. 7b's and 7c's
+checkers already applied check 1 to the class or node. 7a's check applied it to the whole
+file, which is a stronger condition. So no earlier verdict changes.
 
 **Whole-file entries are outside this petition.** They stay under §54.7 as written — the
 plan's Phase 7 rule — `tests/test_renderer_goldens.py` included, not redefined. A rename
@@ -11142,6 +11149,14 @@ Replaces §60.6's table where they differ; its per-commit inheritance stands, as
 | 7q | **the agentifier eight with the `yield from` backlog — last** | (e) | plan mode, `ultrathink` |
 | close-out | the plan's audit | `CLEANUP_REPORT.md`, docs, the inventory fold; root-siblings, batch 11's three names and (c)'s three recorded for Phase 8 | — |
 
+**A Phase 7 candidate beside 7k's `module_seam`, not for now (ruled at 7d, §64).** 7c's
+shadow flip (§63.1) retired the reason for the `sys.modules` idiom in `test_cost_summary.py`:
+`module = sys.modules["spec4.layouts._round_cost"]`. `spec4.layouts._round_cost` is the
+submodule now, so a plain `import … as` reaches it. The lookup is scaffolding for a problem
+that no longer exists. That is the same kind of item as `module_seam`, which 7k deletes.
+Simplifying it touches no net entry, and it would be a commit of its own. It is not
+scheduled.
+
 ## 61. Phase 7a — rename batch 1: `session`, six names
 
 §60.7(j) 7a: one commit, default mode, under the rename check. Six private names in
@@ -11446,6 +11461,25 @@ here.
 - **Logged for the close-out's backlog, not fixed here:** a test whose outcome turns on
   wall-clock mtimes should set them with `os.utime` rather than sleep. That is out of scope
   for a rename batch.
+- **The cause class, recorded at 7d (§64) so close-out does not rediscover it.** A short
+  sleep before an mtime comparison depends on filesystem timestamp resolution. Nothing
+  guarantees that the second write's mtime lands after the first. `_stale_mock_project`
+  (`test_agent_pill_click.py:51`, 50 ms) has that shape. So do six more sleeps, all
+  followed by a staleness check that compares mtimes:
+  - `test_stale_ai_features.py:19` and `:67` (50 ms);
+  - `test_agent_rows.py:105` and `:107` (20 ms);
+  - `test_deployer_invariants.py:88` and `:92` (20 ms).
+
+  **The close-out fix is to set the mtimes explicitly with `os.utime`,** so the order is
+  a fact of the fixture, not a race against the clock. That also takes these sleeps out
+  of the suite, which is a side benefit, not the reason. The suite's other `time.sleep`
+  calls wait on streams and threads, which is a different class:
+  - `test_usage_capture.py:1390`;
+  - `test_designer.py:1689` and `:1846`;
+  - `test_stream_error_recovery.py:71`;
+  - `test_callbacks_stream_poll.py:145`;
+  - `test_streaming_characterization.py:84`;
+  - the integration e2e files.
 
 ### 62.9 What this sub-phase did not do
 
@@ -11612,3 +11646,173 @@ as §62's pre-scan found.
 - It claims no runtime figure.
 - `layouts/` keeps exactly three prefixed public names, all collision names:
   `render_breadth_panel`, `render_retry_panel` and `build_agent_rows` (§62.6).
+
+## 64. Phase 7d — rename batch 4: `layouts.designer`, seven names
+
+§60.7(j) 7d: one commit, default mode, under the rename check. This commit renames the
+Designer wizard's seven step builders to their underscore-free spelling. It is the first
+batch whose new names form a numbered family. So before the substitution ran, the family
+was checked against every Dash id and callback name of the same pattern (§64.2).
+
+### 64.1 What landed
+
+| Private | Public | Test sites (§55) | `src/` | Net |
+|---|---|---:|---:|---|
+| `_step1_content` | `step1_content` | 6 | 3 | two whole-file entries, by import alias (§54.7) |
+| `_step2_content` | `step2_content` | 14 | 4 | two whole-file entries |
+| `_step3_content` | `step3_content` | 8 | 3 | two whole-file entries; tier-B `TestNoBackToTheProjectView` |
+| `_step4_content` | `step4_content` | 13 | 3 | two whole-file entries; tier-B `TestNoBackToTheProjectView` |
+| `_step5_content` | `step5_content` | 11 | 3 | two whole-file entries |
+| `_step6_content` | `step6_content` | 28 | 4 | two whole-file entries; tier-A `test_preview_step_shows_the_strip` |
+| `_step7_content` | `step7_content` | 20 | 3 | two whole-file entries; tier-B `TestNoBackToTheProjectView` |
+| | | **100** | **23** | |
+
+- **Footprint: 8 files, all under `src/` and `tests/`.** There are 123 occurrences at
+  `4127700`: §55's 100 test-side sites and 23 in `src/`. The 23 are:
+  - the seven definitions in `layouts/designer.py`;
+  - seven names in `callbacks/designer/__init__.py`'s `from spec4.layouts.designer import (…)`;
+  - eight calls in `render_designer_step`, where `step2_content` appears twice, once as the fallback;
+  - the docstring at `callbacks/designer/_wizard.py:295`.
+
+  93 occurrences were rewritten. The other 30 are call uses inside the two whole-file
+  entries. They keep the old spelling behind the §54.7 aliases. The substitution changed
+  89 lines; ruff then joined one statement (§64.6), giving 88 insertions and 90 deletions.
+  Nothing in `scripts/`, `evals/`, the docs or `.spec4/` names these functions.
+- **No module-path occurrences, and no shadow flip.** None of the seven is a module name.
+- **String references: none.** No `__all__` lists these names, no patch target names them,
+  and no session key or component id spells them.
+- **D-number comments: none needed changing.** No D-number citation names these functions,
+  and none sits in the diff's context.
+- **`app.py` (D-LR1): untouched.** The step builders reach the app only through
+  `callbacks.designer`.
+- **Node ids unchanged.** The parametrizations in `test_designer_wizard_register.py`
+  (`:514`, `:534`) take return values under string labels. The two whole-file entries'
+  tables keep their string labels, and neither takes an id from a function name. 4,200
+  collected, the same as §63.
+- **`layouts/designer.py`'s other private helpers stay private.** That covers `_dim`,
+  `_step_back`, `_screenshot_card`, `_stale_banner`, `_refine_image_row` and the rest.
+  None of them is on §60.2's list.
+
+### 64.2 The numbered family, checked before the substitution
+
+This was checked at `4127700` over every tracked text file except this record:
+
+| Form | Result |
+|---|---|
+| `stepN_content`, the plain form, any N | **no occurrence.** Nothing binds, imports, reads or quotes the new names |
+| `step-N-content`, `stepN-content`, `step N content`, any case | **no occurrence** outside the seven old names |
+| Dash ids spelling both "step" and "content" | **one id, `designer-step-content`.** It is the container the builders fill, with its layout at `layouts/designer.py:752` and its callback `Output` at `callbacks/designer/__init__.py:109`. It also appears in `tests/snapshots/component_ids.json` (three times) and in `test_designer_wizard_register.py:383` and `:624`. Its hyphens and its lack of a number put it outside the family, and the word-boundary substitution cannot reach it. It is a frozen component id (Rule 4) and is unchanged |
+| Callback or function names of the pattern | **none.** The one dispatcher is `render_designer_step`, and no callback is named for a step |
+
+The plain form collides with nothing, so the substitution ran as §60.2 recorded it.
+
+### 64.3 The rename check — empty
+
+- The §60.2 shell function, run with `P=HEAD` over the working tree, printed `rename check: EMPTY`.
+- The scratch implementation printed the same.
+
+This batch has no documented exception.
+
+### 64.4 Petitions, by kind
+
+Check 1 is taken as §60.3 now defines it (§64.7): over the net entry.
+
+| Kind | Where | Result |
+|---|---|---|
+| §54.7, whole-file | `test_callback_co_presence.py`, `test_layout_contract.py`, with 14 import bindings re-aliased (seven each) | import lines alone · goldens identical · node ids unchanged — **passes**, both |
+| §60.3, tier-B | `test_designer_wizard_register.py::TestNoBackToTheProjectView` (569–598), lines `:587`, `:588` and `:589` (`step3_content`, `step4_content`, `step7_content`): three `assert … in _ids(…)` lines | reverse diff empty inside the class · assertions token-identical — **passes** |
+| §60.3, tier-A | `test_cost_summary.py::TestDesignerPlacement::test_preview_step_shows_the_strip` (543–556), line `:548` (`step6_content`) | **passes** |
+
+### 64.5 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | 2 in the diff, both under §54.7, both passing |
+| 456 node ids | **456 / 456 collect**; 4,200 collected |
+| 19 tier-B files / 33 classes | **1 file with hunks.** Its one hunk inside a listed class is §64.4's §60.3 hunk. The other 14 hunks lie outside any listed class and are reported below in §51.6's template |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_designer_wizard_register.py` | `TestNoBackToTheProjectView` **569–598** | 15 — 44–50, 202–213, 224–225, 414–415, 428, 432, 463, 517–521, 536, 587–589, 629, 633, 637, 647, 668 | **INSIDE: 587–589→TestNoBackToTheProjectView** |
+
+- **`test_cost_summary.py` is not a tier-B file.** Besides the petitioned node it has three hunks:
+  - the import at `:51`;
+  - `:559` and `:566`, in `TestDesignerPlacement`'s two unlisted tests.
+
+  None of them is a listed node.
+- **`test_designer_fullscreen.py` holds no net entry.**
+
+### 64.6 One statement ruff joined, outside the net
+
+| Line | Enclosing test | Net? |
+|---|---|---|
+| `test_designer_wizard_register.py:637`: `drawn = _walk(step4_content(_STORE, True)) + _walk(step7_content(_STORE, True))` | `TestTheUntouchedMachinery::test_the_upload_zones_keep_their_ids_and_their_class` | no. `TestTheUntouchedMachinery` (606–) is not a listed class |
+
+This join is the shortening kind. Each of the two names lost a character, so the
+three-line statement now fits on one line of 87 columns. It is an assignment, not an
+assertion. No line grew, so there is no E501.
+
+### 64.7 Record amendments carried in this commit
+
+The three amendments ruled on 7b and 7c:
+
+1. **§60.3, check 1, now defined over the net entry.** It reads "restricted to the listed
+   tier-B class or tier-A node". A hunk elsewhere in the same file is either
+   allowed-and-reported in §51.6's template or the batch's documented exception. This is
+   what the ruling meant, and 7b's and 7c's checkers already applied it. 7a's check
+   applied it to the whole file, a stronger condition. So no earlier verdict changes. §60.3
+   carries a note to that effect.
+2. **The `sys.modules` idiom in `test_cost_summary.py`, logged as a Phase 7 candidate
+   beside `module_seam`, and not scheduled.** The note sits under §60.7(j)'s table. 7c's
+   shadow flip left the idiom as scaffolding for a problem that no longer exists.
+3. **§62.8 gains the flake's cause class.** A short sleep before an mtime comparison is at
+   the mercy of filesystem timestamp resolution. `_stale_mock_project` has that shape, and
+   six more sleeps in three more files match it. The close-out fix is to set the mtimes
+   explicitly with `os.utime`. Taking the sleeps out of the suite is a side benefit, not
+   the reason.
+
+### 64.8 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped` (exit 0); 4,200 collected |
+| Coverage | same run | `TOTAL 12421 stmts, 891 miss, 93%`, identical to §60.1 and at the ≤ 891 ceiling |
+
+### 64.9 What this sub-phase did not do
+
+- It changes no test beyond the substitution, and it has no documented exception.
+- It fixes neither the sleep-before-mtime class nor the `sys.modules` idiom. Both are recorded only.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.
+
+### 64.10 The amend
+
+The first commit of this sub-phase, `ea123d6`, carried a change outside the ruled ones.
+The step that appended §64 re-read the whole record and collapsed every run of two blank
+lines into one. That removed four blank lines. Each sat between a table and the heading or
+paragraph after it, outside any code block:
+
+- old `:354`, after the `### tests` file-size table, before "Observations for Phase 4:";
+- old `:657`, at the end of §6's import table, before "### 6.1 Cycles";
+- old `:1129`, at the end of Appendix A, before "## 12. Phase 1 report";
+- old `:9248`, after the `spec4.llm` name table, before "#### Totals".
+
+The rendered page did not change. The ruling at review still holds the record's diff to
+the rename check's standard. The diff is the audit trail, and a diff that carries anything
+beyond the ruled changes is exactly what the rename check exists to prevent in `src/`.
+`ea123d6` had not been pushed, so it was amended. The amend restores the four lines, and
+this note is its only addition. Against its parent, the amended commit's diff of this
+record deletes two lines, the old wording of §60.3's check 1, and no blank line.
+
+A commit cannot name its own hash. The amended commit's hash is therefore recorded below,
+in 7e's commit.
+
+**The append step, fixed.** It now puts the section on the end exactly as written and
+rewrites none of the existing bytes. It stops rather than repair anything it did not
+write. Afterwards it checks that the record before the append is a byte-for-byte prefix
+of the record after. A guard also lists every hunk in this record's diff that deletes
+lines, and fails on any blank-line deletion. Both run at every sub-phase commit from 7e
+on.

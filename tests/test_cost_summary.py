@@ -48,7 +48,7 @@ from spec4.layouts._round_cost import (
     run_cost_strip,
 )
 from spec4.layouts._shared import _fmt_usd, price_source_note
-from spec4.layouts.designer import _step6_content
+from spec4.layouts.designer import step6_content
 from spec4.session import default_session
 
 from tests.test_usage_capture import _call
@@ -545,7 +545,7 @@ class TestDesignerPlacement:
             tmp_path, [_call("designer", cost=0.2), _call("brainstormer", cost=0.05)]
         )
         session = {"working_dir": str(tmp_path), "phase_version": 0}
-        content = _step6_content({"mock_html": "<html></html>"}, session)
+        content = step6_content({"mock_html": "<html></html>"}, session)
         ids = _ids(content)
         assert "cost-summary-card" in ids
         assert ids.index("mock-iframe") < ids.index("cost-summary-card")
@@ -556,14 +556,14 @@ class TestDesignerPlacement:
         assert "your provider's billing is authoritative" in text.lower()
 
     def test_preview_without_a_session_still_renders(self) -> None:
-        content = _step6_content({"mock_html": "<html></html>"})
+        content = step6_content({"mock_html": "<html></html>"})
         ids = _ids(content)
         assert "mock-iframe" in ids
         assert "cost-summary-card" not in ids
 
     def test_preview_without_usage_omits_the_strip(self, tmp_path: Path) -> None:
         session = {"working_dir": str(tmp_path), "phase_version": 0}
-        ids = _ids(_step6_content({"mock_html": ""}, session))
+        ids = _ids(step6_content({"mock_html": ""}, session))
         assert "cost-summary-card" not in ids
 
 

@@ -68,13 +68,13 @@ from spec4.callbacks.designer._wizard import (
 )
 from spec4.layouts.designer import (
     DESIGNER_STEPPER_ID,
-    _step1_content,
-    _step2_content,
-    _step3_content,
-    _step4_content,
-    _step5_content,
-    _step6_content,
-    _step7_content,
+    step1_content,
+    step2_content,
+    step3_content,
+    step4_content,
+    step5_content,
+    step6_content,
+    step7_content,
     designer_step_row,
     stepper_index,
 )
@@ -146,25 +146,25 @@ def render_designer_step(
         return no_update, no_update
     content: Any
     if step == 1:
-        content = _step1_content()
+        content = step1_content()
     elif step == 2:
-        content = _step2_content(
+        content = step2_content(
             bool(store.get("_has_existing_ui", True)),
             bool(store.get("_is_revision", False)),
         )
     elif step == 3:
-        content = _step3_content()
+        content = step3_content()
     elif step == 4:
         support: bool | None = image_support
-        content = _step4_content(store, support)
+        content = step4_content(store, support)
     elif step == 5:
-        content = _step5_content(buffer_data, image_support)
+        content = step5_content(buffer_data, image_support)
     elif step == 6:
-        content = _step6_content(store, session)
+        content = step6_content(store, session)
     elif step == 7:
-        content = _step7_content(store, image_support)
+        content = step7_content(store, image_support)
     else:
-        content = _step2_content(
+        content = step2_content(
             bool(store.get("_has_existing_ui", True)),
             bool(store.get("_is_revision", False)),
         )

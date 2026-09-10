@@ -47,13 +47,13 @@ from spec4.layouts import (
     working_dir_layout as _working_dir_layout,
 )
 from spec4.layouts.designer import (
-    _step1_content,
-    _step2_content,
-    _step3_content,
-    _step4_content,
-    _step5_content,
-    _step6_content,
-    _step7_content,
+    step1_content as _step1_content,
+    step2_content as _step2_content,
+    step3_content as _step3_content,
+    step4_content as _step4_content,
+    step5_content as _step5_content,
+    step6_content as _step6_content,
+    step7_content as _step7_content,
     designer_layout,
 )
 from spec4.session import default_session as _default_session

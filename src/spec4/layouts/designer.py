@@ -179,7 +179,7 @@ def _step_back() -> Any:
     return _neutral("Back", "btn-designer-step-back")
 
 
-def _step1_content() -> Any:
+def step1_content() -> Any:
     return dmc.Stack(
         [
             _dim(
@@ -195,7 +195,7 @@ def _step1_content() -> Any:
     )
 
 
-def _step2_content(has_existing_ui: bool = True, is_revision: bool = False) -> Any:
+def step2_content(has_existing_ui: bool = True, is_revision: bool = False) -> Any:
     if is_revision:
         prompt = "Carry this project's design forward and update it, or start over?"
     elif has_existing_ui:
@@ -243,7 +243,7 @@ def _step2_content(has_existing_ui: bool = True, is_revision: bool = False) -> A
     return dmc.Stack([_dim(prompt), _button_row(*controls)], gap="xs")
 
 
-def _step3_content() -> Any:
+def step3_content() -> Any:
     return dmc.Stack(
         [
             _dim(
@@ -309,7 +309,7 @@ def _screenshot_card(idx: int, shot: dict[str, str]) -> Any:
     )
 
 
-def _step4_content(
+def step4_content(
     store: dict[str, Any],
     image_support: bool | None,
 ) -> Any:
@@ -356,7 +356,7 @@ def _step4_content(
     return dmc.Stack(children, gap="xs")
 
 
-def _step5_content(
+def step5_content(
     buffer_data: dict[str, Any] | None = None,
     image_support: bool | None = None,
 ) -> Any:
@@ -463,7 +463,7 @@ def _stale_banner(stale: list[str]) -> Any:
     )
 
 
-def _step6_content(store: dict[str, Any], session: dict[str, Any] | None = None) -> Any:
+def step6_content(store: dict[str, Any], session: dict[str, Any] | None = None) -> Any:
     stale_inputs: list[str] = store.get("_stale_inputs") or []
     children: list[Any] = []
     if stale_inputs:
@@ -549,7 +549,7 @@ def _refine_image_row(idx: int, img: dict[str, str]) -> Any:
     )
 
 
-def _step7_content(store: dict[str, Any], image_support: bool | None = None) -> Any:
+def step7_content(store: dict[str, Any], image_support: bool | None = None) -> Any:
     refine_images: list[dict[str, str]] = store.get("refine_images", [])
     children: list[Any] = [
         _fullscreen_row(),

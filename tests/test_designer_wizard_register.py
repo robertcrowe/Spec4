@@ -41,13 +41,13 @@ from spec4.layouts.designer import (
     DESIGNER_STEPS_CLASS,
     MOCK_APPROVED,
     MOCK_DISCLAIMER,
-    _step1_content,
-    _step2_content,
-    _step3_content,
-    _step4_content,
-    _step5_content,
-    _step6_content,
-    _step7_content,
+    step1_content,
+    step2_content,
+    step3_content,
+    step4_content,
+    step5_content,
+    step6_content,
+    step7_content,
     designer_layout,
 )
 from spec4.session import default_session
@@ -199,18 +199,18 @@ def _steps() -> list[tuple[str, Any]]:
     — the same thing `test_callback_co_presence.py` does with them.
     """
     return [
-        ("1 no-ui check", _step1_content()),
-        ("2 start/resume", _step2_content(True, False)),
-        ("2 no existing ui", _step2_content(False, False)),
-        ("2 revision", _step2_content(True, True)),
-        ("3 preferences", _step3_content()),
-        ("4 screenshots", _step4_content(_STORE, True)),
-        ("4 no image support", _step4_content(_STORE, False)),
-        ("5 generating", _step5_content(_BUFFER)),
-        ("6 preview", _step6_content(_STORE)),
-        ("6 approved", _step6_content({**_STORE, "finalized": True})),
-        ("7 refine", _step7_content(_STORE, True)),
-        ("7 no image support", _step7_content(_STORE, False)),
+        ("1 no-ui check", step1_content()),
+        ("2 start/resume", step2_content(True, False)),
+        ("2 no existing ui", step2_content(False, False)),
+        ("2 revision", step2_content(True, True)),
+        ("3 preferences", step3_content()),
+        ("4 screenshots", step4_content(_STORE, True)),
+        ("4 no image support", step4_content(_STORE, False)),
+        ("5 generating", step5_content(_BUFFER)),
+        ("6 preview", step6_content(_STORE)),
+        ("6 approved", step6_content({**_STORE, "finalized": True})),
+        ("7 refine", step7_content(_STORE, True)),
+        ("7 no image support", step7_content(_STORE, False)),
     ]
 
 
@@ -221,8 +221,8 @@ def _steps() -> list[tuple[str, Any]]:
 # alerts had stopped working would prove nothing.
 def _warning_steps() -> list[tuple[str, Any]]:
     return [
-        ("5 failed", _step5_content({**_BUFFER, "error": "boom"})),
-        ("6 stale", _step6_content({**_STORE, "_stale_inputs": ["vision.json"]})),
+        ("5 failed", step5_content({**_BUFFER, "error": "boom"})),
+        ("6 stale", step6_content({**_STORE, "_stale_inputs": ["vision.json"]})),
     ]
 
 
@@ -411,8 +411,8 @@ class TestNoAccordionAndNoAlerts:
 
     def test_the_disclaimer_is_one_dimmed_line_above_the_preview(self) -> None:
         for label, content in (
-            ("preview", _step6_content(_STORE)),
-            ("refine", _step7_content(_STORE, True)),
+            ("preview", step6_content(_STORE)),
+            ("refine", step7_content(_STORE, True)),
         ):
             lines = _dim_lines(content)
             assert lines.count(MOCK_DISCLAIMER) == 1, label
@@ -425,11 +425,11 @@ class TestNoAccordionAndNoAlerts:
             assert order.index(MOCK_DISCLAIMER) < order.index("mock-iframe"), label
 
     def test_the_approved_notice_is_one_dimmed_line(self) -> None:
-        approved = _step6_content({**_STORE, "finalized": True})
+        approved = step6_content({**_STORE, "finalized": True})
         assert _dim_lines(approved).count(MOCK_APPROVED) == 1
 
     def test_the_approved_notice_only_shows_once_approved(self) -> None:
-        assert MOCK_APPROVED not in _dim_lines(_step6_content(_STORE))
+        assert MOCK_APPROVED not in _dim_lines(step6_content(_STORE))
 
     @pytest.mark.parametrize("label,content", _steps())
     def test_each_step_carries_at_most_one_instruction_line(
@@ -460,7 +460,7 @@ class TestErrorsAreStillAlerts:
         assert len(_of_type(content, "Alert")) == 1, label
 
     def test_the_retry_panel_still_offers_both_doors(self) -> None:
-        ids = _ids(_step5_content({**_BUFFER, "error": "boom"}))
+        ids = _ids(step5_content({**_BUFFER, "error": "boom"}))
         assert {"btn-designer-retry", "btn-designer-retry-model"} <= ids
 
 
@@ -514,11 +514,11 @@ class TestOnePrimaryPerStep:
     @pytest.mark.parametrize(
         "button_id,content",
         [
-            ("btn-designer-refine", _step6_content(_STORE)),
-            ("btn-designer-refine", _step6_content({**_STORE, "finalized": True})),
-            ("btn-designer-refine-cancel", _step7_content(_STORE, True)),
-            ("btn-designer-step-back", _step3_content()),
-            ("btn-designer-step-back", _step4_content(_STORE, True)),
+            ("btn-designer-refine", step6_content(_STORE)),
+            ("btn-designer-refine", step6_content({**_STORE, "finalized": True})),
+            ("btn-designer-refine-cancel", step7_content(_STORE, True)),
+            ("btn-designer-step-back", step3_content()),
+            ("btn-designer-step-back", step4_content(_STORE, True)),
         ],
     )
     def test_refine_cancel_and_back_are_neutral_outlines(
@@ -533,7 +533,7 @@ class TestOnePrimaryPerStep:
 
     @pytest.mark.parametrize(
         "content",
-        [_step6_content(_STORE), _step6_content({**_STORE, "finalized": True})],
+        [step6_content(_STORE), step6_content({**_STORE, "finalized": True})],
     )
     def test_start_over_is_a_neutral_outline_in_the_warn_tone(
         self, content: Any
@@ -584,9 +584,9 @@ class TestNoBackToTheProjectView:
 
     def test_the_within_wizard_back_and_cancel_are_still_there(self) -> None:
         """Moving *inside* the wizard is what these two do, and they stay."""
-        assert "btn-designer-step-back" in _ids(_step3_content())
-        assert "btn-designer-step-back" in _ids(_step4_content(_STORE, True))
-        assert "btn-designer-refine-cancel" in _ids(_step7_content(_STORE, True))
+        assert "btn-designer-step-back" in _ids(step3_content())
+        assert "btn-designer-step-back" in _ids(step4_content(_STORE, True))
+        assert "btn-designer-refine-cancel" in _ids(step7_content(_STORE, True))
 
     @pytest.mark.parametrize("step,expected", [(3, 2), (4, 3), (2, 2)])
     def test_back_moves_one_step_and_never_leaves(
@@ -626,17 +626,15 @@ class TestTheUntouchedMachinery:
         } <= ids
 
     def test_the_progress_painters_targets_survive(self) -> None:
-        ids = _ids(_step5_content(_BUFFER))
+        ids = _ids(step5_content(_BUFFER))
         assert {"mock-progress", "mock-token-count"} <= ids
 
     def test_the_fullscreen_button_keeps_its_id_on_both_views(self) -> None:
-        for content in (_step6_content(_STORE), _step7_content(_STORE, True)):
+        for content in (step6_content(_STORE), step7_content(_STORE, True)):
             assert "mock-fullscreen-btn" in _ids(content)
 
     def test_the_upload_zones_keep_their_ids_and_their_class(self) -> None:
-        drawn = _walk(_step4_content(_STORE, True)) + _walk(
-            _step7_content(_STORE, True)
-        )
+        drawn = _walk(step4_content(_STORE, True)) + _walk(step7_content(_STORE, True))
         uploads = [c for c in drawn if type(c).__name__ == "Upload"]
         assert {u.id for u in uploads} == {
             "designer-screenshot-upload",
@@ -646,7 +644,7 @@ class TestTheUntouchedMachinery:
             assert upload.className == "designer-upload-zone"
 
     def test_each_upload_zone_holds_one_dimmed_line(self) -> None:
-        for content in (_step4_content(_STORE, True), _step7_content(_STORE, True)):
+        for content in (step4_content(_STORE, True), step7_content(_STORE, True)):
             upload = next(c for c in _walk(content) if type(c).__name__ == "Upload")
             assert len(_dim_lines(upload.children)) == 1
 
@@ -667,7 +665,7 @@ class TestTheUntouchedMachinery:
             ],
             0,
         )
-        content = _step6_content(_STORE, _session(working_dir=str(tmp_path)))
+        content = step6_content(_STORE, _session(working_dir=str(tmp_path)))
         assert {
             RUN_COST_IDS.root,
             RUN_COST_IDS.line,

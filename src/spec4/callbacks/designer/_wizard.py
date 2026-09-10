@@ -292,7 +292,7 @@ def on_designer_approve(n: Any, store: Any, session: Any) -> Any:
     """Finalize and save the mock, marking it approved — but stay on Designer.
 
     The user is shown a confirmation and a 'Continue to Stack Advisor' button
-    (rendered by ``_step6_content`` when ``finalized`` is set) rather than being
+    (rendered by ``step6_content`` when ``finalized`` is set) rather than being
     navigated straight into the next agent.
     """
     if not n or not store:
