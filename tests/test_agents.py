@@ -813,7 +813,7 @@ class TestBrainstormerBranches:
         # canonical {Name: {description, example}} shape — this used to crash
         # with `'str' object has no attribute 'items'` and surface raw JSON
         # plus an AttributeError to the user.
-        from spec4.agents.brainstormer import _format_vision_as_text
+        from spec4.agents.brainstormer import format_vision_as_text
 
         vision = {
             "vision_statement": {
@@ -825,13 +825,13 @@ class TestBrainstormerBranches:
                 },
             }
         }
-        out = _format_vision_as_text(vision)
+        out = format_vision_as_text(vision)
         assert "AI Recommendations" in out
         assert "User Reviews" in out
         assert "Continue to Agentifier" in out
 
     def test_format_vision_handles_flat_named_features(self) -> None:
-        from spec4.agents.brainstormer import _format_vision_as_text
+        from spec4.agents.brainstormer import format_vision_as_text
 
         vision = {
             "vision_statement": {
@@ -843,7 +843,7 @@ class TestBrainstormerBranches:
                 },
             }
         }
-        out = _format_vision_as_text(vision)
+        out = format_vision_as_text(vision)
         assert "AI Recs" in out
         assert "Personalized suggestions" in out
 
@@ -852,7 +852,7 @@ class TestBrainstormerBranches:
         # the canonical {current, future_options} dict — this used to crash with
         # `'str' object has no attribute 'get'` and drop to the minimal fallback
         # display.
-        from spec4.agents.brainstormer import _format_vision_as_text
+        from spec4.agents.brainstormer import format_vision_as_text
 
         vision = {
             "vision_statement": {
@@ -863,7 +863,7 @@ class TestBrainstormerBranches:
                 },
             }
         }
-        out = _format_vision_as_text(vision)
+        out = format_vision_as_text(vision)
         assert "Monetization" in out
         assert "Free with optional donations" in out
 
@@ -989,7 +989,7 @@ class TestBrainstormerBranches:
             brainstormer_resumed=True,
         )
         with patch(
-            "spec4.agents.brainstormer._format_vision_as_text",
+            "spec4.agents.brainstormer.format_vision_as_text",
             side_effect=AttributeError("'str' object has no attribute 'items'"),
         ):
             with mock_litellm_stream(
@@ -1101,9 +1101,9 @@ class TestBrainstormerRevisionMode:
     # ----- pure merge -----
 
     def test_stamp_normalizes_block(self) -> None:
-        from spec4.agents.brainstormer import _stamp_revision_block
+        from spec4.agents.brainstormer import stamp_revision_block
 
-        out = _stamp_revision_block(
+        out = stamp_revision_block(
             {"goal": "g", "changes": {"added": ["X"]}, "rationale": "r"}, 2, 1
         )
         assert out == {
@@ -1115,18 +1115,18 @@ class TestBrainstormerRevisionMode:
         }
 
     def test_apply_first_revision_empty_base(self) -> None:
-        from spec4.agents.brainstormer import _apply_revision_history
+        from spec4.agents.brainstormer import apply_revision_history
 
         emitted = {"vision_statement": {"name": "A"}, "revision": {"goal": "g"}}
         prior = {"vision_statement": {"name": "A"}}  # no prior history
-        out = _apply_revision_history(emitted, prior, None, 1, 0)
+        out = apply_revision_history(emitted, prior, None, 1, 0)
         hist = out["vision_statement"]["revision_history"]
         assert len(hist) == 1
         assert hist[0]["version"] == 1 and hist[0]["based_on_version"] == 0
         assert "revision" not in out
 
     def test_apply_accumulates_on_prior_history(self) -> None:
-        from spec4.agents.brainstormer import _apply_revision_history
+        from spec4.agents.brainstormer import apply_revision_history
 
         prior = {
             "vision_statement": {
@@ -1135,12 +1135,12 @@ class TestBrainstormerRevisionMode:
             }
         }
         emitted = {"vision_statement": {"name": "A"}, "revision": {"goal": "g2"}}
-        out = _apply_revision_history(emitted, prior, None, 2, 1)
+        out = apply_revision_history(emitted, prior, None, 2, 1)
         hist = out["vision_statement"]["revision_history"]
         assert [e["version"] for e in hist] == [1, 2]
 
     def test_apply_missing_block_preserves_prior_history(self) -> None:
-        from spec4.agents.brainstormer import _apply_revision_history
+        from spec4.agents.brainstormer import apply_revision_history
 
         prior = {
             "vision_statement": {
@@ -1148,13 +1148,13 @@ class TestBrainstormerRevisionMode:
             }
         }
         emitted = {"vision_statement": {"name": "A"}}  # model emitted no revision
-        out = _apply_revision_history(emitted, prior, None, 2, 1)
+        out = apply_revision_history(emitted, prior, None, 2, 1)
         # No new entry, but prior lineage is never dropped.
         hist = out["vision_statement"]["revision_history"]
         assert [e["version"] for e in hist] == [1]
 
     def test_apply_reentry_recovers_current_round_entry(self) -> None:
-        from spec4.agents.brainstormer import _apply_revision_history
+        from spec4.agents.brainstormer import apply_revision_history
 
         prior = {"vision_statement": {"revision_history": []}}
         # The current session vision already carries this round's (v1) entry.
@@ -1164,7 +1164,7 @@ class TestBrainstormerRevisionMode:
             }
         }
         emitted = {"vision_statement": {"name": "A"}}  # re-edit, no fresh block
-        out = _apply_revision_history(emitted, prior, current, 1, 0)
+        out = apply_revision_history(emitted, prior, current, 1, 0)
         hist = out["vision_statement"]["revision_history"]
         assert len(hist) == 1 and hist[0]["goal"] == "g"
 

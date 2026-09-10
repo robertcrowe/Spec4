@@ -1,5 +1,5 @@
 """Unit tests for Brainstormer's deterministic change-categorization
-reconciliation (``_reclassify_changes`` via ``_apply_revision_history``).
+reconciliation (``_reclassify_changes`` via ``apply_revision_history``).
 
 The model authors a revision's ``changes`` (added / modified / removed feature
 names) and can mislabel a brand-new feature as ``modified`` — notably when it
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents.brainstormer import _apply_revision_history, _feature_names
+from spec4.agents.brainstormer import apply_revision_history, feature_names
 
 
 def _vision(names: list[str], history: list[dict[str, Any]] | None = None) -> dict:
@@ -38,7 +38,7 @@ def _changes_after(
     version: int = 1,
     based_on: int = 0,
 ) -> dict:
-    out = _apply_revision_history(emitted, prior, current, version, based_on)
+    out = apply_revision_history(emitted, prior, current, version, based_on)
     return out["vision_statement"]["revision_history"][-1]["changes"]
 
 
@@ -140,20 +140,20 @@ def test_reentry_path_is_also_reconciled() -> None:
 
 def test_feature_names_handles_dict_and_string_shapes() -> None:
     dict_shape = _vision(["A", "B"])
-    assert _feature_names(dict_shape) == ["A", "B"]
+    assert feature_names(dict_shape) == ["A", "B"]
     string_shape = {"vision_statement": {"vision": {"key_features_mvp": ["X", "Y"]}}}
-    assert _feature_names(string_shape) == ["X", "Y"]
+    assert feature_names(string_shape) == ["X", "Y"]
 
 
 def test_feature_names_fallback_to_top_level_key_features() -> None:
     # Some simplified shapes put key_features_mvp directly under vision_statement.
     v = {"vision_statement": {"key_features_mvp": ["P", "Q"]}}
-    assert _feature_names(v) == ["P", "Q"]
+    assert feature_names(v) == ["P", "Q"]
 
 
 def test_feature_names_empty_when_absent() -> None:
-    assert _feature_names({"vision_statement": {"name": "App"}}) == []
-    assert _feature_names(None) == []
+    assert feature_names({"vision_statement": {"name": "App"}}) == []
+    assert feature_names(None) == []
 
 
 def test_string_entry_revision_reconciles() -> None:

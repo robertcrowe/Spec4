@@ -26,7 +26,7 @@ from spec4.agentifier.requires_reconciler import (
     build_production_map,
     classify_edge,
 )
-from spec4.agents.brainstormer import _feature_names
+from spec4.agents.brainstormer import feature_names
 
 
 def _node(
@@ -203,16 +203,16 @@ class TestTriggerMatching:
 
 
 # ---------------------------------------------------------------------------
-# brainstormer._feature_names
+# brainstormer.feature_names
 # ---------------------------------------------------------------------------
 
 
 class TestFeatureNamesGuards:
     def test_a_non_dict_vision_statement_yields_no_names(self) -> None:
-        assert _feature_names({"vision_statement": "not a dict"}) == []
+        assert feature_names({"vision_statement": "not a dict"}) == []
 
     def test_a_non_dict_vision_yields_no_names(self) -> None:
-        assert _feature_names("not a dict") == []
+        assert feature_names("not a dict") == []
 
 
 def _texts(verdict: Any) -> list[str]:

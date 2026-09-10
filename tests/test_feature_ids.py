@@ -1,6 +1,6 @@
 """Lever 1 (D-BS2 id foundation): stable feature ids on ``key_features_mvp``.
 
-Covers the deterministic ``slug`` convention, the ``_assign_feature_ids`` stamp,
+Covers the deterministic ``slug`` convention, the ``assign_feature_ids`` stamp,
 the load-bearing property that a Brainstormer-assigned id coincides with the
 id the downstream coverage check derives (so the join is deterministic, not a
 brittle name-match), and the ``run()`` hook that applies the stamp on the real
@@ -97,7 +97,7 @@ class TestSlug:
 
 
 # ---------------------------------------------------------------------------
-# _assign_feature_ids()
+# assign_feature_ids()
 # ---------------------------------------------------------------------------
 
 
@@ -109,14 +109,14 @@ class TestAssignFeatureIds:
                 {"User Reviews": {"description": "d", "example": "e"}},
             ]
         )
-        brainstormer._assign_feature_ids(vision)
+        brainstormer.assign_feature_ids(vision)
         feats = _mvp(vision)
         assert feats[0]["AI Recommendations"]["id"] == "ai_recommendations"
         assert feats[1]["User Reviews"]["id"] == "user_reviews"
 
     def test_id_equals_slug_of_name_invariant(self) -> None:
         vision = _envelope([{"Some Weird Name!": {"description": "d"}}])
-        brainstormer._assign_feature_ids(vision)
+        brainstormer.assign_feature_ids(vision)
         val = _mvp(vision)[0]["Some Weird Name!"]
         assert val["id"] == slug("Some Weird Name!")
 
@@ -125,34 +125,34 @@ class TestAssignFeatureIds:
         vision = _envelope(
             [{"Renamed Feature": {"description": "d", "id": "stale_id"}}]
         )
-        brainstormer._assign_feature_ids(vision)
+        brainstormer.assign_feature_ids(vision)
         assert _mvp(vision)[0]["Renamed Feature"]["id"] == "renamed_feature"
 
     def test_handles_flat_shape(self) -> None:
         vision = _envelope([{"name": "Flat Feature", "description": "d"}])
-        brainstormer._assign_feature_ids(vision)
+        brainstormer.assign_feature_ids(vision)
         assert _mvp(vision)[0]["id"] == "flat_feature"
 
     def test_leaves_bare_strings_untouched(self) -> None:
         vision = _envelope(["Just A String"])
-        brainstormer._assign_feature_ids(vision)
+        brainstormer.assign_feature_ids(vision)
         assert _mvp(vision) == ["Just A String"]
 
     def test_idempotent(self) -> None:
         vision = _envelope([{"Feature One": {"description": "d"}}])
-        brainstormer._assign_feature_ids(vision)
+        brainstormer.assign_feature_ids(vision)
         once = _mvp(vision)[0]["Feature One"]["id"]
-        brainstormer._assign_feature_ids(vision)
+        brainstormer.assign_feature_ids(vision)
         assert _mvp(vision)[0]["Feature One"]["id"] == once
 
     def test_missing_features_is_noop(self) -> None:
         vision = {"vision_statement": {"name": "App", "vision": "a string vision"}}
         # Must not raise on a plain-string vision body.
-        brainstormer._assign_feature_ids(vision)
+        brainstormer.assign_feature_ids(vision)
         assert vision["vision_statement"]["vision"] == "a string vision"
 
     def test_non_dict_input_is_noop(self) -> None:
-        assert brainstormer._assign_feature_ids(None) is None  # type: ignore[arg-type]
+        assert brainstormer.assign_feature_ids(None) is None  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------

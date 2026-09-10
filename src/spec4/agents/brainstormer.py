@@ -244,7 +244,7 @@ def _extract_vision_json(text: str) -> dict[str, Any] | None:
     return data if data is not None and "vision_statement" in data else None
 
 
-def _stamp_revision_block(
+def stamp_revision_block(
     block: dict[str, Any], version: int, based_on_version: int
 ) -> dict[str, Any]:
     """Normalize a model-emitted revision block into the stored schema.
@@ -269,7 +269,7 @@ def _stamp_revision_block(
     }
 
 
-def _feature_names(vision: dict[str, Any] | None) -> list[str]:
+def feature_names(vision: dict[str, Any] | None) -> list[str]:
     """Ordered ``key_features_mvp`` entry names from a vision envelope.
 
     Handles the canonical single-key-dict entries (``{Name: {...}}``) and the
@@ -297,7 +297,7 @@ def _feature_names(vision: dict[str, Any] | None) -> list[str]:
     return names
 
 
-def _assign_feature_ids(vision: dict[str, Any]) -> dict[str, Any]:
+def assign_feature_ids(vision: dict[str, Any]) -> dict[str, Any]:
     """Stamp a stable ``id`` (= ``slug(name)``) onto each ``key_features_mvp`` entry.
 
     Deterministic and in-place per D-BS3: the model authors feature names, code
@@ -356,10 +356,10 @@ def _reclassify_changes(
     keys). When this revision has no parseable ``key_features_mvp`` there is no
     ground truth to reconcile against, so the model's lists are left untouched.
     """
-    v1_names = _feature_names(emitted)
+    v1_names = feature_names(emitted)
     if not v1_names:
         return entry
-    v0_names = _feature_names(prior_vision)
+    v0_names = feature_names(prior_vision)
     v0_set = set(v0_names)
     v1_set = set(v1_names)
     in_both = v0_set & v1_set
@@ -386,7 +386,7 @@ def _reclassify_changes(
     return reconciled
 
 
-def _apply_revision_history(
+def apply_revision_history(
     emitted: dict[str, Any],
     prior_vision: dict[str, Any],
     current_vision: dict[str, Any] | None,
@@ -417,7 +417,7 @@ def _apply_revision_history(
     base = list(prior_vision.get("vision_statement", {}).get("revision_history", []))
     this_entry: dict[str, Any] | None = None
     if isinstance(block, dict):
-        this_entry = _stamp_revision_block(block, version, based_on_version)
+        this_entry = stamp_revision_block(block, version, based_on_version)
     else:
         cur_history = (
             (current_vision or {})
@@ -503,7 +503,7 @@ def _render_feature_item(feat: Any, lines: list[str]) -> None:
         lines.append(f"- **{label}** — {desc}")
 
 
-def _format_vision_as_text(
+def format_vision_as_text(
     vision: dict[str, Any], footer: str = _VISION_TRANSITION
 ) -> str:
     vs = vision.get("vision_statement", {})
@@ -610,7 +610,7 @@ def _render_monetization(v: dict[str, Any], lines: list[str]) -> None:
 
 
 def _vision_fallback_display(vision: dict[str, Any]) -> str:
-    """Minimal display used when `_format_vision_as_text` raises on an unexpected shape.
+    """Minimal display used when `format_vision_as_text` raises on an unexpected shape.
 
     Guarantees the user sees the project name and the transition message instead
     of a raw JSON dump leaking through the chat.
@@ -864,7 +864,7 @@ def _brainstormer_seed_from_review(
 def _brainstormer_review_text(vision: Any) -> str:
     """Render the vision for a review request, falling back on any error."""
     try:
-        review = _format_vision_as_text(vision, footer=_VISION_REVIEW_FOOTER)
+        review = format_vision_as_text(vision, footer=_VISION_REVIEW_FOOTER)
     except Exception:
         review = _vision_fallback_display(vision)
     return review
@@ -895,14 +895,14 @@ def _brainstormer_commit(
             working_dir, project_manager.session_is_brownfield(session)
         )[0]
         based_on = project_manager.latest_implemented_version(working_dir)
-        vision = _apply_revision_history(
+        vision = apply_revision_history(
             vision,
             prior_vision,
             session.get("vision_statement"),
             version,
             based_on if based_on is not None else 0,
         )
-    vision = _assign_feature_ids(vision)
+    vision = assign_feature_ids(vision)
     session["brainstormer_state"] = STATE_VISION_COMPLETE
     session["vision_statement"] = vision
     session["feature_specs"] = feature_speccer.build_feature_specs(
@@ -911,11 +911,11 @@ def _brainstormer_commit(
     session["brainstormer_stale_acknowledged"] = {}
     footer_included = False
     try:
-        display = _format_vision_as_text(vision, footer="")
+        display = format_vision_as_text(vision, footer="")
     except Exception as exc:
         if _DEV_MODE:
             print(
-                f"[brainstormer] _format_vision_as_text failed: "
+                f"[brainstormer] format_vision_as_text failed: "
                 f"{type(exc).__name__}: {exc}",
                 flush=True,
             )

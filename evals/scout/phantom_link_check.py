@@ -20,7 +20,7 @@ Semantics
 - A link is a PHANTOM if it matches no real feature name, even normalized.
 
 Feature-name truth is resolved from the vision *as Scout receives it* (see
-``_resolve_feature_names``), reusing ``spec4.agents.brainstormer._feature_names``
+``_resolve_feature_names``), reusing ``spec4.agents.brainstormer.feature_names``
 for the actual entry parsing so the check uses exactly the same feature universe
 as the rest of the system and stays correct if the vision schema evolves.
 
@@ -35,7 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from spec4.agents.brainstormer import _feature_names
+from spec4.agents.brainstormer import feature_names
 
 
 def _normalize(name: str) -> str:
@@ -59,7 +59,7 @@ def _normalize(name: str) -> str:
 def _resolve_feature_names(vision: dict[str, Any]) -> list[str]:
     """Feature names from the vision *as Scout actually receives it*.
 
-    ``_feature_names`` only parses the full envelope
+    ``feature_names`` only parses the full envelope
     (``vision_statement.vision.key_features_mvp`` or
     ``vision_statement.key_features_mvp``). But Scout is fed flatter dicts:
 
@@ -74,14 +74,14 @@ def _resolve_feature_names(vision: dict[str, Any]) -> list[str]:
     """
     if not isinstance(vision, dict):
         return []
-    names = _feature_names(vision)
+    names = feature_names(vision)
     if names:
         return names
     for container in (vision.get("vision"), vision):
         if isinstance(container, dict) and isinstance(
             container.get("key_features_mvp"), list
         ):
-            return _feature_names({"vision_statement": {"vision": container}})
+            return feature_names({"vision_statement": {"vision": container}})
     return []
 
 

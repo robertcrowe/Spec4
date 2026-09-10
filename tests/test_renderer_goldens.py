@@ -24,7 +24,7 @@ import pytest
 from spec4.agentifier.agentifier import _format_catalog_as_text, _format_spec_as_text
 from spec4.agents.brainstormer import (
     _VISION_REVIEW_FOOTER,
-    _format_vision_as_text,
+    format_vision_as_text as _format_vision_as_text,
 )
 from spec4.agents.code_scanner import format_review_as_text as _format_review_as_text
 from spec4.agents.stack_advisor import _format_stack_as_text

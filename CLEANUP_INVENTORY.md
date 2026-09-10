@@ -11981,3 +11981,208 @@ assignment, not an assertion. No line grew, so there is no E501.
 - It leaves `_extract_and_validate_review`, and the package's other private helpers, as they are.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.
+
+### 65.10 Recorded at review, by 7f's commit
+
+- **The string reference in `test_first_chunk_arrives_before_the_walk` is covered by the
+  petition as written.** `:117` holds `patch.object(code_scanner, "collect_files", _slow_walk)`,
+  a §60.2 string reference inside a tier-A node. Two facts make check 2 sufficient there:
+  1. `patch.object` raises `AttributeError` on a missing attribute, since `create=False`
+     is the default. A stale or misspelt name cannot silently patch nothing.
+  2. The rename changes nothing about what the string resolves to.
+     `code_scanner.collect_files` at `ddc85c1` is the function `_collect_files` was at
+     `95c504c`. `run` reads it from the package's own namespace (`__init__.py:243`), and
+     that is where the patch lands.
+- **A `patch("…")` path string is a different case, and check 2 alone does not cover it.**
+  A one-off experiment at 7f found:
+  - `mock.patch("a.b.name")` also raises `AttributeError` when the final attribute is
+    missing. So both forms already catch a missing name.
+  - Both forms continue silently only with `create=True`, which the suite never uses.
+  - The silent failure both forms share is a target that exists but is not what the code
+    under test looks up. The patch replaces an attribute that no call reads, and the test
+    runs unpatched. At 7f, patching `pkg.fn` while the caller read `pkg.sub.fn` raised
+    nothing and had no effect.
+
+  A path string makes this failure likelier, because it resolves by import path. A rename
+  can cause it by changing what a dotted path resolves to: §63.1's shadow flip turned
+  `spec4.layouts._round_cost` from a function into a submodule. An assertion that is
+  identical under the substitution does not detect this.
+- **Proposed at 7f, pending a ruling: a resolution check for path strings.** It runs at C
+  on every `patch("…")` string a batch rewrites, and requires two things:
+  1. The path resolves to the renamed function, in its owner module, and not to a module.
+  2. The module the path names reads that name as a global inside a function body. That
+     puts the patch where a call looks.
+
+  Where the string sits in a net entry, the check would join the petition beside check 2.
+  7f runs it on batch 6's one path string (`test_agents.py:992`, §66). Batch 7 has twelve,
+  all `_extract_cross_cutting_analysis`, in `tests/agentifier/test_streaming_e2e.py` and
+  `tests/integration/test_pipeline_greenfield.py`.
+- **The append step and the guard are the standard for this record**, as ruled at review
+  of 7e. Every commit that touches this record appends through the add-only step (§64.10).
+  Every such commit also runs the deleted-blank-line guard, not only 7e's.
+
+## 66. Phase 7f — rename batch 6: `agents.brainstormer`, five names
+
+§60.7(j) 7f: one commit, default mode, under the rename check. Five private names in
+`spec4.agents.brainstormer` take their underscore-free spelling. This is the first batch
+with a `patch("…")` path string among its string references. §65.10's proposed resolution
+check ran on it (§66.3).
+
+### 66.1 What landed
+
+| Private | Public | Tests / `src/` / `evals/` | Net / note |
+|---|---|---:|---|
+| `_format_vision_as_text` | `format_vision_as_text` | 12 / 5 / 0 | whole-file `test_renderer_goldens.py`, by import alias (§54.7); the path string at `test_agents.py:992`; a dev-mode log line and a docstring in `brainstormer.py` |
+| `_apply_revision_history` | `apply_revision_history` | 11 / 2 / 0 | |
+| `_feature_names` | `feature_names` | 10 / 4 / 5 | the clash §60.2 recorded; all five of the batch's `evals/` sites |
+| `_assign_feature_ids` | `assign_feature_ids` | 11 / 2 / 0 | the D-BS2 docstring in `test_feature_ids.py` |
+| `_stamp_revision_block` | `stamp_revision_block` | 2 / 2 / 0 | |
+| | | **46 / 15 / 5** | as §60.2 recorded; §55's figure is 41 |
+
+- **Footprint: 8 files.** Seven are under `src/` and `tests/`; the eighth is
+  `evals/scout/phantom_link_check.py`. There are 66 occurrences at `ddc85c1`, and 62 were
+  rewritten. The other four are call uses in `test_renderer_goldens.py`, which keep the
+  old spelling behind the §54.7 alias. 61 lines changed, giving 61 insertions and 61
+  deletions. `ruff format` changed nothing: no name grew, and no statement became short
+  enough to join. The longest added line is 87 columns.
+- **Outside the gate: `evals/scout/phantom_link_check.py`.** The batch touches it in five
+  places:
+  - the import at `:38`;
+  - the uses at `:77` and `:84`;
+  - the docstring mentions at `:23` and `:62`.
+
+  Nothing in the gate imports this file, so it was checked by hand. It compiles, and
+  `from spec4.agents.brainstormer import feature_names` resolves to the function. Nothing
+  in `scripts/`, the docs or `.spec4/` names any of the five.
+- **The clash §60.2 recorded, confirmed directly.** `"feature_names"` occurs as a dict-key
+  string at `evals/scout/run_scout_probe.py:306`, `:382` and `:413`. The rename check
+  cannot see these strings, because it reverse-substitutes both sides alike. So the file
+  was compared directly: it is byte-identical, with the three keys present at both
+  commits. Neither direction of the substitution reaches `_feature_names` inside a longer
+  identifier (`cross_feature_names`, `real_feature_names`, `_vision_feature_names`,
+  `_resolve_feature_names`, `_vision_mvp_feature_names`), because there is no word
+  boundary there.
+- **String references: 2, rewritten with the code.**
+  - The path string at `test_agents.py:992`; its check is in §66.3.
+  - The dev-mode log line at `brainstormer.py:918`,
+    `f"[brainstormer] format_vision_as_text failed: "`. It is printed to stdout, and only
+    under `_DEV_MODE`. It is not a prompt, a session key or a `.spec4/` shape (Rule 4), and
+    no test reads it. It names the function, so it follows the rename.
+- **No module-path occurrences, and no shadow flip.** `agents/brainstormer.py` is a single
+  module, and none of the five names is a module name.
+- **D-number comments: one, updated in this commit by the substitution.**
+  `test_feature_ids.py:3` names ``assign_feature_ids`` in a module docstring that cites
+  D-BS2 at `:1`. The D-BS3 citation at `brainstormer.py:303` sits in
+  `assign_feature_ids`'s docstring but names no function. None went stale.
+- **`app.py` (D-LR1): untouched.**
+- **Node ids unchanged.** Some test names spell the new names:
+  - `TestFeatureNamesGuards`;
+  - `TestAssignFeatureIds`;
+  - `test_feature_names_handles_dict_and_string_shapes` and two siblings.
+
+  Each holds the new name only inside a longer identifier. 4,200 collected.
+
+### 66.2 The family check, in the standing form (§64.11)
+
+The five names are not a family, but the check costs nothing, so it ran on all five, before
+the substitution, at `ddc85c1`:
+
+| Form | Result |
+|---|---|
+| the plain form as a token, in identifiers and strings | **none** for four names. For `feature_names`, only the three dict-key strings of §60.2's clash (§66.1) |
+| hyphen, spaced and cased forms | **no collision.** None for `format_vision_as_text`, `apply_revision_history` or `stamp_revision_block`. For `assign_feature_ids`: `TestAssignFeatureIds` (`test_feature_ids.py:104`) and the prose "Assign feature ids" (`brainstormer.py:886`). For `feature_names`: longer identifiers, test names, and the prose "feature names" |
+| Dash ids | **none** |
+| callback and function names of the pattern | **no plain-form definition.** Four definitions end in `feature_names` (listed below), and so does the test `test_includes_all_feature_names`. Each holds the name inside a longer identifier |
+
+The four definitions that end in `feature_names`:
+
+- `_vision_feature_names` (`evals/designer/coverage.py:48`);
+- `vision_feature_names` (`evals/scout/fanout_baseline.py:33`);
+- `_resolve_feature_names` (`evals/scout/phantom_link_check.py:59`);
+- `_vision_mvp_feature_names` (`agentifier/_seed.py:185`), which is batch 7's.
+
+### 66.3 The resolution check on the path string (§65.10, proposed)
+
+The script is `patch_resolve.py` in the session scratchpad. It ran at C over every tracked
+`.py` file:
+
+```
+PASS tests/test_agents.py:992 'spec4.agents.brainstormer.format_vision_as_text': (1) function format_vision_as_text in spec4.agents.brainstormer  (2) spec4.agents.brainstormer reads format_vision_as_text at [867, 914]
+path strings ending in a new name: 1; FAIL: 0
+```
+
+- The path resolves to the renamed function in its owner module, not to a module.
+- The module the path names is the module that reads the name, at its two call sites:
+  `_brainstormer_review_text` at `:867` and `_brainstormer_commit` at `:914`. So the
+  patch's `side_effect` reaches the code under test.
+- The string sits in `TestBrainstormerBranches`, which is not a net entry. Here the check
+  is additional, not part of a petition.
+
+### 66.4 The rename check — empty
+
+- The §60.2 shell function, run with `P=HEAD` over the working tree, printed `rename check: EMPTY`.
+- The scratch implementation printed the same.
+
+This batch has no documented exception. Before its result, the shell function's `tar`
+printed eight clock warnings. §66.8 records them.
+
+### 66.5 Petitions, by kind
+
+| Kind | Where | Result |
+|---|---|---|
+| §54.7, whole-file | `test_renderer_goldens.py`: one import binding re-aliased, `format_vision_as_text as _format_vision_as_text`, inside the parenthesised import at `:27` | import line alone · goldens identical · node ids unchanged — **passes** |
+
+No tier-B class or tier-A node holds any of the batch's names, so there is no §60.3
+petition.
+
+### 66.6 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | 1 in the diff, under §54.7, passing |
+| 456 node ids | **456 / 456 collect**; 4,200 collected |
+| 19 tier-B files / 33 classes | **1 file with hunks, `test_agents.py`.** None of its 17 hunks lies inside a listed class. Each is reported below in §51.6's template |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_agents.py` | `TestLoadDesignManifest` **2271–2298**; `TestAiFeaturesForPhaserFullSurface` **4962–5060**; `TestPhaserSpecReferenceDirective` **5227–5268** | 17 — 816, 828, 834, 846, 855, 866, 992, 1104, 1106, 1118, 1122, 1129, 1138, 1143, 1151, 1157, 1167 | **none inside a listed class** |
+
+### 66.7 Record changes carried in this commit
+
+- **§65.10, recorded at review of 7e.** It records:
+  - why check 2 is sufficient for the `patch.object` string in 7e's tier-A node;
+  - the `patch("…")` path-string distinction, with the mechanism as measured;
+  - the proposed resolution check;
+  - the add-only append step and the guard as the standard for every commit that touches
+    this record.
+- **Both sections went in through the add-only step.** The guard finds no hunk in this
+  record's diff that deletes a line.
+
+### 66.8 An observation for §62.8's backlog
+
+The shell rename check archived the working tree with `tar`, seconds after
+`rename_apply.py` rewrote eight files. `tar` reported each file's modification time as 1.1
+to 2.1 s in the future. On this WSL2 host, then, file mtimes and the clock that sleeps are
+measured against can disagree by about two seconds. A 50 ms sleep does not guarantee a later
+mtime. This is direct evidence of the mechanism §62.8 describes, but it does not establish
+that flake's root cause. The fix recorded there, setting mtimes explicitly with `os.utime`,
+is immune to it. The rename check itself is unaffected, because it compares content, not
+times.
+
+### 66.9 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped` (exit 0); 4,200 collected |
+| Coverage | same run | `TOTAL 12421 stmts, 891 miss, 93%` — identical to §60.1, at the ≤ 891 ceiling |
+
+### 66.10 What this sub-phase did not do
+
+- It changes no test beyond the substitution, and it has no documented exception.
+- It does not make the resolution check standing. §65.10 proposes it, pending a ruling.
+- It runs nothing over `evals/` beyond the compile and import check. `evals/` is outside the gate.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.

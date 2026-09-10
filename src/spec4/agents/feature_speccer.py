@@ -47,7 +47,7 @@ _LIST_FIELDS = (
 def _vision_features(vision: dict[str, Any]) -> list[tuple[str, str]]:
     """Ordered ``(name, description)`` for each ``key_features_mvp`` entry.
 
-    Mirrors ``brainstormer._feature_names``' container lookup and the entry
+    Mirrors ``brainstormer.feature_names``' container lookup and the entry
     shapes it handles (canonical ``{Name: {...}}``, flat ``{name, description}``,
     bare string). Returns ``[]`` when no feature list is present.
     """
