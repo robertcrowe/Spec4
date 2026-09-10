@@ -8455,6 +8455,23 @@ and the rest was my own arithmetic.
 The ≤ 96 s target stands, read as *"the paired delta must reach ≤ 96 s from that
 session's own baseline"*.
 
+#### New rule: the mutation check is part of every 6x report
+
+Ruled after 6c. **Every coupling rewrite states the mutation it survived.** Break the
+invariant, re-run, show the old assertion passing and the new one failing — §53.3 is the
+template. A rewrite that cannot be shown to fail for the defect it replaces is not
+evidence of anything; §53 exists because an assertion that could not fail sat in the
+suite for a phase and a half without anyone noticing.
+
+One mutation per **seam**, not per site.
+
+#### New rule: the tier-B allowed-and-reported entry has a template
+
+§53.4's last paragraph is the shape: name the tier-B file, its listed class, that
+class's **current line range**, the line ranges of every hunk, and the conclusion that
+none of them intersect. Every later sub-phase that touches a tier-B file outside its
+listed classes reports in that form.
+
 #### New rule: pruning is never justified by seconds
 
 **A test is dropped for redundancy, coupling, or vacuity. Never for being slow.**
@@ -8749,3 +8766,186 @@ exercise of §50.5(a)'s allowed-and-reported case. Its listed class is
 `TestStreamedTokenCounter` (D-PH9), **lines 735–755**. The nine hunks land at lines 5–6,
 10, 13, 55, 62, 139–145, 147–175, 177–178 and 180–227 — all far above it, none inside
 it, and the three D-PH9 tests are byte-identical. **Reported, as the rule requires.**
+
+## 54. Phase 6d, first cluster — `agentifier.agentifier`, and a finding about 6d itself
+
+§50.5(d) step 3, first cluster. **No test was changed.** Rule 4 of the 6d directive says
+to open with the split and stop if the Phase 7 list is most of the cluster. It is all of
+it, and the reason is not local to this cluster.
+
+### 54.1 The split
+
+| | Names | Sites |
+|---|---:|---:|
+| Rewrite to an existing public seam, now | **0** | **0** |
+| Phase 7 promote-candidates | **34** | **87** |
+
+Rule 1 is what decides it: *"rewrite to public seam" means a seam that already exists.*
+
+**`agentifier.py`'s entire public surface is two functions — `run` and
+`reset_agentifier_flow`.** `run` is the 24-yield generator turn that §27.4 grants a
+rule-12 noqa; reaching a helper through it is an integration test, not isolation, and
+rule 2 forbids trading granularity for a public path. That leaves
+`reset_agentifier_flow`, and **16 of the 34 names are not defined in `agentifier.py` at
+all** — they are imported from `spec4.agentifier._seed`, `spec4.agentifier._render` and
+`spec4.agents._reask`, artifacts of the 5k/5l splits.
+
+**Both sibling modules have zero public functions.** So for the sibling-owned 16 there is
+no public seam to rewrite toward either; re-pointing the import from
+`agentifier.agentifier` to `_seed` would change a string without changing what the test
+knows or what it would catch — and under the new §51.6 rule it would have **no mutation
+to demonstrate**, because behaviour would be identical. That is churn, not a rewrite.
+
+**The one case with a public caller is still not a rewrite.** `_RESTART_DEFAULTS` and
+`_RESTART_POP` are read by `reset_agentifier_flow`, which is public — but the four tests
+that import them are *drift guards on the collections themselves*, not on the reset's
+behaviour:
+
+| Test | Why the public path cannot express it |
+|---|---|
+| `test_every_session_key_is_accounted_for` | asks whether any `agentifier_*` key is **missing** from the collections. A key that is missing is precisely one the reset does not touch, so calling the reset cannot reveal it |
+| `test_no_dead_entries` | the converse — a listed key no longer used anywhere |
+| `test_the_two_collections_are_disjoint` | a structural property of the two collections, invisible in the merged result |
+| `test_defaults_match_the_session_defaults` | compares the **declared** values against `_default_session()`, key by key |
+
+Rewriting these through `reset_agentifier_flow` would replace a drift guard with an
+output check — rule 2's definition of a loss. `test_revision_block_is_cleared`, in the
+same class, is already behavioural and needs nothing. **Here the private-name access is
+the correct design: the collection is the test's subject.**
+
+### 54.2 The finding: 6d is smaller than §50.2 sized it
+
+Rule 4 says that if this happens the plan should say so rather than the reports. It is
+not specific to `agentifier.agentifier`. Public-function count for all eleven clusters:
+
+| Cluster module | Private names | Sites | Public fns | Public surface |
+|---|---:|---:|---:|---|
+| `spec4.agentifier.agentifier` | 34 | 87 | 2 | `run`, `reset_agentifier_flow` |
+| `spec4.layouts._chat` | 14 | 43 | **0** | — none — |
+| `spec4.session` | 10 | 57 | **0** | — none — |
+| `spec4.callbacks.designer` | 10 | 90 | 2 | `render_designer_step`, `on_mock_stream_poll` |
+| `spec4.project_manager` | 8 | 22 | **6** | `detect_stale_inputs`, `brownfield_new_round_pending`, … |
+| `spec4.agents.brainstormer` | 8 | 26 | 1 | `run` |
+| `spec4.layouts` | 7 | 18 | **0** | — none — |
+| `spec4.agents.code_scanner` | 7 | 44 | 1 | `run` |
+| `spec4.layouts.designer` | 7 | 24 | 3 | `stepper_index`, `designer_step_row`, `designer_layout` |
+| `spec4.agents._seam_check` | 6 | 6 | 1 | `run_seam_check` |
+| `spec4.llm` | 6 | 25 | **9** | `build_system_prompt`, `complete`, `complete_stream`, … |
+
+**Three clusters have no public function at all.** Four more expose only `run` or
+`run_seam_check` — a turn, not a seam. Only `project_manager` (6) and `llm` (9) have a
+surface worth rewriting toward, and they are the two **smallest** clusters by name count.
+
+§50.2 called these eleven `rewrite to public seam`, and the disposition was sound as a
+*description of what the tests need*. What it did not check — because §50 was read-only
+and scoped to `tests/` — is **whether the seams exist**. Mostly they do not, and Phase 6
+cannot create them, because creating them means touching `src/`.
+
+**So 6d is not a rewrite pass. It is a Phase 7 promote-candidate inventory**, with the
+possible exception of `project_manager` and `llm`, which are worth a look on their own
+terms once this is agreed.
+
+### 54.3 The promote-candidate list — `spec4.agentifier.agentifier`
+
+Left exactly as-is, per rule 1. Proposed public names are the private name without its
+underscore unless noted; the owner column says which module would do the promoting.
+
+| Private name | Owner | Sites | Test files | Proposed public name |
+|---|---|---:|---|---|
+| `_APPROACHES_OVERVIEW` | `agentifier.py` | 5 | agentifier/test_agentifier_orchestrator.py | `APPROACHES_OVERVIEW` |
+| `_RESTART_DEFAULTS` | `agentifier.py` | 1 | agentifier/test_try_again.py | `RESTART_DEFAULTS` |
+| `_RESTART_POP` | `agentifier.py` | 1 | agentifier/test_try_again.py | `RESTART_POP` |
+| `_analyses_to_dicts` | `_seed` | 3 | agentifier/test_agentifier_orchestrator.py | `analyses_to_dicts` |
+| `_begin_priority_phase` | `agentifier.py` | 1 | agentifier/test_prioritizer.py | `begin_priority_phase` |
+| `_breadth_candidates` | `agentifier.py` | 1 | agentifier/test_search_level.py | `breadth_candidates` |
+| `_build_ai_features` | `_render` | 15 | agentifier/test_agentifier_orchestrator.py, agentifier/test_edge_persistence.py, agentifier/test_vision_grounding.py | `build_ai_features` |
+| `_build_seed_message` | `_seed` | 18 | agentifier/test_agentifier_orchestrator.py, agentifier/test_revision.py, integration/test_pipeline_brownfield.py | `build_seed_message` |
+| `_candidates_from_dicts` | `_seed` | 1 | agentifier/test_edge_persistence.py | `candidates_from_dicts` |
+| `_candidates_to_dicts` | `_seed` | 1 | agentifier/test_edge_persistence.py | `candidates_to_dicts` |
+| `_complete_agentifier` | `agentifier.py` | 6 | agentifier/test_revision.py, agentifier/test_try_again.py | `complete_agentifier` |
+| `_existing_workflow_for_entry` | `agentifier.py` | 1 | agentifier/test_vision_grounding.py | `existing_workflow_for_entry` |
+| `_extract_cross_cutting_analysis` | `agentifier.py` | 4 | agentifier/test_cross_cutting_analyst.py | `extract_cross_cutting_analysis` |
+| `_feature_specs_for_session` | `agentifier.py` | 1 | agentifier/test_vision_grounding.py | `feature_specs_for_session` |
+| `_finalize_specs` | `agentifier.py` | 2 | agentifier/test_reselection.py, agentifier/test_search_level.py | `finalize_specs` |
+| `_format_catalog_as_text` | `_render` | 1 | test_renderer_goldens.py **(net)** | `format_catalog_as_text` |
+| `_format_priority_table` | `_render` | 1 | agentifier/test_prioritizer.py | `format_priority_table` |
+| `_format_spec_as_text` | `_render` | 1 | test_renderer_goldens.py **(net)** | `format_spec_as_text` |
+| `_handle_reentry` | `agentifier.py` | 3 | agentifier/test_reselection.py | `handle_reentry` |
+| `_is_spec_confirmed` | `agentifier.py` | 1 | agentifier/test_spec_drafter.py | `is_spec_confirmed` |
+| `_iter_async_gen` | `_seed` | 1 | agentifier/test_streaming_e2e.py | `iter_async_gen` |
+| `_linked_features_for_entry` | `agentifier.py` | 1 | agentifier/test_vision_grounding.py | `linked_features_for_entry` |
+| `_merge_revision_snapshot` | `_render` | 1 | agentifier/test_revision.py | `merge_revision_snapshot` |
+| `_parse_priority_edits` | `_render` | 1 | agentifier/test_prioritizer.py | `parse_priority_edits` |
+| `_registry` | `_seed` | 1 | agentifier/test_reselection.py | `registry` |
+| `_removed_feature_heads_up` | `_render` | 1 | agentifier/test_revision.py | `removed_feature_heads_up` |
+| `_reselection_pool_from_features` | `agentifier.py` | 2 | agentifier/test_edge_persistence.py, agentifier/test_reselection.py | `reselection_pool_from_features` |
+| `_revision_delta` | `_render` | 1 | agentifier/test_revision.py | `revision_delta` |
+| `_run_catalog_phase` | `agentifier.py` | 5 | agentifier/test_revision.py | `run_catalog_phase` |
+| `_run_cross_cutting_phase` | `agentifier.py` | 1 | agentifier/test_ff_sweep.py | `run_cross_cutting_phase` |
+| `_run_priority_phase` | `agentifier.py` | 1 | agentifier/test_prioritizer.py | `run_priority_phase` |
+| `_run_spec_phase` | `agentifier.py` | 1 | agentifier/test_ff_sweep.py | `run_spec_phase` |
+| `_stream_suppressing_json` | `agents/_reask` | 1 | agentifier/test_chars_counter_seed.py | `stream_suppressing_json` |
+| `_vision_mvp_feature_names` | `_seed` | 1 | agentifier/test_prioritizer.py | `vision_mvp_feature_names` |
+
+**Two sites are Phase 1 net and are `keep` regardless of what Phase 7 decides**:
+`_format_catalog_as_text` and `_format_spec_as_text` are reached by
+`tests/test_renderer_goldens.py`, a whole-file §50.3 entry. Promoting the names in `src/`
+would require editing that file to follow, which §50.3 forbids — so either Phase 7
+promotes them and petitions for that one edit, or it leaves these two alone. **Flagged
+now so Phase 7 does not discover it mid-rename.**
+
+The natural grouping for a Phase 7 promotion, if it happens:
+
+| Group | Names | Note |
+|---|---|---|
+| `_seed.py` seed construction | `_build_seed_message`, `_candidates_to_dicts`, `_candidates_from_dicts`, `_analyses_to_dicts`, `_vision_mvp_feature_names`, `_iter_async_gen`, `_registry` | 18 of the 87 sites are `_build_seed_message` alone, called directly with candidates and analyses and asserted on the message text — textbook unit tests of a helper with no public route |
+| `_render.py` renderers | `_build_ai_features`, `_format_catalog_as_text`, `_format_priority_table`, `_format_spec_as_text`, `_merge_revision_snapshot`, `_parse_priority_edits`, `_removed_feature_heads_up`, `_revision_delta` | golden-pinned by 5d; two are net |
+| the phase runners | `_run_catalog_phase`, `_run_cross_cutting_phase`, `_run_priority_phase`, `_run_spec_phase`, `_handle_reentry` | all carry rule-12 noqas or feed `run`; promoting these is a design question, not a rename |
+| session/state helpers | `_complete_agentifier`, `_begin_priority_phase`, `_finalize_specs`, `_feature_specs_for_session`, `_is_spec_confirmed`, `_extract_cross_cutting_analysis`, `_breadth_candidates`, `_reselection_pool_from_features`, `_existing_workflow_for_entry`, `_linked_features_for_entry` | |
+| the restart collections | `_RESTART_DEFAULTS`, `_RESTART_POP`, `_APPROACHES_OVERVIEW` | **do not promote for the tests' sake** — §54.1 shows the private access is correct here |
+
+### 54.4 What this sub-phase did not do
+
+No test was changed, so there is no mutation check to report — §51.6's rule applies to
+rewrites, and there is no rewrite. No `src/` change, no `noqa` change. The suite is
+byte-identical to 6c's.
+
+### 54.5 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `219 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | — | **not re-run, and the reason is checkable**: `git diff --stat` against 6c shows `CLEANUP_INVENTORY.md` as the only changed file, so §53.4's `4175 passed, 1 skipped` stands unaltered |
+| Coverage | — | likewise `TOTAL 12421 stmts, 909 miss, 93%`, at the §51.6 baseline |
+| Per-file (rule 3) | — | `agentifier/agentifier.py` coverage cannot have moved: no test was added, removed or re-pointed |
+
+Ruff, ruff-format and mypy **were** re-run, since the report edits a tracked file.
+
+**Off-limits check:**
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | absent from the diff (only `CLEANUP_INVENTORY.md` changed) |
+| 19 tier-B files / 33 classes | 0 files with hunks |
+| 456 node ids | **456 / 456 collect**, 0 failures |
+
+### 54.6 Stopping here, as rule 4 requires
+
+The Phase 7 list is the whole cluster, and §54.2 shows the cause is structural rather
+than particular to this module. **Not proceeding to `layouts._chat`** — which has zero
+public functions and would produce the same report with different names.
+
+Two questions for the plan, not for the next report:
+
+1. **Should 6d continue at all?** Ten clusters remain; on the evidence, eight of them
+   end the same way. Continuing would produce eight inventories and no rewrites.
+2. **Should `project_manager` (6 public) and `llm` (9 public) be attempted?** They are
+   the only two clusters with a real public surface. They are also the two smallest, so
+   the ceiling is 14 names across 47 sites — worth doing if the seams turn out to fit,
+   and quick to abandon if they do not.
+
+A third option, if the promote-candidate inventory is the actual deliverable: **run the
+§54.3 analysis over the remaining ten clusters in one pass**, producing one Phase 7
+document rather than ten sub-phase reports, and close 6d there.
