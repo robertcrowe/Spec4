@@ -568,6 +568,19 @@ class TestBeginPriorityPhase:
         out = self._run(session)
         assert "Priority analysis unavailable" not in out
 
+    def test_the_turn_opens_with_the_prioritizer_banner(self) -> None:
+        """The banner the developer reads at every priority turn, whole.
+
+        One changed character of it once left every test passing
+        (CLEANUP_INVENTORY.md 79.0, probe A); this is the assertion that was missing.
+        """
+        session = _session([_feature("a")])
+        assert self._run(session).startswith(
+            "### Prioritizer\n\n"
+            "Working out what belongs in the steel thread, and what can wait…\n\n"
+            "_This usually takes a few seconds._\n\n"
+        )
+
 
 # ---------------------------------------------------------------------------
 # The priority checkpoint — one table, one turn (D-PP9 B)

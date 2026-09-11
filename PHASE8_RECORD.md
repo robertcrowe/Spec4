@@ -814,3 +814,53 @@ tests.test_cost_summary:TestFormat.test_none_and_non_numbers_read_as_not_availab
 | Tests | `4210 passed, 1 skipped` (exit 0); 4,211 collected, since a removed assertion removes no test |
 | Coverage | `TOTAL 12459 876 93%`: every per-module row identical to 8a0's, since annotations add no statement |
 | Floor / off-limits | **456 / 456** (`FAILURES: 0`); the one test hunk sits outside every entry |
+
+## 5. 8c: the Prioritizer banner, asserted whole (P20)
+
+This is inventory §79.0's finding closed. Probe A changed one character of the banner the
+developer reads at every priority turn, and every test still passed. One test is added,
+and nothing under `src/` changes.
+
+### 5.1 What landed
+
+`tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_the_turn_opens_with_the_prioritizer_banner`
+asserts that the turn's output opens with the whole banner, all three of its parts:
+
+```python
+assert self._run(session).startswith(
+    "### Prioritizer\n\n"
+    "Working out what belongs in the steel thread, and what can wait…\n\n"
+    "_This usually takes a few seconds._\n\n"
+)
+```
+
+- **The draw is stubbed** by the autouse `stub_prioritizer` fixture (`tests/conftest.py:36`),
+  as it is for the class's other tests, so no model is reached.
+- **Floor:** `test_prioritizer.py` holds no floor entry.
+- **Footprint:** 1 file, 13 insertions, plus this section.
+
+### 5.2 The mutation: `probe_A`'s anchor, as a suite case
+
+The anchor is `probe_A`'s from `data/cases_7q.json`, which still matches once at HEAD. The
+prediction is that the new test fails, and nothing else does.
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8c_banner (one banner character: the Prioritizer banner (7q0's probe A, as a suite case)): predicted 1, failed 1; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_the_turn_opens_with_the_prioritizer_banner
+   other failures: 0
+   summary: 1 failed, 4210 passed, 1 skipped in 94.68s (0:01:34)
+```
+
+**As predicted: the new test fails, and nothing else does.** The banner is now pinned by the suite, where 7q0 found it pinned only by the trace.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4211 passed, 1 skipped` (exit 0): one more than 8b, the new test |
+| Coverage | `TOTAL 12459 876 93%`; every per-module row identical to 8a0's |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); the file holds no entry |
+
+The commit was made before the mutation ran, because the harness refuses a dirty tree.
+This section was then appended and amended in, under the standing rule for unpushed
+commits (inventory §64.10, §73.10).
