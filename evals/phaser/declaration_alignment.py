@@ -62,9 +62,9 @@ from typing import Any
 
 from spec4 import project_manager
 from spec4.agents._seam_check import (
-    _check_declaration_alignment,
-    _check_feature_coverage,
-    _extract_graph,
+    check_declaration_alignment,
+    check_feature_coverage,
+    extract_graph,
 )
 
 INFRA_KIND = "infrastructure"
@@ -194,7 +194,7 @@ def _alignment_report(
     print("  extracted covers_features:")
     for p in graph["phases"]:
         print(f"    phase {p.get('phase_number')}: {p.get('covers_features') or []}")
-    findings = _check_feature_coverage(graph, catalog) + _check_declaration_alignment(
+    findings = check_feature_coverage(graph, catalog) + check_declaration_alignment(
         graph, phases, catalog
     )
     if not findings:
@@ -236,7 +236,7 @@ def main() -> int:
     if args.graph:
         graph = json.loads(args.graph.read_text(encoding="utf-8"))
     elif args.llm:
-        graph = _extract_graph(phases, catalog, {"model": args.model})
+        graph = extract_graph(phases, catalog, {"model": args.model})
         if graph is None:
             print("\n  extraction failed or unparseable.", file=sys.stderr)
         elif args.save_graph:

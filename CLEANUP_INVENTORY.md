@@ -11235,7 +11235,7 @@ Replaces §60.6's table where they differ; its per-commit inheritance stands, as
 | 7o | type hygiene — the 58 | (i)1 | not ruled |
 | 7p | §59.6 items 9–10 | PLR2004; the 13 E501 in `scripts/e2e_agentifier.py` | not ruled |
 | 7q | **the agentifier eight with the `yield from` backlog — last** | (e) | plan mode, `ultrathink` |
-| close-out | the plan's audit | `CLEANUP_REPORT.md`, docs, the inventory fold; root-siblings, batch 11's three names and (c)'s three recorded for Phase 8 | — |
+| close-out | the plan's audit | `CLEANUP_REPORT.md`, docs, the inventory fold; root-siblings, batch 11's three names, (c)'s three and the five-way `revision_delta` dedupe (§67.11) recorded for Phase 8 | — |
 
 **A Phase 7 candidate beside 7k's `module_seam`, not for now (ruled at 7d, §64).** 7c's
 shadow flip (§63.1) retired the reason for the `sys.modules` idiom in `test_cost_summary.py`:
@@ -12602,6 +12602,184 @@ The gate also ran on the mechanical tree, before the corrections, with the same 
 - It leaves `_seed.py:10–11` and the `_format_*` glob, for the reasons in §67.3.
 - It does not consolidate the five `revision_delta`s. They are recorded here as a clash
   only.
+- It runs nothing over `evals/` beyond the compile and import check.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.
+
+### 67.11 Recorded at review, by 7h's commit
+
+- **§67.5's form is the standard.** Every later batch records the same four things for
+  each patch string:
+  - the module the string names;
+  - whether that module defines the function or re-exports it;
+  - its call sites there;
+  - the call site the patch lands on.
+
+  The alias string is the case check 4's two conditions were written to tell apart: a
+  re-export that is also a caller, and the caller the test actually drives.
+- **The five `revision_delta`s are one function written five times.** They were
+  token-compared at 7h, with each docstring set aside and comments and layout ignored:
+
+| Module | Lines | Signature | Body tokens | Docstring |
+|---|---|---|---:|---:|
+| `agentifier/_render.py` | 285–299 | `(vision: dict[str, Any] \| None) -> dict[str, Any] \| None` | 69 | 434 chars |
+| `agents/deployer.py` | 397–414 | the same | 69 | 648 chars |
+| `agents/designer.py` | 265–280 | the same | 69 | 515 chars |
+| `agents/phaser/_revision.py` | 36–53 | the same | 69 | 650 chars |
+| `agents/stack_advisor/_stack_shape.py` | 27–43 | the same | 69 | 589 chars |
+
+  All ten pairs have identical code and differing docstrings, so there is one distinct
+  body. Nothing the function does differs between the four agent modules and the
+  agentifier. Only the docstrings differ, each describing its own caller's use. **So this
+  is a dedupe, and one that PB should have caught** (the ruling's words; the record holds
+  no pass by that name). It is not a behavioural divergence nobody has decided on.
+
+  **Recorded for Phase 8 as a dedupe** in §60.7(j)'s close-out row. It is out of scope for
+  Phase 7, as ruled at 7g. The entry states what kind of item it is: the bodies are
+  identical, so reducing them to one definition changes no behaviour, and what needs
+  merging is the five docstrings. The script is `body_compare.py` in the session
+  scratchpad. It runs `tokenize` on each body after the docstring statement, dropping
+  comments, NL, NEWLINE, INDENT and DEDENT.
+
+## 68. Phase 7h — rename batch 8: `agents._seam_check`, seven names
+
+§60.7(j) 7h: one commit, default mode, under the rename check and the token check. Seven
+private names in `spec4.agents._seam_check` take their underscore-free spelling. The module
+keeps its own underscore; renaming modules is not part of Phase 7. The batch has no
+documented exception.
+
+### 68.1 What landed
+
+| Private | Public | Tests / `src/` / `evals/` | Net |
+|---|---|---:|---|
+| `_check_declaration_alignment` | `check_declaration_alignment` | 15 / 2 / 2 | tier-B `TestDeclarationAlignment`, `TestDeclarationAlignmentTwoArraySchema` |
+| `_check_table_provenance` | `check_table_provenance` | 5 / 2 / 0 | |
+| `_parse_graph` | `parse_graph` | 5 / 2 / 0 | |
+| `_check_feature_coverage` | `check_feature_coverage` | 5 / 3 / 2 | tier-B `TestDeclarationAlignment` |
+| `_format_advisory` | `format_advisory` | 4 / 2 / 0 | tier-B `TestDeclarationAlignment` |
+| `_check_endpoint_provenance` | `check_endpoint_provenance` | 3 / 2 / 0 | |
+| `_extract_graph` | `extract_graph` | 7 / 2 / 2 | tier-B `TestExtractGraphTransport`; three `patch.object` strings (§68.3) |
+| | | **44 / 15 / 6** | as §60.2 recorded; §55's figure is 39 |
+
+- **Footprint: 3 files.** They are `agents/_seam_check.py`, `tests/test_seam_check.py` and
+  `evals/phaser/declaration_alignment.py`. All 65 occurrences at `f31e221` were rewritten.
+  No whole-file entry is involved, so no alias keeps an old spelling. That gives 64
+  insertions and 64 deletions (one line holds two names). `ruff format` changed nothing,
+  and the longest added line is 85 columns. Nothing in `scripts/`, the docs or `.spec4/`
+  names any of the seven.
+- **Outside the gate: `evals/phaser/declaration_alignment.py`.** The batch touches its
+  import block (`:65–67`) and its uses at `:197` and `:239`. The probe compiles, and its
+  three imports resolve.
+- **String references: the three `patch.object` strings only** (§68.3). `_seam_check.py`
+  has no `__all__`.
+- **No module-path occurrences, and no shadow flip.** None of the seven is a module name.
+- **D-number comments: one, updated in this commit by the substitution.** The
+  `TestExtractGraphTransport` docstring names ``extract_graph`` at `test_seam_check.py:386`
+  and cites D-PH9 at `:387`. It stays true.
+- **`app.py` (D-LR1): untouched.**
+- **Node ids unchanged.** `TestParseGraph` and `TestExtractGraphTransport` hold new names
+  only inside longer identifiers. 4,200 collected.
+
+### 68.2 The collision check, in the standing form
+
+Four `check_*` names and the `parse_graph` / `extract_graph` pair make this a family. The
+check ran on all seven, before the substitution, at `f31e221`:
+
+| Form | Result |
+|---|---|
+| the plain form as a token, in identifiers and strings | **no occurrence** of any of the seven |
+| hyphen, spaced and cased forms | **no collision.** The only hits are the class names `TestParseGraph` (`test_seam_check.py:41`) and `TestExtractGraphTransport` (`:385`) |
+| Dash ids | **none** |
+| callback and function names of the pattern | **no other definition** in `src/`, `tests/`, `scripts/` or `evals/` |
+
+### 68.3 Check 4: the module, not the package
+
+`_seam_check` is a module whose name starts with an underscore, inside the `spec4.agents`
+package. The ruling asked for confirmation, before the substitution, that none of the
+three strings resolves the function through the package instead of the module.
+
+- **The patched object is the module.** The test binds it with
+  `from spec4.agents import _seam_check` (`test_seam_check.py:11`). At runtime that name
+  is the submodule object itself: `spec4.agents._seam_check is` the imported module.
+- **The package has nothing to patch.** `spec4.agents` has no `_extract_graph` attribute,
+  and `agents/__init__.py` binds neither `_seam_check` nor `_extract_graph`.
+- **Each string names the defining module**, and the patch lands on its one call site:
+
+| String | Form | Module named | Defines or re-exports | The patch lands on |
+|---|---|---|---|---|
+| `tests/test_seam_check.py:148` | `patch.object` | `spec4.agents._seam_check` | defines it | `run_seam_check@482` |
+| `tests/test_seam_check.py:153` | `patch.object` | `spec4.agents._seam_check` | defines it | `run_seam_check@482` |
+| `tests/test_seam_check.py:162` | `patch.object` | `spec4.agents._seam_check` | defines it | `run_seam_check@482` |
+
+No other spec4 module calls the function.
+- **The strings are outside the net.** They sit in `TestFormatAndEntry` (135–166), which is
+  not a listed class. So check 4 applies to them as the standing check, not as part of the
+  petition.
+- **Both runs passed.** Check 4 ran before the substitution on the old names, and after it
+  on the changed lines (`--base HEAD`), and all three strings passed both times.
+- **A line-keying bug, fixed at 7h.** The run before the substitution printed the wrapped
+  call at `:152`, the call's first line. The string itself is at `:153`. The first run
+  after the substitution then missed that string, because its changed-lines filter holds
+  `:153`, not `:152`. `patch_resolve.py` now keys `patch.object` targets to the string's
+  own line, and the re-run reports all three. 7e's and 7g's `patch.object` strings are
+  single-line calls, so their results do not change.
+
+### 68.4 The rename check and the token check — both clean
+
+- **Rename check:** the §60.2 shell function, run with `P=HEAD` over the working tree,
+  printed `rename check: EMPTY`, and the scratch implementation printed the same.
+- **Token check:** `hunks 53; old->new token substitutions 65; layout 0; §54.7 aliases 0;
+  OTHER 0`.
+
+The batch has no documented exception and no forced correction.
+
+### 68.5 Petitions, by kind
+
+| Kind | Where | Result |
+|---|---|---|
+| §60.3, tier-B | `test_seam_check.py::TestDeclarationAlignment` (167–278): 11 hunks, at `:207`, `:218`, `:237`, `:243`, `:247`, `:249`, `:255`, `:260`, `:264–265`, `:272` and `:277` | reverse diff empty inside the class · assertions token-identical · off-limits clean · check 4 has no patch string to check — **passes** |
+| §60.3, tier-B | `::TestDeclarationAlignmentTwoArraySchema` (281–382): 5 hunks, at `:314`, `:338`, `:343`, `:362` and `:382` | **passes** |
+| §60.3, tier-B | `::TestExtractGraphTransport` (385–443): 4 hunks, at `:386` (the D-PH9 docstring), `:406`, `:422` and `:435` | **passes** |
+
+Each of the 20 hunks is a one-line name substitution.
+
+### 68.6 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | none in the diff |
+| 456 node ids | **456 / 456 collect**; 4,200 collected |
+| 19 tier-B files / 33 classes | **1 file with hunks.** Its 20 hunks inside listed classes are §68.5's. The other 18 lie outside any listed class and are reported below in §51.6's template |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_seam_check.py` | `TestDeclarationAlignment` **167–278**; `TestDeclarationAlignmentTwoArraySchema` **281–382**; `TestExtractGraphTransport` **385–443** | 38 — 14–19, 44, 51, 54, 57, 63, 74, 85, 90, 98, 110, 124, 132, 137, 144, 148, 153, 162, 207, 218, 237, 243, 247, 249, 255, 260, 264–265, 272, 277, 314, 338, 343, 362, 382, 386, 406, 422, 435 | **INSIDE: 20** — 207–277 → `TestDeclarationAlignment`, 314–382 → `TestDeclarationAlignmentTwoArraySchema`, 386–435 → `TestExtractGraphTransport` |
+
+### 68.7 Record changes carried in this commit
+
+- **§67.11, recorded at review of 7g.** It covers two things:
+  - §67.5's per-string form is the standard;
+  - the five `revision_delta`s are token-identical.
+- **The close-out row now names the dedupe.** §60.7(j)'s close-out row lists the five-way
+  `revision_delta` dedupe among the items recorded for Phase 8.
+- **Both sections went in through the add-only step.** The guard finds no deleted blank
+  line.
+
+### 68.8 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped` (exit 0); 4,200 collected |
+| Coverage | same run | `TOTAL 12421 stmts, 891 miss, 93%` — identical to §60.1, at the ≤ 891 ceiling |
+
+### 68.9 What this sub-phase did not do
+
+- It changes no test beyond the substitution, and it has no exception.
+- It leaves the module name `_seam_check` as it is.
+- It dedupes nothing (§67.11).
 - It runs nothing over `evals/` beyond the compile and import check.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.

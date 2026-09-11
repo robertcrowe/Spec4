@@ -119,7 +119,7 @@ def _feature_lines(
     return "\n".join(lines), features
 
 
-def _parse_graph(raw: str) -> dict[str, Any] | None:
+def parse_graph(raw: str) -> dict[str, Any] | None:
     """Tolerant parse of the extractor's JSON object. None on failure.
 
     Mirrors the sub-agent parse discipline: try the whole string, then a
@@ -168,7 +168,7 @@ def _parse_graph(raw: str) -> dict[str, Any] | None:
     return None
 
 
-def _extract_graph(
+def extract_graph(
     phases: list[dict[str, Any]],
     ai_features: dict[str, Any] | None,
     llm_config: dict[str, Any],
@@ -202,10 +202,10 @@ def _extract_graph(
         session=session,
         seed=(session or {}).get("_stream_received_chars") or 0,
     )
-    return _parse_graph(raw.strip())
+    return parse_graph(raw.strip())
 
 
-def _check_table_provenance(graph: dict[str, Any]) -> list[SeamFinding]:
+def check_table_provenance(graph: dict[str, Any]) -> list[SeamFinding]:
     """Every read table must be created earlier-or-same; flag orphans."""
     findings: list[SeamFinding] = []
     creators = _table_creators(graph)
@@ -277,7 +277,7 @@ def _unread_table_findings(
             )
 
 
-def _check_endpoint_provenance(graph: dict[str, Any]) -> list[SeamFinding]:
+def check_endpoint_provenance(graph: dict[str, Any]) -> list[SeamFinding]:
     """Every consumed endpoint should be defined by some phase."""
     findings: list[SeamFinding] = []
     producers = {
@@ -299,7 +299,7 @@ def _check_endpoint_provenance(graph: dict[str, Any]) -> list[SeamFinding]:
     return findings
 
 
-def _check_feature_coverage(
+def check_feature_coverage(
     graph: dict[str, Any], ai_features: dict[str, Any] | None
 ) -> list[SeamFinding]:
     """Every selected (steel_thread/mvp) feature must be covered by a phase."""
@@ -358,7 +358,7 @@ def _declared_by_phase(phases: list[dict[str, Any]]) -> dict[int, set[str]]:
     return out
 
 
-def _check_declaration_alignment(
+def check_declaration_alignment(
     graph: dict[str, Any],
     phases: list[dict[str, Any]],
     ai_features: dict[str, Any] | None,
@@ -409,7 +409,7 @@ def _check_declaration_alignment(
         }
 
     # A feature implemented by no phase at all is already reported by
-    # _check_feature_coverage; don't also accuse its declaring phase of
+    # check_feature_coverage; don't also accuse its declaring phase of
     # over-declaring it.
     implemented_anywhere: set[str] = set()
     for ids in extracted.values():
@@ -444,7 +444,7 @@ def _check_declaration_alignment(
     return findings
 
 
-def _format_advisory(findings: list[SeamFinding]) -> str:
+def format_advisory(findings: list[SeamFinding]) -> str:
     surfaced = [f for f in findings if f.severity in ("high", "medium")]
     if not surfaced:
         return ""
@@ -479,7 +479,7 @@ def run_seam_check(
         if not phases:
             return ""
 
-        graph = _extract_graph(phases, ai_features, llm_config, session)
+        graph = extract_graph(phases, ai_features, llm_config, session)
         if graph is None:
             if _DEV_MODE:
                 print(
@@ -489,10 +489,10 @@ def run_seam_check(
             return ""
 
         findings = (
-            _check_table_provenance(graph)
-            + _check_endpoint_provenance(graph)
-            + _check_feature_coverage(graph, ai_features)
-            + _check_declaration_alignment(graph, phases, ai_features)
+            check_table_provenance(graph)
+            + check_endpoint_provenance(graph)
+            + check_feature_coverage(graph, ai_features)
+            + check_declaration_alignment(graph, phases, ai_features)
         )
 
         if _DEV_MODE:
@@ -505,7 +505,7 @@ def run_seam_check(
             if not findings:
                 print("[phaser-seam] no findings", flush=True)
 
-        return _format_advisory(findings)
+        return format_advisory(findings)
 
     except Exception as exc:  # never strand the phases
         if _DEV_MODE:
