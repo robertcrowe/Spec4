@@ -1,0 +1,70 @@
+Phase 0 (1d1dcbd), verbatim from CLEANUP_INVENTORY.md: the test summary from §1,
+and the per-module table from §1.3.
+
+uv run pytest --cov=spec4 --cov-report=term-missing -q
+1 failed, 4116 passed, 1 skipped in 166.64s
+
+Name                                            Stmts   Miss  Cover   Missing
+-----------------------------------------------------------------------------
+src/spec4/__init__.py                               5      2    60%   5-6
+src/spec4/agentifier/__init__.py                    0      0   100%
+src/spec4/agentifier/agentifier.py               1413    165    88%   310-319, 328-330, 400-408, 417-429, 445-478, 496-506, 758, 791, 795-796, 824-832, 836-839, 1151, 1159-1160, 1219-1223, 1254-1255, 1388-1395, 1552, 1659-1667, 1671, 1718-1720, 1727, 1752, 1771, 1818, 1909-1920, 1994, 2125-2134, 2205-2210, 2230-2260, 2323-2328, 2372, 2390, 2569, 2766, 2834, 2892, 2905-2911, 2961-2968, 2985, 3008, 3032, 3099-3103, 3128-3140, 3151, 3195-3197, 3415, 3428-3429, 3464, 3487, 3501
+src/spec4/agentifier/composer.py                  126      3    98%   141, 236, 294
+src/spec4/agentifier/cross_cutting_analyst.py     118      1    99%   261
+src/spec4/agentifier/grounding.py                  85      3    96%   75, 99, 122
+src/spec4/agentifier/infra_expander.py             42      0   100%
+src/spec4/agentifier/linker.py                    156      0   100%
+src/spec4/agentifier/panel_closure.py              53      2    96%   123-124
+src/spec4/agentifier/pattern_loader.py            162     18    89%   132, 143, 170, 185, 194, 202, 230, 245, 254, 260, 267, 289, 295, 326, 358, 407-408, 412
+src/spec4/agentifier/prioritizer.py               178      3    98%   230, 238, 491
+src/spec4/agentifier/reference_verifier.py         36      0   100%
+src/spec4/agentifier/requires_reconciler.py       247     11    96%   126, 162, 174, 180, 195, 235, 241, 246, 251, 344, 464
+src/spec4/agentifier/scout.py                     136      0   100%
+src/spec4/agentifier/spec_drafter.py              101      1    99%   320
+src/spec4/agentifier/subagents.py                  73      1    99%   224
+src/spec4/agentifier/tier_analyst.py              131      3    98%   233, 257, 379
+src/spec4/agents/__init__.py                        0      0   100%
+src/spec4/agents/_code_review_schema.py            28      0   100%
+src/spec4/agents/_image_probe.py                   16      0   100%
+src/spec4/agents/_manifest.py                     119      6    95%   64, 69-71, 127, 209
+src/spec4/agents/_phase_coverage.py               132      2    98%   136, 338
+src/spec4/agents/_phase_schema.py                  27      2    93%   165, 169
+src/spec4/agents/_seam_check.py                   173     11    94%   144, 225, 336, 397, 476, 490-497, 503
+src/spec4/agents/_tool_probe.py                    16      0   100%
+src/spec4/agents/_utils.py                       1092     71    93%   82, 85-87, 118-120, 125-127, 132-137, 139-149, 151-166, 246, 440, 514, 544-552, 555, 675, 678, 697-703, 773, 777, 783, 788, 809, 813, 817, 1104, 1134-1136, 1139-1141, 1197, 1474, 1701, 1814, 1911, 1949, 2027, 2121, 2134, 2205, 2386, 2460, 2474
+src/spec4/agents/brainstormer.py                  279     26    91%   313, 490-491, 500, 522, 526-529, 540-543, 561-567, 647-648, 762-763, 844-849
+src/spec4/agents/code_scanner.py                  622     68    89%   154-155, 193, 208, 235, 238-239, 263-264, 284, 291, 313-314, 997-998, 1004, 1017, 1023, 1028, 1042-1045, 1051, 1062, 1073-1080, 1107, 1117, 1129, 1145, 1166, 1181, 1209, 1261, 1266-1267, 1289-1290, 1293, 1321-1325, 1353-1354, 1386-1387, 1406, 1418, 1420, 1427-1428, 1434-1437, 1452, 1457-1460
+src/spec4/agents/deployer.py                      195      3    98%   376, 591-592
+src/spec4/agents/designer.py                      252     31    88%   243-244, 525-526, 570, 572, 597-598, 616-626, 634-660
+src/spec4/agents/feature_speccer.py               224      6    97%   47, 296, 436-437, 516, 541
+src/spec4/agents/phaser.py                        301      8    97%   943-944, 1154, 1181, 1272, 1317, 1371, 1387
+src/spec4/agents/stack_advisor.py                 399     35    91%   769, 775, 826, 874, 891, 901-903, 924, 940-941, 958-959, 976-977, 983-984, 1000-1001, 1020, 1027-1028, 1031-1032, 1077-1078, 1081-1082, 1095, 1111-1113, 1122, 1139, 1177-1178
+src/spec4/app.py                                   72      8    89%   461-468, 472
+src/spec4/app_constants.py                         23      0   100%
+src/spec4/callbacks/__init__.py                   681    157    77%   77, 655, 669-670, 681-684, 695-700, 710-712, 723-731, 751, 769, 772, 813-821, 837-839, 850, 908, 954-956, 1104, 1141, 1143, 1317, 1338, 1395, 1454-1456, 1480, 1552, 1696-1702, 1714-1726, 1844-1873, 1910, 1952, 1974-1976, 1982, 1993, 2013, 2086, 2150-2152, 2173-2175, 2186-2188, 2199-2201, 2212-2214, 2224-2226, 2235, 2241-2254, 2264-2266, 2276-2278, 2288-2290, 2300-2302, 2312-2314, 2428-2430, 2441-2449, 2459-2466
+src/spec4/callbacks/designer.py                   427    113    74%   171-173, 191-199, 304, 316, 318, 333, 340, 365-366, 444, 468, 470, 475, 486, 500-502, 506-507, 526-528, 539-541, 559, 629-631, 642-649, 659-668, 689-721, 777, 803, 857, 866-867, 898-918, 930-932, 959, 990-992, 1022-1024, 1034-1036, 1052, 1076, 1079, 1111, 1193-1224, 1255, 1337, 1365
+src/spec4/design_manifest.py                       80      0   100%
+src/spec4/feature_specs.py                        339     83    76%   167, 178, 182, 194, 198, 218, 223, 262, 266, 269, 284, 296, 318-319, 331, 335, 338, 361, 365, 368, 385-411, 415-446, 509, 512, 562, 592
+src/spec4/layouts/__init__.py                      70      7    90%   137-138, 327, 329, 331, 375, 421
+src/spec4/layouts/_agent_rows.py                   86      3    97%   203, 224, 231
+src/spec4/layouts/_artifact_view.py               196      7    96%   589, 773-778
+src/spec4/layouts/_chat.py                        181      2    99%   222, 307
+src/spec4/layouts/_llm_gate.py                     55      0   100%
+src/spec4/layouts/_round_cost.py                   70      0   100%
+src/spec4/layouts/_round_tree.py                  113      0   100%
+src/spec4/layouts/_setup.py                        70      2    97%   373, 375
+src/spec4/layouts/_shared.py                       83      0   100%
+src/spec4/layouts/_status_bar.py                   45      0   100%
+src/spec4/layouts/designer.py                     158     12    92%   342, 670-685, 687-688, 693
+src/spec4/llm.py                                  342     17    95%   309, 335, 355, 390, 490-491, 564-569, 656, 962-963, 973, 980
+src/spec4/llm_selection.py                        101      0   100%
+src/spec4/project_manager.py                      758     30    96%   147-148, 209-210, 321, 575, 603, 605, 697, 758, 850-851, 891, 912, 972-973, 1028-1029, 1056-1057, 1094-1095, 1151-1152, 1435-1436, 1547, 1583-1584, 1881
+src/spec4/providers.py                             87     15    83%   80, 105-108, 124-128, 171-174, 212-223, 236
+src/spec4/session.py                              185     34    82%   211-222, 298-299, 301-303, 309-316, 320-321, 327, 449-452, 484, 491-505, 609
+src/spec4/stack_routing.py                        101      2    98%   116, 178
+src/spec4/streaming.py                            192     20    90%   26-27, 31-34, 87, 93, 111, 175-176, 196, 235, 244, 254-260, 270, 310-311
+src/spec4/usage_report.py                          93      7    92%   30, 35, 39, 52, 63, 129, 178
+src/spec4/version_check.py                         42      0   100%
+src/spec4/websearch.py                             89     19    79%   179-184, 188-206
+-----------------------------------------------------------------------------
+TOTAL                                           11676   1020    91%

@@ -5,6 +5,9 @@ These are the eleven checks behind the proofs in `CLEANUP_INVENTORY.md`, the che
 so that a claim like "this commit only renamed" or "this refactor changed nothing
 observable" rests on an empty diff or a matching trace, not on reading.
 
+A twelfth tool, `remeasure.py`, proves nothing about a change. It re-runs Phase 0's
+measurements on two revisions, and it is described after the eleven.
+
 **They sit outside the gate.** `uv run ruff check .` and `ruff format` cover them. mypy
 (`uv run mypy src/`), pytest (`testpaths = ["tests"]`), coverage and vulture do not.
 Whether to bring them inside is Phase 8's question (`CLEANUP_REPORT.md` §5.4).
@@ -228,12 +231,55 @@ uv run python scripts/cleanup/mutate.py scripts/cleanup/data/cases_7q.json probe
 **First used:** 7k (§71), under §60.5's harness rule. Every seam and split through 7q
 used it.
 
+## The twelfth tool: Phase 0, re-measured
+
+**Proves:** nothing about a single change. It re-runs Phase 0's measurements
+(`CLEANUP_INVENTORY.md` §1–§8) on two revisions and prints them side by side, as the
+tables of `CLEANUP_REPORT.md` §7:
+- the gate;
+- coverage per module;
+- dead code;
+- dependencies;
+- complexity and size;
+- the import graph.
+
+Both revisions are exported with `git archive`, so the working tree is only read. Each
+measurement is taken on both with the same tool: vulture and deptry pinned to Phase 0's
+versions, and the repo's ruff and mypy.
+
+```sh
+uv run python scripts/cleanup/remeasure.py 1d1dcbd 6956aca \
+    --cov-base scripts/cleanup/data/coverage_1d1dcbd.txt \
+    --cov-head scripts/cleanup/data/coverage_85a9cb6.txt \
+    --families scripts/cleanup/data/families_phase4.json
+```
+
+- **Coverage comes from saved output** of `pytest --cov=spec4 --cov-report=term-missing`.
+  `--run-coverage DIR` runs the suite in any export that has none, and saves the output
+  in DIR.
+- **`--families` compares split modules** as the sum of what each became.
+- **Phase 8's close-out** is the same comparison against this tree:
+  `remeasure.py 6956aca HEAD --cov-base scripts/cleanup/data/coverage_85a9cb6.txt
+  --run-coverage /outside/dir`.
+- **On `1d1dcbd` it reproduces Phase 0's recorded figures,** with one exception: vulture
+  finds 70 lines where §3.1 recorded 71. The Phase 0 tree has no whitelist, so its
+  whitelisted vulture cell is §3.1's 32, from the record.
+- **`--run-coverage` on `1d1dcbd` re-runs Phase 0's own suite, and reproduces §1
+  exactly:** 1 failed (§1.1's test), 4116 passed, 1 skipped; 11,676 statements and
+  1,020 missed; every per-module row of §1.3.
+
+**First used:** the Phase 7 close-out, for `CLEANUP_REPORT.md` §7. There it ran from
+the scratchpad as `phase0_measure.py`, and the tool calls were run by hand.
+
 ## Data
 
 | File | What it is |
 |---|---|
 | `data/floor.json` | The floor: the seven whole-file entries, the 85 named tier-A and ordering ids, and the 183 tier-B ids. It was derived at this commit from the Phase 6 check's data (`dnum.json` and its fixed lists), with the same selection. Verified equal: the same 188 / 85 / 183 / 456, and the petition's tier maps identical |
 | `data/cases_7q.json` | 7q's ten mutation cases (§79.1–79.4) and 7q0's two probes (§79.0). Anchors are text on the tree each case was written for, and a stale anchor is refused, never approximated. `probe_B`'s anchor is 7q0's tree and matches nothing at HEAD. `7q1` still lists `test_ai_features_json_schema_complete`, a misprediction that was accepted at review of 7q1 |
+| `data/coverage_1d1dcbd.txt` | Phase 0's test summary and per-module coverage, verbatim from `CLEANUP_INVENTORY.md` §1 and §1.3 |
+| `data/coverage_85a9cb6.txt` | The same output at `85a9cb6`, whose `src/` and `tests/` are also `6956aca`'s. It is the base for Phase 8's comparison |
+| `data/families_phase4.json` | Phase 4's splits (§16–§26): each Phase 0 module, and the modules it became |
 | `data/rows_7o.json` | 7o's row map: 67 rows, 58 of them "genuinely typeable", with line numbers at `4acdffd` |
 
 ## Replayed when committed
@@ -255,6 +301,7 @@ Every check was run against a recorded result before this commit:
 | Floor | HEAD | 456/456 |
 | Petition | 7q3 | PASS |
 | Add-only append and guard | the record | 0 deleting hunks; a blank-line run refused |
+| Phase 0, re-measured | `1d1dcbd` against `6956aca` | every table in `CLEANUP_REPORT.md` §7 |
 
 The two writers were run for real in a scratch clone:
 - refusal on a dirty tree, on a stale anchor, and on an output inside the repo;

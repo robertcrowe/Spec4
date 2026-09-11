@@ -207,6 +207,7 @@ names given in parentheses.
 | **Floor and off-limits, in both halves** | `floor_check.py` with `data/floor.json` (`floorcheck2.py` with `dnum.json`); `petition_check.py` | The floor: all 456 protected node ids still collect. They are tier A (273, the seven whole-file entries among them) and tier B (183, in 33 classes). A change touching them passes §54.7's golden petition or §60.3's rename petition | §50.3, §50.5(a); petitions §54.7 (6d) and §60.3 |
 | **The add-only append and its guard** | `append_section.py` | A record section is appended byte-for-byte, and the prior record is verified as a prefix. `--guard` lists every deleting hunk and fails on a deleted blank line | 7d (§64.10); the guard standing from 7e |
 | **Mutation harnesses** | `mutate.py` with `data/cases_7q.json` (`mutate_7*.py`, and 7q0's `probe_7q.py`) | One anchored mutation that must match exactly once, the full suite, predicted failures, a sha256-checked restore | the §60.5 harness rule; the form in 7k–7q |
+| **Phase 0, re-measured** | `remeasure.py`, with `data/coverage_*.txt` and `data/families_phase4.json` (`phase0_measure.py`) | Phase 0's measurements on two revisions, side by side: the gate, coverage per module, dead code, dependencies, complexity, size and the import graph. It proves nothing about a single change | the Phase 7 close-out (§7) |
 
 ## 5. Phase 8's list
 
@@ -329,6 +330,21 @@ one. That one is the weakness Phase 0 found first.**
 
 ### 7.2 How it was measured
 
+- **The tables come from one command:**
+
+  ```sh
+  uv run python scripts/cleanup/remeasure.py 1d1dcbd 6956aca \
+      --cov-base scripts/cleanup/data/coverage_1d1dcbd.txt \
+      --cov-head scripts/cleanup/data/coverage_85a9cb6.txt \
+      --families scripts/cleanup/data/families_phase4.json
+  ```
+
+  The command reads coverage from the two data files. `data/coverage_1d1dcbd.txt` is §1
+  and §1.3, verbatim. With `--run-coverage`, it re-runs Phase 0's own suite instead,
+  and that run reproduces §1 and §1.3 exactly: 1 failed, 4116 passed, 1 skipped, and
+  every per-module row. The one input the command cannot measure is vulture's
+  whitelisted count at Phase 0, because that tree has no whitelist; that cell is
+  §3.1's 32.
 - **The tool versions are Phase 0's:** ruff 0.15.12, vulture 2.16 and deptry 0.25.1, all
   run through `uvx` as Phase 0 ran them. Each tool was run on both trees, so each
   before/after pair comes from the same tool; the Phase 0 tree was extracted with
@@ -349,7 +365,8 @@ one. That one is the weakness Phase 0 found first.**
   - `from P import m` is an edge to P as well as to `P.m`.
 - **One figure does not reproduce exactly.** Vulture finds 70 lines on the Phase 0 tree
   without the whitelist, where §3.1 recorded 71.
-- **Coverage was not re-run on the Phase 0 tree.** Its per-module figures are §1.3's.
+- **Coverage was re-run on the Phase 0 tree** by the command's `--run-coverage`, and it
+  matches §1.3 row for row.
 - **Runtime is not compared with Phase 0.** The Phase 0 figure is from another session
   and the comparison would not be paired (§3's rule). §1's paired delta is the runtime
   figure.
@@ -531,7 +548,7 @@ what the gate accepts still counts:
 | `src/spec4/` | 60 files, 36,535 lines | 92 files, 40,284 lines |
 | Files over 1,300 lines | 8 | 2: `agentifier/agentifier.py` 2,874, `agents/_feature_context.py` 1,329 |
 | Longest functions | `_run_catalog_phase` 659, `phaser.run` 499, `deployer.run` 343, `brainstormer.run` 236 | `deployer.run` 185, `code_scanner.run` 175, `stream_turn` 174, `chat_layout` 163 |
-| `tests/` | 120 files, 53,705 lines | 129 files, 56,534 lines |
+| `tests/` | 120 files, 53,708 lines | 129 files, 56,534 lines |
 | Largest test file | `test_agents.py`, 5,284 lines, 333 functions | `test_agents.py`, 5,268 lines, 332 functions |
 
 - **`agentifier/agentifier.py` is still the largest file.** 4i kept the generator flow
