@@ -41,7 +41,8 @@ from .test_agentifier_orchestrator import (
     mock_litellm_stream,
 )
 
-_MODULE = pathlib.Path(agentifier.__file__)
+_PACKAGE = pathlib.Path(agentifier.__file__).parent
+_KEY = re.compile(r'"(agentifier_[a-z_]+)"')
 
 _CANDIDATE = Candidate(
     name="smart_search",
@@ -66,19 +67,58 @@ _ANALYSIS = TierAnalystOutput(
 # ---------------------------------------------------------------------------
 
 
+def _package_keys() -> tuple[set[str], list[str]]:
+    """Every "agentifier_*" literal in the spec4.agentifier package, and the
+    modules read — the whole package, so a key whose writer moves into a
+    sibling module is still seen."""
+    modules = sorted(_PACKAGE.rglob("*.py"))
+    keys: set[str] = set()
+    for path in modules:
+        keys |= set(_KEY.findall(path.read_text()))
+    return keys, [p.relative_to(_PACKAGE).as_posix() for p in modules]
+
+
+def _flow_keys(session: dict[str, Any]) -> dict[str, Any]:
+    """The reset's universe on one session: every agentifier_* key, and ai_catalog."""
+    return {
+        key: value
+        for key, value in session.items()
+        if key.startswith("agentifier_") or key == "ai_catalog"
+    }
+
+
 class TestResetCompleteness:
     def test_every_session_key_is_accounted_for(self) -> None:
         """Drift guard. A new agentifier_* key must join one of the two
         collections or be an explicit exclusion — otherwise it silently
-        survives a restart, which is how the revision block was left behind."""
-        used = set(re.findall(r'"(agentifier_[a-z_]+)"', _MODULE.read_text()))
+        survives a restart, which is how the revision block was left behind.
+        The whole package is read, so a key written from a sibling module is
+        seen too."""
+        used, modules = _package_keys()
         covered = set(_RESTART_DEFAULTS) | set(_RESTART_POP) | {"agentifier_state"}
-        assert used - covered == set()
+        assert used - covered == set(), f"modules scanned: {modules}"
 
     def test_no_dead_entries(self) -> None:
-        used = set(re.findall(r'"(agentifier_[a-z_]+)"', _MODULE.read_text()))
+        used, modules = _package_keys()
         listed = (set(_RESTART_DEFAULTS) | set(_RESTART_POP)) - {"ai_catalog"}
-        assert listed - used == set()
+        assert listed - used == set(), f"modules scanned: {modules}"
+
+    def test_a_restart_after_a_real_flow_leaves_nothing_behind(self) -> None:
+        """The consequence the drift guard stands in for, observed: a draw run
+        to completion and then reset leaves the flow's keys exactly as a reset
+        of an untouched session leaves them."""
+        untouched = _session()
+        reset_agentifier_flow(untouched)
+
+        session = _session()
+        with _mocked_draw():
+            collect(agentifier.run(None, session, _LLM_CONFIG))
+            session["agentifier_breadth_selection"] = []
+            collect(agentifier.run("select", session, _LLM_CONFIG))
+        assert session["agentifier_state"] == STATE_AGENTIFIER_COMPLETE
+        reset_agentifier_flow(session)
+
+        assert _flow_keys(session) == _flow_keys(untouched)
 
     def test_defaults_match_the_session_defaults(self) -> None:
         """Restored values must be the documented session shape, not guesses."""

@@ -11086,6 +11086,18 @@ Other tests failing alongside it is not a defect; it is evidence that the harm i
 inverted reading, that nothing else may fail, belongs to 6f's redundancy check (§56.1), where
 a second catcher was the point. It does not apply to a seam's proof.
 
+*The token check's exit status, recorded at review of 7n.* `forward_token_check.py` exits 1
+whenever it reports an OTHER line.
+- **On a rename batch with no documented exception, that exit is a real failure.**
+- **On a seam commit it is informational.** A seam's contract docstring and its new test are
+  OTHER by definition, and the report shows them in full.
+- **A chain must not stop on it.** At 7n2 it cut the post-commit checks short (§75.8).
+- **A later session must not "fix" it by making the check exit 0 on OTHER.** That would blind
+  the check on rename batches, where OTHER is the thing it exists to catch.
+
+Chains run under `bash -uo pipefail`, with an explicit stop on each hard failure. `set -e`
+has no effect in this tool's shell (§73.10).
+
 | # | Sub-phase | Scope | Commits | The check that proves it | Petition |
 |---|---|---|---:|---|---|
 | 7a | Rename batch 1 — `session` | 5 names, 281 sites (6 with `_load_working_dir`, if §60.4's reading is taken); `app.py:26, 92, 387` | 1 | rename check; gate | §54.7 × 3 whole-file entries; §60.3 × 2 files (3 tier-A nodes; +1 in `test_session.py` with `_load_working_dir`) |
@@ -11282,12 +11294,19 @@ Replaces §60.6's table where they differ; its per-commit inheritance stands, as
 | — | batch 11 — `project_manager` | nothing to rename, (f); no commit | — |
 | 7k | the `_usage.py` seam, with `directory_opens` | (i)2 | plan mode, `ultrathink` |
 | 7l | M8 | (i)3 | not ruled |
-| 7m | §59.6 item 11 — `test_try_again.py`'s source-text reader | must precede 7q, which may move code out of `agentifier.py` | not ruled |
+| 7m | §59.6 item 11 — `test_try_again.py`'s source-text reader | must precede 7q, which may move code out of `agentifier.py` | plan mode, high effort, auto mode; no `ultrathink`. 6c's framing: the question first (ruled at review of 7n) |
 | 7n | the three non-agentifier seams | §60.4, one commit each | plan mode, `ultrathink` |
-| 7o | type hygiene — the 58 | (i)1 | not ruled |
-| 7p | §59.6 items 9–10 | PLR2004; the 13 E501 in `scripts/e2e_agentifier.py` | not ruled |
-| 7q | **the agentifier eight with the `yield from` backlog — last** | (e) | plan mode, `ultrathink` |
+| 7o | type hygiene — the 58 | (i)1 | default mode (ruled at review of 7n) |
+| 7p | §59.6 items 9–10 | PLR2004; the 13 E501 in `scripts/e2e_agentifier.py` | default mode (ruled at review of 7n) |
+| 7q | **the agentifier eight with the `yield from` backlog — last** | (e) | plan mode, `ultrathink`, high effort: everything on (ruled at review of 7n) |
 | close-out | the plan's audit | `CLEANUP_REPORT.md`, docs, the inventory fold; root-siblings, batch 11's three names, (c)'s three, and the five-way `revision_delta` dedupe, a straight lift to `_utils` (§67.11), recorded for Phase 8 | — |
+
+**For the close-out report: a finding in its own right, ruled at review of 7n.** 7n promoted
+three seams. The one mutation that nothing in the suite could catch was about which dict an
+agent is handed (§74.4): `get_agent_gen` passing a copy to an agent's `run`, so that every
+write the turn makes is lost at finalise. That is the two-store session model's most basic
+invariant, and nothing pinned it until 7n2's identity test, not even the browser walk.
+`CLEANUP_REPORT.md` carries it as a finding, not as a line in 7n's list.
 
 **A Phase 7 candidate beside 7k's `module_seam`, not for now (ruled at 7d, §64).** 7c's
 shadow flip (§63.1) retired the reason for the `sys.modules` idiom in `test_cost_summary.py`:
@@ -14551,3 +14570,366 @@ last, in plan mode with `ultrathink` (§60.7(e)), after 7m, 7o and 7p in §60.7(
 - It changes no test beyond the substitution and the one new test.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.
+
+## 76. Phase 7m — `test_try_again.py`'s source-text reader: the question first, then the seam, then the mutation
+
+§60.7(j) 7m; §59.6 item 11; §50.2 kind 6. It was run in plan mode at high effort with auto
+mode, and without `ultrathink`, as ruled at review of 7n. It follows 6c's framing:
+- the question comes first: what behaviour the source-text assertion stands in for, and
+  whether `src/` still requires it;
+- then an assertion on the observable consequence, at a seam that exists today;
+- then the mutation, run against the old assertion as well as the new one.
+
+It has to precede 7q, because 7q may move code out of `agentifier.py`.
+
+### 76.1 The question, answered from `src/`
+
+**What the text scan stands in for: D-TA1, a restart leaves no Agentifier session key
+behind.** The requirement is written at `agentifier.py:2325–2338`: "One list, two consumers
+… so they must not drift apart — an earlier partial list left agentifier_revision* behind".
+
+**It is still required.** `reset_agentifier_flow` has two live callers:
+- `_handle_reentry` (`agentifier.py:2446`), for the stale-input rediscovery;
+- `on_breadth_try_again` (`callbacks/_chat.py:354`), for the developer's Try Again.
+
+Both need the flow returned to the state a fresh Scout draw expects. This is 6c's "if yes"
+branch, so **the tests are rewritten, not dropped.**
+
+### 76.2 What the text stood in for, measured read-only before any edit
+
+- **Two tests read the text, not one.** They are `test_every_session_key_is_accounted_for`
+  (every literal is in a collection) and `test_no_dead_entries` (every collection entry is
+  a literal). §59.6 item 11 says "one test"; §50.2's row gives the lines, `:44,74,79`.
+- **The set had not shrunk yet.** `agentifier.py` names 38 `"agentifier_*"` literals. The
+  whole `spec4.agentifier` package names the same 38, none uncovered and none dead.
+  `_ff_review.py`'s 9 literals and `_seed.py`'s 2 are subsets.
+- **Outside the package, no file adds a key.** `callbacks/_chat.py` has 6, `session.py` 22,
+  and the three `layouts` files 3, 6 and 1, all subsets. The one hit in `app_constants.py`
+  is `agentifier_complete`. That is a state value, not a key, and it shows the regex cannot
+  tell the two apart.
+- **`default_session` declares 22 `agentifier_*` keys, and all 22 are in the collections.**
+- **Traced by identity, no sibling-module function receives the session dict on either
+  driven flow.** The flows were draw then zero selection, and draw, one candidate and
+  continue. Every session write on those paths happens in `agentifier.py`. That is why the
+  file scan and a package scan agree today, and why 7q is what would make them differ.
+- **A behavioural universe is narrower than the text.** A recording dict driven through the
+  four practical flows reached 16 of the 38 keys:
+  - a fresh draw;
+  - a zero-selection completion;
+  - a re-entry;
+  - a Try Again followed by a redraw.
+
+  Nothing was written outside the text, and nothing written was uncovered by the reset. The
+  zero-selection flow alone writes all 16. The 22 it does not reach are listed in §76.6.
+
+### 76.3 The design, as ruled at planning, and the notes ruled at approval
+
+**Ruled: Option 1.** The scan widens to the package, and one behavioural test is added
+beside it.
+
+The plan offered two other options:
+- **behaviour only.** It would lose the 22 unreached keys' guard: a trade of completeness
+  for a broader path.
+- **a package-wide scan only.** It closes the hazard, but stays a text assertion with no
+  observable-consequence test.
+
+At the ruling, the failure message was made to list the modules the scan walked. So when
+7q adds a sibling, a miss reads as "sibling not scanned", not as a mystery about a key.
+
+**The "key registry" of §60.7(j)'s 7m row is the two collections themselves.** They are
+`_RESTART_DEFAULTS` and `_RESTART_POP`, with `agentifier_state` as the one explicit
+exclusion. §50.2's suggestion of a registry in `app_constants` is not taken. What changes
+is the text the collections are held against: the package, not one file.
+
+**Note 1, ruled at approval: the scan's completeness rests on a formatter setting.** The
+regex sees double-quoted literals only. That holds because `ruff format` normalises quotes
+to double. `pyproject.toml` sets no `quote-style` (ruff 0.15.12, default `"double"`), and
+`ruff format --check` is in the gate. So a single-quoted key cannot land formatted.
+- **Measured today:** no single-quoted `'agentifier_…'` in the package, and no key built
+  dynamically (`f"agentifier_{…}"`, or `"agentifier_" + …`).
+- **A dynamically built key is invisible to the scan whatever the formatter does.** Only
+  the behavioural test would see one, and only on its driven path.
+- **The dependency to remember:** if the gate ever stops normalising quotes, the drift
+  guard goes blind without failing.
+
+**Note 2, ruled at approval: a key named in prose is a literal.** The regex reads comments
+and docstrings the same as code. So a quoted `"agentifier_x"` in prose anywhere in the
+package counts as a use. That was already true of `agentifier.py`, and 7m widens it to the
+package. Prose cuts both ways:
+- **the false-alarm shape:** a key quoted only in prose makes the drift guard demand a
+  collection entry for a key nothing writes;
+- **the converse:** a prose mention can make a dead collection entry look alive to
+  `test_no_dead_entries`.
+
+**Measured today:** a tokenize and docstring scan of every package module finds no quoted
+key in a comment or docstring, so there is no instance of either shape. A future miss that
+traces to a docstring is this shape. Unquoted prose, such as the `agentifier_revision*` in
+the block comment, is not matched.
+
+**Also a known false-alarm shape, measured at zero, which corrects the plan's prediction.**
+The plan expected the old `test_no_dead_entries` to raise every key `agentifier.py` names
+only inside the collections block (`:2339–2392`) if 7q moved that block to a sibling. The
+count is **0**: every one of the 38 is also named outside the block. So the old test would
+have raised no false alarm from that move. The package scan is indifferent to the move
+either way.
+
+### 76.4 The diff, in full
+
+`tests/agentifier/test_try_again.py` changes: 46 insertions and 6 deletions. There is no
+edit to `src/`. `_MODULE` is replaced by `_PACKAGE` and `_KEY`; nothing else used it.
+- `_package_keys()` reads every `*.py` under the package, `rglob`, so subpackages are
+  included, and returns the keys and the relative paths.
+- `_flow_keys()` is the reset's universe on one session: every `agentifier_*` key, plus
+  `ai_catalog`.
+
+The two text tests keep their names and assertions; only the source they read and their
+failure message change. `git diff`, verbatim:
+
+```diff
+diff --git a/tests/agentifier/test_try_again.py b/tests/agentifier/test_try_again.py
+index e1cffc4..1753193 100644
+--- a/tests/agentifier/test_try_again.py
++++ b/tests/agentifier/test_try_again.py
+@@ -41,7 +41,8 @@ from .test_agentifier_orchestrator import (
+     mock_litellm_stream,
+ )
+ 
+-_MODULE = pathlib.Path(agentifier.__file__)
++_PACKAGE = pathlib.Path(agentifier.__file__).parent
++_KEY = re.compile(r'"(agentifier_[a-z_]+)"')
+ 
+ _CANDIDATE = Candidate(
+     name="smart_search",
+@@ -66,19 +67,58 @@ _ANALYSIS = TierAnalystOutput(
+ # ---------------------------------------------------------------------------
+ 
+ 
++def _package_keys() -> tuple[set[str], list[str]]:
++    """Every "agentifier_*" literal in the spec4.agentifier package, and the
++    modules read — the whole package, so a key whose writer moves into a
++    sibling module is still seen."""
++    modules = sorted(_PACKAGE.rglob("*.py"))
++    keys: set[str] = set()
++    for path in modules:
++        keys |= set(_KEY.findall(path.read_text()))
++    return keys, [p.relative_to(_PACKAGE).as_posix() for p in modules]
++
++
++def _flow_keys(session: dict[str, Any]) -> dict[str, Any]:
++    """The reset's universe on one session: every agentifier_* key, and ai_catalog."""
++    return {
++        key: value
++        for key, value in session.items()
++        if key.startswith("agentifier_") or key == "ai_catalog"
++    }
++
++
+ class TestResetCompleteness:
+     def test_every_session_key_is_accounted_for(self) -> None:
+         """Drift guard. A new agentifier_* key must join one of the two
+         collections or be an explicit exclusion — otherwise it silently
+-        survives a restart, which is how the revision block was left behind."""
+-        used = set(re.findall(r'"(agentifier_[a-z_]+)"', _MODULE.read_text()))
++        survives a restart, which is how the revision block was left behind.
++        The whole package is read, so a key written from a sibling module is
++        seen too."""
++        used, modules = _package_keys()
+         covered = set(_RESTART_DEFAULTS) | set(_RESTART_POP) | {"agentifier_state"}
+-        assert used - covered == set()
++        assert used - covered == set(), f"modules scanned: {modules}"
+ 
+     def test_no_dead_entries(self) -> None:
+-        used = set(re.findall(r'"(agentifier_[a-z_]+)"', _MODULE.read_text()))
++        used, modules = _package_keys()
+         listed = (set(_RESTART_DEFAULTS) | set(_RESTART_POP)) - {"ai_catalog"}
+-        assert listed - used == set()
++        assert listed - used == set(), f"modules scanned: {modules}"
++
++    def test_a_restart_after_a_real_flow_leaves_nothing_behind(self) -> None:
++        """The consequence the drift guard stands in for, observed: a draw run
++        to completion and then reset leaves the flow's keys exactly as a reset
++        of an untouched session leaves them."""
++        untouched = _session()
++        reset_agentifier_flow(untouched)
++
++        session = _session()
++        with _mocked_draw():
++            collect(agentifier.run(None, session, _LLM_CONFIG))
++            session["agentifier_breadth_selection"] = []
++            collect(agentifier.run("select", session, _LLM_CONFIG))
++        assert session["agentifier_state"] == STATE_AGENTIFIER_COMPLETE
++        reset_agentifier_flow(session)
++
++        assert _flow_keys(session) == _flow_keys(untouched)
+ 
+     def test_defaults_match_the_session_defaults(self) -> None:
+         """Restored values must be the documented session shape, not guesses."""
+```
+
+**The new test compares values as well as keys.** A key `default_session` declares but the
+collections miss would survive with a flow-written value, and would fail the comparison.
+`test_defaults_match_the_session_defaults` keeps the two defaults agreeing, so an untouched
+reset is a fair reference. The flow touches no disk, because `_session()` has no
+`working_dir`.
+
+### 76.5 The mutation: 7q's hazard made literal, against the old tests and then the new
+
+The mutation is a writer in a sibling module, called from the driven path, with a key in
+neither collection:
+
+```python
+# src/spec4/agentifier/_seed.py, inserted before `def _candidate_analysis_lines(`
+def _mark_probe(session: dict[str, Any]) -> None:
+    session["agentifier_probe"] = True
+
+# src/spec4/agentifier/agentifier.py:1915, inserted before `yield intro` / `return  # wait for developer's breadth selection`
+            from spec4.agentifier._seed import _mark_probe
+
+            _mark_probe(session)
+```
+
+From the old scan's view, a key moved into a sibling with its collection entry dropped and
+a new sibling key are the same thing: a literal outside `agentifier.py` and outside both
+collections. The anchor at `:1915` was confirmed unique, and on the zero-selection flow, by
+a line trace before the run.
+
+The harness `mutate_7m.py` is `mutate_7n.py` adapted to two anchors:
+- each anchor must match exactly once;
+- the full suite runs with `-rA`;
+- each file is restored from its saved bytes and checked by sha256.
+
+**Run A** used the old tests, before the rewrite. **Run B** used the new tests, after it.
+
+| Test | Run A (old tests) | Run B (new tests) | Why |
+|---|---|---|---|
+| `TestResetCompleteness::test_every_session_key_is_accounted_for` | **pass: vacuous** | **FAIL** | A reads `agentifier.py` alone, where `agentifier_probe` never appears. B reads the package, finds it in `_seed.py`, and the message lists the 19 modules walked |
+| `TestResetCompleteness::test_no_dead_entries` | pass | pass | its subject is the other direction: no collection entry changed |
+| `TestResetCompleteness::test_a_restart_after_a_real_flow_leaves_nothing_behind` | (did not exist) | **FAIL** | the draw writes `agentifier_probe`, the reset leaves it, and the namespace holds `{'agentifier_probe': True}` beyond an untouched reset's |
+| everything else | pass: `4209 passed, 1 skipped` | pass: `2 failed, 4208 passed, 1 skipped` | — |
+
+- **Run A is the finding.** 7q's hazard, made literal, was invisible to the whole suite:
+  not only the text tests, but all 4,209 of them.
+- **Run B passes §60.6's amended rule.** Both new tests fail, and there is no other failure
+  to explain.
+
+Harness output, run A, verbatim:
+
+```
+M 7m run A (old tests): the two text tests PASS -- vacuous against the hazard; restored byte-identical: True
+   PASSED  tests/agentifier/test_try_again.py::TestResetCompleteness::test_every_session_key_is_accounted_for
+   PASSED  tests/agentifier/test_try_again.py::TestResetCompleteness::test_no_dead_entries
+   other failures: 0
+   summary: 4209 passed, 1 skipped in 96.97s (0:01:36)
+```
+
+Harness output, run B, verbatim:
+
+```
+M 7m run B (new tests): both new tests FAIL, as they must; restored byte-identical: True
+   FAILED (new)  tests/agentifier/test_try_again.py::TestResetCompleteness::test_every_session_key_is_accounted_for
+   FAILED (new)  tests/agentifier/test_try_again.py::TestResetCompleteness::test_a_restart_after_a_real_flow_leaves_nothing_behind
+   PASSED  tests/agentifier/test_try_again.py::TestResetCompleteness::test_no_dead_entries  (expected to pass)
+   | assert used - covered == set(), f"modules scanned: {modules}"
+   | E   AssertionError: modules scanned: ['__init__.py', '_ff_review.py', '_render.py', '_seed.py', 'agentifier.py', 'composer.py', 'cross_cutting_analyst.py', 'grounding.py', 'infra_expander.py', 'linker.py', 'panel_closure.py', 'pattern_loader.py', 'prioritizer.py', 'reference_verifier.py', 'requires_reconciler.py', 'scout.py', 'spec_drafter.py', 'subagents.py', 'tier_analyst.py']
+   | E   assert {'agentifier_probe'} == set()
+   | E     'agentifier_probe'
+   | E     {'agentifier_probe': True}
+   other failures: 0
+   summary: 2 failed, 4208 passed, 1 skipped in 96.37s (0:01:36)
+```
+
+### 76.6 The residual gap, stated in numbers
+
+- **By behaviour: 16 of the 38 keys.** The zero-selection flow writes these:
+  - `analyses`, `artifact_msg_count`;
+  - `breadth_chosen`, `breadth_groups`, `breadth_intro`, `breadth_nonce`,
+    `breadth_selection`;
+  - `candidates`, `compositions`;
+  - `cross_cutting_done`, `explicitly_rejected`, `priority_done`;
+  - `scout_pool`, `spec_done`, `stale_acknowledged`, `state`.
+
+  A new key written anywhere on that path is caught whichever module writes it, and
+  whatever way its name is built.
+- **By the scan alone: the other 22.** They are:
+  - `carried_forward`, `catalog_done`, `cc_ff_locked`;
+  - `cross_cutting_analysis`, `cross_cutting_decisions`, `cross_cutting_ff_review`,
+    `cross_cutting_index`, `cross_cutting_topics`;
+  - `messages`;
+  - `preserved_features`, `preserved_selected`, `reselection`, `retry_guidance`;
+  - `revision`, `revision_cross_cutting`, `revision_delta`, `revision_prior_version`,
+    `revision_version`;
+  - `spec_ff_locked`, `spec_ff_review`, `spec_index`, `spec_results`.
+
+  Their writers sit on paths the behavioural test does not drive: spec drafting,
+  cross-cutting, fast forward review, reselection, and revision rounds.
+- **The scan's boundary is the `spec4.agentifier` package.** A key written only from
+  outside it, in `callbacks`, `session` or `layouts`, is seen by the behavioural test alone
+  and only on its path. Today no outside file adds a key (§76.2).
+- **The scan's blind spots:**
+  - Note 1's quote dependency, and dynamically built keys;
+  - Note 2's prose shapes, false alarm and masked dead entry, both measured absent.
+- **What 7q inherits:**
+  - The test imports `_RESTART_DEFAULTS`, `_RESTART_POP` and `reset_agentifier_flow` from
+    `spec4.agentifier.agentifier`. If 7q moves them, those imports re-point, inside the
+    rename check.
+  - The block comment at `agentifier.py:2336–2338` names this file and what it asserts. It
+    stays accurate.
+  - A move within the package needs nothing from the scan.
+  - A move out of the package shows as a missing module in the failure message.
+
+### 76.7 Off-limits, gate and coverage
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | none in the diff; 188 node ids across 7 files collect |
+| 456 node ids | **456 / 456 collect** (`floorcheck2.py`, `FAILURES: 0`); 4,211 collected, one new test |
+| 19 tier-B files / 33 classes | `test_try_again.py` holds no tier-B class; 183 node ids collect |
+| tier-A nodes | `test_try_again.py`'s two, `TestPanelButton::test_panel_offers_the_guidance_box` (D-TA7) and `::test_hidden_once_the_panel_is_submitted` (D-TA6), are outside every hunk and collect |
+
+**No petition is needed.**
+- **Check 4 has no target.** No patch string is added or rewritten: the new test uses
+  `_mocked_draw()`'s existing strings.
+- **The rename and token checks do not apply.** This is not a rename, and the diff is shown
+  in full in §76.4.
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4210 passed, 1 skipped` (exit 0), one more than 7n3 |
+| Coverage | same run | `TOTAL 12425 stmts, 891 miss, 93%`, **unchanged** |
+
+**No file's coverage moved.** `agentifier.py` stands at 977 statements with 129 missed, and
+`_seed.py` at 161 with 13 missed. The total is unchanged and no test was removed, so the new
+test drives only lines already covered.
+
+### 76.8 Record changes carried in this commit
+
+This section is appended through the add-only step, and the guard runs before the commit
+and after it. The commit also carries six earlier edits, all ruled at review of 7n:
+- **§60.6:** the token check's non-zero exit is informational on seam commits and a real
+  failure on rename batches. Chains must not stop on it, and the check must not be "fixed"
+  to exit 0.
+- **After §60.7(j)'s table:** the close-out finding. `get_agent_gen` passing a copy was the
+  one mutation nothing caught until 7n2's identity test. `CLEANUP_REPORT.md` carries it as a
+  finding in its own right.
+- **§60.7(j)'s mode cells:**
+  - 7m: plan mode, high effort, auto mode, with 6c's framing;
+  - 7o and 7p: default mode;
+  - 7q: plan mode, `ultrathink`, high effort, "everything on".
+
+**§59.6 item 11 is closed.** The drift guard reads the package, and names what it read. The
+behavioural test observes the reset at its seam, and the hazard it was flagged for is shown
+caught (§76.5, run B).
+
+### 76.9 What 7m did not do
+
+- It makes no edit to `src/`. The mutation was restored byte-identical, and the sha256 was
+  checked on both runs.
+- It creates no key registry in `app_constants`.
+- It changes no test beyond the two rewritten scans and the one new test.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.
+
+7o and 7p follow in default mode, then 7q last with everything on.
