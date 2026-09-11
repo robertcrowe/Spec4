@@ -11393,6 +11393,25 @@ decide these, and each is recorded with its evidence, so it is known rather than
   add "…". Since 7p2 they sit under two constants of the same value,
   `_PROMPT_DESCRIPTION_CHARS` and `_MECHANISM_SUMMARY_CHARS`. Lifting them to one helper is
   a dedupe of §67.11's kind.
+- **The backlog's other three turns, carried from 7q** (ruled at planning of 7q).
+  `deployer.run`, `brainstormer.run` and `code_scanner.run` stay on §27.4's `yield from`
+  entry, with their rule-12 `noqa`s. 7q proves the shape on the agentifier eight (§79).
+  `trace_7q.py` in the scratchpad is ready to trace them: its family list gains their `run`s.
+- **The step sentinel, the alternative not taken** (ruled at plan review of 7q). A step's
+  `None` return means only "the turn ended inside the step", whatever the cause (§79). If
+  two causes ever need telling apart, such as an error and a hand-off, a sentinel return is
+  the change to make.
+- **A test item: nine `test_try_again.py` tests race their own streaming worker** (§79.0).
+  - **Which:** `TestCallback` ×2,
+    `TestDiskIsUntouched::test_implemented_round_survives_a_full_try_again`, and
+    `TestGuidedRedraw` ×6.
+  - **Why they race:** they call `on_breadth_try_again` without patching `streaming.start`,
+    so the draw runs in a worker thread the test never waits for, and that worker can
+    outlive the test's patches.
+  - **What was measured:** the first redraw's `_display_override` leaks into the second
+    redraw's session, or does not. In one run the second redraw reached the real Scout.
+  - **Why they still pass:** they assert only on the store returned synchronously.
+  - **The fix:** patch `streaming.start` in those tests, or wait for the stream to finish.
 
 **A Phase 7 candidate beside 7k's `module_seam`, not for now (ruled at 7d, §64).** 7c's
 shadow flip (§63.1) retired the reason for the `sys.modules` idiom in `test_cost_summary.py`:
@@ -15758,3 +15777,164 @@ exit=0
 
 7p is closed with three commits: 7p1 (E501), 7p2 (PLR2004 cleared) and 7p3 (PLR2004
 enforced). 7q follows in plan mode, and its plan comes to review before any edit lands.
+
+## 79. Phase 7q — the agentifier eight and the `yield from` backlog, as one decision
+
+§60.7(j) 7q; §60.7(e); §27.4; §60.4. It ran in plan mode with `ultrathink` at high effort
+and auto mode off, as ruled at review of 7p. The plan was approved at review with five
+amendments:
+- traces compare order-sensitively;
+- a step's `None` return has one meaning;
+- coverage carries two conditions;
+- the harness lives in the scratchpad, and its results go into this section verbatim;
+- whole-or-carry, with 7q1 reverted if 7q2 or 7q3 cannot be proven.
+
+**Ruled at planning:** eight now, three to Phase 8. `deployer.run`, `brainstormer.run` and
+`code_scanner.run` stay on §27.4's entry.
+
+**The shape, as approved.** It is written into `agentifier.py` with 7q1.
+- **A phase generator is a driver over steps.** A step is a private generator in
+  `agentifier.py`, typed `Generator[str, None, R]`. It yields exactly the text its block
+  yielded before, and returns what the driver needs next.
+- **`None` has one meaning: the turn ended inside the step.** Its terminal text was
+  yielded, a hand-off to the next phase was done, or error text was yielded. The driver
+  then returns at once, and a step must not return `None` for any other reason. A sentinel
+  that tells the causes apart is the alternative not taken, on the Phase 8 list.
+- **The received-character total (D-AT3) is threaded only where a turn counts one,** which
+  is the catalog phase alone: `(product, chars) = yield from step(..., chars)`.
+- **Drivers keep their public protocol, and nothing observable changes.** That covers
+  session keys and their write order, yielded strings, prompts, the order of sub-agent
+  calls, and every `set_status`.
+- **No code leaves `agentifier.py`,** and `complete_agentifier` stays a generator.
+
+### 79.0 7q0 (record only): the trace check, its baseline, and the probes that show it bites
+
+**The check.** `trace_7q.py`, a pytest plugin in the scratchpad beside `rename_apply.py`.
+It is the structural refactor's counterpart to the rename check.
+- **What it watches:** `sys.monitoring` on exactly the code objects of the eight generators
+  and `run`, matched with any leading underscore stripped, so the trees before and after
+  the promotion are traced alike.
+- **What it records:** the **outermost** such frame only, one with no family frame in its
+  `f_back` chain. A split's new nesting is therefore invisible. For each such frame:
+  - its entry and arguments;
+  - every chunk delivered to the consumer, with a snapshot of the session at that moment;
+  - its return value or exception, with a final snapshot.
+- **Snapshots are order-sensitive.** The session and every nested dict are serialised in
+  insertion order. The only normalisation is of values: uuid4 strings, ISO timestamps, and
+  `0x` addresses in the reprs of non-JSON objects.
+- **The comparison:** `trace_diff.py` reports each test's first divergence and flags a
+  key-order-only divergence as one. The invocation:
+
+```
+TRACE_7Q_OUT=<out.json> PYTHONHASHSEED=0 PYTHONPATH=<scratchpad> \
+    uv run pytest -p trace_7q -q -p no:cacheprovider --basetemp=<scratchpad>/pytest_tmp_7q
+```
+
+**The determinism check came first,** and it found two things before either probe ran:
+1. **`tmp_path`.** Pytest's numbered temp directory is a session value (`working_dir`), and
+   it changes on every run. The first pair of identical runs diverged in 10 tests on
+   `working_dir` alone. **The fix is `--basetemp`,** a fixed base directory, so the paths
+   are identical by construction and nothing is normalised for them.
+2. **Thread timing in nine `test_try_again.py` tests.** `TestCallback` ×2,
+   `TestDiskIsUntouched::test_implemented_round_survives_a_full_try_again`, and
+   `TestGuidedRedraw` ×6 call `on_breadth_try_again` without patching `streaming.start`. So
+   the draw runs in a real streaming worker that the test does not wait for, and that worker
+   can outlive the test's patches. Measured across runs:
+   - the first redraw's `_display_override` leaks into the second redraw's session, or
+     does not;
+   - in one run, the second redraw's Scout ran after `_mocked_draw()` had exited, called the
+     real Scout, and yielded `"Scout failed to analyse the vision: sub-agent 'scout' raised:
+     litell…"`.
+
+   No set of recorded variants can capture every such state. **The rule adopted, for ruling
+   at the 7q1 stop:**
+   - **the identity verdict is taken over main-thread invocations,** the test's own thread;
+   - **invocations in streaming worker threads are compared too, but reported as advisory.**
+
+   The paths those workers run are also traced on the main thread, by
+   `TestRedrawRunsScout`, `TestRevisionRound`, the reset-seam test and the orchestrator's
+   fresh-start tests. The race itself goes on the Phase 8 list as a test item.
+
+**The baseline, at `ba030e5`.** It was recorded three times, and the main-thread traces are
+identical across all three pairs:
+
+```
+baseline meta: {"tests_traced": 151, "invocations": 199, "events": 1081, "distinct_snapshots": 536, "exitstatus": 0, "entries": {"run": 140, "run_spec_phase": 15, "run_cross_cutting_phase": 7, "begin_priority_phase": 7, "run_priority_phase": 10, "handle_reentry": 3, "finalize_specs": 3, "complete_agentifier": 9, "run_catalog_phase": 5}}
+--- base vs base2
+tests traced: base 142, new 142; identical 142; diverging 0 (key order only: 0)
+worker-thread invocations (advisory, outside the verdict): tests 9; diverging 2
+  ADVISORY tests/agentifier/test_try_again.py::TestGuidedRedraw::test_every_click_is_one_history_event
+  ADVISORY tests/agentifier/test_try_again.py::TestGuidedRedraw::test_notes_accumulate_across_retries
+--- base vs base3
+tests traced: base 142, new 142; identical 142; diverging 0 (key order only: 0)
+worker-thread invocations (advisory, outside the verdict): tests 9; diverging 2
+  ADVISORY tests/agentifier/test_try_again.py::TestGuidedRedraw::test_every_click_is_one_history_event
+  ADVISORY tests/agentifier/test_try_again.py::TestGuidedRedraw::test_notes_accumulate_across_retries
+--- base2 vs base3
+tests traced: base 142, new 142; identical 142; diverging 0 (key order only: 0)
+worker-thread invocations (advisory, outside the verdict): tests 9; diverging 2
+  ADVISORY tests/agentifier/test_try_again.py::TestGuidedRedraw::test_every_click_is_one_history_event
+  ADVISORY tests/agentifier/test_try_again.py::TestGuidedRedraw::test_notes_accumulate_across_retries
+```
+
+The baseline file is `trace_base.json`, sha256 `cd08834a6385af10…`.
+
+**The probes, predicted before they ran.** Each applied one anchored change to
+`agentifier.py`, ran the traced full suite, and restored the file with its sha256 checked:
+- **Probe A** changes one banner character, the Prioritizer's `"### Prioritizer\n\n"`. The
+  prediction was the six `TestBeginPriorityPhase` tests that reach the banner;
+  `test_empty_feature_set_short_circuits` returns before it.
+- **Probe B** drops one `chars` fold, the Tier Analyst loop's per-candidate write-back. The
+  prediction was the one test whose fake analyst feeds `on_chunk`:
+  `TestTierAnalystDrainContinuity::test_counter_climbs_across_candidate_drains_without_dipping`.
+  The others mock the analyst with a bare return value, so their drains add nothing.
+
+```
+probe A: '"### Prioritizer\\n\\n"' -> '"### Prioritizer.\\n\\n"'; restored byte-identical: True
+  suite under the probe: 4210 passed, 1 skipped in 84.69s (0:01:24)
+  traces diverging: 13; predicted 6, of which diverged 6; predicted but NOT diverging: none
+  tests traced: base 142, new 142; identical 129; diverging 13 (key order only: 0); identical to a recorded variant other than the first: 0
+   PREDICTED  tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_carried_forward_names_are_passed_and_frozen
+   PREDICTED  tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_draw_failure_degrades_to_mvp_with_a_banner
+   PREDICTED  tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_normalization_runs_on_the_overlay
+   PREDICTED  tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_ok_outcome_shows_no_banner
+   PREDICTED  tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_overlay_lands_on_the_feature_set
+   PREDICTED  tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_unreadable_outcome_shows_the_banner
+   observed   tests/agentifier/test_streaming_e2e.py::TestFullPipeline::test_final_ai_features_has_cross_cutting_block
+   observed   tests/agentifier/test_streaming_e2e.py::TestFullPipeline::test_full_pipeline_reaches_complete_state
+   observed   tests/agentifier/test_streaming_e2e.py::TestOrchestratorCrossCuttingPhase::test_confirming_all_topics_sets_cc_done
+   observed   tests/agentifier/test_streaming_e2e.py::TestOrchestratorCrossCuttingPhase::test_no_warranted_topics_skips_cross_cutting
+   observed   tests/agentifier/test_streaming_e2e.py::TestOrchestratorCrossCuttingPhase::test_skip_prompt_versioning_records_empty_and_advances
+   observed   tests/integration/test_pipeline_greenfield.py::TestAgentifierGreenfield::test_ai_features_json_schema_complete
+   observed   tests/integration/test_pipeline_greenfield.py::TestAgentifierGreenfield::test_full_agentifier_pipeline_completes
+```
+
+```
+probe B: 'pre_stream_chars = _drained_total()\n        except Exception' -> 'except Exception as exc:'; restored byte-identical: True
+  suite under the probe: 1 failed, 4209 passed, 1 skipped in 86.17s (0:01:26)
+  traces diverging: 1; predicted 1, of which diverged 1; predicted but NOT diverging: none
+  tests traced: base 142, new 142; identical 141; diverging 1 (key order only: 0); identical to a recorded variant other than the first: 0
+   PREDICTED  tests/agentifier/test_chars_counter_seed.py::TestTierAnalystDrainContinuity::test_counter_climbs_across_candidate_drains_without_dipping
+```
+
+**Both bite:** every predicted test diverged.
+
+**Probe A also carries a finding: no test asserts the Prioritizer banner.** The suite passed
+all 4210 tests under the change, while the trace diverged in every test that reaches the
+banner. For 7q's duration the trace pins what the suite does not.
+
+**Also carried in this commit, both ruled at planning or at plan review, on the Phase 8
+list:**
+- the backlog's three turns;
+- the sentinel alternative;
+- the worker-thread race as a test item.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12434 stmts, 891 miss, 93%`, unchanged |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`) |
+
+**What 7q0 did not do:** it made no edit to `src/` or `tests/`. Both probes were restored
+byte-identical.
