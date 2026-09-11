@@ -14320,3 +14320,234 @@ No petition is needed.
   does.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.
+
+## 75. Phase 7n3 — `rehydrate_vision_from_disk`: the third non-agentifier seam, and 7n closed
+
+§60.7(j) 7n, the last of three commits, run back to back with 7n2 as ruled at review of
+7n1. `_rehydrate_vision_from_disk` is promoted as-is on its §60.4 proposal. It gets a public
+name, a three-key contract, and one test that pins the contract's no-project half over the
+whole session. That test has the same shape as 7n1's no-op test, so the two seams' proofs
+are symmetrical, as amendment 1 asked.
+
+### 75.1 What landed
+
+| File | Change |
+|---|---|
+| `src/spec4/agents/brainstormer.py` | `_rehydrate_vision_from_disk` → `rehydrate_vision_from_disk`, with the contract paragraph added to its docstring (§75.2); `run`'s call renamed |
+| `tests/test_vision_disk_reconciliation.py` | `import copy`; the new test in `TestRehydrate` (§75.3); the four calls, the module docstring (`:7`) and the section comment (`:82`) renamed |
+
+- **Footprint: 2 files, 26 insertions and 8 deletions.** The substitution rewrote 8
+  occurrences, 2 in `src/` and 6 in the test file. The only other lines are the contract
+  paragraph, `import copy` and the new test. No other file names the function.
+- **There are no patch strings,** so check 4 has no target.
+- **The old name is gone.** A grep of `src/`, `tests/`, `scripts/` and `evals/` for
+  `_rehydrate_vision_from_disk` returns nothing. `.spec4/` is not searched, under Rule 2.
+- **This closes `_rehydrate_vision_from_disk`'s §55 `promote` row.**
+
+### 75.2 The contract, in full
+
+The existing docstring is kept, and this paragraph is added after it:
+
+```
+    Its contract on ``session``: with a ``working_dir`` it writes exactly
+    ``vision_statement``, ``brainstormer_state`` and ``feature_specs``, all three
+    on every call; without one it writes nothing and reads no disk.
+```
+
+**Recorded, not acted on, as §60.4 left it.** The vision resolves through
+`active_version`, which prefers `session["phase_version"]`, while `feature_specs` resolves
+through `latest_phase_version`, which ignores it. With `phase_version` pinned below the
+newest round, the two could come from different rounds. Whether that state is reachable is
+still unchecked, so it is not logged as a bug, and the contract promises nothing about it.
+
+### 75.3 The test: the no-project half, over the whole session
+
+```python
+    def test_no_working_dir_changes_nothing_at_all(self) -> None:
+        """The contract's no-project half, over the whole session. Seeded with
+        specs, so a stray write to any of the three keys would show."""
+        session = _session(
+            working_dir=None,
+            vision_statement=_vision("Ephemeral"),
+            feature_specs=_specs(),
+            brainstormer_state=STATE_VISION_COMPLETE,
+        )
+        before = copy.deepcopy(session)
+        brainstormer.rehydrate_vision_from_disk(session)
+        assert session == before
+```
+
+- **This is the half the existing tests under-pinned** (§60.4).
+  `test_no_working_dir_leaves_session_untouched` checks two keys, and its fixture's
+  `feature_specs` is already `None`. So a stray `feature_specs = None` on the no-project
+  path passes it.
+- **The positive half was already pinned.** The working-dir half, where all three keys are
+  written or cleared, is covered by `test_disk_vision_present_sets_pair_and_specs` and
+  `test_stale_session_cleared_when_disk_empty`. The new test adds the negative half over the
+  whole dict.
+
+### 75.4 The proofs: §71 adapted for a promotion (§73.5)
+
+**1. The rename and token checks.** Their only non-substitution changes are the contract
+paragraph, `import copy` and the test. The §60.2 shell function ran with `P=HEAD` over the
+working tree, and the scratch implementation agreed line for line. Verbatim, in the
+reverse-substituted view, with the temp-dir prefixes shortened:
+
+```
+diff -ru '--exclude=CLEANUP_INVENTORY.md' p/src/spec4/agents/brainstormer.py c/src/spec4/agents/brainstormer.py
+--- p/src/spec4/agents/brainstormer.py
++++ c/src/spec4/agents/brainstormer.py
+@@ -641,6 +641,10 @@
+     Guarded on ``working_dir``: with no project directory there is no disk and the
+     in-memory session stands. Messages are deliberately left untouched, so an
+     in-progress brainstorm (messages present, no vision on disk yet) is preserved.
++
++    Its contract on ``session``: with a ``working_dir`` it writes exactly
++    ``vision_statement``, ``brainstormer_state`` and ``feature_specs``, all three
++    on every call; without one it writes nothing and reads no disk.
+     """
+     working_dir = session.get("working_dir")
+     if not working_dir:
+diff -ru '--exclude=CLEANUP_INVENTORY.md' p/tests/test_vision_disk_reconciliation.py c/tests/test_vision_disk_reconciliation.py
+--- p/tests/test_vision_disk_reconciliation.py
++++ c/tests/test_vision_disk_reconciliation.py
+@@ -8,6 +8,7 @@
+ and the end-to-end entry decision through ``run()``.
+ """
+ 
++import copy
+ from pathlib import Path
+ from typing import Any
+ from unittest.mock import MagicMock, patch
+@@ -126,6 +127,19 @@
+             {"role": "user", "content": "mid-brainstorm"}
+         ]
+ 
++    def test_no_working_dir_changes_nothing_at_all(self) -> None:
++        """The contract's no-project half, over the whole session. Seeded with
++        specs, so a stray write to any of the three keys would show."""
++        session = _session(
++            working_dir=None,
++            vision_statement=_vision("Ephemeral"),
++            feature_specs=_specs(),
++            brainstormer_state=STATE_VISION_COMPLETE,
++        )
++        before = copy.deepcopy(session)
++        brainstormer._rehydrate_vision_from_disk(session)
++        assert session == before
++
+ 
+ # ---------------------------------------------------------------------------
+ # run() entry decision — tracks disk, not the stale session
+```
+
+The token check reports `hunks 11; old->new token substitutions 8; layout 0; §54.7
+aliases 0; OTHER 3`. The three OTHER lines are the paragraph, the import and the test.
+
+**2. The mutation, under the amended rule.**
+
+The mutation is §60.4's: a stray write on the no-project path.
+
+```python
+    if not working_dir:
+        session["feature_specs"] = None
+        return
+```
+
+It was anchored exactly once, run on the full suite, then restored from the saved bytes,
+with its sha256 checked:
+
+| Test | Under the mutation | Why |
+|---|---|---|
+| `test_vision_disk_reconciliation.py::TestRehydrate::test_no_working_dir_changes_nothing_at_all` (new) | **FAIL** | the seeded `feature_specs` is wiped, so the session no longer equals its deep copy |
+| `test_vision_disk_reconciliation.py::TestRehydrate::test_no_working_dir_leaves_session_untouched` | pass | as §60.4 predicted: it checks two keys, and its fixture's `feature_specs` is already `None` |
+| everything else | pass | `1 failed, 4208 passed, 1 skipped` |
+
+**Under §60.6's amended rule this is a pass.** The new test fails, and there is no other
+failure to explain. The existing `:108` test passing under the mutation is the gap the new
+test closes, now measured rather than predicted.
+
+The harness output, verbatim:
+
+```
+M 7n3 (session["feature_specs"] = None before the early return): the new test FAILS, as it must; restored byte-identical: True
+   FAILED (new)   tests/test_vision_disk_reconciliation.py::TestRehydrate::test_no_working_dir_changes_nothing_at_all
+   other failures: 0
+   summary: 1 failed, 4208 passed, 1 skipped in 87.92s (0:01:27)
+exit=0
+```
+
+**3. Check 4:** there are no patch strings to check.
+
+**4. The old name is gone,** by the grep in §75.1.
+
+### 75.5 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | none in the diff |
+| 456 node ids | **456 / 456 collect**; 4,210 collected (one new test) |
+| 19 tier-B files / 33 classes | **no tier-B file has a hunk** |
+| tier-A nodes | none touched |
+
+No petition is needed.
+
+### 75.6 Gate results (verbatim), and coverage per file
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4209 passed, 1 skipped` (exit 0): one more than 7n2, the new test; 4,210 collected |
+| Coverage | same run | `TOTAL 12425 stmts, 891 miss, 93%`, unchanged. A docstring adds no statement |
+
+| File | Before (`7091ab0`) | After | The missed lines |
+|---|---|---|---|
+| `src/spec4/agents/brainstormer.py` | 314 stmts, 9 miss | 314 stmts, 9 miss | the same lines, moved down 4 by the contract paragraph (for example `684–685` → `688–689`) |
+
+### 75.7 7n closed: the three non-agentifier seams
+
+| Seam | Commit | Contract tests | Mutation | Tests that failed under it |
+|---|---|---|---|---|
+| `persist_artifacts` (§73) | `b7cf7bb` (amended from `b069414`, §73.10, §74.0) | the key-set test and the no-op test | `session["project_mode"] = None`, first statement | both new tests, plus `test_brownfield_scan_writes_v1` and the browser walk, each explained (§73.5) |
+| `get_agent_gen` (§74) | `7091ab0` | the identity test, six arms | `dict(session)` in the brainstormer arm | the new test's `[brainstormer]` case only |
+| `rehydrate_vision_from_disk` (§75) | this commit | the whole-dict no-project test | `session["feature_specs"] = None` before the early return | the new test only; `test_no_working_dir_leaves_session_untouched` passes, as §60.4 predicted |
+
+**What held across the three:**
+- §71's template, adapted: the rename and token checks, the contract test with its
+  mutation, check 4's landings, and the old name gone.
+- The rule clarified at 7n1 and recorded in §60.6. The new test must fail; every other
+  failure is listed and explained. The inverted reading belongs to 6f.
+- The standing checks: check 4 in its path and module-attribute forms, the standing-form
+  collision check, and the add-only step with its guard.
+
+**What went wrong, and what changed:**
+- 7n1's first commit went out without its section. That is recorded in §73.10, and chains
+  now stop explicitly on each step.
+- 7n2's post-commit checks were cut short by the token check's own exit status. They were
+  run afterwards and all passed (§75.8).
+
+The seam half now has 7q left: the agentifier eight with the `yield from` backlog. It comes
+last, in plan mode with `ultrathink` (§60.7(e)), after 7m, 7o and 7p in §60.7(j)'s order.
+
+### 75.8 Record changes carried in this commit, and one note on 7n2
+
+- This section is appended through the add-only step, and the guard finds no deleted line.
+- **7n2's post-commit checks, completed.** The chain that committed `7091ab0` stopped after
+  its post-commit token check, because that check exits 1 whenever it reports OTHER lines,
+  as every seam commit does. The commit, its tree and its post-commit rename check were
+  already verified at that point. The three remaining checks were run straight after, and
+  all passed:
+  - check 4 in path form: 14 targets, no failure;
+  - check 4 in attribute form: 6 targets, no failure;
+  - the guard: no deleted line.
+
+  Chains no longer stop on that exit status.
+
+### 75.9 What this sub-phase did not do
+
+- It does not act on the round mismatch in §75.2.
+- It changes no test beyond the substitution and the one new test.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.

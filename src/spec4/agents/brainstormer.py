@@ -631,7 +631,7 @@ def _vision_fallback_display(vision: dict[str, Any]) -> str:
     )
 
 
-def _rehydrate_vision_from_disk(session: dict[str, Any]) -> None:
+def rehydrate_vision_from_disk(session: dict[str, Any]) -> None:
     """Re-sync the Brainstormer's vision artifacts to disk at the start of a turn.
 
     The agent button state reads disk (the current ``vision.json`` for the active
@@ -645,6 +645,10 @@ def _rehydrate_vision_from_disk(session: dict[str, Any]) -> None:
     Guarded on ``working_dir``: with no project directory there is no disk and the
     in-memory session stands. Messages are deliberately left untouched, so an
     in-progress brainstorm (messages present, no vision on disk yet) is preserved.
+
+    Its contract on ``session``: with a ``working_dir`` it writes exactly
+    ``vision_statement``, ``brainstormer_state`` and ``feature_specs``, all three
+    on every call; without one it writes nothing and reads no disk.
     """
     working_dir = session.get("working_dir")
     if not working_dir:
@@ -675,7 +679,7 @@ def run(  # noqa: C901, PLR0912  # six-yield generator; the surviving branches a
 
     msgs = session["brainstormer_messages"]
     user_input = drop_orphan_or_route_to_fresh_start(msgs, user_input)
-    _rehydrate_vision_from_disk(session)
+    rehydrate_vision_from_disk(session)
 
     if user_input is None:
         if msgs:

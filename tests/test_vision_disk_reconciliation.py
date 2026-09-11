@@ -4,10 +4,11 @@ The agent button state reads the current ``vision.json`` from disk; ``run()``'s
 cold-open branch previously read in-memory ``session['vision_statement']``, so a
 stale session (e.g. after ``.spec4`` was deleted out of band) could drive update
 mode while the button showed "Start". These tests cover ``load_vision`` (the
-button-matching disk read), ``_rehydrate_vision_from_disk`` (the reconciliation),
+button-matching disk read), ``rehydrate_vision_from_disk`` (the reconciliation),
 and the end-to-end entry decision through ``run()``.
 """
 
+import copy
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -78,7 +79,7 @@ class TestLoadVision:
 
 
 # ---------------------------------------------------------------------------
-# _rehydrate_vision_from_disk — the reconciliation
+# rehydrate_vision_from_disk — the reconciliation
 # ---------------------------------------------------------------------------
 
 
@@ -87,7 +88,7 @@ class TestRehydrate:
         project_manager.save_vision(tmp_path, _vision(), 0)
         project_manager.save_feature_specs(tmp_path, _specs(), 0)
         session = _session(working_dir=str(tmp_path))
-        brainstormer._rehydrate_vision_from_disk(session)
+        brainstormer.rehydrate_vision_from_disk(session)
         assert session["vision_statement"] == _vision()
         assert session["brainstormer_state"] == STATE_VISION_COMPLETE
         assert session["feature_specs"] == _specs()
@@ -100,7 +101,7 @@ class TestRehydrate:
             feature_specs=_specs(),
             brainstormer_state=STATE_VISION_COMPLETE,
         )
-        brainstormer._rehydrate_vision_from_disk(session)
+        brainstormer.rehydrate_vision_from_disk(session)
         assert session["vision_statement"] is None
         assert session["brainstormer_state"] == STATE_IN_PROGRESS
         assert session["feature_specs"] is None
@@ -111,7 +112,7 @@ class TestRehydrate:
             vision_statement=_vision("Ephemeral"),
             brainstormer_state=STATE_VISION_COMPLETE,
         )
-        brainstormer._rehydrate_vision_from_disk(session)
+        brainstormer.rehydrate_vision_from_disk(session)
         assert session["vision_statement"] == _vision("Ephemeral")
         assert session["brainstormer_state"] == STATE_VISION_COMPLETE
 
@@ -121,10 +122,23 @@ class TestRehydrate:
             vision_statement=_vision("Stale"),
             brainstormer_messages=[{"role": "user", "content": "mid-brainstorm"}],
         )
-        brainstormer._rehydrate_vision_from_disk(session)
+        brainstormer.rehydrate_vision_from_disk(session)
         assert session["brainstormer_messages"] == [
             {"role": "user", "content": "mid-brainstorm"}
         ]
+
+    def test_no_working_dir_changes_nothing_at_all(self) -> None:
+        """The contract's no-project half, over the whole session. Seeded with
+        specs, so a stray write to any of the three keys would show."""
+        session = _session(
+            working_dir=None,
+            vision_statement=_vision("Ephemeral"),
+            feature_specs=_specs(),
+            brainstormer_state=STATE_VISION_COMPLETE,
+        )
+        before = copy.deepcopy(session)
+        brainstormer.rehydrate_vision_from_disk(session)
+        assert session == before
 
 
 # ---------------------------------------------------------------------------
