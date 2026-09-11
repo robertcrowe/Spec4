@@ -187,9 +187,12 @@ it.
 
 These are the mechanical checks behind the proofs above.
 
-**They are scaffolding, not part of the repo.** They live in the session's scratchpad
-directory (`/tmp/claude-1000/…/scratchpad/`), which is temporary. They were never committed,
-and they stay that way unless Phase 8 decides to keep them, for example under `scripts/`.
+**They are committed under `scripts/cleanup/`,** whose README gives each one's invocation.
+They sit outside the gate and outside mypy. The two that write to `src/` or `tests/` refuse
+to run on a dirty tree. `mutate.py` restores what it wrote and verifies the restore by
+sha256. `rename_apply.py` keeps its change, but rolls back a failed write and verifies the
+rollback the same way. The record's proofs were run from the session's scratchpad, under the
+names given in parentheses.
 
 | Check | Tool | What it proves | From |
 |---|---|---|---|
@@ -198,12 +201,12 @@ and they stay that way unless Phase 8 decides to keep them, for example under `s
 | **Check 4, in three forms** | `patch_resolve.py`, plus `check4_attr.py` for attribute and lazy-import targets | Every rewritten patch string, whether a `patch("…")` path, a `patch.object`, or a `setattr` / `monkeypatch.setattr`, resolves to the function itself, in the module whose code calls it | Added at 7g; its third form at 7i; the attribute form at 7n2 (§70.11, §74) |
 | **Strip-and-compare** | `strip_check.py` | With annotations, PEP 695 type parameters and `if TYPE_CHECKING:` blocks erased from both sides, the ASTs are identical: an annotation-only change is annotation-only | 7o (§77.1); standing for annotation work (§60.2) |
 | **Inline check** | `inline_check.py` | With each added constant inlined back to its literal, the AST is identical: a named magic value is that value | 7p (§78) |
-| **Frozen strings** | `strings_7q.py` | The set of string constants in a module (prompts, statuses, labels) is unchanged; count changes are listed | 7q1 (§79.1) |
-| **Trace identity** | `trace_7q.py` (a pytest plugin) and `trace_diff.py` | For every test: every chunk delivered, and an insertion-ordered session snapshot at each chunk, is identical to the baseline, at the outermost generator frame. Worker-thread divergences are classified as timing or content | 7q0 (§79.0); its worker rules were ruled at review of 7q1 and at the 7q2 stop (§79.2) |
-| **Width sweep** | `sweep_7o.py` (a pytest plugin) | Every value that reaches an annotated target in the full suite is accepted by its annotation | 7o5 (§77.9) |
-| **Floor and off-limits, in both halves** | `floorcheck2.py` (with `dnum.json`); `petition_check.py` | The floor: all 456 protected node ids still collect. They are tier A (273, the seven whole-file entries among them) and tier B (183, in 33 classes). A change touching them passes §54.7's golden petition or §60.3's rename petition | §50.3, §50.5(a); petitions §54.7 (6d) and §60.3 |
+| **Frozen strings** | `frozen_strings.py` (`strings_7q.py`) | The set of string constants in a module (prompts, statuses, labels) is unchanged; count changes are listed | 7q1 (§79.1) |
+| **Trace identity** | `trace_identity.py` (a pytest plugin; `trace_7q.py`) and `trace_diff.py` | For every test: every chunk delivered, and an insertion-ordered session snapshot at each chunk, is identical to the baseline, at the outermost generator frame. Worker-thread divergences are classified as timing or content | 7q0 (§79.0); its worker rules were ruled at review of 7q1 and at the 7q2 stop (§79.2) |
+| **Width sweep** | `width_sweep.py` (a pytest plugin; `sweep_7o.py`) | Every value that reaches an annotated target in the full suite is accepted by its annotation | 7o5 (§77.9) |
+| **Floor and off-limits, in both halves** | `floor_check.py` with `data/floor.json` (`floorcheck2.py` with `dnum.json`); `petition_check.py` | The floor: all 456 protected node ids still collect. They are tier A (273, the seven whole-file entries among them) and tier B (183, in 33 classes). A change touching them passes §54.7's golden petition or §60.3's rename petition | §50.3, §50.5(a); petitions §54.7 (6d) and §60.3 |
 | **The add-only append and its guard** | `append_section.py` | A record section is appended byte-for-byte, and the prior record is verified as a prefix. `--guard` lists every deleting hunk and fails on a deleted blank line | 7d (§64.10); the guard standing from 7e |
-| **Mutation harnesses** | `mutate_7*.py` | One anchored mutation that must match exactly once, the full suite, predicted failures, a sha256-checked restore | the §60.5 harness rule; the form in 7k–7q |
+| **Mutation harnesses** | `mutate.py` with `data/cases_7q.json` (`mutate_7*.py`, and 7q0's `probe_7q.py`) | One anchored mutation that must match exactly once, the full suite, predicted failures, a sha256-checked restore | the §60.5 harness rule; the form in 7k–7q |
 
 ## 5. Phase 8's list
 
@@ -229,7 +232,8 @@ This is consolidated from the record's Phase 8 list and the deferrals across Pha
     - the driver-over-steps generator with a single-meaning `None` (7q, eight generators).
   - **The remaining application: §27.4's three other backlog turns,** `deployer.run` (185
     lines), `brainstormer.run` (101) and `code_scanner.run` (175). Each still carries a
-    rule-12 `noqa`, and `trace_7q.py` is ready to trace them.
+    rule-12 `noqa`, and `trace_identity.py` is ready to trace them: `TRACE_MODULE` and
+    `TRACE_FAMILY` name the module and its functions.
   - **The alternative not taken:** a step sentinel that tells a step's ending causes apart.
 - **Not promote targets:** the 24 `keep: subject is the private object` names (§54.1,
   §55.4). The collection is each test's subject.
@@ -263,7 +267,8 @@ This is consolidated from the record's Phase 8 list and the deferrals across Pha
 
 ### 5.4 The tooling itself
 
-Whether any of §4's checks become permanent. As things stand, they are session scratch.
+Whether to bring §4's checks inside: into the gate, and under mypy. They are committed under
+`scripts/cleanup/`, outside both.
 
 ## 6. Still to do, after review: the fold and the final audit
 
