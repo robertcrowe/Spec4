@@ -850,7 +850,7 @@ def stream_turn(  # noqa: C901, PLR0912, PLR0915, PLR0913  # entry guards plus t
 
     # Snapshot the status at entry so it can be restored once the model
     # resumes producing text after a search round. Callers streaming through
-    # _stream_suppressing_json get this for free (the wrapper republishes its
+    # stream_suppressing_json get this for free (the wrapper republishes its
     # turn-kind status on every content chunk), but bare callers (Phaser,
     # Deployer) would otherwise show "Reading search results…" for the rest of
     # the turn.

@@ -454,25 +454,25 @@ class TestSingleTopicRevision:
 
 
 # ---------------------------------------------------------------------------
-# _extract_cross_cutting_analysis (via agentifier module)
+# extract_cross_cutting_analysis (via agentifier module)
 # ---------------------------------------------------------------------------
 
 
 class TestExtractCrossCuttingAnalysis:
     def test_extracts_full_analysis(self) -> None:
-        from spec4.agentifier.agentifier import _extract_cross_cutting_analysis
+        from spec4.agentifier.agentifier import extract_cross_cutting_analysis
 
         text = "```json\n" + json.dumps(_FULL_ANALYSIS) + "\n```"
-        result = _extract_cross_cutting_analysis(text)
+        result = extract_cross_cutting_analysis(text)
         assert result is not None
         for t in CROSS_CUTTING_TOPICS:
             assert t in result
 
     def test_extracts_single_topic(self) -> None:
-        from spec4.agentifier.agentifier import _extract_cross_cutting_analysis
+        from spec4.agentifier.agentifier import extract_cross_cutting_analysis
 
         text = "```json\n" + json.dumps(_SINGLE_TOPIC_REVISION) + "\n```"
-        result = _extract_cross_cutting_analysis(text)
+        result = extract_cross_cutting_analysis(text)
         assert result is not None
         assert "provider_strategy" in result
         assert (
@@ -481,15 +481,15 @@ class TestExtractCrossCuttingAnalysis:
         )
 
     def test_returns_none_for_empty_text(self) -> None:
-        from spec4.agentifier.agentifier import _extract_cross_cutting_analysis
+        from spec4.agentifier.agentifier import extract_cross_cutting_analysis
 
-        assert _extract_cross_cutting_analysis("") is None
+        assert extract_cross_cutting_analysis("") is None
 
     def test_returns_none_for_unrelated_json(self) -> None:
-        from spec4.agentifier.agentifier import _extract_cross_cutting_analysis
+        from spec4.agentifier.agentifier import extract_cross_cutting_analysis
 
         text = '```json\n{"foo": "bar"}\n```'
-        assert _extract_cross_cutting_analysis(text) is None
+        assert extract_cross_cutting_analysis(text) is None
 
 
 # ---------------------------------------------------------------------------

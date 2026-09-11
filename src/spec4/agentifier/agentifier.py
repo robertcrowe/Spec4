@@ -15,17 +15,17 @@ concern each, leaving the orchestrator's generator flow -- the four
   bridge that drives it, the five ``_call_*`` wrappers, the orchestrator seed
   message, and the candidate/analysis (de)serialisers.
 * :mod:`spec4.agentifier._render` -- every ``_format_*`` renderer,
-  ``_build_ai_features``, the priority-edit reader, and the revision snapshot.
+  ``build_ai_features``, the priority-edit reader, and the revision snapshot.
 * :mod:`spec4.agentifier._ff_review` -- the Fast Forward review prompts, the
   shared ``name: instruction`` router, and the two review presenters.
 
 The import path ``spec4.agentifier.agentifier`` is unchanged, and every name
-kept below keeps the spelling it had before the split. ``_registry`` in
+kept below has the spelling it has in its owning module. ``_registry`` in
 particular is the same object as ``_seed._registry``, so
 ``patch("spec4.agentifier.agentifier._registry.stream")`` still reaches the live
-registry, and ``_stream_suppressing_json`` is imported under its pre-4j
-underscore spelling because ``tests/agentifier/test_chars_counter_seed.py``
-patches it on this module by name. Phase 4j then moved every importer onto the
+registry, and ``stream_suppressing_json`` is imported under its public name,
+which ``tests/agentifier/test_chars_counter_seed.py`` patches on this module
+by name. Phase 4j then moved every importer onto the
 owning module and dropped the re-exports nothing reached through here, so what
 is listed below is exactly the set some importer outside the owning module
 still needs. ``__all__`` is
@@ -86,7 +86,7 @@ from spec4.agents._reask import (
     drain_stream,
     reask_for_artifact,
     set_status,
-    stream_suppressing_json as _stream_suppressing_json,
+    stream_suppressing_json,
     suppressed_as_artifact,
 )
 from spec4.agents._turn_flow import (
@@ -108,71 +108,71 @@ from spec4.agentifier._ff_review import (
     _route_ff_revision_lines,
 )
 from spec4.agentifier._render import (
-    _build_ai_features,
+    build_ai_features,
     _format_ai_features_complete,
-    _format_catalog_as_text,
+    format_catalog_as_text,
     _format_composition_summary,
     _format_cross_cutting_topic,
     _format_priority_repairs,
-    _format_priority_table,
-    _format_spec_as_text,
-    _parse_priority_edits,
-    _merge_revision_snapshot,
-    _removed_feature_heads_up,
-    _revision_delta,
+    format_priority_table,
+    format_spec_as_text,
+    parse_priority_edits,
+    merge_revision_snapshot,
+    removed_feature_heads_up,
+    revision_delta,
 )
 from spec4.agentifier._seed import (
     _analyses_from_session,
-    _analyses_to_dicts,
-    _build_seed_message,
+    analyses_to_dicts,
+    build_seed_message,
     _call_composer,
     _call_linker,
     _call_prioritizer,
     _call_scout,
     _call_tier_analyst,
-    _candidates_from_dicts,
+    candidates_from_dicts,
     _candidates_from_session,
-    _candidates_to_dicts,
+    candidates_to_dicts,
     _iter_async_gen,
     _registry,
-    _vision_mvp_feature_names,
+    vision_mvp_feature_names,
 )
 
 #: Every name Phase 4i moved into ``_seed`` / ``_render`` / ``_ff_review``,
-#: re-exported here so the pre-split attribute surface is unchanged, plus the
-#: three names the orchestrator itself publishes. Load-bearing: ``[tool.mypy]
-#: strict`` implies ``no_implicit_reexport``.
+#: re-exported here under its owning module's spelling (thirteen became public
+#: in 7g), plus the three names the orchestrator itself publishes. Load-bearing:
+#: ``[tool.mypy] strict`` implies ``no_implicit_reexport``.
 __all__ = [
     "_analyses_from_session",
-    "_analyses_to_dicts",
-    "_build_ai_features",
-    "_build_seed_message",
+    "analyses_to_dicts",
+    "build_ai_features",
+    "build_seed_message",
     "_call_composer",
     "_call_linker",
     "_call_prioritizer",
     "_call_scout",
     "_call_tier_analyst",
-    "_candidates_from_dicts",
+    "candidates_from_dicts",
     "_candidates_from_session",
-    "_candidates_to_dicts",
+    "candidates_to_dicts",
     "_ff_sweep_cross_cutting",
     "_format_ai_features_complete",
-    "_format_catalog_as_text",
+    "format_catalog_as_text",
     "_format_composition_summary",
     "_format_cross_cutting_topic",
     "_format_priority_repairs",
-    "_format_priority_table",
-    "_format_spec_as_text",
+    "format_priority_table",
+    "format_spec_as_text",
     "_iter_async_gen",
-    "_merge_revision_snapshot",
-    "_parse_priority_edits",
+    "merge_revision_snapshot",
+    "parse_priority_edits",
     "_present_cc_ff_review",
     "_present_spec_ff_review",
     "_registry",
-    "_removed_feature_heads_up",
-    "_revision_delta",
+    "removed_feature_heads_up",
+    "revision_delta",
     "_route_ff_revision_lines",
-    "_vision_mvp_feature_names",
+    "vision_mvp_feature_names",
     "ORCHESTRATOR_SYSTEM_PROMPT",
     "reset_agentifier_flow",
     "run",
@@ -398,7 +398,7 @@ def _extract_catalog_json(text: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 
-def _is_spec_confirmed(text: str) -> bool:
+def is_spec_confirmed(text: str) -> bool:
     """Return True when the user's reply is an affirmative confirmation."""
     t = text.lower().strip().rstrip(".,!?")
     affirmatives = {
@@ -431,7 +431,7 @@ def _is_spec_confirmed(text: str) -> bool:
     return False
 
 
-def _feature_specs_for_session(session: dict[str, Any]) -> dict[str, Any]:
+def feature_specs_for_session(session: dict[str, Any]) -> dict[str, Any]:
     """Brainstormer's per-product-feature specs, for grounding (D-AC1 B).
 
     Prefers the in-session copy; falls back to disk via ``load_feature_specs`` so
@@ -451,7 +451,7 @@ def _feature_specs_for_session(session: dict[str, Any]) -> dict[str, Any]:
     return specs if isinstance(specs, dict) else {}
 
 
-def _linked_features_for_entry(
+def linked_features_for_entry(
     entry: dict[str, Any], candidates_data: list[dict[str, Any]]
 ) -> list[str]:
     """The vision-feature names an entry serves, read from its candidate.
@@ -467,7 +467,7 @@ def _linked_features_for_entry(
     return []
 
 
-def _existing_workflow_for_entry(
+def existing_workflow_for_entry(
     entry: dict[str, Any], candidates_data: list[dict[str, Any]]
 ) -> str:
     """The existing implementation an entry replaces, read from its candidate.
@@ -575,8 +575,8 @@ def _draft_spec(
     tiers, mechanisms = load_patterns()
     candidates_data = session.get("agentifier_candidates") or []
     grounding = build_grounding(
-        _feature_specs_for_session(session),
-        _linked_features_for_entry(entry, candidates_data),
+        feature_specs_for_session(session),
+        linked_features_for_entry(entry, candidates_data),
     )
     code_review = session.get("code_review")
     spec_input = SpecDrafterInput(
@@ -586,7 +586,7 @@ def _draft_spec(
         mechanism_patterns=mechanisms,
         revision_instruction=revision_instruction,
         vision_grounding=grounding,
-        linked_existing_workflow=_existing_workflow_for_entry(entry, candidates_data),
+        linked_existing_workflow=existing_workflow_for_entry(entry, candidates_data),
         existing_ai_context=_existing_ai_context(code_review) if code_review else "",
     )
 
@@ -671,7 +671,7 @@ def _draft_and_show_spec(
 
     spec = results[spec_index]
     is_last = spec_index >= n - 1
-    spec_display = _format_spec_as_text(entry, spec, spec_index, n)
+    spec_display = format_spec_as_text(entry, spec, spec_index, n)
     if is_last:
         spec_display += (
             "\n\n---\nAll feature specs drafted. "
@@ -699,8 +699,8 @@ def _finalize_specs(
     analyses_data: list[dict[str, Any]] = session.get("agentifier_analyses") or []
     msgs = session["agentifier_messages"]
 
-    feature_specs = _feature_specs_for_session(session)
-    features = _build_ai_features(
+    feature_specs = feature_specs_for_session(session)
+    features = build_ai_features(
         catalog_entries,
         spec_results,
         candidates_data,
@@ -774,7 +774,7 @@ def _finalize_specs(
         yield err
         return
 
-    analysis = _extract_cross_cutting_analysis(raw)
+    analysis = extract_cross_cutting_analysis(raw)
     if not analysis:
         err = (
             "Could not parse cross-cutting analysis JSON. Reply **retry** to try again."
@@ -855,7 +855,7 @@ def _complete_agentifier(
     # revision, no-AI-surface) carries the confirmed vision's nfr_goals through
     # to the Agentifier output.
     ai_features["nfr_goals"] = list(
-        _feature_specs_for_session(session).get("nfr_goals") or []
+        feature_specs_for_session(session).get("nfr_goals") or []
     )
     # The developer's redraw requests (D-TA7), stamped here for the same
     # reason as nfr_goals: every completion path passes through this locus.
@@ -885,13 +885,13 @@ def _complete_agentifier(
         prior_v = session.get("agentifier_revision_prior_version") or 0
         prior_cc = session.get("agentifier_revision_cross_cutting") or {}
         new_feats = ai_features.get("ai_features") or []
-        ai_features["ai_features"] = _merge_revision_snapshot(
+        ai_features["ai_features"] = merge_revision_snapshot(
             carried, new_feats, cur_v, prior_v
         )
         # Prior cross-cutting decisions carry forward; this round's decisions (if
         # any topics were warranted by the new features) override per-topic.
         ai_features["cross_cutting"] = {**prior_cc, **decisions}
-        heads_up = _removed_feature_heads_up(
+        heads_up = removed_feature_heads_up(
             carried, session.get("agentifier_revision_delta")
         )
         for key in (
@@ -931,7 +931,7 @@ def _complete_agentifier(
 # ---------------------------------------------------------------------------
 
 
-def _extract_cross_cutting_analysis(text: str) -> dict[str, Any] | None:
+def extract_cross_cutting_analysis(text: str) -> dict[str, Any] | None:
     """Extract cross-cutting JSON. Handles full-analysis and single-topic formats."""
     import json as _json
 
@@ -965,7 +965,7 @@ def _handle_cc_ff_review(
     locked_topics = topics[:locked]
     valid_topics = topics[locked:]
 
-    if _is_spec_confirmed(user_input):
+    if is_spec_confirmed(user_input):
         session["agentifier_cross_cutting_ff_review"] = False
         session["agentifier_cross_cutting_index"] = len(topics)
         session["agentifier_cross_cutting_done"] = True
@@ -1029,7 +1029,7 @@ def _handle_cc_ff_review(
         except Exception as exc:
             yield f"Cross-Cutting Analyst revision failed for `{topic}`: {exc}. Please try again."
             continue
-        new_analysis = _extract_cross_cutting_analysis(raw)
+        new_analysis = extract_cross_cutting_analysis(raw)
         if new_analysis and topic in new_analysis:
             analysis[topic] = new_analysis[topic]
             decisions[topic] = new_analysis[topic]
@@ -1101,7 +1101,7 @@ def _run_spec_phase(
     is_pending = len(spec_results) > spec_index and bool(spec_results[spec_index])
 
     if is_pending:
-        if _is_spec_confirmed(user_input):
+        if is_spec_confirmed(user_input):
             spec_index += 1
             session["agentifier_spec_index"] = spec_index
             if spec_index >= n_features:
@@ -1179,7 +1179,7 @@ def _handle_spec_ff_review(
     locked_names = [e.get("name", "") for e in catalog_entries[:locked]]
     valid_names = [e.get("name", "") for e in catalog_entries[locked:]]
 
-    if _is_spec_confirmed(user_input):
+    if is_spec_confirmed(user_input):
         results = session.get("agentifier_spec_results") or []
         missing = [
             catalog_entries[i].get("name", "")
@@ -1310,7 +1310,7 @@ def _run_cross_cutting_phase(  # noqa: C901, PLR0912, PLR0915  # 12-yield genera
             session["_display_override"] = err
             yield err
             return
-        analysis = _extract_cross_cutting_analysis(raw)
+        analysis = extract_cross_cutting_analysis(raw)
         if not analysis:
             err = "Could not parse cross-cutting analysis. Please try again."
             msgs.append({"role": "assistant", "content": err})
@@ -1338,7 +1338,7 @@ def _run_cross_cutting_phase(  # noqa: C901, PLR0912, PLR0915  # 12-yield genera
 
     current_topic = topics[index]
 
-    if _is_spec_confirmed(user_input) or (
+    if is_spec_confirmed(user_input) or (
         _is_skip(user_input) and current_topic in SKIPPABLE_TOPICS
     ):
         # Record the decision for this topic (empty dict when skipped), then advance.
@@ -1372,7 +1372,7 @@ def _run_cross_cutting_phase(  # noqa: C901, PLR0912, PLR0915  # 12-yield genera
             session["_display_override"] = err
             yield err
             return
-        revised = _extract_cross_cutting_analysis(raw)
+        revised = extract_cross_cutting_analysis(raw)
         analysis = _cc_apply_revision(session, revised, current_topic, analysis)
 
         display = _format_cross_cutting_topic(
@@ -1461,7 +1461,7 @@ def _begin_priority_phase(
         "Here's the build order for your AI features "
         "(steel_thread → mvp → v2 → future).\n\n"
     )
-    full = prelude + intro + _format_priority_table(features)
+    full = prelude + intro + format_priority_table(features)
     msgs.append({"role": "assistant", "content": full})
     session["_display_override"] = full
     yield full
@@ -1496,20 +1496,20 @@ def _run_priority_phase(
     msgs.append({"role": "user", "content": user_input})
 
     by_name = {f["name"]: f for f in features if f.get("name")}
-    edits = _parse_priority_edits(user_input, set(by_name))
+    edits = parse_priority_edits(user_input, set(by_name))
 
-    # Edits are read BEFORE confirmation. `_is_spec_confirmed` matches on a
+    # Edits are read BEFORE confirmation. `is_spec_confirmed` matches on a
     # prefix, so a reply like "next_step_planner: v2" would otherwise read as
     # the affirmative "next" and silently end the phase.
     if not edits.saw_pair:
-        if _is_spec_confirmed(user_input):
+        if is_spec_confirmed(user_input):
             yield from _complete_agentifier(session)
             return
         display = (
             "I couldn't read that as a priority change.\n\n"
             "Reply **yes** to accept the table below, or reassign features one "
             "per line, like `feature_name: steel_thread`.\n\n"
-            + _format_priority_table(features)
+            + format_priority_table(features)
         )
         msgs.append({"role": "assistant", "content": display})
         session["_display_override"] = display
@@ -1548,7 +1548,7 @@ def _run_priority_phase(
         parts.append("**Adjusted:**\n" + "\n".join(repairs) + "\n")
     elif edits.assignments:
         parts.append("Updated.\n")
-    parts.append(_format_priority_table(features))
+    parts.append(format_priority_table(features))
 
     display = "\n".join(parts)
     msgs.append({"role": "assistant", "content": display})
@@ -1561,7 +1561,7 @@ def _run_priority_phase(
 # ---------------------------------------------------------------------------
 
 
-def _breadth_candidates(pool: list[Candidate]) -> list[dict[str, str]]:
+def breadth_candidates(pool: list[Candidate]) -> list[dict[str, str]]:
     """Flatten the pool into the checkbox-panel candidate list, in pool order.
 
     The panel shows one flat list — there is no relevance ranking to band on,
@@ -1571,7 +1571,7 @@ def _breadth_candidates(pool: list[Candidate]) -> list[dict[str, str]]:
     return [{"name": c.name, "description": c.rough_description} for c in pool]
 
 
-def _reselection_pool_from_features(ai_features: dict[str, Any]) -> list[Candidate]:
+def reselection_pool_from_features(ai_features: dict[str, Any]) -> list[Candidate]:
     """Rebuild the candidate pool for re-selection from a completed ai_features.
 
     Pool = previously-selected features (``ai_features``) followed by the
@@ -1926,7 +1926,7 @@ def _run_catalog_phase(  # noqa: C901, PLR0912, PLR0915  # 24-yield generator; t
             if session.get("agentifier_revision")
             else ""
         )
-        seed = _build_seed_message(
+        seed = build_seed_message(
             candidates, analyses, brownfield=brownfield, revision_goal=_rev_goal
         )
         msgs.append({"role": "user", "content": seed})
@@ -2049,7 +2049,7 @@ def _run_catalog_phase(  # noqa: C901, PLR0912, PLR0915  # 24-yield generator; t
     search_cfg = websearch.from_session(session)
     system = llm.build_system_prompt(ORCHESTRATOR_SYSTEM_PROMPT, search_cfg)
 
-    yield from _stream_suppressing_json(
+    yield from stream_suppressing_json(
         llm.stream_turn(
             system,
             msgs,
@@ -2097,7 +2097,7 @@ def _run_catalog_phase(  # noqa: C901, PLR0912, PLR0915  # 24-yield generator; t
         session["agentifier_catalog_done"] = True
         session["agentifier_spec_index"] = 0
         session["agentifier_spec_results"] = []
-        catalog_display = _format_catalog_as_text(catalog)
+        catalog_display = format_catalog_as_text(catalog)
         msgs[-1]["content"] = catalog_display
         session["_display_override"] = catalog_display
 
@@ -2114,7 +2114,7 @@ def _catalog_scout_prep(
 ) -> tuple[dict[str, Any] | None, str, str, Any]:
     """Revision scope, project name, Scout banner and retry guidance for a fresh turn."""
     working_dir = session.get("working_dir")
-    _delta = _revision_delta(vision)
+    _delta = revision_delta(vision)
     _prior_v = (
         project_manager.latest_implemented_version(working_dir)
         if working_dir and _delta
@@ -2219,12 +2219,12 @@ def _catalog_breadth_intro(
     # zero-candidate case is handled earlier.) The panel shows regardless
     # of pool size, and Tier Analyst runs on the survivors in the
     # breadth-selection turn.
-    session["agentifier_scout_pool"] = _candidates_to_dicts(candidates)
+    session["agentifier_scout_pool"] = candidates_to_dicts(candidates)
     session["agentifier_breadth_chosen"] = False
     # New panel instance: the live-lock intent store keys off this nonce,
     # so a fresh panel starts from an empty developer intent.
     session["agentifier_breadth_nonce"] = uuid.uuid4().hex
-    session["agentifier_breadth_groups"] = _breadth_candidates(candidates)
+    session["agentifier_breadth_groups"] = breadth_candidates(candidates)
 
     _project_note_b = f" for **{_project_name}**" if _project_name else ""
     intro = (
@@ -2249,7 +2249,7 @@ def _catalog_apply_selection(
     session: dict[str, Any],
 ) -> tuple[list[Any], list[Any], list[Any], list[Any], bool]:
     """Close the developer's breadth selection over the pool and split it."""
-    pool = _candidates_from_dicts(session["agentifier_scout_pool"])
+    pool = candidates_from_dicts(session["agentifier_scout_pool"])
     selected_names = session.get("agentifier_breadth_selection") or []
     session["agentifier_breadth_chosen"] = True
 
@@ -2299,8 +2299,8 @@ def _catalog_finalize_breadth(
     msgs: list[dict[str, Any]],
 ) -> None:
     """Persist the analysed candidates and append the catalog seed."""
-    session["agentifier_candidates"] = _candidates_to_dicts(to_analyze)
-    session["agentifier_analyses"] = _analyses_to_dicts(breadth_analyses, to_analyze)
+    session["agentifier_candidates"] = candidates_to_dicts(to_analyze)
+    session["agentifier_analyses"] = analyses_to_dicts(breadth_analyses, to_analyze)
 
     # The developer's answer, never the presence of a scan: CodeScanner run
     # over a greenfield skeleton must not make the orchestrator open with
@@ -2311,7 +2311,7 @@ def _catalog_finalize_breadth(
         if session.get("agentifier_revision")
         else ""
     )
-    seed = _build_seed_message(
+    seed = build_seed_message(
         to_analyze, breadth_analyses, brownfield=brownfield, revision_goal=_rev_goal
     )
     msgs.append({"role": "user", "content": seed})
@@ -2456,7 +2456,7 @@ def _handle_reentry(
 
     # Not stale → re-selection from the existing pool, no Scout/Composer.
     ai_features = session.get("ai_features") or {}
-    pool = _reselection_pool_from_features(ai_features)
+    pool = reselection_pool_from_features(ai_features)
     if not pool:
         # Nothing to re-select (shouldn't happen for a complete project).
         yield from replay_last_assistant(session["agentifier_messages"])
@@ -2465,8 +2465,8 @@ def _handle_reentry(
     selected = [f for f in (ai_features.get("ai_features") or []) if f.get("name")]
     selected_names = [f["name"] for f in selected]
     session["agentifier_preserved_features"] = {f["name"]: f for f in selected}
-    session["agentifier_scout_pool"] = _candidates_to_dicts(pool)
-    session["agentifier_breadth_groups"] = _breadth_candidates(pool)
+    session["agentifier_scout_pool"] = candidates_to_dicts(pool)
+    session["agentifier_breadth_groups"] = breadth_candidates(pool)
     session["agentifier_breadth_selection"] = selected_names
     session["agentifier_breadth_chosen"] = False
     # New panel instance: seed the live-lock intent store from the pre-checked

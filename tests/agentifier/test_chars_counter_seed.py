@@ -1,7 +1,7 @@
 """D-AT1/D-AT3: the breadth-selection turn's contribution to the chars counter.
 
 The turn yields tier-analysis progress text and then opens the orchestrator
-stream. `_stream_suppressing_json` publishes a cumulative received-character
+stream. `stream_suppressing_json` publishes a cumulative received-character
 total that the counter prefers over the displayed message length, so without a
 seed the counter would drop to zero at the handover. These tests drive the real
 turn and check the published total against what the turn actually yielded.
@@ -147,13 +147,13 @@ class TestBreadthTurnSeedsTheCounter:
         published total must already account for what is on screen."""
         session = _session()
         seen: list[int] = []
-        real = agentifier._stream_suppressing_json
+        real = agentifier.stream_suppressing_json
 
         def spy(chunks: Any, sess: Any = None, seed: int = 0, **kwargs: Any) -> Any:
             seen.append(seed)
             return real(chunks, sess, seed, **kwargs)
 
-        with patch.object(agentifier, "_stream_suppressing_json", spy):
+        with patch.object(agentifier, "stream_suppressing_json", spy):
             out = _run_breadth_turn(session)
 
         assert seen and seen[0] > 0

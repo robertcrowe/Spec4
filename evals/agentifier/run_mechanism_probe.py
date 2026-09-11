@@ -10,7 +10,7 @@ Pipeline stages, mirroring production (``spec4.agentifier.agentifier``):
 
     Scout -> Linker -> Composer -> select ALL (panel closure) ->
     Tier Analyst per candidate -> auto-accept recommended tiers ->
-    Spec Drafter per entry -> _build_ai_features -> infra expansion
+    Spec Drafter per entry -> build_ai_features -> infra expansion
 
 Deliberately skipped, with why it doesn't bias the mechanism measurement:
 - the interactive catalog conversation (tiers are auto-accepted, so the
@@ -63,13 +63,13 @@ sys.path.insert(0, str(_REPO_ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from spec4.agentifier.agentifier import (  # noqa: E402
-    _build_ai_features,
+    build_ai_features,
     _call_composer,
     _call_linker,
     _call_scout,
     _call_tier_analyst,
-    _candidates_to_dicts,
-    _analyses_to_dicts,
+    candidates_to_dicts,
+    analyses_to_dicts,
     _expand_infrastructure,
 )
 from spec4.agentifier.linker import apply_overlay  # noqa: E402
@@ -226,11 +226,11 @@ def run_pipeline(
         )
         spec_results.append(_draft_spec(entry, llm_config))
 
-    features = _build_ai_features(
+    features = build_ai_features(
         catalog_entries,
         spec_results,
-        _candidates_to_dicts(survivors),
-        _analyses_to_dicts(analyses, survivors),
+        candidates_to_dicts(survivors),
+        analyses_to_dicts(analyses, survivors),
         None,
     )
     return {"ai_features": _expand_infrastructure(features, None)}

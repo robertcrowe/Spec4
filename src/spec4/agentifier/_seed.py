@@ -53,21 +53,21 @@ from spec4.agentifier.tier_analyst import (
 
 __all__ = [
     "_analyses_from_session",
-    "_analyses_to_dicts",
+    "analyses_to_dicts",
     "_build_registry",
-    "_build_seed_message",
+    "build_seed_message",
     "_call_composer",
     "_call_linker",
     "_call_prioritizer",
     "_call_scout",
     "_call_tier_analyst",
-    "_candidates_from_dicts",
+    "candidates_from_dicts",
     "_candidates_from_session",
-    "_candidates_to_dicts",
+    "candidates_to_dicts",
     "_graph_placement_lines",
     "_iter_async_gen",
     "_registry",
-    "_vision_mvp_feature_names",
+    "vision_mvp_feature_names",
     "_vision_purpose",
 ]
 
@@ -182,7 +182,7 @@ def _vision_purpose(vision: dict[str, Any]) -> str:
     return ""
 
 
-def _vision_mvp_feature_names(vision: dict[str, Any]) -> list[str]:
+def vision_mvp_feature_names(vision: dict[str, Any]) -> list[str]:
     """Names from the vision's ``key_features_mvp``, shape-guarded.
 
     The Brainstormer emits each entry as a single-key mapping
@@ -256,7 +256,7 @@ def _call_prioritizer(
         vision_purpose=_vision_purpose(vision),
         llm_config=llm_config,
         carried_forward=carried_forward,
-        mvp_vision_features=_vision_mvp_feature_names(vision),
+        mvp_vision_features=vision_mvp_feature_names(vision),
         on_chunk=on_chunk,
     )
     prioritizer_output: PrioritizerOutput = asyncio.run(
@@ -330,7 +330,7 @@ def _graph_placement_lines(
     return lines
 
 
-def _build_seed_message(
+def build_seed_message(
     candidates: list[Candidate],
     analyses: list[TierAnalystOutput],
     brownfield: bool = False,
@@ -371,7 +371,7 @@ def _build_seed_message(
 # ---------------------------------------------------------------------------
 
 
-def _candidates_to_dicts(candidates: list[Candidate]) -> list[dict[str, Any]]:
+def candidates_to_dicts(candidates: list[Candidate]) -> list[dict[str, Any]]:
     return [
         {
             "name": c.name,
@@ -390,7 +390,7 @@ def _candidates_to_dicts(candidates: list[Candidate]) -> list[dict[str, Any]]:
     ]
 
 
-def _analyses_to_dicts(
+def analyses_to_dicts(
     analyses: list[TierAnalystOutput], candidates: list[Candidate]
 ) -> list[dict[str, Any]]:
     return [
@@ -441,7 +441,7 @@ def _analyses_from_session(session: dict[str, Any]) -> list[TierAnalystOutput]:
     ]
 
 
-def _candidates_from_dicts(data: list[dict[str, Any]]) -> list[Candidate]:
+def candidates_from_dicts(data: list[dict[str, Any]]) -> list[Candidate]:
     """Reconstruct Candidate objects from a serialised dict list."""
     return [
         Candidate(

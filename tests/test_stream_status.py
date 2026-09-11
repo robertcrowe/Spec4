@@ -3,7 +3,7 @@
 The status line is seeded with a generic "…is thinking" before the turn's
 generator runs (session.py `_AGENT_STATUS_SEED`). Without further writes it
 sits there for the whole turn — including multi-minute suppressed artifact
-draws and web-search round-trips. `_stream_suppressing_json` now publishes a
+draws and web-search round-trips. `stream_suppressing_json` now publishes a
 reply/artifact status the moment it can classify the turn, and
 `llm.stream_turn` publishes search statuses around web_search tool calls.
 """

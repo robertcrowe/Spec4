@@ -39,7 +39,7 @@ Scout → Linker (apply_overlay) → Composer
       → Tier Analyst per candidate
       → catalog: auto-accept every recommendation (tier_decision = recommendation)
       → Spec Drafter per entry (with production's one unreadable-output retry)
-      → _build_ai_features → _expand_infrastructure
+      → build_ai_features → _expand_infrastructure
 ```
 
 Skipped, and why the omission doesn't bias the mechanism measurement:

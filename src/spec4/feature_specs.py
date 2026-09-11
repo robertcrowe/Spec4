@@ -2,7 +2,7 @@
 
 Agentifier's Spec Drafter produces a rich implementation spec per AI feature
 (purpose, invocation, inputs, outputs, success criteria, failure modes, …) and
-``_build_ai_features`` merges the whole spec onto each catalog node. Several
+``build_ai_features`` merges the whole spec onto each catalog node. Several
 consumers need to render that spec faithfully:
 
 * ``agents/_feature_context.py`` — the per-agent context serializers (Phaser today;
@@ -580,7 +580,7 @@ def render_cross_cutting(
 def spec_index(ai_features: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
     """Index catalog nodes by ``id`` — the stable join key.
 
-    ``id`` is the slug ``_build_ai_features`` derives and the key the phase
+    ``id`` is the slug ``build_ai_features`` derives and the key the phase
     ``features[]`` declaration uses. Nodes lacking an id are skipped.
     """
     nodes = (ai_features or {}).get("ai_features") or []

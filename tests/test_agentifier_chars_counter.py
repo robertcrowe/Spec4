@@ -2,7 +2,7 @@
 
 Most of Agentifier's post-panel time yields visible text, so the counter's
 displayed-character fallback already serves it. The gap is the suppressed
-artifact turn, where `_stream_suppressing_json` swallows the whole response and
+artifact turn, where `stream_suppressing_json` swallows the whole response and
 the visible message never grows — the same D-SC60 case already fixed for
 StackAdvisor. Two wrinkles come with closing it: the layout renders no button
 bar during the first post-panel turn, and seeding the published total at zero

@@ -576,9 +576,9 @@ class TestBeginPriorityPhase:
 
 class TestParsePriorityEdits:
     def _parse(self, text: str, names: set[str] | None = None) -> Any:
-        from spec4.agentifier.agentifier import _parse_priority_edits
+        from spec4.agentifier.agentifier import parse_priority_edits
 
-        return _parse_priority_edits(text, names or {"alpha", "beta"})
+        return parse_priority_edits(text, names or {"alpha", "beta"})
 
     def test_colon_form(self) -> None:
         assert self._parse("alpha: steel_thread").assignments == {
@@ -667,7 +667,7 @@ class TestRunPriorityPhase:
         assert _priorities(session["ai_features"]["ai_features"])["alpha"] == "mvp"
 
     def test_edit_wins_over_affirmative_prefix_collision(self) -> None:
-        # `_is_spec_confirmed` matches on a prefix: "next_step..." starts with
+        # `is_spec_confirmed` matches on a prefix: "next_step..." starts with
         # "next". Reading edits first is what stops that ending the phase.
         session = self._session_with([_feature("next_step_planner", "mvp")])
         self._run(session, "next_step_planner: v2")
@@ -723,9 +723,9 @@ class TestRunPriorityPhase:
 
 class TestFormatPriorityTable:
     def _table(self, features: list[dict[str, Any]]) -> str:
-        from spec4.agentifier.agentifier import _format_priority_table
+        from spec4.agentifier.agentifier import format_priority_table
 
-        return _format_priority_table(features)
+        return format_priority_table(features)
 
     def test_rows_are_ordered_by_priority(self) -> None:
         out = self._table(
@@ -774,9 +774,9 @@ def _vision(entries: Any) -> dict[str, Any]:
 
 class TestVisionMvpFeatureNames:
     def _names(self, vision: dict[str, Any]) -> list[str]:
-        from spec4.agentifier.agentifier import _vision_mvp_feature_names
+        from spec4.agentifier.agentifier import vision_mvp_feature_names
 
-        return _vision_mvp_feature_names(vision)
+        return vision_mvp_feature_names(vision)
 
     def test_single_key_mapping_is_the_brainstormer_shape(self) -> None:
         vision = _vision(

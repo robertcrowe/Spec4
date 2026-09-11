@@ -11,7 +11,7 @@ from spec4.agentifier.scout import (
     _parse_candidates,
 )
 from spec4.agentifier.agentifier import (
-    _breadth_candidates,
+    breadth_candidates,
 )
 
 
@@ -477,28 +477,28 @@ class TestOrchestratorBreadthSubState:
 
 
 # ---------------------------------------------------------------------------
-# _breadth_candidates
+# breadth_candidates
 # ---------------------------------------------------------------------------
 
 
 class TestBreadthCandidates:
     def test_flattens_pool_in_order(self) -> None:
         pool = _make_candidates(5)
-        result = _breadth_candidates(pool)
+        result = breadth_candidates(pool)
         assert [i["name"] for i in result] == [c.name for c in pool]
 
     def test_item_shape(self) -> None:
         pool = _make_candidates(3)
-        for item in _breadth_candidates(pool):
+        for item in breadth_candidates(pool):
             assert "name" in item
             assert "description" in item
 
     def test_empty_pool(self) -> None:
-        assert _breadth_candidates([]) == []
+        assert breadth_candidates([]) == []
 
     def test_all_candidates_present(self) -> None:
         pool = _make_candidates(38)
-        result = _breadth_candidates(pool)
+        result = breadth_candidates(pool)
         assert len(result) == len(pool)
         assert {i["name"] for i in result} == {c.name for c in pool}
 

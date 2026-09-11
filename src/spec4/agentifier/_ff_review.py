@@ -7,7 +7,7 @@ the two review presenters, and the cross-cutting sweep.
 The three generators record their outcome on the ``session`` they are handed
 and yield the display text, so they are not side-effect-free; they are leaves.
 Their whole dependency set is closed -- ``_format_cross_cutting_topic`` and
-``_format_spec_as_text`` from :mod:`spec4.agentifier._render`, and each other --
+``format_spec_as_text`` from :mod:`spec4.agentifier._render`, and each other --
 so nothing here imports ``spec4.agentifier.agentifier``.
 
 The three handlers that complete these flows -- ``_handle_cc_ff_review``,
@@ -22,7 +22,7 @@ import re
 from collections.abc import Generator
 from typing import Any
 
-from spec4.agentifier._render import _format_cross_cutting_topic, _format_spec_as_text
+from spec4.agentifier._render import _format_cross_cutting_topic, format_spec_as_text
 
 __all__ = [
     "_FF_REVISION_RE",
@@ -197,7 +197,7 @@ def _present_spec_ff_review(
         if i < locked:
             parts.append(
                 f"*(locked — confirmed earlier)*\n"
-                f"{_format_spec_as_text(entry, spec, i, n)}"
+                f"{format_spec_as_text(entry, spec, i, n)}"
             )
         elif not spec:
             parts.append(
@@ -205,7 +205,7 @@ def _present_spec_ff_review(
                 "*(not yet drafted)*"
             )
         else:
-            parts.append(_format_spec_as_text(entry, spec, i, n))
+            parts.append(format_spec_as_text(entry, spec, i, n))
     display = "\n\n".join(parts) + _spec_ff_review_prompt(locked_names) + failure_note
     msgs.append({"role": "assistant", "content": display})
     session["_display_override"] = display

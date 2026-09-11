@@ -1,6 +1,6 @@
 """D-SC60/D-SC62: the StackAdvisor chat token counter.
 
-StackAdvisor's artifact turn streams through ``_stream_suppressing_json``, which
+StackAdvisor's artifact turn streams through ``stream_suppressing_json``, which
 yields nothing once it sees the leading fence. The counter's displayed-character
 fallback therefore reads 0 for the entire draw, so the suppression chokepoint
 publishes a cumulative received-character total instead — the same remedy D-PH9

@@ -3287,7 +3287,7 @@ class TestCodeScannerUnparseableArtifact:
     ``_extract_and_validate_review`` reports "no JSON, still conversing" both
     when the model genuinely replied in prose and when it emitted an artifact
     block that came back malformed or truncated. The two are not the same: a
-    reply opening with a fence was swallowed whole by ``_stream_suppressing_json``
+    reply opening with a fence was swallowed whole by ``stream_suppressing_json``
     on its way to the screen, so the second case ends the turn with an empty
     bubble, no state change and no ``code_review.json`` — observed live as
     "it finalized and then nothing happened". It must fail into the retry path.

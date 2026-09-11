@@ -59,7 +59,7 @@ INFRA_PRIORITY = "steel_thread"
 
 
 def _slug(name: str) -> str:
-    """Feature-id slug, matching ``_build_ai_features``' id derivation."""
+    """Feature-id slug, matching ``build_ai_features``' id derivation."""
     return re.sub(r"[^a-z0-9_]", "_", name.lower()) if name else ""
 
 

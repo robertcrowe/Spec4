@@ -586,7 +586,7 @@ class TestOverrideRecording:
 
 
 # ---------------------------------------------------------------------------
-# _build_seed_message
+# build_seed_message
 # ---------------------------------------------------------------------------
 
 
@@ -594,30 +594,30 @@ class TestBuildSeedMessage:
     def test_includes_all_candidate_names(self) -> None:
         candidates = [_CANDIDATE_A, _CANDIDATE_B]
         analyses = [_ANALYSIS_A, _ANALYSIS_B]
-        msg = agentifier._build_seed_message(candidates, analyses)
+        msg = agentifier.build_seed_message(candidates, analyses)
         assert "smart_search" in msg
         assert "review_classifier" in msg
 
     def test_includes_compared_to_next_tier_down(self) -> None:
-        msg = agentifier._build_seed_message([_CANDIDATE_A], [_ANALYSIS_A])
+        msg = agentifier.build_seed_message([_CANDIDATE_A], [_ANALYSIS_A])
         assert "Deterministic keyword search would miss" in msg
 
     def test_includes_borderline_seams_when_borderline(self) -> None:
-        msg = agentifier._build_seed_message([_CANDIDATE_A], [_ANALYSIS_B])
+        msg = agentifier.build_seed_message([_CANDIDATE_A], [_ANALYSIS_B])
         assert "4000 tokens" in msg
 
     def test_does_not_include_borderline_marker_when_false(self) -> None:
-        msg = agentifier._build_seed_message([_CANDIDATE_A], [_ANALYSIS_A])
+        msg = agentifier.build_seed_message([_CANDIDATE_A], [_ANALYSIS_A])
         assert "Borderline: NO" in msg
 
     def test_includes_system_note_header(self) -> None:
-        msg = agentifier._build_seed_message([_CANDIDATE_A], [_ANALYSIS_A])
+        msg = agentifier.build_seed_message([_CANDIDATE_A], [_ANALYSIS_A])
         assert "Spec4 system note" in msg
 
     def test_candidate_count_in_header(self) -> None:
         candidates = [_CANDIDATE_A, _CANDIDATE_B]
         analyses = [_ANALYSIS_A, _ANALYSIS_B]
-        msg = agentifier._build_seed_message(candidates, analyses)
+        msg = agentifier.build_seed_message(candidates, analyses)
         assert "2 AI opportunity candidate" in msg
 
     def test_seed_includes_existing_workflow_line(self) -> None:
@@ -628,13 +628,13 @@ class TestBuildSeedMessage:
             rough_description="LLM-powered search.",
             linked_existing_workflow="keyword-based SQL LIKE search in views.py",
         )
-        msg = agentifier._build_seed_message([brownfield], [_ANALYSIS_A])
+        msg = agentifier.build_seed_message([brownfield], [_ANALYSIS_A])
         assert (
             "Existing implementation this would replace: keyword-based SQL LIKE search in views.py"
             in msg
         )
         # Greenfield candidates (default "") never emit the line.
-        msg_green = agentifier._build_seed_message([_CANDIDATE_A], [_ANALYSIS_A])
+        msg_green = agentifier.build_seed_message([_CANDIDATE_A], [_ANALYSIS_A])
         assert "Existing implementation this would replace" not in msg_green
 
     def test_orchestrator_system_prompt_has_linked_existing_workflow(self) -> None:
@@ -645,7 +645,7 @@ class TestBuildSeedMessage:
 
 
 # ---------------------------------------------------------------------------
-# _build_seed_message — graph placement (composed_under / requires context)
+# build_seed_message — graph placement (composed_under / requires context)
 # ---------------------------------------------------------------------------
 
 
@@ -689,17 +689,17 @@ class TestGraphPlacement:
 
     def test_coordinator_lists_its_members(self) -> None:
         cands, analyses = self._graph()
-        msg = agentifier._build_seed_message(cands, analyses)
+        msg = agentifier.build_seed_message(cands, analyses)
         assert "Coordinates 2 sub-features: `member_one`, `member_two`." in msg
 
     def test_member_names_its_coordinator(self) -> None:
         cands, analyses = self._graph()
-        msg = agentifier._build_seed_message(cands, analyses)
+        msg = agentifier.build_seed_message(cands, analyses)
         assert "A sub-feature of `orchestrator`." in msg
 
     def test_requires_and_reverse_requires(self) -> None:
         cands, analyses = self._graph()
-        msg = agentifier._build_seed_message(cands, analyses)
+        msg = agentifier.build_seed_message(cands, analyses)
         assert "Uses the output of: `member_one`." in msg
         assert "Its output feeds: `member_two`." in msg
 
@@ -712,7 +712,7 @@ class TestGraphPlacement:
             composed_under="ghost_coordinator",
             requires=["ghost_producer"],
         )
-        msg = agentifier._build_seed_message([orphan], [self._an()])
+        msg = agentifier.build_seed_message([orphan], [self._an()])
         assert "ghost_coordinator" not in msg
         assert "ghost_producer" not in msg
         assert "A sub-feature of" not in msg
@@ -732,29 +732,29 @@ class TestGraphPlacement:
             rough_description="Only member.",
             composed_under="solo_coord",
         )
-        msg = agentifier._build_seed_message([coord, member], [self._an(), self._an()])
+        msg = agentifier.build_seed_message([coord, member], [self._an(), self._an()])
         assert "Coordinates 1 sub-feature: `lone_member`." in msg
 
 
 # ---------------------------------------------------------------------------
-# _analyses_to_dicts — embeds candidate name for join-by-name downstream
+# analyses_to_dicts — embeds candidate name for join-by-name downstream
 # ---------------------------------------------------------------------------
 
 
 class TestAnalysesToDicts:
     def test_each_dict_contains_name(self) -> None:
-        result = agentifier._analyses_to_dicts(
+        result = agentifier.analyses_to_dicts(
             [_ANALYSIS_A, _ANALYSIS_B], [_CANDIDATE_A, _CANDIDATE_B]
         )
         assert result[0]["name"] == "smart_search"
         assert result[1]["name"] == "review_classifier"
 
     def test_name_matches_parallel_candidate(self) -> None:
-        result = agentifier._analyses_to_dicts([_ANALYSIS_A], [_CANDIDATE_A])
+        result = agentifier.analyses_to_dicts([_ANALYSIS_A], [_CANDIDATE_A])
         assert result[0]["name"] == _CANDIDATE_A.name
 
     def test_existing_analysis_fields_preserved(self) -> None:
-        result = agentifier._analyses_to_dicts([_ANALYSIS_A], [_CANDIDATE_A])
+        result = agentifier.analyses_to_dicts([_ANALYSIS_A], [_CANDIDATE_A])
         a = result[0]
         assert a["recommended_tier"] == "embeddings"
         assert a["rationale"] == "Semantic similarity search fits embeddings tier."
@@ -763,7 +763,7 @@ class TestAnalysesToDicts:
 
 
 # ---------------------------------------------------------------------------
-# _build_ai_features — tier_analysis persistence and tier_decision_rationale guard
+# build_ai_features — tier_analysis persistence and tier_decision_rationale guard
 # ---------------------------------------------------------------------------
 
 
@@ -804,7 +804,7 @@ class TestBuildAiFeatures:
         entries = [self._entry("smart_search")]
         candidates = [self._candidate_dict("smart_search")]
         analyses = [self._analysis_dict("smart_search")]
-        features = agentifier._build_ai_features(entries, [], candidates, analyses)
+        features = agentifier.build_ai_features(entries, [], candidates, analyses)
         ta = features[0]["tier_analysis"]
         assert ta["recommended_tier"] == "embeddings"
         assert ta["rationale"] == "smart_search rationale."
@@ -817,7 +817,7 @@ class TestBuildAiFeatures:
         entries = [self._entry("unmatched_feature")]
         candidates = [self._candidate_dict("unmatched_feature")]
         # No analyses_data → no match possible
-        features = agentifier._build_ai_features(entries, [], candidates, [])
+        features = agentifier.build_ai_features(entries, [], candidates, [])
         assert features[0]["tier_analysis"] == {}
 
     def test_tier_decision_rationale_unchanged(self) -> None:
@@ -827,13 +827,13 @@ class TestBuildAiFeatures:
         ]
         candidates = [self._candidate_dict("smart_search")]
         analyses = [self._analysis_dict("smart_search")]
-        features = agentifier._build_ai_features(entries, [], candidates, analyses)
+        features = agentifier.build_ai_features(entries, [], candidates, analyses)
         assert features[0]["tier_decision_rationale"] == "User override."
 
     def test_analyses_data_none_treated_as_empty(self) -> None:
         entries = [self._entry("smart_search")]
         candidates = [self._candidate_dict("smart_search")]
-        features = agentifier._build_ai_features(entries, [], candidates, None)
+        features = agentifier.build_ai_features(entries, [], candidates, None)
         assert features[0]["tier_analysis"] == {}
 
     def test_spec_update_does_not_clobber_tier_analysis(self) -> None:
@@ -845,7 +845,7 @@ class TestBuildAiFeatures:
         analyses = [self._analysis_dict("smart_search")]
         # Inject a spec result that contains a conflicting tier_analysis value.
         spec_with_conflict = [{"tier_analysis": "STALE"}]
-        features = agentifier._build_ai_features(
+        features = agentifier.build_ai_features(
             entries, spec_with_conflict, candidates, analyses
         )
         ta = features[0]["tier_analysis"]
@@ -859,7 +859,7 @@ class TestBuildAiFeatures:
             self._analysis_dict("alpha", tier="single_call"),
             self._analysis_dict("beta", tier="rag"),
         ]
-        features = agentifier._build_ai_features(entries, [], candidates, analyses)
+        features = agentifier.build_ai_features(entries, [], candidates, analyses)
         assert features[0]["tier_analysis"]["recommended_tier"] == "single_call"
         assert features[1]["tier_analysis"]["recommended_tier"] == "rag"
 
@@ -875,7 +875,7 @@ class TestBuildAiFeatures:
             "rough_description": "ENRICHED: Plain catalog description. Enables nutrition lookup.",
             "linked_existing_workflow": "",
         }
-        features = agentifier._build_ai_features([entry], [], [candidate])
+        features = agentifier.build_ai_features([entry], [], [candidate])
         assert (
             features[0]["rough_description"]
             == "ENRICHED: Plain catalog description. Enables nutrition lookup."
@@ -886,7 +886,7 @@ class TestBuildAiFeatures:
         entry = self._entry(
             "orphan_feature", **{"rough_description": "Entry fallback text."}
         )
-        features = agentifier._build_ai_features([entry], [], [])
+        features = agentifier.build_ai_features([entry], [], [])
         assert features[0]["rough_description"] == "Entry fallback text."
 
     def test_rough_description_set_after_spec_update(self) -> None:
@@ -901,7 +901,7 @@ class TestBuildAiFeatures:
             "linked_existing_workflow": "",
         }
         spec_with_desc = [{"rough_description": "Spec rewrote this."}]
-        features = agentifier._build_ai_features([entry], spec_with_desc, [candidate])
+        features = agentifier.build_ai_features([entry], spec_with_desc, [candidate])
         assert features[0]["rough_description"] == "ENRICHED by composer."
 
     def test_tier_decision_rationale_not_changed_by_description_fix(self) -> None:
@@ -913,7 +913,7 @@ class TestBuildAiFeatures:
             "rough_description": "Enriched text.",
             "linked_existing_workflow": "",
         }
-        features = agentifier._build_ai_features([entry], [], [candidate])
+        features = agentifier.build_ai_features([entry], [], [candidate])
         assert features[0]["tier_decision_rationale"] == "Override reason."
         assert features[0]["rough_description"] == "Enriched text."
 
@@ -921,10 +921,10 @@ class TestBuildAiFeatures:
         entry = self._entry("smart_search")
         candidate = self._candidate_dict("smart_search")
         candidate["linked_existing_workflow"] = "regex classifier in views.py"
-        features = agentifier._build_ai_features([entry], [], [candidate])
+        features = agentifier.build_ai_features([entry], [], [candidate])
         assert features[0]["linked_existing_workflow"] == "regex classifier in views.py"
         # Unmatched entry degrades to "" rather than dropping the key.
-        orphan = agentifier._build_ai_features([self._entry("orphan")], [], [])
+        orphan = agentifier.build_ai_features([self._entry("orphan")], [], [])
         assert orphan[0]["linked_existing_workflow"] == ""
 
     def test_spec_echo_cannot_clobber_linked_existing_workflow(self) -> None:
@@ -933,7 +933,7 @@ class TestBuildAiFeatures:
         candidate = self._candidate_dict("smart_search")
         candidate["linked_existing_workflow"] = "regex classifier in views.py"
         spec_with_echo = [{"linked_existing_workflow": "HALLUCINATED"}]
-        features = agentifier._build_ai_features([entry], spec_with_echo, [candidate])
+        features = agentifier.build_ai_features([entry], spec_with_echo, [candidate])
         assert features[0]["linked_existing_workflow"] == "regex classifier in views.py"
 
 
@@ -1099,10 +1099,10 @@ class TestSeedMessageBrownfieldMode:
     """
 
     def _seed(self, session: dict[str, Any]) -> str:
-        from spec4.agentifier.agentifier import _build_seed_message
+        from spec4.agentifier.agentifier import build_seed_message
         from spec4 import project_manager
 
-        return _build_seed_message(
+        return build_seed_message(
             [],
             [],
             brownfield=project_manager.session_is_brownfield(session),

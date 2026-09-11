@@ -1,13 +1,13 @@
 """Agentifier renderers, priority parsing, and the revision snapshot.
 
 Cleanup Phase 4i moved the pure edges of ``agentifier.py`` here: every
-``_format_*`` renderer, ``_build_ai_features``, the deterministic priority-edit
+``_format_*`` renderer, ``build_ai_features``, the deterministic priority-edit
 reader, and the revision-snapshot helpers.
 
 Every function derives its result from its arguments -- no session write, no
 yield, no I/O -- and nothing here imports ``spec4.agentifier.agentifier``, so
-this module is a leaf. Names keep their spelling and are re-exported from
-``agentifier``; ``tests/test_renderer_goldens.py`` pins two of them.
+this module is a leaf. Names are re-exported from ``agentifier`` under the
+same spelling; ``tests/test_renderer_goldens.py`` pins two of them.
 """
 
 from __future__ import annotations
@@ -28,18 +28,18 @@ __all__ = [
     "_FEATURES_COMPLETE_TRANSITION",
     "_PRIORITY_EDIT_RE",
     "_VALID_PRIORITIES",
-    "_build_ai_features",
+    "build_ai_features",
     "_format_ai_features_complete",
-    "_format_catalog_as_text",
+    "format_catalog_as_text",
     "_format_composition_summary",
     "_format_cross_cutting_topic",
     "_format_priority_repairs",
-    "_format_priority_table",
-    "_format_spec_as_text",
-    "_parse_priority_edits",
-    "_merge_revision_snapshot",
-    "_removed_feature_heads_up",
-    "_revision_delta",
+    "format_priority_table",
+    "format_spec_as_text",
+    "parse_priority_edits",
+    "merge_revision_snapshot",
+    "removed_feature_heads_up",
+    "revision_delta",
 ]
 
 
@@ -75,7 +75,7 @@ _CATALOG_SPEC_PROMPT = (
 )
 
 
-def _format_catalog_as_text(catalog: dict[str, Any]) -> str:
+def format_catalog_as_text(catalog: dict[str, Any]) -> str:
     """Render ai_catalog to a readable Markdown display with spec-phase prompt."""
     entries: list[dict[str, Any]] = catalog.get("ai_catalog") or []
     lines: list[str] = ["**AI Integration Catalog**\n"]
@@ -99,7 +99,7 @@ def _format_catalog_as_text(catalog: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _format_spec_as_text(
+def format_spec_as_text(
     entry: dict[str, Any],
     spec: dict[str, Any],
     index: int,
@@ -192,7 +192,7 @@ def _render_spec_references(spec: dict[str, Any], lines: list[str]) -> None:
         lines.append("")
 
 
-def _build_ai_features(
+def build_ai_features(
     catalog_entries: list[dict[str, Any]],
     spec_results: list[dict[str, Any]],
     candidates_data: list[dict[str, Any]],
@@ -239,7 +239,7 @@ def _build_ai_features(
         feature["composed_under"] = cand.get("composed_under", "")
         feature["requires"] = list(cand.get("requires") or [])
         # Brownfield linkage (candidate-authoritative, like the edges): without
-        # this, _reselection_pool_from_features' read of the key is always ""
+        # this, reselection_pool_from_features' read of the key is always ""
         # and re-selection rounds silently lose the replaced-workflow context.
         feature["linked_existing_workflow"] = cand.get("linked_existing_workflow", "")
         # Node classification (D-I5): selectable features are explicitly
@@ -282,7 +282,7 @@ def _build_ai_features(
 # ---------------------------------------------------------------------------
 
 
-def _revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
+def revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
     """Return this round's revision delta, or ``None`` for a greenfield vision.
 
     A revision round's vision carries an accumulating ``revision_history`` (each
@@ -299,7 +299,7 @@ def _revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
     return None
 
 
-def _merge_revision_snapshot(
+def merge_revision_snapshot(
     carried_forward: list[dict[str, Any]],
     new_features: list[dict[str, Any]],
     current_version: int,
@@ -336,7 +336,7 @@ def _merge_revision_snapshot(
     return out
 
 
-def _removed_feature_heads_up(
+def removed_feature_heads_up(
     carried_forward: list[dict[str, Any]],
     delta: dict[str, Any] | None,
 ) -> str:
@@ -466,7 +466,7 @@ class PriorityEdits:
         return bool(self.assignments or self.unknown_names or self.bad_values)
 
 
-def _parse_priority_edits(text: str, valid_names: set[str]) -> PriorityEdits:
+def parse_priority_edits(text: str, valid_names: set[str]) -> PriorityEdits:
     """Read ``name: priority`` assignments out of a free-text reply.
 
     Deterministic — no LLM turn. Values are normalised for whitespace and
@@ -492,7 +492,7 @@ def _parse_priority_edits(text: str, valid_names: set[str]) -> PriorityEdits:
     return edits
 
 
-def _format_priority_table(features: list[dict[str, Any]]) -> str:
+def format_priority_table(features: list[dict[str, Any]]) -> str:
     """Render the whole feature set as one priority table.
 
     Priority is a property of the *set* — which features form the thinnest

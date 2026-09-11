@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from spec4.agentifier.pattern_loader import load_patterns
-from spec4.agentifier.agentifier import _is_spec_confirmed
+from spec4.agentifier.agentifier import is_spec_confirmed
 from spec4.agentifier.spec_drafter import (
     SpecDrafterAgent,
     SpecDrafterInput,
@@ -496,7 +496,7 @@ class TestSpecDrafterAgentLlmCalls:
 
 
 # ---------------------------------------------------------------------------
-# _is_spec_confirmed
+# is_spec_confirmed
 # ---------------------------------------------------------------------------
 
 
@@ -521,7 +521,7 @@ class TestIsSpecConfirmed:
         ],
     )
     def test_affirmative_words(self, text: str) -> None:
-        assert _is_spec_confirmed(text) is True
+        assert is_spec_confirmed(text) is True
 
     @pytest.mark.parametrize(
         "text",
@@ -534,12 +534,12 @@ class TestIsSpecConfirmed:
         ],
     )
     def test_non_affirmative(self, text: str) -> None:
-        assert _is_spec_confirmed(text) is False
+        assert is_spec_confirmed(text) is False
 
     def test_yes_with_trailing_punctuation(self) -> None:
-        assert _is_spec_confirmed("yes!") is True
-        assert _is_spec_confirmed("yes.") is True
+        assert is_spec_confirmed("yes!") is True
+        assert is_spec_confirmed("yes.") is True
 
     def test_yes_as_prefix_of_longer_word(self) -> None:
         # "yesterday" should NOT be confirmed
-        assert _is_spec_confirmed("yesterday was fine") is False
+        assert is_spec_confirmed("yesterday was fine") is False

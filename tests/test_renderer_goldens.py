@@ -21,7 +21,10 @@ from __future__ import annotations
 
 import pytest
 
-from spec4.agentifier.agentifier import _format_catalog_as_text, _format_spec_as_text
+from spec4.agentifier.agentifier import (
+    format_catalog_as_text as _format_catalog_as_text,
+    format_spec_as_text as _format_spec_as_text,
+)
 from spec4.agents.brainstormer import (
     _VISION_REVIEW_FOOTER,
     format_vision_as_text as _format_vision_as_text,

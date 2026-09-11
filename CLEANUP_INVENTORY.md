@@ -10083,6 +10083,67 @@ a substitution. Rightness is the gate's job: a module path renamed by mistake re
 cleanly and fails at import; a collision reverses cleanly and fails in ruff and the suite
 (item 1).
 
+#### The token check, run at every rename commit beside the rename check
+
+*Added at 7g (§67), per the ruling at 7g's stop.* The rename check substitutes `new → old`
+on both sides, so there are two things it cannot see:
+- a use of a new name that existed before the batch — a clash such as the four
+  `revision_delta`s or the public `stream_suppressing_json`;
+- the alias line that its `x as x` fold cancels.
+
+The token check diffs the commit directly. For each hunk of `git diff -U0 P C`, with the
+record excluded, it tokenises the removed and the added lines (`\w+` and single
+punctuation marks). It then aligns the two token runs and classifies every difference:
+
+| Class | What it is |
+|---|---|
+| substitution | a run of the batch's old names, replaced position by position with their new names |
+| layout | an insert or delete of `(`, `)` or `,` alone, or a replace that becomes a substitution once those are set aside (ruff's re-wrap and magic trailing comma) |
+| §54.7 alias | an insert of `new as` pairs that re-binds a whole-file entry's import |
+| OTHER | anything else |
+
+**Every OTHER must be either the batch's documented exception or a correction the batch
+forced, and each must be shown in full in its report.** When the batch has neither, OTHER
+is 0.
+
+```python
+TOKEN, LAYOUT = re.compile(r"\w+|[^\w\s]"), {"(", ")", ","}
+for hunk in git_diff_U0(P, C, exclude="CLEANUP_INVENTORY.md"):
+    a, b = TOKEN.findall("\n".join(hunk.removed)), TOKEN.findall("\n".join(hunk.added))
+    for op, i1, i2, j1, j2 in SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        ra, rb = a[i1:i2], b[j1:j2]
+        sa, sb = [x for x in ra if x not in LAYOUT], [x for x in rb if x not in LAYOUT]
+        if op == "equal":                                                    continue
+        if len(sa) == len(sb) and sa and all(old_to_new.get(x) == y for x, y in zip(sa, sb)):
+            substitution(len(sa)); layout_if(ra != sa or rb != sb);           continue
+        if op in ("insert", "delete") and set(ra + rb) <= LAYOUT:         layout(); continue
+        if op == "insert" and sb and len(sb) % 2 == 0 and all(
+                sb[k + 1] == "as" and sb[k] in old_to_new.values() for k in range(0, len(sb), 2)):
+            alias_54_7();                                                     continue
+        other(hunk, op, ra, rb)
+```
+
+**Its first proof is 7g, run on the mechanical tree** (the twenty names and the alias drop,
+before the forced corrections):
+
+```
+OTHER  src/spec4/agentifier/agentifier.py:-89/+89: delete 'as _stream_suppressing_json' -> ''
+layout tests/agentifier/test_vision_grounding.py:-305/+305: re-wrap around 'existing_workflow_for_entry'
+layout tests/agentifier/test_vision_grounding.py:-305/+305: delete [')']
+§54.7  tests/test_renderer_goldens.py:-24/+24: re-bound 'format_catalog_as_text as' (import alias)
+§54.7  tests/test_renderer_goldens.py:-24/+24: re-bound 'format_spec_as_text as' (import alias)
+layout tests/test_renderer_goldens.py:-24/+24: insert [',', ')']
+hunks 250; old->new token substitutions 291; layout 3; §54.7 aliases 2; OTHER 1
+```
+
+The run shows:
+- **291 swaps**;
+- **one deletion**, the alias line the rename check folds away;
+- the layout and alias-import noise, classified as such.
+
+§67.4 gives the run on the committed tree, where the four forced corrections add OTHER
+lines of their own.
+
 #### The proof — `_default_session`, uncommitted, in a scratch clone at `f862f65`
 
 Batch 1's first and largest name: 248 sites, three whole-file entries, two tier-A nodes,
@@ -10369,11 +10430,11 @@ The whole-file entries, one by one:
 
 #### The rename petition
 
-In §54.7's shape, three mechanical checks, for the net entries the plan's §54.7 rule does
+In §54.7's shape, four mechanical checks, for the net entries the plan's §54.7 rule does
 not already govern:
 
 > **Rename petition — Phase 7 may edit a §50.3 tier-B class or tier-A / ordering node for
-> a rename on the §60.2 list if and only if all three hold, file by file:**
+> a rename on the §60.2 list if and only if all four hold, file by file:**
 >
 > 1. **The diff inside the net entry is identifier substitution alone.** §60.2's rename
 >    check, restricted to the listed tier-B class or tier-A node, is empty. A hunk
@@ -10387,13 +10448,40 @@ not already govern:
 >    every whole-file entry in the diff passes §54.7; and no whole-file entry, tier-B class
 >    or tier-A node that holds none of the batch's old names at the parent commit has a
 >    hunk.
+> 4. **Every rewritten patch target lands where the code under test looks.** This covers
+>    each `patch("…")` path string and each `patch.object(X, "…")` attribute string in the
+>    net entry that the batch rewrites. At C, two conditions hold:
+>    - the target resolves to the renamed function itself (the object its owner defines
+>      under the new name), not to a module;
+>    - the module the target names is one that calls it, reading the name as a global
+>      inside a function body.
 >
-> Any one of the three failing means it is not this petition — stop and ask.
+> Any one of the four failing means it is not this petition — stop and ask.
 
 *Check 1 was amended at 7d (§64.7), per the ruling on 7b.* It first read "the diff inside
 the net file". The ruling meant the net entry, and the text above now says so. 7b's and 7c's
 checkers already applied check 1 to the class or node. 7a's check applied it to the whole
 file, which is a stronger condition. So no earlier verdict changes.
+
+*Check 4 was added at 7g (§67), per the ruling at review of 7f.* It rests on §65.10's
+measurement. Both patch forms raise on a missing name. The silent failure they share is a
+target that exists but is not where the caller looks: the attribute is on the patched
+object, but the code under test resolves the name through a different module. Check 2
+cannot see that. A shadow flip (§63.1) can produce it, and so can a re-export the caller
+does not read.
+
+**Check 4 is also a standing check outside the petition.** Every patch string a batch
+rewrites must meet check 4's two conditions, whether it is a path or a `patch.object`
+attribute and whether or not it sits in a net entry. 7f's one unprotected string
+(`test_agents.py:992`) is exactly the kind that would otherwise go unchecked. A string that
+fails is a stop for that string, not for the batch. The check is implemented by
+`patch_resolve.py`, which reports for each target:
+- the module it names;
+- whether that module defines or re-exports the function;
+- its call sites there;
+- every other spec4 module that calls the function.
+
+7e's and 7f's strings pass it retroactively.
 
 **Whole-file entries are outside this petition.** They stay under §54.7 as written — the
 plan's Phase 7 rule — `tests/test_renderer_goldens.py` included, not redefined. A rename
@@ -11481,6 +11569,10 @@ here.
   - `test_streaming_characterization.py:84`;
   - the integration e2e files.
 
+  *Settled at review of 7f (§66.8):* on this host, files are written with mtimes ahead of
+  the clock, so no sleep length is safe. The close-out fix is `os.utime`, not a longer
+  sleep.
+
 ### 62.9 What this sub-phase did not do
 
 - It changes no test beyond the substitution itself, and no local variable.
@@ -12184,5 +12276,332 @@ times.
 - It changes no test beyond the substitution, and it has no documented exception.
 - It does not make the resolution check standing. §65.10 proposes it, pending a ruling.
 - It runs nothing over `evals/` beyond the compile and import check. `evals/` is outside the gate.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.
+
+### 66.11 Recorded at review, by 7g's commit
+
+- **§65.10's measured account stands, and it supersedes the directive's version.** Both
+  patch forms raise on a missing name. The silent failure they share is a target that
+  exists but is not where the caller looks.
+- **Check 4 is standing, and it covers `patch.object` too.** The mechanism is the same:
+  the attribute exists on the patched object, but the code under test may resolve the name
+  through a different module. §60.3 now records it in two ways:
+  - as check 4 of the petition;
+  - as a standing check on every patch string a batch rewrites, protected or not.
+
+  7f's `test_agents.py:992` is exactly the unprotected case that would otherwise go
+  unchecked. A string that fails is a stop for that string, not for the batch.
+- **The mtime observation settles the close-out fix (§66.8).** Files are written ahead of
+  the clock on this host, so no sleep length is safe. The fix is `os.utime`, not a longer
+  sleep. §62.8 carries a pointer to this.
+
+## 67. Phase 7g — rename batch 7: `agentifier.agentifier`, twenty names and the alias
+
+§60.7(j) 7g: one commit, default mode, under the rename check and, from this commit on,
+the token check (§60.2). Twenty private names in the Agentifier package take their
+underscore-free spelling. The private alias `_stream_suppressing_json` is dropped
+(§60.7(d)). **The batch has one documented exception, the alias drop.** The rename also
+falsified four sentences, and each is corrected in this commit under §62.2's ruling (§67.3).
+As ruled at 7g's stop, comment corrections the rename forces do not compete with a code
+exception for the exception slot.
+
+### 67.1 What landed
+
+| Private | Public | Owner (`agentifier/`) | Tests / `src/` / `evals/` |
+|---|---|---|---:|
+| `_build_ai_features` | `build_ai_features` | `_render.py` | 30 / 11 / 4 |
+| `_build_seed_message` | `build_seed_message` | `_seed.py` | 28 / 6 / 0 |
+| `_reselection_pool_from_features` | `reselection_pool_from_features` | `agentifier.py` | 12 / 3 / 0 |
+| `_extract_cross_cutting_analysis` | `extract_cross_cutting_analysis` | `agentifier.py` | 21 / 5 / 0 |
+| `_candidates_from_dicts` | `candidates_from_dicts` | `_seed.py` | 8 / 5 / 0 |
+| `_merge_revision_snapshot` | `merge_revision_snapshot` | `_render.py` | 8 / 5 / 0 |
+| `_revision_delta` | `revision_delta` | `_render.py` | 8 / 5 / 0 |
+| `_candidates_to_dicts` | `candidates_to_dicts` | `_seed.py` | 7 / 7 / 2 |
+| `_is_spec_confirmed` | `is_spec_confirmed` | `agentifier.py` | 8 / 7 / 0 |
+| `_removed_feature_heads_up` | `removed_feature_heads_up` | `_render.py` | 6 / 5 / 0 |
+| `_breadth_candidates` | `breadth_candidates` | `agentifier.py` | 6 / 3 / 0 |
+| `_format_catalog_as_text` | `format_catalog_as_text` | `_render.py` | 5 / 5 / 0 |
+| `_existing_workflow_for_entry` | `existing_workflow_for_entry` | `agentifier.py` | 4 / 2 / 0 |
+| `_feature_specs_for_session` | `feature_specs_for_session` | `agentifier.py` | 5 / 4 / 0 |
+| `_analyses_to_dicts` | `analyses_to_dicts` | `_seed.py` | 4 / 5 / 2 |
+| `_linked_features_for_entry` | `linked_features_for_entry` | `agentifier.py` | 4 / 2 / 0 |
+| `_format_spec_as_text` | `format_spec_as_text` | `_render.py` | 3 / 9 / 0 |
+| `_parse_priority_edits` | `parse_priority_edits` | `_render.py` | 2 / 5 / 0 |
+| `_format_priority_table` | `format_priority_table` | `_render.py` | 2 / 7 / 0 |
+| `_vision_mvp_feature_names` | `vision_mvp_feature_names` | `_seed.py` | 2 / 5 / 0 |
+| | | | **173 / 106 / 8**, as §60.2 recorded |
+| `_stream_suppressing_json` (alias) | `stream_suppressing_json` | `agents/_reask.py`, already public | 9 / 4 / 0 |
+
+- **Footprint: 30 files.** 28 are under `src/` and `tests/`; the other two are
+  `evals/agentifier/README.md` and `evals/agentifier/run_mechanism_probe.py`. There are 300
+  occurrences at `ffb821c`, and 294 were rewritten. The other six are call uses in
+  `test_renderer_goldens.py`, which keep the old spelling behind the §54.7 aliases. The
+  substitution changed 291 lines. Ruff then split one import (§67.6) and joined one
+  assertion (§67.6), and the four corrections changed eight more lines. That gives 302
+  insertions and 301 deletions. Nothing in `scripts/` or `.spec4/` names any of the 21.
+- **Outside the gate: `evals/agentifier/`.** The batch touches the README's pipeline line and
+  `run_mechanism_probe.py`'s import and three uses. The probe compiles, and its imports
+  (`build_ai_features`, `candidates_to_dicts`, `analyses_to_dicts`) resolve.
+- **The alias drop.** `agentifier.py:89` now imports `stream_suppressing_json` by its
+  public name, and `_run_catalog_phase` calls it by that name (`:2052`). Two test lines
+  follow it:
+  - `test_chars_counter_seed.py:150`, `real = agentifier.stream_suppressing_json`;
+  - `:156`, the `patch.object` string.
+
+  Four prose mentions follow the name, and each stays true: `llm.py:853`,
+  `test_chars_counter_seed.py:4`, `test_agentifier_chars_counter.py:5` and
+  `test_stack_advisor_token_counter.py:3`.
+- **String references: 26 `__all__` entries and 13 patch strings, rewritten.** Thirteen
+  names appear twice each in `__all__`, once in `agentifier.py` and once in their owning
+  module. The twelve `extract_cross_cutting_analysis` path strings and the alias's
+  `patch.object` string are covered in §67.5. RUF022 is not selected, so no `__all__`
+  entry moves.
+- **No module-path occurrences, and no shadow flip.** None of the 21 is a module name.
+- **D-number comments: updated by the substitution, and none went stale.** Every D-cited
+  comment or docstring that names a batch name now spells it the new way. That covers
+  D-EP1 to D-EP3 in `test_edge_persistence.py` and D-AC1 in `test_vision_grounding.py:204`.
+  It also covers the D-AT-cited docstrings that name the alias. `app.py` is untouched.
+- **Node ids unchanged.** 4,200 collected.
+
+### 67.2 The collision check, in the standing form, and the `revision_delta` clash
+
+The check ran on all twenty new names before the substitution, at `ffb821c`:
+
+- **Nineteen names: no collision.** None occurs as a token. Their hyphen, spaced and cased
+  forms appear only in test names and prose. No Dash id spells any of them, and no other
+  definition matches the pattern.
+- **`revision_delta` is a clash, not a collision.** The name is already a public function,
+  with the same signature `(vision) -> dict | None`, in four other modules:
+  - `agents/deployer.py:397`;
+  - `agents/designer.py:265`;
+  - `agents/phaser/_revision.py:36`;
+  - `agents/stack_advisor/_stack_shape.py:27`.
+
+  Those functions are re-exported and used about sixty times across `src/` and `tests/`.
+  The `"revision_delta"` strings §60.2 flagged are those modules' `__all__` entries, not
+  session keys. No importer of `_revision_delta` binds `revision_delta`, so they share no
+  scope. Agentifier's function becomes the fifth public `revision_delta`, like
+  `round_cost` (§63.1).
+- **The rename check cannot see the clash**, because it reverse-substitutes both sides
+  alike. The same holds for every occurrence of the public `stream_suppressing_json`. The
+  token check (§67.4) sees both: it finds no change to any of them.
+
+### 67.3 The documented exception, and the four corrections the batch forced
+
+**The exception is the alias drop.** At `agentifier.py:89`,
+`stream_suppressing_json as _stream_suppressing_json,` becomes
+`stream_suppressing_json,`. The rename check's `x as x` fold cancels it, as §60.7(d)
+predicted. The token check shows it as a single deletion, `as _stream_suppressing_json`
+(§67.4).
+
+**The four corrections.** Each sentence was true at `ffb821c` and false after the batch:
+
+1. `agentifier.py:22–23`: "every name kept below keeps the spelling it had before the
+   split". Thirteen of them no longer do.
+2. `agentifier.py:26–28`: "``stream_suppressing_json`` is imported under its pre-4j
+   underscore spelling because …". The alias is gone.
+3. `agentifier.py:141–144`, the `__all__` comment: "re-exported here so the pre-split
+   attribute surface is unchanged". `agentifier._build_ai_features` and twelve like it no
+   longer resolve. The correction cites the sub-phase as `7g`, the way the code already
+   cites `pre-4j`, so the record can be found from the code.
+4. `_render.py:9–10`: "Names keep their spelling and are re-exported". The re-export keeps
+   one spelling across both modules, and the new sentence says so.
+
+Two sentences were left, and why:
+- `_seed.py:10–11`, "re-exported … and keeps its spelling, so `_registry` still resolves".
+  It is about the two modules sharing one name, which they still do.
+- The "every ``_format_*`` renderer" glob (`agentifier.py:17`, `_render.py:4`). It
+  describes what Phase 4i moved.
+
+**The rename check, as recorded.** It ran the §60.2 shell function with `P=HEAD` over the
+working tree; only the temp-dir prefixes are shortened. The check prints the
+reverse-substituted view, so the alias sentence's new line shows `_stream_suppressing_json`
+where the committed text says `stream_suppressing_json`. The scratch implementation prints
+the same 18 lines, and the two agree line for line.
+
+```
+diff -ru '--exclude=CLEANUP_INVENTORY.md' p/src/spec4/agentifier/_render.py c/src/spec4/agentifier/_render.py
+@@ -6,8 +6,8 @@
+ 
+ Every function derives its result from its arguments -- no session write, no
+ yield, no I/O -- and nothing here imports ``spec4.agentifier.agentifier``, so
+-this module is a leaf. Names keep their spelling and are re-exported from
+-``agentifier``; ``tests/test_renderer_goldens.py`` pins two of them.
++this module is a leaf. Names are re-exported from ``agentifier`` under the
++same spelling; ``tests/test_renderer_goldens.py`` pins two of them.
+ """
+ 
+ from __future__ import annotations
+diff -ru '--exclude=CLEANUP_INVENTORY.md' p/src/spec4/agentifier/agentifier.py c/src/spec4/agentifier/agentifier.py
+@@ -20,12 +20,12 @@
+   shared ``name: instruction`` router, and the two review presenters.
+ 
+ The import path ``spec4.agentifier.agentifier`` is unchanged, and every name
+-kept below keeps the spelling it had before the split. ``_registry`` in
++kept below has the spelling it has in its owning module. ``_registry`` in
+ particular is the same object as ``_seed._registry``, so
+ ``patch("spec4.agentifier.agentifier._registry.stream")`` still reaches the live
+-registry, and ``_stream_suppressing_json`` is imported under its pre-4j
+-underscore spelling because ``tests/agentifier/test_chars_counter_seed.py``
+-patches it on this module by name. Phase 4j then moved every importer onto the
++registry, and ``_stream_suppressing_json`` is imported under its public name,
++which ``tests/agentifier/test_chars_counter_seed.py`` patches on this module
++by name. Phase 4j then moved every importer onto the
+ owning module and dropped the re-exports nothing reached through here, so what
+ is listed below is exactly the set some importer outside the owning module
+ still needs. ``__all__`` is
+@@ -125,9 +125,9 @@
+ )
+ 
+ #: Every name Phase 4i moved into ``_seed`` / ``_render`` / ``_ff_review``,
+-#: re-exported here so the pre-split attribute surface is unchanged, plus the
+-#: three names the orchestrator itself publishes. Load-bearing: ``[tool.mypy]
+-#: strict`` implies ``no_implicit_reexport``.
++#: re-exported here under its owning module's spelling (thirteen became public
++#: in 7g), plus the three names the orchestrator itself publishes. Load-bearing:
++#: ``[tool.mypy] strict`` implies ``no_implicit_reexport``.
+ __all__ = [
+     "_analyses_from_session",
+     "_analyses_to_dicts",
+```
+
+The committed text of the alias sentence (`agentifier.py:26–28`):
+
+```
+registry, and ``stream_suppressing_json`` is imported under its public name,
+which ``tests/agentifier/test_chars_counter_seed.py`` patches on this module
+by name. Phase 4j then moved every importer onto the
+```
+
+The third hunk's line numbers (`-125`) are those of the normalised trees, where the
+formatter pass has collapsed the import blocks above. In the committed file the comment is
+at `:141–144`.
+
+### 67.4 The token check on the committed tree
+
+The first proof, on the mechanical tree, is in §60.2. On the committed tree the
+corrections add OTHER lines only at the four corrected sentences:
+
+```
+OTHER  src/spec4/agentifier/_render.py:-9/+9: delete 'keep their spelling and' -> ''
+OTHER  src/spec4/agentifier/_render.py:-9/+9: insert '' -> 'under the same spelling'
+OTHER  src/spec4/agentifier/agentifier.py:-23/+23: replace 'keeps' -> 'has'
+OTHER  src/spec4/agentifier/agentifier.py:-23/+23: replace 'had before the split' -> 'has in its owning module'
+OTHER  src/spec4/agentifier/agentifier.py:-26/+26: replace 'pre - 4j underscore spelling because' -> 'public name , which'
+OTHER  src/spec4/agentifier/agentifier.py:-26/+26: delete 'it' -> ''
+OTHER  src/spec4/agentifier/agentifier.py:-89/+89: delete 'as _stream_suppressing_json' -> ''
+OTHER  src/spec4/agentifier/agentifier.py:-142/+142: replace 'so the pre - split attribute surface is unchanged' -> "under its owning module ' s spelling ( thirteen became public # : in 7g )"
+OTHER  src/spec4/agentifier/agentifier.py:-142/+142: delete '# :' -> ''
+OTHER  src/spec4/agentifier/agentifier.py:-142/+142: insert '' -> '# :'
+OTHER  src/spec4/agentifier/agentifier.py:-142/+142: delete '# :' -> ''
+hunks 253; old->new token substitutions 291; layout 3; §54.7 aliases 2; OTHER 11
+```
+
+How the eleven OTHER lines break down:
+- Ten fall in the four corrected sentences, at `_render.py:9` and `agentifier.py:23`,
+  `:26` and `:142`. The `# :` lines are the re-wrapped comment markers.
+- The eleventh is the alias deletion at `:89`.
+
+Nothing else: no pre-existing `revision_delta` or `stream_suppressing_json` changed. The
+swap count reconciles. 300 occurrences, less the six call uses and two alias-kept tokens in
+`test_renderer_goldens.py`, less the deleted alias token, gives 291.
+
+### 67.5 Check 4: where each of the thirteen patch strings lands
+
+Check 4 ran before the substitution on the old names, as ruled, and again at C on the
+changed lines (`--base HEAD`). Both runs gave the same landing for every string.
+
+| String | Form | Module named | Defines or re-exports | The patch lands on |
+|---|---|---|---|---|
+| `tests/agentifier/test_chars_counter_seed.py:156` | `patch.object` | `spec4.agentifier.agentifier` | re-exports it from `agents._reask` | `_run_catalog_phase@2052` |
+| `tests/agentifier/test_streaming_e2e.py:357` | path | `spec4.agentifier.agentifier` | defines it | `_finalize_specs@777`, `_handle_cc_ff_review@1032`, `_run_cross_cutting_phase@1313` and `@1375` |
+| `…test_streaming_e2e.py:386` | path | the same | defines it | the same four |
+| `…test_streaming_e2e.py:523` | path | the same | defines it | the same four |
+| `…test_streaming_e2e.py:572` | path | the same | defines it | the same four |
+| `…test_streaming_e2e.py:648` | path | the same | defines it | the same four |
+| `…test_streaming_e2e.py:655` | path | the same | defines it | the same four |
+| `…test_streaming_e2e.py:683` | path | the same | defines it | the same four |
+| `…test_streaming_e2e.py:689` | path | the same | defines it | the same four |
+| `…test_streaming_e2e.py:788` | path | the same | defines it | the same four |
+| `tests/integration/test_pipeline_greenfield.py:348` | path | the same | defines it | the same four |
+| `…test_pipeline_greenfield.py:374` | path | the same | defines it | the same four |
+| `…test_pipeline_greenfield.py:403` | path | the same | defines it | the same four |
+
+- **The twelve `extract_cross_cutting_analysis` strings all name the defining module.**
+  That module holds every call site; no other spec4 module calls the function. None names
+  a re-export, so no string stops.
+- **The alias string names a re-export, and the patch still lands on the caller.**
+  `agentifier` both re-exports the function and calls it, at `_run_catalog_phase@2052`.
+  That is the path the test drives (`_run_breadth_turn`). The function's other callers are
+  the `run`s of `brainstormer` (`:728`), `code_scanner` (`:271`) and `stack_advisor`
+  (`:113`). Each reads the name from `agents._reask`, and the test drives none of them.
+  Before the drop, check 4's condition (1) failed on the alias spelling alone: the object's
+  `__name__` was `stream_suppressing_json`. After the drop it passes.
+- **Both files run in the gate.** They hold 41 tests, and none is skipped.
+
+### 67.6 Petitions, by kind
+
+| Kind | Where | Result |
+|---|---|---|
+| §54.7, whole-file | `test_renderer_goldens.py`: two import bindings re-aliased. Ruff split the one-line import into a parenthesised block at `:24–27` | import lines alone · goldens identical · node ids unchanged — **passes** |
+| §60.3, tier-A | `tests/agentifier/test_chars_counter_seed.py::TestBreadthTurnSeedsTheCounter::test_counter_does_not_dip_below_the_progress_text` (145–160), lines `:150` and `:156`, the alias's two test lines | reverse diff empty inside the node · assertions token-identical · check 4 passes (§67.5) — **passes** |
+
+§60.2's net figures for this batch (1 / 0 / 0) did not list the tier-A node, because the
+alias is not one of the twenty. The tier report found it, and the petition covers it.
+
+One assertion was joined, outside the net:
+- It is at `tests/agentifier/test_vision_grounding.py:305`, in
+  `TestFeatureSpecsForSession::test_existing_workflow_for_entry_missing_returns_empty`.
+- It went from `assert (\n    _existing_workflow_for_entry(…) == ""\n)` to
+  `assert existing_workflow_for_entry(…) == ""`, 88 columns.
+- The token check classes it as layout: the parentheses went, and the name was
+  substituted.
+
+### 67.7 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | 1 in the diff, under §54.7, passing |
+| 456 node ids | **456 / 456 collect**; 4,200 collected |
+| 19 tier-B files / 33 classes | **2 files with hunks.** Neither hunk lies inside a listed class |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_agents.py` | `TestLoadDesignManifest` **2271–2298**; `TestAiFeaturesForPhaserFullSurface` **4962–5060**; `TestPhaserSpecReferenceDirective` **5227–5268** | 1 — 3290 | **none inside a listed class** |
+| `test_stack_advisor_token_counter.py` | `TestCounterGate` **27–82**; `TestSuppressedStreamPublishesReceipt` **85–149** | 1 — 3 | **none inside a listed class** |
+
+### 67.8 Record changes carried in this commit
+
+- **§60.2 gains the token check** as the second check at every rename commit, with 7g's
+  mechanical-tree output as its first proof.
+- **§60.3 gains check 4 and the standing check.** The count line and both "three"s now
+  read "four".
+- **§62.8 gains a pointer.** No sleep length is safe on this host, so the close-out fix is
+  `os.utime`.
+- **§66.11 records the review of 7f.**
+- **Everything was appended through the add-only step.** The guard lists the hunks that
+  delete lines: the changed wording in §60.3 and nothing else. No blank line is deleted.
+
+### 67.9 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped` (exit 0); 4,200 collected |
+| Coverage | same run | `TOTAL 12421 stmts, 891 miss, 93%` — identical to §60.1, at the ≤ 891 ceiling |
+
+The gate also ran on the mechanical tree, before the corrections, with the same result.
+
+### 67.10 What this sub-phase did not do
+
+- It changes no code beyond the substitution and the alias drop.
+- It changes no prose beyond the four corrections.
+- It leaves `_seed.py:10–11` and the `_format_*` glob, for the reasons in §67.3.
+- It does not consolidate the five `revision_delta`s. They are recorded here as a clash
+  only.
+- It runs nothing over `evals/` beyond the compile and import check.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.

@@ -12,10 +12,10 @@ from typing import Any
 from unittest.mock import patch
 
 from spec4.agentifier.agentifier import (
-    _build_ai_features,
-    _existing_workflow_for_entry,
-    _feature_specs_for_session,
-    _linked_features_for_entry,
+    build_ai_features,
+    existing_workflow_for_entry,
+    feature_specs_for_session,
+    linked_features_for_entry,
 )
 from spec4.agentifier.grounding import (
     build_grounding,
@@ -201,7 +201,7 @@ class TestRenderGroundingForPrompt:
 
 
 # ---------------------------------------------------------------------------
-# _build_ai_features — per-node carry, slug join, coordinator union (D-AC1/3/8)
+# build_ai_features — per-node carry, slug join, coordinator union (D-AC1/3/8)
 # ---------------------------------------------------------------------------
 
 
@@ -210,7 +210,7 @@ class TestBuildAiFeaturesGrounding:
         specs = _feature_specs(_product_spec("Smart Search"))
         entry = _entry("semantic_ranking")
         cand = _candidate("semantic_ranking", ["Smart Search"])
-        [feat] = _build_ai_features([entry], [{}], [cand], None, specs)
+        [feat] = build_ai_features([entry], [{}], [cand], None, specs)
         assert feat["vision_grounding"]["served_features"][0]["name"] == "Smart Search"
 
     def test_slug_join_across_name_forms(self) -> None:
@@ -218,7 +218,7 @@ class TestBuildAiFeaturesGrounding:
         specs = _feature_specs(_product_spec("Smart Search"))
         entry = _entry("ranker")
         cand = _candidate("ranker", ["Smart Search"])
-        [feat] = _build_ai_features([entry], [{}], [cand], None, specs)
+        [feat] = build_ai_features([entry], [{}], [cand], None, specs)
         assert "vision_grounding" in feat
 
     def test_coordinator_union_grounds_all_members(self) -> None:
@@ -226,27 +226,27 @@ class TestBuildAiFeaturesGrounding:
         specs = _feature_specs(_product_spec("Alpha"), _product_spec("Beta"))
         entry = _entry("coordinator")
         cand = _candidate("coordinator", ["Alpha", "Beta"])
-        [feat] = _build_ai_features([entry], [{}], [cand], None, specs)
+        [feat] = build_ai_features([entry], [{}], [cand], None, specs)
         names = [f["name"] for f in feat["vision_grounding"]["served_features"]]
         assert names == ["Alpha", "Beta"]
 
     def test_no_grounding_key_when_feature_specs_absent(self) -> None:
         entry = _entry("ranker")
         cand = _candidate("ranker", ["Smart Search"])
-        [feat] = _build_ai_features([entry], [{}], [cand], None, None)
+        [feat] = build_ai_features([entry], [{}], [cand], None, None)
         assert "vision_grounding" not in feat
 
     def test_no_grounding_key_when_no_links(self) -> None:
         specs = _feature_specs(_product_spec("Smart Search"))
         entry = _entry("cross_cutting_thing")
         cand = _candidate("cross_cutting_thing", [])
-        [feat] = _build_ai_features([entry], [{}], [cand], None, specs)
+        [feat] = build_ai_features([entry], [{}], [cand], None, specs)
         assert "vision_grounding" not in feat
 
     def test_id_uses_shared_slug(self) -> None:
         # D-AC8: node id routes through slug(); empty name keeps positional id.
         specs = _feature_specs()
-        [feat] = _build_ai_features([_entry("Ticket Routing")], [{}], [], None, specs)
+        [feat] = build_ai_features([_entry("Ticket Routing")], [{}], [], None, specs)
         assert feat["id"] == "ticket_routing"
 
     def test_grounding_survives_spec_echo(self) -> None:
@@ -255,12 +255,12 @@ class TestBuildAiFeaturesGrounding:
         entry = _entry("ranker")
         cand = _candidate("ranker", ["Alpha"])
         spec = [{"vision_grounding": {"served_features": [{"name": "WRONG"}]}}]
-        [feat] = _build_ai_features([entry], spec, [cand], None, specs)
+        [feat] = build_ai_features([entry], spec, [cand], None, specs)
         assert feat["vision_grounding"]["served_features"][0]["name"] == "Alpha"
 
 
 # ---------------------------------------------------------------------------
-# _feature_specs_for_session / _linked_features_for_entry
+# feature_specs_for_session / linked_features_for_entry
 # ---------------------------------------------------------------------------
 
 
@@ -268,25 +268,25 @@ class TestFeatureSpecsForSession:
     def test_prefers_session_copy(self) -> None:
         specs = _feature_specs(_product_spec("Alpha"))
         session = {"feature_specs": specs, "working_dir": "/nope"}
-        assert _feature_specs_for_session(session) is specs
+        assert feature_specs_for_session(session) is specs
 
     def test_falls_back_to_disk(self) -> None:
         specs = _feature_specs(_product_spec("Alpha"))
         session = {"feature_specs": None, "working_dir": "/wd"}
         with patch("spec4.project_manager.load_feature_specs", return_value=specs) as m:
-            got = _feature_specs_for_session(session)
+            got = feature_specs_for_session(session)
         m.assert_called_once_with("/wd")
         assert got is specs
 
     def test_empty_when_neither(self) -> None:
-        assert _feature_specs_for_session({}) == {}
+        assert feature_specs_for_session({}) == {}
 
     def test_linked_features_from_candidate(self) -> None:
         cands = [_candidate("ranker", ["Alpha", "Beta"])]
-        assert _linked_features_for_entry(_entry("ranker"), cands) == ["Alpha", "Beta"]
+        assert linked_features_for_entry(_entry("ranker"), cands) == ["Alpha", "Beta"]
 
     def test_linked_features_missing_candidate(self) -> None:
-        assert _linked_features_for_entry(_entry("orphan"), []) == []
+        assert linked_features_for_entry(_entry("orphan"), []) == []
 
     def test_existing_workflow_for_entry_found(self) -> None:
         cands = [
@@ -295,16 +295,14 @@ class TestFeatureSpecsForSession:
             )
         ]
         assert (
-            _existing_workflow_for_entry(_entry("ranker"), cands)
+            existing_workflow_for_entry(_entry("ranker"), cands)
             == "regex ranking in views.py"
         )
 
     def test_existing_workflow_for_entry_missing_returns_empty(self) -> None:
-        assert _existing_workflow_for_entry(_entry("orphan"), []) == ""
+        assert existing_workflow_for_entry(_entry("orphan"), []) == ""
         # A candidate without the key (or with None) degrades to "".
-        assert (
-            _existing_workflow_for_entry(_entry("ranker"), [{"name": "ranker"}]) == ""
-        )
+        assert existing_workflow_for_entry(_entry("ranker"), [{"name": "ranker"}]) == ""
 
 
 # ---------------------------------------------------------------------------

@@ -12,10 +12,10 @@ from unittest.mock import patch
 
 from spec4.agentifier import agentifier
 from spec4.agentifier.agentifier import (
-    _build_seed_message,
-    _merge_revision_snapshot,
-    _removed_feature_heads_up,
-    _revision_delta,
+    build_seed_message,
+    merge_revision_snapshot,
+    removed_feature_heads_up,
+    revision_delta,
 )
 from spec4.agentifier.scout import Candidate
 from spec4.agentifier.tier_analyst import TierAnalystOutput
@@ -26,7 +26,7 @@ def _collect(gen) -> str:
 
 
 # ---------------------------------------------------------------------------
-# _revision_delta
+# revision_delta
 # ---------------------------------------------------------------------------
 
 
@@ -41,22 +41,22 @@ class TestRevisionDelta:
                 ],
             }
         }
-        assert _revision_delta(vision) == {"version": 2, "goal": "second"}
+        assert revision_delta(vision) == {"version": 2, "goal": "second"}
 
     def test_none_for_greenfield(self) -> None:
-        assert _revision_delta({"vision_statement": {"name": "X"}}) is None
+        assert revision_delta({"vision_statement": {"name": "X"}}) is None
 
     def test_none_for_empty_history(self) -> None:
-        assert _revision_delta({"vision_statement": {"revision_history": []}}) is None
+        assert revision_delta({"vision_statement": {"revision_history": []}}) is None
 
     def test_none_for_non_dict_or_missing(self) -> None:
-        assert _revision_delta(None) is None
-        assert _revision_delta({}) is None
-        assert _revision_delta({"vision_statement": None}) is None
+        assert revision_delta(None) is None
+        assert revision_delta({}) is None
+        assert revision_delta({"vision_statement": None}) is None
 
 
 # ---------------------------------------------------------------------------
-# _merge_revision_snapshot
+# merge_revision_snapshot
 # ---------------------------------------------------------------------------
 
 
@@ -64,27 +64,27 @@ class TestMergeRevisionSnapshot:
     def test_carried_first_then_new(self) -> None:
         carried = [{"name": "built_a", "introduced_in_version": 0}]
         new = [{"name": "new_b"}]
-        out = _merge_revision_snapshot(carried, new, current_version=1, prior_version=0)
+        out = merge_revision_snapshot(carried, new, current_version=1, prior_version=0)
         assert [f["name"] for f in out] == ["built_a", "new_b"]
 
     def test_new_features_stamped_with_current_version(self) -> None:
-        out = _merge_revision_snapshot([], [{"name": "n"}], 3, 2)
+        out = merge_revision_snapshot([], [{"name": "n"}], 3, 2)
         assert out[0]["introduced_in_version"] == 3
 
     def test_carried_keeps_existing_stamp(self) -> None:
         carried = [{"name": "old", "introduced_in_version": 1}]
-        out = _merge_revision_snapshot(carried, [], current_version=2, prior_version=1)
+        out = merge_revision_snapshot(carried, [], current_version=2, prior_version=1)
         assert out[0]["introduced_in_version"] == 1
 
     def test_carried_backfilled_when_missing(self) -> None:
         carried = [{"name": "legacy"}]  # predates the marker
-        out = _merge_revision_snapshot(carried, [], current_version=2, prior_version=1)
+        out = merge_revision_snapshot(carried, [], current_version=2, prior_version=1)
         assert out[0]["introduced_in_version"] == 1
 
     def test_carried_wins_on_name_collision(self) -> None:
         carried = [{"name": "dup", "introduced_in_version": 0, "tier": "rag"}]
         new = [{"name": "dup", "tier": "single_call"}]
-        out = _merge_revision_snapshot(carried, new, current_version=1, prior_version=0)
+        out = merge_revision_snapshot(carried, new, current_version=1, prior_version=0)
         assert len(out) == 1
         assert out[0]["tier"] == "rag"  # built entry kept, not the new duplicate
         assert out[0]["introduced_in_version"] == 0
@@ -92,13 +92,13 @@ class TestMergeRevisionSnapshot:
     def test_does_not_mutate_inputs(self) -> None:
         carried = [{"name": "c"}]
         new = [{"name": "n"}]
-        _merge_revision_snapshot(carried, new, 1, 0)
+        merge_revision_snapshot(carried, new, 1, 0)
         assert "introduced_in_version" not in carried[0]
         assert "introduced_in_version" not in new[0]
 
 
 # ---------------------------------------------------------------------------
-# _removed_feature_heads_up
+# removed_feature_heads_up
 # ---------------------------------------------------------------------------
 
 
@@ -108,24 +108,24 @@ class TestRemovedFeatureHeadsUp:
             {"name": "coupon_ranker", "linked_vision_features": ["Legacy_Coupons"]},
         ]
         delta = {"changes": {"removed": ["Legacy_Coupons"]}}
-        note = _removed_feature_heads_up(carried, delta)
+        note = removed_feature_heads_up(carried, delta)
         assert "coupon_ranker" in note
         assert "Legacy_Coupons" in note
         assert "carried forward" in note.lower()
 
     def test_empty_when_nothing_removed(self) -> None:
         carried = [{"name": "a", "linked_vision_features": ["F"]}]
-        assert _removed_feature_heads_up(carried, {"changes": {"removed": []}}) == ""
-        assert _removed_feature_heads_up(carried, None) == ""
+        assert removed_feature_heads_up(carried, {"changes": {"removed": []}}) == ""
+        assert removed_feature_heads_up(carried, None) == ""
 
     def test_empty_when_no_overlap(self) -> None:
         carried = [{"name": "a", "linked_vision_features": ["Kept"]}]
         delta = {"changes": {"removed": ["Gone"]}}
-        assert _removed_feature_heads_up(carried, delta) == ""
+        assert removed_feature_heads_up(carried, delta) == ""
 
 
 # ---------------------------------------------------------------------------
-# _build_seed_message — brownfield suppression in revision mode
+# build_seed_message — brownfield suppression in revision mode
 # ---------------------------------------------------------------------------
 
 
@@ -155,7 +155,7 @@ def _one_candidate() -> tuple[list[Candidate], list[TierAnalystOutput]]:
 class TestSeedMessageRevision:
     def test_revision_suppresses_brownfield_question(self) -> None:
         cand, analysis = _one_candidate()
-        seed = _build_seed_message(
+        seed = build_seed_message(
             cand, analysis, brownfield=True, revision_goal="Add returns."
         )
         assert "adding AI features for the first time" not in seed
@@ -164,12 +164,12 @@ class TestSeedMessageRevision:
 
     def test_brownfield_question_kept_without_revision(self) -> None:
         cand, analysis = _one_candidate()
-        seed = _build_seed_message(cand, analysis, brownfield=True)
+        seed = build_seed_message(cand, analysis, brownfield=True)
         assert "adding AI features for the first time" in seed
 
     def test_greenfield_has_no_mode_note(self) -> None:
         cand, analysis = _one_candidate()
-        seed = _build_seed_message(cand, analysis)
+        seed = build_seed_message(cand, analysis)
         assert "BROWNFIELD" not in seed
         assert "REVISION" not in seed
 

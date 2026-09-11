@@ -2,7 +2,7 @@
 
 Brainstormer was the last chat agent with no counter at all: it was absent from
 ``_TOKEN_COUNTER_AGENTS``, *and* it was the one caller that passed no ``session``
-into ``_stream_suppressing_json``. Its vision-finalize turn suppresses the
+into ``stream_suppressing_json``. Its vision-finalize turn suppresses the
 artifact on its way to the screen exactly as StackAdvisor's does (D-SC60), so
 the developer watched a multi-minute draw with no feedback whatsoever.
 """

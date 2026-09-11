@@ -345,7 +345,7 @@ class TestAgentifierGreenfield:
 
         with patch("litellm.acompletion", new=_make_streaming_mock(_AI_SPEC)):
             with patch(
-                "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+                "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
                 return_value=_CC_ANALYSIS,
             ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))  # draft
@@ -371,7 +371,7 @@ class TestAgentifierGreenfield:
 
         with patch("litellm.acompletion", new=_make_streaming_mock(_AI_SPEC)):
             with patch(
-                "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+                "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
                 return_value=_CC_ANALYSIS,
             ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))  # draft
@@ -400,7 +400,7 @@ class TestAgentifierGreenfield:
 
         with patch("litellm.acompletion", new=_make_streaming_mock(_AI_SPEC)):
             with patch(
-                "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+                "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
                 return_value=_CC_ANALYSIS,
             ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))

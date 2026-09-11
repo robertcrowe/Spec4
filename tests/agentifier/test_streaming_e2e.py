@@ -354,7 +354,7 @@ class TestOrchestratorSpecPhase:
             from spec4.agentifier.agentifier import run as agentifier_run
 
             with patch(
-                "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+                "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
                 return_value=cc_json,
             ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))  # draft A
@@ -383,7 +383,7 @@ class TestOrchestratorSpecPhase:
             from spec4.agentifier.agentifier import run as agentifier_run
 
             with patch(
-                "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+                "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
                 return_value=cc_json,
             ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))
@@ -520,7 +520,7 @@ class TestOrchestratorCrossCuttingPhase:
         }
         cc_text = "```json\n" + json.dumps(cc_revised) + "\n```"
         with patch(
-            "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+            "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
             return_value=cc_revised,
         ):
             with patch(
@@ -569,7 +569,7 @@ class TestOrchestratorCrossCuttingPhase:
         }
         cc_text = "```json\n" + json.dumps(revised) + "\n```"
         with patch(
-            "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+            "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
             return_value=revised,
         ):
             with patch(
@@ -645,14 +645,14 @@ class TestFullPipeline:
 
         with patch("litellm.acompletion", new=_make_streaming_mock(self._spec_words())):
             with patch(
-                "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+                "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
                 return_value=_CC_ANALYSIS,
             ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))  # draft feature_x
 
         # Confirm spec → triggers cross-cutting (analyst already mocked via _extract)
         with patch(
-            "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+            "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
             return_value=_CC_ANALYSIS,
         ):
             with patch(
@@ -680,13 +680,13 @@ class TestFullPipeline:
 
         with patch("litellm.acompletion", new=_make_streaming_mock(self._spec_words())):
             with patch(
-                "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+                "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
                 return_value=_CC_ANALYSIS,
             ):
                 list(agentifier_run("yes", session, _LLM_CONFIG))  # draft
 
         with patch(
-            "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+            "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
             return_value=_CC_ANALYSIS,
         ):
             with patch(
@@ -785,7 +785,7 @@ class TestReceiptCounterDuringDrains:
         from spec4.agentifier.agentifier import run as agentifier_run
 
         with patch(
-            "spec4.agentifier.agentifier._extract_cross_cutting_analysis",
+            "spec4.agentifier.agentifier.extract_cross_cutting_analysis",
             return_value=cc_revised,
         ):
             with patch("litellm.acompletion", new=_make_streaming_mock(cc_words)):

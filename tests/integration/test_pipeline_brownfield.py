@@ -442,7 +442,7 @@ class TestSpecDrafterBrownfield:
 
 class TestOrchestratorBrownfieldSeed:
     def test_brownfield_seed_contains_mode_question(self) -> None:
-        from spec4.agentifier.agentifier import _build_seed_message
+        from spec4.agentifier.agentifier import build_seed_message
         from spec4.agentifier.tier_analyst import TierAnalystOutput
 
         candidates = [
@@ -464,12 +464,12 @@ class TestOrchestratorBrownfieldSeed:
                 compared_to_next_tier_down="",
             )
         ]
-        seed = _build_seed_message(candidates, analyses, brownfield=True)
+        seed = build_seed_message(candidates, analyses, brownfield=True)
         assert "brownfield" in seed.lower() or "existing" in seed.lower()
         assert "adding AI features" in seed or "rethinking" in seed
 
     def test_greenfield_seed_has_no_brownfield_note(self) -> None:
-        from spec4.agentifier.agentifier import _build_seed_message
+        from spec4.agentifier.agentifier import build_seed_message
         from spec4.agentifier.tier_analyst import TierAnalystOutput
 
         candidates = [
@@ -491,7 +491,7 @@ class TestOrchestratorBrownfieldSeed:
                 compared_to_next_tier_down="",
             )
         ]
-        seed = _build_seed_message(candidates, analyses, brownfield=False)
+        seed = build_seed_message(candidates, analyses, brownfield=False)
         assert "adding AI features" not in seed
 
 
@@ -558,7 +558,7 @@ async def _drain_async(gen: Any) -> list[str]:
 class TestBrownfieldSessionLoad:
     def test_code_review_triggers_brownfield_in_agentifier(self) -> None:
         """When code_review is in session, agentifier passes brownfield=True to seed."""
-        from spec4.agentifier.agentifier import _build_seed_message
+        from spec4.agentifier.agentifier import build_seed_message
         from spec4.agentifier.tier_analyst import TierAnalystOutput
 
         session = default_session()
@@ -584,6 +584,6 @@ class TestBrownfieldSessionLoad:
             )
         ]
         brownfield = session.get("code_review") is not None
-        seed = _build_seed_message(candidates, analyses, brownfield=brownfield)
+        seed = build_seed_message(candidates, analyses, brownfield=brownfield)
         assert brownfield is True
         assert "adding AI features" in seed or "rethinking" in seed

@@ -2,10 +2,10 @@
 
 Covers all four boundaries the spec document identifies:
 
-D-EP1 — _candidates_to_dicts / _candidates_from_dicts serialisation round-trip.
-D-EP2 — _build_ai_features: candidate is authoritative; spec-drafter echo can't
+D-EP1 — candidates_to_dicts / candidates_from_dicts serialisation round-trip.
+D-EP2 — build_ai_features: candidate is authoritative; spec-drafter echo can't
          clobber composed_under / requires.
-D-EP3 — _reselection_pool_from_features: rehydrates edges from persisted ai_features.
+D-EP3 — reselection_pool_from_features: rehydrates edges from persisted ai_features.
 D-EP4 — _ai_features_for_phaser / _feature_relationship_lines: edges surfaced in
          the Phaser prompt, including dangling-persists-raw and revision
          cross-partition.
@@ -17,10 +17,10 @@ from typing import Any
 
 
 from spec4.agentifier.agentifier import (
-    _build_ai_features,
-    _candidates_from_dicts,
-    _candidates_to_dicts,
-    _reselection_pool_from_features,
+    build_ai_features,
+    candidates_from_dicts,
+    candidates_to_dicts,
+    reselection_pool_from_features,
 )
 from spec4.agentifier.scout import Candidate
 from spec4.agents._feature_context import (
@@ -77,27 +77,27 @@ def _feat(name: str, **kw: Any) -> dict[str, Any]:
 class TestSerializationRoundTrip:
     def test_standalone_candidate_survives(self) -> None:
         c = _c("solo")
-        [d] = _candidates_to_dicts([c])
-        [back] = _candidates_from_dicts([d])
+        [d] = candidates_to_dicts([c])
+        [back] = candidates_from_dicts([d])
         assert back.composed_under == ""
         assert back.requires == []
 
     def test_composed_under_survives(self) -> None:
         c = _c("member", composed_under="orch")
-        [d] = _candidates_to_dicts([c])
-        [back] = _candidates_from_dicts([d])
+        [d] = candidates_to_dicts([c])
+        [back] = candidates_from_dicts([d])
         assert back.composed_under == "orch"
 
     def test_requires_list_survives(self) -> None:
         c = _c("consumer", requires=["producer_a", "producer_b"])
-        [d] = _candidates_to_dicts([c])
-        [back] = _candidates_from_dicts([d])
+        [d] = candidates_to_dicts([c])
+        [back] = candidates_from_dicts([d])
         assert back.requires == ["producer_a", "producer_b"]
 
     def test_both_edges_survive_together(self) -> None:
         c = _c("stage_two", composed_under="pipeline", requires=["stage_one"])
-        [d] = _candidates_to_dicts([c])
-        [back] = _candidates_from_dicts([d])
+        [d] = candidates_to_dicts([c])
+        [back] = candidates_from_dicts([d])
         assert back.composed_under == "pipeline"
         assert back.requires == ["stage_one"]
 
@@ -107,8 +107,8 @@ class TestSerializationRoundTrip:
             _c("m1", composed_under="orch"),
             _c("m2", composed_under="orch", requires=["m1"]),
         ]
-        dicts = _candidates_to_dicts(cands)
-        backs = _candidates_from_dicts(dicts)
+        dicts = candidates_to_dicts(cands)
+        backs = candidates_from_dicts(dicts)
         by = {c.name: c for c in backs}
         assert by["orch"].composed_under == ""
         assert by["m1"].composed_under == "orch"
@@ -124,13 +124,13 @@ class TestSerializationRoundTrip:
             "rough_description": "old",
             "linked_existing_workflow": "",
         }
-        [back] = _candidates_from_dicts([d])
+        [back] = candidates_from_dicts([d])
         assert back.composed_under == ""
         assert back.requires == []
 
 
 # ---------------------------------------------------------------------------
-# D-EP2: _build_ai_features — candidate authority over edges
+# D-EP2: build_ai_features — candidate authority over edges
 # ---------------------------------------------------------------------------
 
 
@@ -164,7 +164,7 @@ class TestBuildAiFeaturesEdgeAuthority:
             "requires": [],
         }
         spec = [{"composed_under": "WRONG_FROM_SPEC"}]
-        [feat] = _build_ai_features([entry], spec, [cand])
+        [feat] = build_ai_features([entry], spec, [cand])
         assert feat["composed_under"] == "orch"
 
     def test_requires_from_candidate_not_spec(self) -> None:
@@ -179,7 +179,7 @@ class TestBuildAiFeaturesEdgeAuthority:
             "requires": ["producer"],
         }
         spec = [{"requires": ["WRONG"]}]
-        [feat] = _build_ai_features([entry], spec, [cand])
+        [feat] = build_ai_features([entry], spec, [cand])
         assert feat["requires"] == ["producer"]
 
     def test_edges_empty_when_candidate_has_none(self) -> None:
@@ -193,20 +193,20 @@ class TestBuildAiFeaturesEdgeAuthority:
             "composed_under": "",
             "requires": [],
         }
-        [feat] = _build_ai_features([entry], [], [cand])
+        [feat] = build_ai_features([entry], [], [cand])
         assert feat["composed_under"] == ""
         assert feat["requires"] == []
 
     def test_edges_survive_with_no_matching_candidate(self) -> None:
         # Entry with no candidate — edges default to empty (no crash).
         entry = _make_entry("orphan")
-        [feat] = _build_ai_features([entry], [], [])
+        [feat] = build_ai_features([entry], [], [])
         assert feat.get("composed_under", "") == ""
         assert feat.get("requires", []) == []
 
 
 # ---------------------------------------------------------------------------
-# D-EP3: _reselection_pool_from_features rehydrates edges
+# D-EP3: reselection_pool_from_features rehydrates edges
 # ---------------------------------------------------------------------------
 
 
@@ -216,12 +216,12 @@ class TestReselectionPoolRehydration:
 
     def test_composed_under_rehydrated(self) -> None:
         af = self._af([_feat("member", composed_under="orch")])
-        pool = _reselection_pool_from_features(af)
+        pool = reselection_pool_from_features(af)
         assert pool[0].composed_under == "orch"
 
     def test_requires_rehydrated(self) -> None:
         af = self._af([_feat("consumer", requires=["producer"])])
-        pool = _reselection_pool_from_features(af)
+        pool = reselection_pool_from_features(af)
         assert pool[0].requires == ["producer"]
 
     def test_missing_edge_keys_default_empty_in_pool(self) -> None:
@@ -232,7 +232,7 @@ class TestReselectionPoolRehydration:
             "linked_vision_features": [],
             "linked_existing_workflow": "",
         }
-        pool = _reselection_pool_from_features(
+        pool = reselection_pool_from_features(
             {"ai_features": [feat], "explicitly_rejected": []}
         )
         assert pool[0].composed_under == ""
@@ -246,7 +246,7 @@ class TestReselectionPoolRehydration:
                 _feat("m2", composed_under="orch", requires=["m1"]),
             ]
         )
-        pool = _reselection_pool_from_features(af)
+        pool = reselection_pool_from_features(af)
         by = {c.name: c for c in pool}
         assert by["orch"].composed_under == ""
         assert by["m1"].composed_under == "orch"

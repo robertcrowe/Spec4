@@ -51,7 +51,7 @@ def _session(**extra: Any) -> dict[str, Any]:
 
 
 class TestStreamCounting:
-    """The pass-through counterpart to ``_stream_suppressing_json``."""
+    """The pass-through counterpart to ``stream_suppressing_json``."""
 
     def test_yields_chunks_unchanged_and_counts(self) -> None:
         session: dict[str, Any] = {}

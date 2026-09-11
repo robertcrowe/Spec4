@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 from spec4.agentifier import agentifier
-from spec4.agentifier.agentifier import _reselection_pool_from_features
+from spec4.agentifier.agentifier import reselection_pool_from_features
 from spec4.app_constants import STATE_AGENTIFIER_COMPLETE, STATE_IN_PROGRESS
 
 
@@ -47,11 +47,11 @@ _AI_FEATURES = {
 
 class TestReselectionPool:
     def test_pool_is_selected_then_rejected(self):
-        pool = _reselection_pool_from_features(_AI_FEATURES)
+        pool = reselection_pool_from_features(_AI_FEATURES)
         assert [c.name for c in pool] == ["alpha", "beta", "gamma"]
 
     def test_selected_carries_fields_rejected_minimal(self):
-        pool = _reselection_pool_from_features(_AI_FEATURES)
+        pool = reselection_pool_from_features(_AI_FEATURES)
         alpha = pool[0]
         assert alpha.linked_vision_features == ["v1"]
         assert alpha.rough_description == "alpha desc"
@@ -64,11 +64,11 @@ class TestReselectionPool:
             "ai_features": [{"name": "dup", "rough_description": "x"}],
             "explicitly_rejected": [{"name": "dup", "rough_description": "y"}],
         }
-        pool = _reselection_pool_from_features(feats)
+        pool = reselection_pool_from_features(feats)
         assert [c.name for c in pool] == ["dup"]
 
     def test_empty(self):
-        assert _reselection_pool_from_features({}) == []
+        assert reselection_pool_from_features({}) == []
 
 
 class TestHandleReentryNotStale:

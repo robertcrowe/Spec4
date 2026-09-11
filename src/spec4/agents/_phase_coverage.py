@@ -63,7 +63,7 @@ ENFORCED_PRIORITIES: tuple[str, ...] = ("steel_thread", "mvp")
 
 
 def _slug(name: str) -> str:
-    """Mirror ``_build_ai_features``' id derivation."""
+    """Mirror ``build_ai_features``' id derivation."""
     return re.sub(r"[^a-z0-9_]", "_", name.lower()) if name else ""
 
 
