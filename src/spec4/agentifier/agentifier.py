@@ -760,6 +760,60 @@ def _finalize_specs(
         topics=topics,
         code_review=session.get("code_review"),
     )
+    analysis = yield from _cc_draw_analysis(
+        session,
+        cc_input,
+        failed=lambda exc: (
+            f"Cross-Cutting Analyst failed: {exc}. Reply **retry** to try again or continue."
+        ),
+        unreadable=(
+            "Could not parse cross-cutting analysis JSON. Reply **retry** to try again."
+        ),
+    )
+    if analysis is None:
+        return
+
+    _cc_store_analysis(session, topics, analysis)
+
+    display = _format_cross_cutting_topic(topics[0], 0, analysis, len(topics))
+    msgs.append({"role": "assistant", "content": display})
+    session["_display_override"] = display
+    yield display
+
+
+# --- Drivers and steps -------------------------------------------------------
+#
+# A phase generator is a driver over steps (CLEANUP_INVENTORY.md 79). A step is a
+# private generator, ``Generator[str, None, R]``: it yields exactly the text its
+# block yielded before, and returns what the driver needs next.
+#
+# ``None`` has one meaning: the turn ended inside the step, whatever the cause --
+# its terminal text was yielded, a hand-off to the next phase was done, or error
+# text was yielded. The driver then returns at once:
+#
+#     x = yield from _step(...)
+#     if x is None:
+#         return
+#
+# A step must not return ``None`` for any other reason. Where a turn counts its
+# received characters (D-AT3), a step takes the running total and returns the
+# new one beside its product.
+
+
+def _cc_draw_analysis(
+    session: dict[str, Any],
+    cc_input: CrossCuttingInput,
+    *,
+    failed: Callable[[Exception], str],
+    unreadable: str,
+) -> Generator[str, None, dict[str, Any] | None]:
+    """Draw a full cross-cutting analysis for ``cc_input``; ``None`` ends the turn.
+
+    The step ``_finalize_specs`` and the cross-cutting phase's re-run share; they
+    differ only in their failure texts. A failed or unreadable draw is stored as
+    the assistant turn and shown, and the turn ends.
+    """
+    msgs = session["agentifier_messages"]
     try:
         raw, _ = drain_stream(
             _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
@@ -768,31 +822,19 @@ def _finalize_specs(
             ttft_label="cross_cutting_analyst",
         )
     except Exception as exc:
-        err = f"Cross-Cutting Analyst failed: {exc}. Reply **retry** to try again or continue."
+        err = failed(exc)
         msgs.append({"role": "assistant", "content": err})
         session["_display_override"] = err
         yield err
-        return
+        return None
 
     analysis = extract_cross_cutting_analysis(raw)
     if not analysis:
-        err = (
-            "Could not parse cross-cutting analysis JSON. Reply **retry** to try again."
-        )
-        msgs.append({"role": "assistant", "content": err})
-        session["_display_override"] = err
-        yield err
-        return
-
-    session["agentifier_cross_cutting_topics"] = topics
-    session["agentifier_cross_cutting_analysis"] = analysis
-    session["agentifier_cross_cutting_index"] = 0
-    session["agentifier_cross_cutting_decisions"] = {}
-
-    display = _format_cross_cutting_topic(topics[0], 0, analysis, len(topics))
-    msgs.append({"role": "assistant", "content": display})
-    session["_display_override"] = display
-    yield display
+        msgs.append({"role": "assistant", "content": unreadable})
+        session["_display_override"] = unreadable
+        yield unreadable
+        return None
+    return analysis
 
 
 def _discovery_guidance(session: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1252,7 +1294,81 @@ def _handle_spec_ff_review(
 # ---------------------------------------------------------------------------
 
 
-def _run_cross_cutting_phase(  # noqa: C901, PLR0912, PLR0915  # 12-yield generator; the surviving branches are yield/return guards on the topic turns and entry guards with no extractable body (rule 12, CLEANUP_INVENTORY.md 27.4)
+def _cc_rerun_analysis(
+    session: dict[str, Any],
+    llm_config: dict[str, Any],
+) -> Generator[str, None, dict[str, Any] | None]:
+    """Re-run the analyst when the stored analysis is gone (a page reload lost it).
+
+    Returns the stored analysis, or ``None`` when the turn ended: the draw failed,
+    or no topic is warranted and the phase handed off to priority tagging.
+    """
+    yield "\n\nRunning cross-cutting analysis…\n\n"
+    set_status(session, "Analysing cross-cutting system concerns…")
+    _, mechanisms = load_patterns()
+    features = (session.get("ai_features") or {}).get("ai_features") or []
+    topics: list[str] = session.get(
+        "agentifier_cross_cutting_topics"
+    ) or warranted_topics(features)
+    if not topics:
+        session["agentifier_cross_cutting_topics"] = []
+        session["agentifier_cross_cutting_decisions"] = {}
+        session["agentifier_cross_cutting_done"] = True
+        yield from _begin_priority_phase(session, llm_config)
+        return None
+    cc_input = CrossCuttingInput(
+        ai_features=features,
+        mechanism_patterns=mechanisms,
+        llm_config=llm_config,
+        topics=topics,
+        code_review=session.get("code_review"),
+    )
+    analysis = yield from _cc_draw_analysis(
+        session,
+        cc_input,
+        failed=lambda exc: f"Cross-Cutting Analyst failed: {exc}. Please try again.",
+        unreadable="Could not parse cross-cutting analysis. Please try again.",
+    )
+    if analysis is None:
+        return None
+    _cc_store_analysis(session, topics, analysis)
+    return analysis
+
+
+def _cc_revise_topic(
+    session: dict[str, Any],
+    analysis: dict[str, Any],
+    current_topic: str,
+    user_input: str,
+    llm_config: dict[str, Any],
+) -> Generator[str, None, dict[str, Any] | None]:
+    """Re-run the analyst for one topic; ``None`` ends the turn on a failed draw.
+
+    An unreadable revision is not a failure: the stored analysis is kept and
+    returned, and the topic is shown again.
+    """
+    msgs = session["agentifier_messages"]
+    cc_input = _cc_revise_input(session, current_topic, user_input, llm_config)
+    yield f"\n\nRevising **{current_topic}**…\n\n"
+    set_status(session, f"Revising cross-cutting topic: {current_topic}…")
+    try:
+        raw, _ = drain_stream(
+            _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
+            session=session,
+            seed=session.get("_stream_received_chars") or 0,
+            ttft_label="cross_cutting_analyst",
+        )
+    except Exception as exc:
+        err = f"Cross-Cutting Analyst revision failed: {exc}. Please try again."
+        msgs.append({"role": "assistant", "content": err})
+        session["_display_override"] = err
+        yield err
+        return None
+    revised = extract_cross_cutting_analysis(raw)
+    return _cc_apply_revision(session, revised, current_topic, analysis)
+
+
+def _run_cross_cutting_phase(
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
@@ -1277,47 +1393,9 @@ def _run_cross_cutting_phase(  # noqa: C901, PLR0912, PLR0915  # 12-yield genera
 
     # If no analysis yet (e.g. page reload lost it), re-run analyst
     if analysis is None:
-        yield "\n\nRunning cross-cutting analysis…\n\n"
-        set_status(session, "Analysing cross-cutting system concerns…")
-        _, mechanisms = load_patterns()
-        features = (session.get("ai_features") or {}).get("ai_features") or []
-        topics: list[str] = session.get(
-            "agentifier_cross_cutting_topics"
-        ) or warranted_topics(features)
-        if not topics:
-            session["agentifier_cross_cutting_topics"] = []
-            session["agentifier_cross_cutting_decisions"] = {}
-            session["agentifier_cross_cutting_done"] = True
-            yield from _begin_priority_phase(session, llm_config)
+        analysis = yield from _cc_rerun_analysis(session, llm_config)
+        if analysis is None:
             return
-        cc_input = CrossCuttingInput(
-            ai_features=features,
-            mechanism_patterns=mechanisms,
-            llm_config=llm_config,
-            topics=topics,
-            code_review=session.get("code_review"),
-        )
-        try:
-            raw, _ = drain_stream(
-                _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
-                session=session,
-                seed=session.get("_stream_received_chars") or 0,
-                ttft_label="cross_cutting_analyst",
-            )
-        except Exception as exc:
-            err = f"Cross-Cutting Analyst failed: {exc}. Please try again."
-            msgs.append({"role": "assistant", "content": err})
-            session["_display_override"] = err
-            yield err
-            return
-        analysis = extract_cross_cutting_analysis(raw)
-        if not analysis:
-            err = "Could not parse cross-cutting analysis. Please try again."
-            msgs.append({"role": "assistant", "content": err})
-            session["_display_override"] = err
-            yield err
-            return
-        _cc_store_analysis(session, topics, analysis)
 
     topics = session.get("agentifier_cross_cutting_topics") or list(
         CROSS_CUTTING_TOPICS
@@ -1356,24 +1434,12 @@ def _run_cross_cutting_phase(  # noqa: C901, PLR0912, PLR0915  # 12-yield genera
         )
     else:
         # Revision — re-run analyst for this topic only
-        cc_input = _cc_revise_input(session, current_topic, user_input, llm_config)
-        yield f"\n\nRevising **{current_topic}**…\n\n"
-        set_status(session, f"Revising cross-cutting topic: {current_topic}…")
-        try:
-            raw, _ = drain_stream(
-                _iter_async_gen(_registry.stream("cross_cutting_analyst", cc_input)),
-                session=session,
-                seed=session.get("_stream_received_chars") or 0,
-                ttft_label="cross_cutting_analyst",
-            )
-        except Exception as exc:
-            err = f"Cross-Cutting Analyst revision failed: {exc}. Please try again."
-            msgs.append({"role": "assistant", "content": err})
-            session["_display_override"] = err
-            yield err
+        revised = yield from _cc_revise_topic(
+            session, analysis, current_topic, user_input, llm_config
+        )
+        if revised is None:
             return
-        revised = extract_cross_cutting_analysis(raw)
-        analysis = _cc_apply_revision(session, revised, current_topic, analysis)
+        analysis = revised
 
         display = _format_cross_cutting_topic(
             current_topic, index, analysis, len(topics)

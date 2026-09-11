@@ -15938,3 +15938,143 @@ list:**
 
 **What 7q0 did not do:** it made no edit to `src/` or `tests/`. Both probes were restored
 byte-identical.
+
+### 79.1 Commit 7q1: the cross-cutting split, and the analyst step `_finalize_specs` shares
+
+**What landed** (`src/spec4/agentifier/agentifier.py` only): 143 insertions and 77 deletions.
+- **The shape comment,** written once, above the first step:
+
+```
+# --- Drivers and steps -------------------------------------------------------
+#
+# A phase generator is a driver over steps (CLEANUP_INVENTORY.md 79). A step is a
+# private generator, ``Generator[str, None, R]``: it yields exactly the text its
+# block yielded before, and returns what the driver needs next.
+#
+# ``None`` has one meaning: the turn ended inside the step, whatever the cause --
+# its terminal text was yielded, a hand-off to the next phase was done, or error
+# text was yielded. The driver then returns at once:
+#
+#     x = yield from _step(...)
+#     if x is None:
+#         return
+#
+# A step must not return ``None`` for any other reason. Where a turn counts its
+# received characters (D-AT3), a step takes the running total and returns the
+# new one beside its product.
+```
+
+- **`_cc_draw_analysis(session, cc_input, *, failed, unreadable)`** returns
+  `dict[str, Any] | None`. It does the draw, the failure handling and the unreadable
+  handling, and `None` ends the turn. It is shared by `_finalize_specs` and the re-run.
+- **`_cc_rerun_analysis(session, llm_config)`** is the reload re-run. It returns `None` on a
+  failed draw, or after the no-topics hand-off to `_begin_priority_phase`.
+- **`_cc_revise_topic(session, analysis, current_topic, user_input, llm_config)`** revises
+  one topic. It returns `None` only on a failed draw.
+- **`_run_cross_cutting_phase`** is now a driver over those steps, and **its rule-12 `noqa`
+  is deleted.**
+- **`_finalize_specs`'s analyst block** now calls `_cc_draw_analysis`, and stores through
+  `_cc_store_analysis`: the same four keys in the same order.
+
+**Two corrections to the plan, both made before any check ran:**
+1. **The revision path cannot share the draw step.** An unreadable revision keeps the stored
+   analysis and shows the topic again; only a failed draw ends that turn. The shared step
+   ends the turn on an unreadable draw, so the revision has its own step,
+   `_cc_revise_topic`. Only the re-run and `_finalize_specs` share `_cc_draw_analysis`.
+2. **The first version of `_cc_draw_analysis` took seven parameters and carried a new
+   `# noqa: PLR0913`,** against the plan's "no new `noqa`". It now takes the caller's
+   `CrossCuttingInput`: four parameters and no `noqa`. Each caller keeps its own
+   construction, and its `load_patterns()` call, exactly where it was.
+
+**The failure texts stay byte-identical.** Each caller passes its text as
+`failed=lambda exc: f"…"`, the original f-string unchanged, so the literal parts are the
+same constants.
+
+**Complexity.** Before, with the `noqa` ignored: `_run_cross_cutting_phase` measured
+C901 12, 13 branches and 68 statements. After, against thresholds of 10, 12 and 50:
+
+```
+  _finalize_specs            C901   5  branches   4  statements  33
+  _cc_draw_analysis          C901   3  branches   2  statements  14
+  _cc_rerun_analysis         C901   3  branches   2  statements  15
+  _cc_revise_topic           C901   2  branches   1  statements  13
+  _run_cross_cutting_phase   C901  10  branches  11  statements  36
+```
+
+With `--ignore-noqa`, `ruff` now flags one function in `agentifier.py`: `_run_catalog_phase`,
+which is 7q2's.
+
+**Frozen strings (Rule 4).** The set of string constants is identical. The count changes are
+the dedupe: four drain blocks became three, so each of their labels appears one or two times
+fewer. `agentifier_messages` rises, because two steps read it themselves.
+
+```
+src/spec4/agentifier/agentifier.py: string constants 865 -> 852; distinct 318 -> 318
+  gone: 0; added: 0; count changes: 11
+  COUNT 23 -> 21  '_display_override'
+  COUNT 8 -> 7  '_stream_received_chars'
+  COUNT 7 -> 6  'agentifier_cross_cutting_analysis'
+  COUNT 11 -> 10  'agentifier_cross_cutting_decisions'
+  COUNT 6 -> 5  'agentifier_cross_cutting_index'
+  COUNT 8 -> 7  'agentifier_cross_cutting_topics'
+  COUNT 17 -> 19  'agentifier_messages'
+  COUNT 20 -> 18  'assistant'
+  COUNT 27 -> 25  'content'
+  COUNT 8 -> 6  'cross_cutting_analyst'
+  COUNT 26 -> 24  'role'
+strings-exit=0
+```
+
+**Trace identity, against the three baseline variants.** Every main-thread trace matches.
+The two advisory lines are the worker race recorded in §79.0, which is not changed by 7q1.
+
+```
+base: {"tests_traced": 151, "invocations": 199, "events": 1081, "distinct_snapshots": 536, "exitstatus": 0, "entries": {"run": 140, "run_spec_phase": 15, "run_cross_cutting_phase": 7, "begin_priority_phase": 7, "run_priority_phase": 10, "handle_reentry": 3, "finalize_specs": 3, "complete_agentifier": 9, "run_catalog_phase": 5}}
+new:  {"tests_traced": 151, "invocations": 199, "events": 1081, "distinct_snapshots": 534, "exitstatus": 0, "entries": {"run": 140, "run_spec_phase": 15, "run_cross_cutting_phase": 7, "begin_priority_phase": 7, "run_priority_phase": 10, "handle_reentry": 3, "finalize_specs": 3, "complete_agentifier": 9, "run_catalog_phase": 5}}
+tests traced: base 142, new 142; identical 142; diverging 0 (key order only: 0); identical to a recorded variant other than the first: 0
+worker-thread invocations (advisory, outside the verdict): tests 9; diverging 2
+  ADVISORY tests/agentifier/test_try_again.py::TestGuidedRedraw::test_every_click_is_one_history_event
+  ADVISORY tests/agentifier/test_try_again.py::TestGuidedRedraw::test_notes_accumulate_across_retries
+step _cc_draw_analysis: entered under a traced entry by 8 test(s); e.g. ['tests/agentifier/test_reselection.py::TestFinalizeMergePreserved::test_preserved_prepended_and_flags_cleared', 'tests/agentifier/test_streaming_e2e.py::TestFullPipeline::test_final_ai_features_has_cross_cutting_block']
+step _cc_rerun_analysis: entered under a traced entry by 1 test(s); e.g. ['tests/agentifier/test_streaming_e2e.py::TestOrchestratorCrossCuttingPhase::test_no_warranted_topics_skips_cross_cutting']
+step _cc_revise_topic: entered under a traced entry by 3 test(s); e.g. ['tests/agentifier/test_streaming_e2e.py::TestOrchestratorCrossCuttingPhase::test_revision_does_not_advance_index', 'tests/agentifier/test_streaming_e2e.py::TestOrchestratorCrossCuttingPhase::test_skip_not_honored_for_required_topic']
+```
+
+**Every new step is reached by a traced test,** coverage's second condition. The counts are
+the lines above that begin `step`.
+
+**The mutation, under §60.6's rule.** The shared step reports success as "the turn ended":
+the one failure the `None` rule forbids.
+
+```
+M 7q1 (_cc_draw_analysis returns None on success): predicted 4, failed 3; a predicted test DOES NOT FAIL -- the failure condition; restored byte-identical: True
+   FAILED (predicted) tests/agentifier/test_streaming_e2e.py::TestFullPipeline::test_full_pipeline_reaches_complete_state
+   FAILED (predicted) tests/agentifier/test_streaming_e2e.py::TestFullPipeline::test_final_ai_features_has_cross_cutting_block
+   FAILED (predicted) tests/integration/test_pipeline_greenfield.py::TestAgentifierGreenfield::test_full_agentifier_pipeline_completes
+   PASSED (predicted to fail) tests/integration/test_pipeline_greenfield.py::TestAgentifierGreenfield::test_ai_features_json_schema_complete
+   other failures: 0
+   summary: 3 failed, 4207 passed, 1 skipped in 87.24s (0:01:27)
+```
+
+- **Three of the four predicted tests fail. The fourth was mispredicted, not missed.**
+  `test_pipeline_greenfield.py::TestAgentifierGreenfield::test_ai_features_json_schema_complete`
+  asserts only the shape of `session["ai_features"]`: its four keys, and each feature's `id`,
+  `name` and `tier`. `_finalize_specs` stores that shape *before* the draw, so a draw that
+  ends every turn leaves it in place and the assertions hold. The test pins the artifact's
+  schema, not the flow's progress, and the three that do pin the progress fail.
+- **No other test fails.** The prediction is recorded as it was made, with the one wrong
+  entry named, for the ruling at this stop.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12435 stmts, 876 miss, 93%`. **Misses fall by 15, from 891 to 876.** In `agentifier.py`, 977 statements with 129 missed became `978 statements with 114 missed`: the collapsed drain blocks took their duplicated, never-taken error lines with them |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched, so no petition |
+
+**§27.4's entry ten** (`_run_cross_cutting_phase`) has lost its `noqa`. The add-only note
+retiring entries nine and ten lands with 7q3, as planned.
+
+**Stop for review.** Two rulings are requested:
+- the worker-thread verdict rule (§79.0);
+- the mispredicted mutation entry above.
