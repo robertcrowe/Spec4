@@ -16747,3 +16747,43 @@ Three items remain, in this order:
 
 The fold is the last change to this record under the plan. After it, this file is
 history, and `BACKLOG.md` and the Phase 8 list are the live documents.
+
+## 81. The fold: this record is history
+
+The fold is the plan's last close-out item (`SPEC4_CLEANUP_PLAN.md`, Phase 7). The fold
+commit creates `BACKLOG.md` at the repo root, in two parts.
+
+**Part 1, Phase 8:**
+- `CLEANUP_REPORT.md` §5, as approved, with §80.1's `tests/test_agents.py`;
+- four items this record named but never ruled on. They are listed for a ruling before
+  Phase 8 starts:
+  - the consolidation of `test_deployer_*`, `test_phaser_*` and `test_stack_*` (§9,
+    §11);
+  - §50's four other test files over 150 tests;
+  - the `TestMockBuffers` overlap (§12.5);
+  - the `tests/_golden.py` idioms (§12.5).
+
+**Part 2, Backlog:**
+- the cleanup's known limit, UI-callback coverage (§80.2);
+- §12.4's five open renderer cosmetics, each re-checked against the goldens at the fold;
+- a params object for the three long signatures (§27, §39);
+- the two horizon items the plan names, which have no description in the repo;
+- §10's four bugs, all resolved in Phase 0.5.
+
+**From this commit on, this file is history.** It is not edited again under the plan:
+- the live documents are `BACKLOG.md` and its Phase 8 part;
+- the close-out is `CLEANUP_REPORT.md`;
+- the tools are in `scripts/cleanup/`.
+
+**The close-out commits:**
+
+| Commit | What it did |
+|---|---|
+| `d2b9527` | the report |
+| `85a9cb6` | the eleven tools |
+| `6956aca` | §7, Phase 0 re-measured |
+| `18a271c` | the twelfth tool |
+| `296a780` | §80 |
+| `026dc38` | §8, the symptom checklist |
+| `151f2e1` | the docs |
+| this commit | the fold |

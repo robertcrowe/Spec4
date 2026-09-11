@@ -213,6 +213,9 @@ names given in parentheses.
 
 This is consolidated from the record's Phase 8 list and the deferrals across Phase 7.
 
+**From the fold on, the live list is `BACKLOG.md`, part 1.** It adds four items that
+were named but never ruled on. This section is the list as the close-out left it.
+
 ### 5.1 Names and seams
 
 - **The rename half is done: 76 names renamed** across ten batches, with one alias dropped
@@ -275,8 +278,13 @@ Whether to bring §4's checks inside: into the gate, and under mypy. They are co
 ## 6. Still to do, after review: the fold and the final audit
 
 This is the plan's last phase (`SPEC4_CLEANUP_PLAN.md`, Phase 7 "Final audit and
-documentation"). Its first two items are done: §7 holds the re-measurement and §8 the
-checklist. The other two are not.
+documentation"). All four items are done:
+- §7 holds the re-measurement;
+- §8 holds the checklist;
+- the docs are `151f2e1`;
+- the fold created `BACKLOG.md`.
+
+The four items as planned:
 - **Re-run Phase 0's measurements:** `uvx vulture`, `uv run --with deptry deptry .`, the ruff
   rule-set statistics and the layering contract. Add them here as before/after: the
   file-size table, coverage per module, and dead-code candidates, which should be zero or
