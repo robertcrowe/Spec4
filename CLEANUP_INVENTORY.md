@@ -4359,6 +4359,33 @@ Command: `uv run ruff check --select C90,PLR0912,PLR0913,PLR0915,SIM,B,ARG --sta
     the same shape. *Added after 5i measured deployer's maximal build at C901 21 — the
     same as the planned build — with statements falling 88 → 79.*
 
+**Cross-reference: the inventory's original phase letters.** *Recorded at the rename-half
+close-out (§70.11), per the ruling at review of 7j.* Before the plan numbered its phases,
+the inventory named them by letter. The letters appear in no version of the plan, and in
+no version of this record in git history. So this mapping was made **by content**, each
+letter's name matched against the plan's phase text, and the table says so row by row. It
+sits beside Phase 5's rules because PB, Dedupe, is Phase 5. The list has no letter for
+Phase 0 (the baseline) or Phase 7 (the audit).
+
+| Letter | Plan phase | How sure | By what |
+|---|---|---|---|
+| P0 Green | 0.5 — Green the gate | by name | the plan's own title |
+| PA Hygiene | 2 — Dead code and unused files | by content; ruled at review of 7j | hygiene was dead code and unused files; nothing else in the plan fits |
+| PT-1 | 1 — Regression safety net for the untested UI layer | by content | the first of the two test phases; it adds tests only |
+| PT-2 | 6 — Test suite rationalization | by content | the second test phase |
+| PB Dedupe | 5 — Local smells and duplication | by content; ruled at review of 7j | the plan's only dedupe work: "Duplication across agents … lift to `_utils`" |
+| PC Split | 4 — Large file decomposition | by content, and the code agrees | the code cites the splits as 4a–4j, e.g. "Cleanup Phase 4i moved this module's leaf-pure edges into three siblings" |
+| PD State | 3 — Module-level state and globals | by content | the plan's only state phase |
+| PE Untangle | 4's cycle work, continued by Phase 7's seam half | by content; ruled at review of 7j | Phase 4 resolved the `layouts` ↔ `layouts._chat` cycle, and the splits then showed what the seams have to be |
+
+**PE continues in Phase 7.** The seam sub-phases of §60.7(j) are where the untangling
+continues:
+- 7k, the `_usage.py` seam, with `directory_opens`;
+- 7n, the three non-agentifier seams;
+- 7q, the agentifier eight with the `yield from` backlog.
+
+A seam sub-phase cites PE the way a rename batch cites §54.
+
 ### 27.3 Per-function table
 
 `C` = C901, `Br` = PLR0912 branches, `St` = PLR0915 statements, `Ar` = PLR0913 arguments,
@@ -11249,7 +11276,7 @@ Replaces §60.6's table where they differ; its per-commit inheritance stands, as
 | 7o | type hygiene — the 58 | (i)1 | not ruled |
 | 7p | §59.6 items 9–10 | PLR2004; the 13 E501 in `scripts/e2e_agentifier.py` | not ruled |
 | 7q | **the agentifier eight with the `yield from` backlog — last** | (e) | plan mode, `ultrathink` |
-| close-out | the plan's audit | `CLEANUP_REPORT.md`, docs, the inventory fold; root-siblings, batch 11's three names, (c)'s three and the five-way `revision_delta` dedupe (§67.11) recorded for Phase 8 | — |
+| close-out | the plan's audit | `CLEANUP_REPORT.md`, docs, the inventory fold; root-siblings, batch 11's three names, (c)'s three, and the five-way `revision_delta` dedupe, a straight lift to `_utils` (§67.11), recorded for Phase 8 | — |
 
 **A Phase 7 candidate beside 7k's `module_seam`, not for now (ruled at 7d, §64).** 7c's
 shadow flip (§63.1) retired the reason for the `sys.modules` idiom in `test_cost_summary.py`:
@@ -12645,10 +12672,13 @@ The gate also ran on the mechanical tree, before the corrections, with the same 
   All ten pairs have identical code and differing docstrings, so there is one distinct
   body. Nothing the function does differs between the four agent modules and the
   agentifier. Only the docstrings differ, each describing its own caller's use. **So this
-  is a dedupe, and one that PB should have caught** (the ruling's words; the record holds
-  no pass by that name). It is not a behavioural divergence nobody has decided on.
+  is a dedupe that Phase 5 should have caught.** Phase 5 is PB, Dedupe, in the inventory's
+  original letters, and §27 cross-references them. It is not a behavioural divergence
+  nobody has decided on. With five token-identical bodies, it is a straight lift to
+  `_utils`. *This wording was set at the rename-half close-out (§70.11). It first read "PB",
+  before the letters were mapped.*
 
-  **Recorded for Phase 8 as a dedupe** in §60.7(j)'s close-out row. It is out of scope for
+  **Recorded for Phase 8 as a straight lift to `_utils`** in §60.7(j)'s close-out row. It is out of scope for
   Phase 7, as ruled at 7g. The entry states what kind of item it is: the bodies are
   identical, so reducing them to one definition changes no behaviour, and what needs
   merging is the five docstrings. The script is `body_compare.py` in the session
@@ -13109,3 +13139,83 @@ test hunks sit in `TestStreamTurn`, `TestIsEffortRejectedError` and
 - It changes no test beyond the substitution.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.
+
+### 70.11 The rename half, closed
+
+This section was written at the close-out of the rename half, before 7k starts, as ruled
+at review of 7j. It goes in a record-only commit, following the precedent of the Phase 6
+close-out (§59).
+
+| Sub-phase | Batch | Cluster | Names | Commit | Documented exception |
+|---|---|---|---:|---|---|
+| 7a | 1 | `session` | 6 | `d7efe2e` | none |
+| 7b | 2 | `layouts._chat` | 9 | `d3aa7cc` | the E501 docstring re-wrap (§62.2) |
+| 7c | 3 | `layouts` | 9 | `4127700` | the shadow-flip comment (§63.2) |
+| 7d | 4 | `layouts.designer` | 7 | `95c504c`, amended from `ea123d6` (§64.10–§64.11) | none |
+| 7e | 5 | `agents.code_scanner` | 7 | `ddc85c1` | none |
+| 7f | 6 | `agents.brainstormer` | 5 | `ffb821c` | none |
+| 7g | 7 | `agentifier.agentifier` | 20, and the alias dropped | `f31e221` | the alias drop, with the four sentence corrections it and the renames forced (§67.3) |
+| 7h | 8 | `agents._seam_check` | 7 | `03ede1b` | none |
+| 7i | 9 | `callbacks.designer` | 3 | `55da82a` | none |
+| 7j | 10 | `llm` | 3 | `b7d36c8` | none |
+| — | 11 | `project_manager` | 0 | no commit (§60.7(f)) | — |
+| | | | **76** | | |
+
+**The counts.**
+- **76 names were renamed across ten batches, and one alias was dropped.** The ruling at
+  review of 7j gave 74. That is §60.2's dry-run figure, "every rename that is not a stop",
+  taken before §60.7's rulings. The rulings changed it three ways:
+  - **+3.** The three collision names were renamed as `render_breadth_panel`,
+    `render_retry_panel` and `build_agent_rows` (§60.7(b)).
+  - **+1.** `_load_working_dir` joined batch 1 (§60.7(d)).
+  - **−2.** Batch 11's two root-sibling names were deferred (§60.7(f)).
+
+  So 74 + 3 + 1 − 2 = 76. With the five names held back, that gives 81: §60.2's 80 listed
+  names, plus `_load_working_dir`.
+- **Three names are held by net attribute access** (§60.7(c)):
+  - `_start_gen` (§69.2) and `_record_usage` (§70.2). Both are reached by attribute in
+    `tests/test_streaming_characterization.py`, so both come in one petition when that file
+    is next legitimately opened.
+  - `_with_readme_attribution`, reached in `tests/test_project_manager_golden.py`.
+- **Three names are deferred with root-siblings** (§60.7(f)): `_write_text_if_changed`,
+  `_phase_spec_preamble` and `_with_readme_attribution`. The last is also held by net access,
+  so it is counted in both lists.
+- **One batch is empty.** Batch 11 has no commit.
+- **Every commit is at the §60.1 gate.** That covers all ten rename commits, and `ea123d6`
+  before its amend. Each has ruff, ruff format and mypy clean; `4199 passed, 1 skipped`;
+  and `12421 stmts, 891 miss`.
+
+**The checks that now stand for every rename-shaped commit.** All were settled during this
+half:
+- the rename check (§60.2);
+- the token check (§60.2, from 7g);
+- the petition's four checks (§60.3). Check 1 was amended at 7d, check 4 was added at 7g,
+  and its third form at 7i;
+- check 4 as a standing check on every rewritten patch string, in the per-string form of
+  §67.5, with §68.10's table as the reference;
+- the standing-form collision check for families (§64.11);
+- for this record, the add-only append step and the deleted-blank-line guard (§64.10,
+  §65.10).
+
+**The Phase 8 entries this half leaves.** Every one of these is named in §60.7(j)'s
+close-out row:
+- root-siblings, with batch 11's three names (§60.7(f));
+- the three net-blocked names (§60.7(c), §69.2, §70.2);
+- the five-way `revision_delta` dedupe, a straight lift to `_utils` that Phase 5 should have
+  caught (§67.11).
+
+There is also one conditional entry. 7q carries to Phase 8 whole if it does not fit
+Phase 7 (§60.7(e)).
+
+**What comes next: the seam half.** 7k, 7n and 7q run in plan mode with `ultrathink`. They
+continue PE, per §27's cross-reference. 7l, 7m, 7o and 7p run in the order §60.7(j) gives.
+7k is first.
+
+**The other record changes in this commit:**
+- §27 gains the phase-letter cross-reference;
+- §67.11 now reads "a dedupe that Phase 5 should have caught", filed as a straight lift to
+  `_utils`;
+- the close-out row says the same.
+
+The commit touches nothing outside this record. Its `src/` and `tests/` trees are those
+of `b7d36c8`, and it passes the full gate, identical to §60.1.
