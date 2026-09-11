@@ -601,3 +601,125 @@ The decision half loses D2 (P18), D3 (P10) and D15 (P32), which are now mechanic
 | Tests | `4210 passed, 1 skipped` (exit 0) |
 | Coverage | `TOTAL 12459 876 93%`; every per-module row identical to `coverage_85a9cb6.txt` |
 | Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
+
+## 3. 8a: the `> 2` guard, and what reaches it (P23a) — record only
+
+§1.4's proof, under §2.1(e)'s condition. Nothing under `src/` or `tests/` changed, and
+nothing was written under `.spec4/`: the tree was clean after every read.
+
+### 3.1 What was read
+
+- **`.spec4/`, read-only: all 51 tracked files.**
+  - 21 JSON, 7 per round in `v0`–`v2` (`code_review.json`, `design/manifest.json`,
+    `design/session.json`, `feature_specs.json`, `stack.json`, `usage.json`,
+    `vision.json`), each parsed and walked for the three keys.
+  - 24 phase files, read for the section headings: `phases/phase1.md`–`phase7.md` in
+    each round, `v1/phases/phase8.md`, and `v0/phases/phase1-notes.md` and
+    `phase7-notes.md`.
+  - 6 more, searched only: `IMPLEMENTED` and `design/mock.html` in each round.
+  - One JSON would not parse: `.spec4/v1/design/manifest.json`, an invalid control
+    character at line 428, column 46. A text search of it finds none of the three keys.
+- **The fixtures:** the 20 JSON files under `tests/golden/fixtures/`, and the 16 under
+  `evals/`.
+
+### 3.2 The path, read
+
+| Step | Where | What happens to an entry |
+|---|---|---|
+| The request | `agentifier/spec_drafter.py:114–135`; `:251` | the schema asks for objects; `mechanisms` is optional and empty by default |
+| The draw | `agentifier/agentifier.py:562`, `_draft_spec` | `extract_json_block` (`:624`), with `json.loads` as the fallback; the parsed dict is stored whole in `agentifier_spec_results` (`:661`) |
+| The merge | `agentifier/_render.py:233`, `build_ai_features` | `feature.update(spec)`: the drafter's keys pass through untouched |
+| The render | `_phase_markdown.py:184`, `:272`; `agents/_feature_context.py:445`, `:983`, `:1090`, `:1286` | `render_feature_block`, which dispatches by field name and filters nothing (`feature_specs.py:521–552`). `PHASE_SPEC_FIELDS` includes all three fields (`feature_specs.py:88–92`) |
+
+**No step between the model's output and the three builders drops or reshapes an
+entry.** An all-skipped list reaches them as the model wrote it.
+
+### 3.3 What reaches the case
+
+**Real output: 24 phase files, and not one of the three sections.**
+- The files render AI-capability blocks: 38 **Inputs** and 38 **Failure modes**, every one
+  with entries.
+- **Mechanisms**, **Knowledge sources** and **Tool access** appear 0 times, neither
+  populated nor header-only.
+- **The renderer that wrote them had all five guards at `> 2`.** The phase files were
+  written on 2026-09-06 and 2026-09-07 (`e4b0aa1`, `47d4b0c`). The three builders date
+  from `72a23d8` (1.0.0, 2026-08-04), and their guards have not changed since. The
+  siblings moved to `> 3` in `8b277fd` (2026-09-08), after the files. So a header-only
+  section from any of the five builders would show, and none does.
+- **What the files cannot show:** whether the specs behind them carried the three fields
+  at all, because `ai_features.json` is not tracked. The headings' absence means only
+  that each value was absent, empty, or not a list, which is the builders' first guard.
+  No value was a non-empty list of skipped entries.
+
+**The JSON: 57 files, and one carries the keys.** It is `tests/golden/fixtures/spec_full.json`:
+
+| Key | Value | Builder's result |
+|---|---|---|
+| `mechanisms` | `[{"name": "RAG", "rationale": "grounding"}, "reranking"]` | entries |
+| `knowledge_sources` | `["policy library", "glossary"]` | **header-only** |
+| `tool_access` | `[{"tool": "search_policies", "scope": "read"}]`, a list where a dict is read | empty |
+
+The fixture is hand-written, and one test reads it: `test_renderer_goldens.py:163`,
+through `_format_spec_as_text` in `agentifier/_render.py`. That renderer takes these
+fields through its own `_spec_field`, not through the three builders, so no pinned output
+reaches the case.
+
+**The probe bites.** `probe_8a.py`, a scratch probe, classes each builder's result as
+empty, header-only, or with entries. With one all-skipped list per builder:
+
+```
+at HEAD:           bite mechanisms: header-only ['**Mechanisms**', '', '']
+                   bite knowledge_sources: header-only ['**Knowledge sources**', '', '']
+                   bite tool_access: header-only ['**Tool access**', '', '']
+under the flip:    bite mechanisms: empty []
+                   bite knowledge_sources: empty []
+                   bite tool_access: empty []
+```
+
+Under the flip, applied to a `git archive` export and imported from it, `spec_full.json`'s
+`knowledge_sources` goes from header-only to empty.
+
+**The candidate fix as a mutation,** on the full suite. The case:
+
+```json
+{"label": "the candidate fix: the three section guards > 2 -> > 3 (8a, P23a)",
+ "edits": [three anchored edits in src/spec4/feature_specs.py, each ending
+           "return lines if len(lines) > 2 else []" -> "... > 3 else []", anchored on the
+           line before the guard: "lines.append(f\"  - {key}: {detail}\")",
+           "head += f\" [updates: {freq}]\"" and "lines.append(f\"  - Rationale: {rationale}\")"],
+ "fail": []}
+```
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8a_flip (the candidate fix: the three section guards > 2 -> > 3 (8a, P23a)): predicted 0, failed 0; must-pass 0, failed 0; A WRONG PREDICTION
+   other failures: 0
+   summary: 4210 passed, 1 skipped in 96.63s (0:01:36)
+```
+
+- **No test fails, so no pinned output reaches the case.** Every golden stays byte-identical:
+  a golden mismatch is a test failure.
+- **"A WRONG PREDICTION" is the harness's construction, not the result.** `mutate.py`'s suite
+  verdict needs at least one predicted failure (`ok = not missed and not broke and
+  bool(hit)`), so a case that predicts none can never read "as predicted". The verdict is
+  read from the lines it prints: 0 other failures, and 4,210 passed.
+
+### 3.4 The answer, for D1
+
+- **Nothing the app has written reaches the header-only case,** across 24 real phase files,
+  and nothing the suite pins reaches it: the flip fails no test.
+- **The one input in the tree that reaches it** is a hand-written list of strings in a
+  golden fixture, which its test feeds to a different renderer.
+- **It is still reachable in principle.** The Spec Drafter's schema asks for objects, but
+  nothing between its output and the builders reshapes an entry. A model that answered
+  with strings, as the siblings' case once did (inventory §12.4, item 1), would reach it.
+- **D1 stays a decision, with this evidence:** is the flip a fix, when it changes no pinned
+  output and the case needs malformed drafter output to occur, or is the header-only
+  section intended?
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | re-run: `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | not re-run, and the reason is checkable: against `578cf22` the diff is this file alone, so 8a0's `4210 passed, 1 skipped` stands. The flip's run above is the suite under the mutation |
+| Coverage | 8a0's `TOTAL 12459 876 93%` stands, for the same reason |
+| Floor / off-limits | re-run: **456 / 456** (`FAILURES: 0`); no test file touched |
