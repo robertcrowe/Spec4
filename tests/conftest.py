@@ -1,6 +1,6 @@
 """Suite-wide fixtures.
 
-``_begin_priority_phase`` draws the Prioritizer over the closed feature set, so
+``begin_priority_phase`` draws the Prioritizer over the closed feature set, so
 every orchestrator test that walks from cross-cutting into the priority phase
 would otherwise attempt a live completion and be rescued by the pass's
 degrade-to-``mvp`` path — passing while silently reaching for the network and

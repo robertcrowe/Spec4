@@ -86,7 +86,7 @@ class TestHandleReentryNotStale:
         with patch.object(
             agentifier.project_manager, "detect_stale_inputs", return_value={}
         ):
-            out = _collect(agentifier._handle_reentry(None, session, {"model": "x"}))
+            out = _collect(agentifier.handle_reentry(None, session, {"model": "x"}))
         # intro surfaced
         assert "Revising your AI features" in out
         # completion state demoted so the Continue/Download buttons stop rendering
@@ -133,9 +133,9 @@ class TestHandleReentryStale:
                 "detect_stale_inputs",
                 return_value={"vision": 123.0},
             ),
-            patch.object(agentifier, "_run_catalog_phase", side_effect=_fake_catalog),
+            patch.object(agentifier, "run_catalog_phase", side_effect=_fake_catalog),
         ):
-            out = _collect(agentifier._handle_reentry(None, session, {"model": "x"}))
+            out = _collect(agentifier.handle_reentry(None, session, {"model": "x"}))
         assert out == "rediscovering"
         # full reset for a fresh discovery
         assert session["agentifier_catalog_done"] is False
@@ -150,7 +150,7 @@ class TestHandleReentryStale:
         # The forced re-discovery only re-runs Scout + revision detection when
         # agentifier_candidates is None. A leaked (often empty) pool from the
         # prior round would silently skip it. Assert the stale branch nulls the
-        # cached candidates AND analyses *before* _run_catalog_phase is invoked.
+        # cached candidates AND analyses *before* run_catalog_phase is invoked.
         session = {
             "working_dir": "/tmp/proj",
             "ai_features": _AI_FEATURES,
@@ -175,9 +175,9 @@ class TestHandleReentryStale:
                 "detect_stale_inputs",
                 return_value={"vision": 123.0},
             ),
-            patch.object(agentifier, "_run_catalog_phase", side_effect=_fake_catalog),
+            patch.object(agentifier, "run_catalog_phase", side_effect=_fake_catalog),
         ):
-            _collect(agentifier._handle_reentry(None, session, {"model": "x"}))
+            _collect(agentifier.handle_reentry(None, session, {"model": "x"}))
         assert captured["candidates"] is None
         assert captured["analyses"] is None
 
@@ -206,7 +206,7 @@ class TestFinalizeMergePreserved:
             ],
             "agentifier_analyses": [],
         }
-        # Stub the cross-cutting machinery so _finalize_specs returns right after
+        # Stub the cross-cutting machinery so finalize_specs returns right after
         # assembling (and storing) ai_features.
         with (
             patch.object(agentifier, "load_patterns", return_value=([], [])),
@@ -216,7 +216,7 @@ class TestFinalizeMergePreserved:
                 side_effect=RuntimeError("stop after assembly"),
             ),
         ):
-            _collect(agentifier._finalize_specs(session, {"model": "x"}))
+            _collect(agentifier.finalize_specs(session, {"model": "x"}))
         names = [f["name"] for f in session["ai_features"]["ai_features"]]
         assert names == ["alpha", "new_feat"]  # preserved first, then new
         # re-selection state cleared once assembled

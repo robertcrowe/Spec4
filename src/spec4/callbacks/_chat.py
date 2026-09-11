@@ -314,7 +314,7 @@ def on_breadth_try_again(n_clicks: Any, session: Any, note: Any = None) -> Any:
     implemented rounds are read (for revision carry-forward) but never written.
 
     With the flow reset, ``agentifier_messages`` empty and the cached pool
-    cleared, ``run(None, …)`` dispatches to ``_run_catalog_phase``'s fresh-start
+    cleared, ``run(None, …)`` dispatches to ``run_catalog_phase``'s fresh-start
     branch — the same route the stale-input rediscovery takes — which re-derives
     the revision block from disk. That is what makes Try Again inside a revision
     round produce a genuinely new candidate set rather than re-opening the
@@ -331,7 +331,7 @@ def on_breadth_try_again(n_clicks: Any, session: Any, note: Any = None) -> Any:
     is the plain redraw this button always was.
 
     Every click is also logged as one ``history`` event — the note (None for
-    a blank redraw), the set rejected, and when — which ``_complete_agentifier``
+    a blank redraw), the set rejected, and when — which ``complete_agentifier``
     writes to ``ai_features.json`` as ``discovery_guidance``, so the round's
     record shows each redraw the developer asked for, in order.
     """

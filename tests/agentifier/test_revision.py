@@ -175,7 +175,7 @@ class TestSeedMessageRevision:
 
 
 # ---------------------------------------------------------------------------
-# _complete_agentifier — revision finalisation (carry-forward + stamp + cc)
+# complete_agentifier — revision finalisation (carry-forward + stamp + cc)
 # ---------------------------------------------------------------------------
 
 
@@ -203,7 +203,7 @@ def _revision_session(new_feats: list[dict[str, Any]]) -> dict[str, Any]:
 class TestCompleteAgentifierRevision:
     def test_carried_forward_merged_and_stamped(self) -> None:
         session = _revision_session([{"name": "returns_triage"}])
-        out = _collect(agentifier._complete_agentifier(session))
+        out = _collect(agentifier.complete_agentifier(session))
         feats = session["ai_features"]["ai_features"]
         names = [f["name"] for f in feats]
         assert names == ["expiry_prediction", "returns_triage"]  # built first
@@ -214,20 +214,20 @@ class TestCompleteAgentifierRevision:
 
     def test_cross_cutting_prior_preserved_and_overridden(self) -> None:
         session = _revision_session([{"name": "n"}])
-        _collect(agentifier._complete_agentifier(session))
+        _collect(agentifier.complete_agentifier(session))
         cc = session["ai_features"]["cross_cutting"]
         assert cc["prompt_versioning"] == "old_decision"  # prior preserved
         assert cc["provider_strategy"] == "new_decision"  # this round's decision
 
     def test_zero_new_keeps_only_carried_forward(self) -> None:
         session = _revision_session([])
-        _collect(agentifier._complete_agentifier(session))
+        _collect(agentifier.complete_agentifier(session))
         feats = session["ai_features"]["ai_features"]
         assert [f["name"] for f in feats] == ["expiry_prediction"]
 
     def test_revision_state_cleared(self) -> None:
         session = _revision_session([{"name": "n"}])
-        _collect(agentifier._complete_agentifier(session))
+        _collect(agentifier.complete_agentifier(session))
         for key in (
             "agentifier_revision",
             "agentifier_carried_forward",
@@ -245,7 +245,7 @@ class TestCompleteAgentifierRevision:
             "ai_features": {"ai_features": [{"name": "a"}], "cross_cutting": {}},
             "agentifier_cross_cutting_decisions": {"x": "y"},
         }
-        _collect(agentifier._complete_agentifier(session))
+        _collect(agentifier.complete_agentifier(session))
         feats = session["ai_features"]["ai_features"]
         assert [f["name"] for f in feats] == ["a"]
         assert "introduced_in_version" not in feats[0]
@@ -306,7 +306,7 @@ class TestFreshStartRevisionDetection:
                 agentifier.project_manager, "latest_implemented_version", return_value=0
             ),
         ):
-            _collect(agentifier._run_catalog_phase(None, session, {"model": "x"}))
+            _collect(agentifier.run_catalog_phase(None, session, {"model": "x"}))
 
         assert session["agentifier_revision"] is True
         assert session["agentifier_revision_version"] == 1
@@ -332,7 +332,7 @@ class TestFreshStartRevisionDetection:
                 agentifier.project_manager, "load_prior_ai_features", return_value=None
             ),
         ):
-            _collect(agentifier._run_catalog_phase(None, session, {"model": "x"}))
+            _collect(agentifier.run_catalog_phase(None, session, {"model": "x"}))
         assert "agentifier_revision" not in session
         assert mock_scout.call_args.kwargs["revision"] is None
 
@@ -360,7 +360,7 @@ class TestFreshStartRevisionDetection:
                 agentifier.project_manager, "latest_implemented_version", return_value=0
             ),
         ):
-            _collect(agentifier._run_catalog_phase(None, session, {"model": "x"}))
+            _collect(agentifier.run_catalog_phase(None, session, {"model": "x"}))
         assert session["agentifier_revision"] is True
         assert session["agentifier_revision_version"] == 1
         assert session["agentifier_revision_prior_version"] == 0
@@ -412,7 +412,7 @@ class TestRevisionScoutZeroNew:
                 agentifier.project_manager, "latest_implemented_version", return_value=0
             ),
         ):
-            out = _collect(agentifier._run_catalog_phase(None, session, {"model": "x"}))
+            out = _collect(agentifier.run_catalog_phase(None, session, {"model": "x"}))
 
         # carried-forward surface preserved; greenfield bail NOT taken
         assert [f["name"] for f in session["ai_features"]["ai_features"]] == [
@@ -421,7 +421,7 @@ class TestRevisionScoutZeroNew:
         assert session["agentifier_state"] == agentifier.STATE_AGENTIFIER_COMPLETE
         assert "did not find any AI-integration opportunities" not in out
         assert "carried forward unchanged" in out
-        # completion flags set so a later re-entry routes through _handle_reentry
+        # completion flags set so a later re-entry routes through handle_reentry
         assert session["agentifier_catalog_done"] is True
         assert session["agentifier_priority_done"] is True
 
@@ -437,7 +437,7 @@ class TestRevisionScoutZeroNew:
                 agentifier.project_manager, "load_prior_ai_features", return_value=None
             ),
         ):
-            out = _collect(agentifier._run_catalog_phase(None, session, {"model": "x"}))
+            out = _collect(agentifier.run_catalog_phase(None, session, {"model": "x"}))
         assert "did not find any AI-integration opportunities" in out
         assert "agentifier_revision" not in session
         # Greenfield no-AI vision still finalises so the developer reaches the

@@ -24,8 +24,8 @@ from typing import Any
 from unittest.mock import patch
 
 from spec4.agentifier.agentifier import (
-    _run_cross_cutting_phase,
-    _run_spec_phase,
+    run_cross_cutting_phase,
+    run_spec_phase,
 )
 from spec4.app_constants import FF_PROMPT
 
@@ -89,7 +89,7 @@ class TestSpecPhaseFFSweep:
             "spec4.agentifier.agentifier._registry.stream",
             side_effect=_fake_stream(calls, _spec_payload),
         ):
-            out = _collect(_run_spec_phase(FF_PROMPT, session, LLM))
+            out = _collect(run_spec_phase(FF_PROMPT, session, LLM))
         # The pending draft for alpha is kept; only beta and gamma are drafted.
         drafted = [c[1].catalog_entry["name"] for c in calls]
         assert drafted == ["beta_feat", "gamma_feat"]
@@ -106,7 +106,7 @@ class TestSpecPhaseFFSweep:
             "spec4.agentifier.agentifier._registry.stream",
             side_effect=_fake_stream(calls, _spec_payload),
         ):
-            _collect(_run_spec_phase(FF_PROMPT, session, LLM))
+            _collect(run_spec_phase(FF_PROMPT, session, LLM))
         assert [c[1].catalog_entry["name"] for c in calls] == [
             "alpha_feat",
             "beta_feat",
@@ -125,7 +125,7 @@ class TestSpecPhaseFFSweep:
             "spec4.agentifier.agentifier._registry.stream",
             side_effect=_fake_stream(calls, _spec_payload),
         ):
-            out = _collect(_run_spec_phase(FF_PROMPT, session, LLM))
+            out = _collect(run_spec_phase(FF_PROMPT, session, LLM))
         assert [c[1].catalog_entry["name"] for c in calls] == [
             "beta_feat",
             "gamma_feat",
@@ -155,10 +155,10 @@ class TestSpecPhaseFFSweep:
             yield "finalized"
 
         with patch(
-            "spec4.agentifier.agentifier._finalize_specs",
+            "spec4.agentifier.agentifier.finalize_specs",
             side_effect=_fake_finalize,
         ):
-            out = _collect(_run_spec_phase("yes", session, LLM))
+            out = _collect(run_spec_phase("yes", session, LLM))
         assert session["_finalized"] is True
         assert session["agentifier_spec_ff_review"] is False
         assert session["agentifier_spec_index"] == 3
@@ -171,7 +171,7 @@ class TestSpecPhaseFFSweep:
             "spec4.agentifier.agentifier._registry.stream",
             side_effect=_fake_stream(calls, _spec_payload),
         ):
-            _collect(_run_spec_phase("beta_feat: tighten the scope", session, LLM))
+            _collect(run_spec_phase("beta_feat: tighten the scope", session, LLM))
         assert len(calls) == 1
         assert calls[0][1].catalog_entry["name"] == "beta_feat"
         assert calls[0][1].revision_instruction == "tighten the scope"
@@ -185,7 +185,7 @@ class TestSpecPhaseFFSweep:
             side_effect=_fake_stream(calls, _spec_payload),
         ):
             out = _collect(
-                _run_spec_phase("beta_feat: fine\nzzz_feat: nope", session, LLM)
+                run_spec_phase("beta_feat: fine\nzzz_feat: nope", session, LLM)
             )
         assert calls == []  # atomic: the valid line is not applied either
         assert "zzz_feat" in out
@@ -198,7 +198,7 @@ class TestSpecPhaseFFSweep:
             "spec4.agentifier.agentifier._registry.stream",
             side_effect=_fake_stream(calls, _spec_payload),
         ):
-            out = _collect(_run_spec_phase("alpha_feat: change it", session, LLM))
+            out = _collect(run_spec_phase("alpha_feat: change it", session, LLM))
         assert calls == []
         assert "locked" in out.lower()
 
@@ -209,7 +209,7 @@ class TestSpecPhaseFFSweep:
             "spec4.agentifier.agentifier._registry.stream",
             side_effect=_fake_stream(calls, _spec_payload),
         ):
-            out = _collect(_run_spec_phase("make them all better", session, LLM))
+            out = _collect(run_spec_phase("make them all better", session, LLM))
         assert calls == []
         assert "feature_name: instruction" in out
 
@@ -249,7 +249,7 @@ def _cc_payload(name: str, input_obj: Any) -> dict[str, Any]:
 class TestCrossCuttingFFSweep:
     def test_ff_records_all_remaining_and_reviews(self) -> None:
         session = _cc_session()
-        out = _collect(_run_cross_cutting_phase(FF_PROMPT, session, LLM))
+        out = _collect(run_cross_cutting_phase(FF_PROMPT, session, LLM))
         decisions = session["agentifier_cross_cutting_decisions"]
         assert set(decisions) == {
             "provider_strategy",
@@ -263,7 +263,7 @@ class TestCrossCuttingFFSweep:
 
     def test_skippable_topic_accepted_not_skipped(self) -> None:
         session = _cc_session()
-        _collect(_run_cross_cutting_phase(FF_PROMPT, session, LLM))
+        _collect(run_cross_cutting_phase(FF_PROMPT, session, LLM))
         decision = session["agentifier_cross_cutting_decisions"]["prompt_versioning"]
         assert decision.get("recommendation") == "rec prompt_versioning"
 
@@ -272,7 +272,7 @@ class TestCrossCuttingFFSweep:
         session["agentifier_cross_cutting_decisions"] = {
             "provider_strategy": {"recommendation": "already decided"}
         }
-        out = _collect(_run_cross_cutting_phase(FF_PROMPT, session, LLM))
+        out = _collect(run_cross_cutting_phase(FF_PROMPT, session, LLM))
         # The earlier decision survives untouched; the rest adopt the analysis.
         decisions = session["agentifier_cross_cutting_decisions"]
         assert decisions["provider_strategy"] == {"recommendation": "already decided"}
@@ -298,10 +298,10 @@ class TestCrossCuttingFFSweep:
             yield "priority"
 
         with patch(
-            "spec4.agentifier.agentifier._begin_priority_phase",
+            "spec4.agentifier.agentifier.begin_priority_phase",
             side_effect=_fake_priority,
         ):
-            out = _collect(_run_cross_cutting_phase("yes", session, LLM))
+            out = _collect(run_cross_cutting_phase("yes", session, LLM))
         assert session["_priority_begun"] is True
         assert session["agentifier_cross_cutting_done"] is True
         assert session["agentifier_cross_cutting_ff_review"] is False
@@ -315,7 +315,7 @@ class TestCrossCuttingFFSweep:
             side_effect=_fake_stream(calls, _cc_payload),
         ):
             _collect(
-                _run_cross_cutting_phase(
+                run_cross_cutting_phase(
                     "tool_protocol_strategy: add tracing", session, LLM
                 )
             )
@@ -330,7 +330,7 @@ class TestCrossCuttingFFSweep:
 
     def test_review_skip_line_skips_skippable_topic(self) -> None:
         session = self._review_session()
-        _collect(_run_cross_cutting_phase("prompt_versioning: skip", session, LLM))
+        _collect(run_cross_cutting_phase("prompt_versioning: skip", session, LLM))
         assert session["agentifier_cross_cutting_decisions"]["prompt_versioning"] == {}
 
     def test_review_locked_topic_rejected(self) -> None:
@@ -341,7 +341,7 @@ class TestCrossCuttingFFSweep:
             side_effect=_fake_stream(calls, _cc_payload),
         ):
             out = _collect(
-                _run_cross_cutting_phase("provider_strategy: redo", session, LLM)
+                run_cross_cutting_phase("provider_strategy: redo", session, LLM)
             )
         assert calls == []
         assert "locked" in out.lower()
@@ -390,7 +390,7 @@ class TestSweepFailureHandling:
             "spec4.agentifier.agentifier._registry.stream",
             side_effect=_flaky_stream(calls, {"beta_feat": 1}),
         ):
-            out = _collect(_run_spec_phase(FF_PROMPT, session, LLM))
+            out = _collect(run_spec_phase(FF_PROMPT, session, LLM))
         assert calls.count("beta_feat") == 2  # first attempt + one retry
         assert calls.count("alpha_feat") == 1
         assert calls.count("gamma_feat") == 1
@@ -407,7 +407,7 @@ class TestSweepFailureHandling:
             "spec4.agentifier.agentifier._registry.stream",
             side_effect=_flaky_stream(calls, {"beta_feat": 99}),
         ):
-            out = _collect(_run_spec_phase(FF_PROMPT, session, LLM))
+            out = _collect(run_spec_phase(FF_PROMPT, session, LLM))
         assert calls.count("beta_feat") == 2  # two attempts, then pause
         assert "gamma_feat" not in [c for c in calls]  # sweep stopped
         assert session["agentifier_spec_ff_review"] is True
@@ -423,13 +423,13 @@ class TestSweepFailureHandling:
             "spec4.agentifier.agentifier._registry.stream",
             side_effect=_flaky_stream([], {"beta_feat": 99}),
         ):
-            _collect(_run_spec_phase(FF_PROMPT, session, LLM))
+            _collect(run_spec_phase(FF_PROMPT, session, LLM))
         calls2: list[str] = []
         with patch(
             "spec4.agentifier.agentifier._registry.stream",
             side_effect=_flaky_stream(calls2, {}),
         ):
-            _collect(_run_spec_phase(FF_PROMPT, session, LLM))
+            _collect(run_spec_phase(FF_PROMPT, session, LLM))
         assert calls2 == ["beta_feat", "gamma_feat"]  # alpha kept, no re-draft
         results = session["agentifier_spec_results"]
         assert len(results) == 3 and all(results)
@@ -441,7 +441,7 @@ class TestSweepFailureHandling:
             "spec4.agentifier.agentifier._registry.stream",
             side_effect=_flaky_stream([], {"alpha_feat": 99}),
         ):
-            _collect(_run_spec_phase("yes", session, LLM))
+            _collect(run_spec_phase("yes", session, LLM))
         msgs = session["agentifier_messages"]
         assert msgs[-1]["role"] == "assistant"
         assert "alpha_feat" in msgs[-1]["content"]
@@ -457,7 +457,7 @@ class TestSweepFailureHandling:
                 side_effect=_flaky_stream([], {"beta_feat": 99}),
             ),
         ):
-            _collect(_run_spec_phase(FF_PROMPT, session, LLM))
+            _collect(run_spec_phase(FF_PROMPT, session, LLM))
         failures = list(
             (tmp_path / ".spec4" / "failures").glob("spec_drafter_beta_feat_*.txt")
         )
@@ -475,5 +475,5 @@ class TestSweepFailureHandling:
                 side_effect=_flaky_stream([], {"beta_feat": 99}),
             ),
         ):
-            _collect(_run_spec_phase(FF_PROMPT, session, LLM))
+            _collect(run_spec_phase(FF_PROMPT, session, LLM))
         assert not (tmp_path / ".spec4" / "failures").exists()

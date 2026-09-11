@@ -4791,6 +4791,14 @@ loop, not cleanup. Functions on this entry: **`deployer.run`** (measured in 37.5
 entry. **`_run_catalog_phase`** and **`_run_cross_cutting_phase`** joined it in 5k (41.2).
 `_handle_cc_ff_review` cleared under extraction and is **not** on it.
 
+**7q retired entries nine and ten (§79), recorded at 7q3.** `run_catalog_phase` (7q2) and
+`run_cross_cutting_phase` (7q1) are now drivers over `yield from` steps, which is the fix
+this entry named. Both `noqa`s are deleted, and each function measures under C901 10,
+PLR0912 12 and PLR0915 50 with `--ignore-noqa`. The backlog entry keeps its three
+non-agentifier turns, `deployer.run`, `brainstormer.run` and `code_scanner.run`, which
+carry to Phase 8 (ruled at planning of 7q). §27.4's table above is left as it was
+written.
+
 ### 27.5 — 5p, the cross-cutting sweep
 
 Runs last, after every long function is settled.
@@ -16231,3 +16239,419 @@ All five predicted tests fail, and no other test does.
 
 **§27.4's entry nine** (`_run_catalog_phase`) has lost its `noqa`. The note retiring entries
 nine and ten lands with 7q3.
+
+### 79.3 Commit 7q3: the eight promoted, their contracts, and 7q closed
+
+**7q2 was amended before this commit,** under the standing rule for unpushed commits: §79.2's
+coverage cell read "`string statements with constants missed`". The assembly step had taken
+the frozen-strings line, which also begins with the file's path. Corrected to "1002
+statements with 114 missed": `1b34d15` → `609b5de`.
+
+**What landed** (`src/`: `agentifier.py`, `_ff_review.py`, `callbacks/_chat.py`; `tests/`:
+six files and `conftest.py`):
+- **The eight are public:**
+
+  | Private | Public |
+  |---|---|
+  | `_run_catalog_phase` | `run_catalog_phase` |
+  | `_run_spec_phase` | `run_spec_phase` |
+  | `_run_cross_cutting_phase` | `run_cross_cutting_phase` |
+  | `_run_priority_phase` | `run_priority_phase` |
+  | `_handle_reentry` | `handle_reentry` |
+  | `_finalize_specs` | `finalize_specs` |
+  | `_begin_priority_phase` | `begin_priority_phase` |
+  | `_complete_agentifier` | `complete_agentifier` |
+
+  `rename_apply.py` changed 10 files, 99 lines: the word-boundary substitution across
+  code, docstrings, patch strings and test calls. There were no whole-file alias edits, no
+  module-path hits, no frozen-data hits and nothing blocked.
+- **Each of the eight gains a contract paragraph in its docstring.** It states the session
+  keys the generator writes itself, where it hands off, and its counter rule: turn-local
+  for the catalog phase, the live key for the rest.
+- **`finalize_specs`' contract states its ordering, as ruled at review of 7q1.**
+  `ai_features` and `agentifier_spec_done` are written before the Cross-Cutting Analyst's
+  draw, so a failed or unreadable draw leaves them written. That is why 7q1's mispredicted
+  test passed.
+- **`__all__` gains the eight** after `"run"`, the orchestrator's own names, and its comment
+  now counts eleven.
+- **The module docstring's `_run_*_phase` glob,** which a word-boundary rename cannot
+  reach, now reads `run_*_phase`.
+
+**The rename check (§60.2), with `P=HEAD` over the working tree.** Its 97 non-substitution
+lines are all in `agentifier.py`, and they are exactly the eight contracts, the eight
+`__all__` names with the comment, and the docstring glob. Verbatim:
+
+```
+diff -ru '--exclude=CLEANUP_INVENTORY.md' p/src/spec4/agentifier/agentifier.py c/src/spec4/agentifier/agentifier.py
+--- p/src/spec4/agentifier/agentifier.py	2026-09-11 10:04:22.156528603 -0700
++++ c/src/spec4/agentifier/agentifier.py	2026-09-11 10:04:22.570934927 -0700
+@@ -9,7 +9,7 @@
+ 
+ Cleanup Phase 4i moved this module's leaf-pure edges into three siblings, one
+ concern each, leaving the orchestrator's generator flow -- the four
+-``_run_*_phase`` drivers, the transitions between them, and ``run`` -- here:
++``run_*_phase`` drivers, the transitions between them, and ``run`` -- here:
+ 
+ * :mod:`spec4.agentifier._seed` -- the sub-agent registry and the async->sync
+   bridge that drives it, the five ``_call_*`` wrappers, the orchestrator seed
+@@ -126,7 +126,8 @@
+ 
+ #: Every name Phase 4i moved into ``_seed`` / ``_render`` / ``_ff_review``,
+ #: re-exported here under its owning module's spelling (thirteen became public
+-#: in 7g), plus the three names the orchestrator itself publishes. Load-bearing:
++#: in 7g), plus the eleven names the orchestrator itself publishes (eight since 7q,
++#: CLEANUP_INVENTORY.md 79). Load-bearing:
+ #: ``[tool.mypy] strict`` implies ``no_implicit_reexport``.
+ __all__ = [
+     "_analyses_from_session",
+@@ -162,6 +163,14 @@
+     "ORCHESTRATOR_SYSTEM_PROMPT",
+     "reset_agentifier_flow",
+     "run",
++    "_run_catalog_phase",
++    "_run_spec_phase",
++    "_run_cross_cutting_phase",
++    "_run_priority_phase",
++    "_handle_reentry",
++    "_finalize_specs",
++    "_begin_priority_phase",
++    "_complete_agentifier",
+ ]
+ 
+ _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
+@@ -671,7 +680,20 @@
+ def _finalize_specs(
+     session: dict[str, Any], llm_config: dict[str, Any]
+ ) -> Generator[str, None, None]:
+-    """Complete spec phase: build features list, run CrossCuttingAnalyst, show first topic."""
++    """Complete spec phase: build features list, run CrossCuttingAnalyst, show first topic.
++
++    Its contract on ``session``: it writes ``ai_features`` and ``agentifier_spec_done``
++    first, before the Cross-Cutting Analyst's draw, so a failed or unreadable draw leaves them
++    written. On a re-selection it pops ``agentifier_reselection``,
++    ``agentifier_preserved_features`` and ``agentifier_preserved_selected``. It writes
++    ``_stream_status``. With no warranted topic it writes ``agentifier_cross_cutting_topics``,
++    ``agentifier_cross_cutting_decisions`` and ``agentifier_cross_cutting_done``, and hands off
++    to ``_begin_priority_phase``. Otherwise the draw writes ``_stream_received_chars``, seeded
++    from the live key, and a stored analysis writes ``agentifier_cross_cutting_topics``,
++    ``agentifier_cross_cutting_analysis``, ``agentifier_cross_cutting_index`` and
++    ``agentifier_cross_cutting_decisions``. Either way the text shown is appended to
++    ``agentifier_messages`` and set as ``_display_override``.
++    """
+     catalog_entries = (session.get("ai_catalog") or {}).get("ai_catalog", [])
+     spec_results: list[dict[str, Any]] = session.get("agentifier_spec_results") or []
+     candidates_data: list[dict[str, Any]] = session.get("agentifier_candidates") or []
+@@ -863,6 +885,15 @@
+     ``display`` overrides the completion message. When None, the standard
+     AI-feature-catalog summary is shown; a caller passes an override for the
+     no-AI-surface case, where the empty catalog table would be misleading.
++
++    Its contract on ``session``: it writes ``ai_features`` (re-stored whole),
++    ``agentifier_state``, ``agentifier_stale_acknowledged``, ``agentifier_priority_done``,
++    ``_display_override`` and ``agentifier_artifact_msg_count``, and appends to
++    ``agentifier_messages``. In a revision round it pops ``agentifier_revision``,
++    ``agentifier_carried_forward``, ``agentifier_revision_version``,
++    ``agentifier_revision_prior_version``, ``agentifier_revision_delta`` and
++    ``agentifier_revision_cross_cutting``. It is the terminal step: it yields once and hands
++    off to nothing.
+     """
+     msgs = session["agentifier_messages"]
+     ai_features = session.get("ai_features") or {}
+@@ -1070,7 +1101,15 @@
+ def _run_spec_phase(
+     user_input: str | None, session: dict[str, Any], llm_config: dict[str, Any]
+ ) -> Generator[str, None, None]:
+-    """Handle spec-drafting phase turns."""
++    """Handle spec-drafting phase turns.
++
++    Its contract on ``session``: it appends to ``agentifier_messages`` and writes
++    ``agentifier_spec_index``, ``agentifier_spec_results`` and ``_display_override``. A Fast
++    Forward sweep and its review write ``agentifier_spec_ff_locked`` and
++    ``agentifier_spec_ff_review``. Each Spec Drafter draw writes the stream side-channels
++    ``_stream_status`` and ``_stream_received_chars``, seeded from the live key. Confirming the
++    last spec hands off to ``_finalize_specs``.
++    """
+     msgs = session["agentifier_messages"]
+     catalog_entries = (session.get("ai_catalog") or {}).get("ai_catalog", [])
+     n_features = len(catalog_entries)
+@@ -1337,7 +1376,17 @@
+ def _run_cross_cutting_phase(
+     user_input: str | None, session: dict[str, Any], llm_config: dict[str, Any]
+ ) -> Generator[str, None, None]:
+-    """Handle cross-cutting review turns (one topic at a time)."""
++    """Handle cross-cutting review turns (one topic at a time).
++
++    Its contract on ``session``: it appends to ``agentifier_messages`` and writes
++    ``_display_override``. The analysis and the topic cursor live in
++    ``agentifier_cross_cutting_topics``, ``agentifier_cross_cutting_analysis``,
++    ``agentifier_cross_cutting_index`` and ``agentifier_cross_cutting_decisions``. A Fast
++    Forward sweep and its review write ``agentifier_cc_ff_locked`` and
++    ``agentifier_cross_cutting_ff_review``. Each analyst draw writes the stream side-channels
++    ``_stream_status`` and ``_stream_received_chars``, seeded from the live key. The last
++    topic sets ``agentifier_cross_cutting_done`` and hands off to ``_begin_priority_phase``.
++    """
+     msgs = session["agentifier_messages"]
+     analysis: dict[str, Any] | None = session.get("agentifier_cross_cutting_analysis")
+ 
+@@ -1423,6 +1472,12 @@
+     draw, then a deterministic pass repairs the assignment against the wired
+     graph (D-PP1 option B). The review turn that follows confirms or modifies
+     that assignment over the whole set at once; it no longer originates it.
++
++    Its contract on ``session``: it writes ``ai_features`` (the overlay applied) and
++    ``_display_override``, appends to ``agentifier_messages``, and writes the stream
++    side-channels ``_stream_status`` and ``_stream_received_chars``: the Prioritizer's drain,
++    seeded from the live key. With no features it hands off to ``_complete_agentifier``, whose
++    contract then applies.
+     """
+     msgs = session["agentifier_messages"]
+     ai_features = dict(session.get("ai_features") or {})
+@@ -1510,6 +1565,12 @@
+     reassigns them. Replies are parsed deterministically — no LLM turn — and an
+     unrecognised reply re-prompts rather than advancing, so a correction can
+     never be silently discarded.
++
++    Its contract on ``session``: replaying (``user_input`` is ``None``) writes nothing.
++    Otherwise it appends the reply, and its answer, to ``agentifier_messages``; an edit
++    writes ``ai_features``, with the priorities reassigned and normalised; and the answer is
++    set as ``_display_override``. A confirmation hands off to ``_complete_agentifier``. It
++    makes no LLM call and publishes no stream counter.
+     """
+     msgs = session["agentifier_messages"]
+     features: list[dict[str, Any]] = list(
+@@ -2178,6 +2239,30 @@
+          user_input=answer → parse level, run TierAnalyst on survivors, fall through to LLM.
+       3. Candidates already cached: rebuild seed, fall through to LLM.
+       4. Normal conversation turn: append user message, fall through to LLM.
++
++    Its contract on ``session``: it appends to ``agentifier_messages`` and writes the stream
++    side-channels ``_stream_status`` and ``_stream_received_chars``. The received-character
++    total is counted turn-locally (D-AT3), never seeded from the live key.
++    - A fresh start writes the revision block when the round is a revision
++      (``agentifier_revision``, ``agentifier_revision_version``,
++      ``agentifier_revision_prior_version``, ``agentifier_revision_delta``,
++      ``agentifier_revision_cross_cutting``, ``agentifier_carried_forward``). It then writes the
++      breadth question: ``agentifier_scout_pool``, ``agentifier_breadth_groups``,
++      ``agentifier_breadth_intro``, ``agentifier_breadth_nonce``,
++      ``agentifier_breadth_chosen``, ``agentifier_compositions`` and ``_display_override``.
++    - The breadth turn writes ``agentifier_breadth_chosen``,
++      ``agentifier_explicitly_rejected``, ``agentifier_preserved_selected``,
++      ``agentifier_candidates`` and ``agentifier_analyses``.
++    - The reply writes ``ai_catalog``, ``agentifier_catalog_done``,
++      ``agentifier_spec_index``, ``agentifier_spec_results`` and ``_display_override``.
++
++    When Scout surfaces nothing, or nothing is selected, it hands off to
++    ``_complete_agentifier``, after writing ``agentifier_candidates``, ``agentifier_analyses``,
++    ``ai_features`` and the done-flags it skips (``agentifier_catalog_done``,
++    ``agentifier_spec_done``, ``agentifier_cross_cutting_done``). When a re-selection adds
++    nothing new, it hands off to ``_finalize_specs``, after writing ``ai_catalog``,
++    ``agentifier_catalog_done``, ``agentifier_spec_index``, ``agentifier_spec_results``,
++    ``agentifier_candidates`` and ``agentifier_analyses``.
+     """
+     msgs = session["agentifier_messages"]
+     # D-AT3: characters this turn yields as progress text before the LLM stream
+@@ -2533,6 +2618,17 @@
+     developer toggle the set without re-running discovery. Newly-checked
+     features flow through the normal tier-review + spec drafting; still-checked
+     ones are preserved verbatim (handled at breadth-submit / _finalize_specs).
++
++    Its contract on ``session``: it demotes ``agentifier_state`` first. With stale inputs it
++    runs ``reset_agentifier_flow``, which writes every key in ``_RESTART_DEFAULTS`` and pops
++    every key in ``_RESTART_POP``; it then writes ``agentifier_stale_acknowledged`` and hands
++    off to ``_run_catalog_phase`` for a fresh draw. Otherwise it opens the re-selection panel,
++    writing ``agentifier_preserved_features``, ``agentifier_scout_pool``,
++    ``agentifier_breadth_groups``, ``agentifier_breadth_selection``,
++    ``agentifier_breadth_chosen``, ``agentifier_breadth_nonce``, ``agentifier_reselection``,
++    the four done-flags (``agentifier_catalog_done``, ``agentifier_spec_done``,
++    ``agentifier_cross_cutting_done``, ``agentifier_priority_done``), a fresh
++    ``agentifier_messages``, ``agentifier_breadth_intro`` and ``_display_override``.
+     """
+     # Re-entry re-opens the flow (reselection panel or, when inputs are stale, a
+     # full rediscovery). Demote the completion state so the "Continue to Designer"
+```
+
+**The token check.** Its exit status is informational on a seam commit (§60.6), and its
+OTHER lines are the same hunks:
+
+```
+OTHER  src/spec4/agentifier/agentifier.py:-12/+12: replace '_run_' -> 'run_'
+OTHER  src/spec4/agentifier/agentifier.py:-144/+144: replace 'three' -> 'eleven'
+OTHER  src/spec4/agentifier/agentifier.py:-144/+144: insert '' -> '( eight since 7q , # : CLEANUP_INVENTORY . md 79 )'
+OTHER  src/spec4/agentifier/agentifier.py:-179/+181: insert '' -> '" run_catalog_phase " , " run_spec_phase " , " run_cross_cutting_phase " , " run_priority_phase " , " h
+OTHER  src/spec4/agentifier/agentifier.py:-696/+705: insert '' -> "Its contract on ` ` session ` ` : it writes ` ` ai_features ` ` and ` ` agentifier_spec_done ` ` first 
+OTHER  src/spec4/agentifier/agentifier.py:-892/+915: insert '' -> 'Its contract on ` ` session ` ` : it writes ` ` ai_features ` ` ( re - stored whole ) , ` ` agentifier_
+OTHER  src/spec4/agentifier/agentifier.py:-1104/+1135: insert '' -> 'Its contract on ` ` session ` ` : it appends to ` ` agentifier_messages ` ` and writes ` ` agentifier
+OTHER  src/spec4/agentifier/agentifier.py:-1377/+1416: insert '' -> 'Its contract on ` ` session ` ` : it appends to ` ` agentifier_messages ` ` and writes ` ` _display_o
+OTHER  src/spec4/agentifier/agentifier.py:-1463/+1513: insert '' -> "Its contract on ` ` session ` ` : it writes ` ` ai_features ` ` ( the overlay applied ) and ` ` _disp
+OTHER  src/spec4/agentifier/agentifier.py:-1552/+1608: insert '' -> 'Its contract on ` ` session ` ` : replaying ( ` ` user_input ` ` is ` ` None ` ` ) writes nothing . O
+OTHER  src/spec4/agentifier/agentifier.py:-2229/+2291: insert '' -> 'Its contract on ` ` session ` ` : it appends to ` ` agentifier_messages ` ` and writes the stream sid
+OTHER  src/spec4/agentifier/agentifier.py:-2586/+2671: insert '' -> 'Its contract on ` ` session ` ` : it demotes ` ` agentifier_state ` ` first . With stale inputs it ru
+hunks 107; old->new token substitutions 99; layout 0; §54.7 aliases 0; OTHER 12
+```
+
+**Check 4, after the rename.** All four patch strings still land in the module whose code
+calls the function:
+
+```
+PASS tests/agentifier/test_ff_sweep.py:158 [path] spec4.agentifier.agentifier.finalize_specs
+     (1) function finalize_specs  (2) src/spec4/agentifier/agentifier.py defines it; calls it at run_spec_phase@1190, _handle_spec_ff_review@1284, _catalog_breadth_turn@2134
+PASS tests/agentifier/test_ff_sweep.py:301 [path] spec4.agentifier.agentifier.begin_priority_phase
+     (1) function begin_priority_phase  (2) src/spec4/agentifier/agentifier.py defines it; calls it at finalize_specs@775, _handle_cc_ff_review@1046, _cc_rerun_analysis@1357, run_cross_cutting_phase@1478
+PASS tests/agentifier/test_reselection.py:136 [object] spec4.agentifier.agentifier.run_catalog_phase
+     (1) function run_catalog_phase  (2) src/spec4/agentifier/agentifier.py defines it; calls it at handle_reentry@2713, run@2784
+PASS tests/agentifier/test_reselection.py:178 [object] spec4.agentifier.agentifier.run_catalog_phase
+     (1) function run_catalog_phase  (2) src/spec4/agentifier/agentifier.py defines it; calls it at handle_reentry@2713, run@2784
+targets ending in a batch name (new side): 4; FAIL: 0; fourth-form candidates: 0
+```
+
+**The §60.3 petition** on `test_ff_sweep.py`'s five tier-A nodes, which call
+`run_spec_phase` by name:
+
+```
+§60.3  tests/agentifier/test_ff_sweep.py [tierA:TestSweepFailureHandling::test_failure_dump_written_in_dev_mode; tierA:TestSweepFailureHandling::test_ff_press_resumes_after_pause; tierA:TestSweepFailureHandling::test_loop_path_failure_appends_error_to_messages; tierA:TestSweepFailureHandling::test_persistent_failure_pauses_with_partial_review; tierA:TestSweepFailureHandling::test_retry_once_recovers_transient_failure]: (1) reverse diff empty inside the net entry PASS  (2) assertions identical under substitution PASS
+off-limits (floor): FAILURES             : 0
+net files in the diff: whole=[]
+PETITION: PASS
+```
+
+**The old names are gone:** 0 occurrences in `src/`, `tests/`, `scripts/` and `evals/`.
+`.spec4/` is not searched, under Rule 2.
+
+**Trace identity, names normalised.** Every main-thread trace matches the baseline. In two
+of the nine racing tests the network reach fired again, and is recorded as the known
+defect, not escalated:
+
+```
+base: {"tests_traced": 151, "invocations": 199, "events": 1081, "distinct_snapshots": 536, "exitstatus": 0, "entries": {"run": 140, "run_spec_phase": 15, "run_cross_cutting_phase": 7, "begin_priority_phase": 7, "run_priority_phase": 10, "handle_reentry": 3, "finalize_specs": 3, "complete_agentifier": 9, "run_catalog_phase": 5}}
+new:  {"tests_traced": 151, "invocations": 199, "events": 1080, "distinct_snapshots": 593, "exitstatus": 0, "entries": {"run": 140, "run_spec_phase": 15, "run_cross_cutting_phase": 7, "begin_priority_phase": 7, "run_priority_phase": 10, "handle_reentry": 3, "finalize_specs": 3, "complete_agentifier": 9, "run_catalog_phase": 5}}
+tests traced: base 142, new 142; identical 142; diverging 0 (key order only: 0); identical to a recorded variant other than the first: 0
+worker-thread invocations: tests 9; differing 4: advisory (timing) 4, escalated (content) 0
+  RECORDED  tests/agentifier/test_try_again.py::TestGuidedRedraw::test_blank_note_is_the_plain_redraw: KNOWN DEFECT (network reach in a known racing test): chunk "\n\nScout failed to analyse the vision: sub-agent 'scout' raised: litell"
+  ADVISORY  tests/agentifier/test_try_again.py::TestGuidedRedraw::test_blank_note_keeps_prior_notes_and_refreshes_the_set: timing: ordering -- the recorded states, at different points between worker and main; nothing novel
+  RECORDED  tests/agentifier/test_try_again.py::TestGuidedRedraw::test_every_click_is_one_history_event: KNOWN DEFECT (network reach in a known racing test): chunk "\n\nScout failed to analyse the vision: sub-agent 'scout' raised: litell"
+  ADVISORY  tests/agentifier/test_try_again.py::TestGuidedRedraw::test_notes_accumulate_across_retries: timing: ordering -- the recorded states, at different points between worker and main; nothing novel
+```
+
+**The contracts, checked against observed writes.** Every key the suite saw a generator
+write or pop is documented in its contract, or in the contract of a generator it hands off
+to. The stand-ins' keys, `_finalized` and `_priority_begun`, are set aside by name.
+Documented keys the suite never saw change are listed: they go on the Phase 8 test list.
+
+```
+run_catalog_phase: documented 27 own (+10 via complete_agentifier, finalize_specs); observed 20; UNDOCUMENTED none
+    documented, never seen changing: agentifier_breadth_chosen, agentifier_breadth_groups, agentifier_breadth_intro, agentifier_breadth_nonce, agentifier_compositions, agentifier_explicitly_rejected, agentifier_preserved_selected, agentifier_scout_pool, agentifier_spec_index, agentifier_spec_results, ai_catalog
+run_spec_phase: documented 8 own (+20 via finalize_specs); observed 8; UNDOCUMENTED none; stand-in keys set aside ['_finalized']
+    documented, never seen changing: none
+run_cross_cutting_phase: documented 11 own (+11 via begin_priority_phase); observed 10; UNDOCUMENTED none; stand-in keys set aside ['_priority_begun']
+    documented, never seen changing: agentifier_cross_cutting_topics
+run_priority_phase: documented 3 own (+10 via complete_agentifier); observed 7; UNDOCUMENTED none
+    documented, never seen changing: none
+handle_reentry: documented 40 own (+3 via run_catalog_phase); observed 27; UNDOCUMENTED none
+    documented, never seen changing: agentifier_artifact_msg_count, agentifier_carried_forward, agentifier_cc_ff_locked, agentifier_compositions, agentifier_cross_cutting_ff_review, agentifier_preserved_selected, agentifier_revision, agentifier_revision_cross_cutting, agentifier_revision_delta, agentifier_revision_prior_version, agentifier_revision_version, agentifier_spec_ff_locked, agentifier_spec_ff_review
+finalize_specs: documented 14 own (+10 via begin_priority_phase); observed 11; UNDOCUMENTED none
+    documented, never seen changing: _stream_received_chars, agentifier_cross_cutting_analysis, agentifier_cross_cutting_decisions, agentifier_cross_cutting_index, agentifier_cross_cutting_topics, agentifier_preserved_features
+begin_priority_phase: documented 5 own (+10 via complete_agentifier); observed 9; UNDOCUMENTED none
+    documented, never seen changing: none
+complete_agentifier: documented 13 own (+0 via no hand-off); observed 13; UNDOCUMENTED none
+    documented, never seen changing: none
+contracts failing: 0
+```
+
+**§60.4's eight mutations, re-anchored on the public names, one per contract:**
+
+```
+M run_catalog_phase (the no-candidate revision branch never taken): predicted 1, failed 1; must-pass 1, failed 0; as predicted; restored byte-identical: True
+   FAILED (predicted)       tests/agentifier/test_revision.py::TestRevisionScoutZeroNew::test_zero_new_candidates_finalises_carried_forward
+   PASSED (must pass)      tests/agentifier/test_revision.py::TestRevisionScoutZeroNew::test_non_revision_zero_completes_empty
+   other failures: 0
+   summary: 1 failed, 4209 passed, 1 skipped in 94.26s (0:01:34)
+M run_spec_phase (the Fast Forward check moved into the not-pending arm (breaks D-AF1)): predicted 2, failed 2; must-pass 0, failed 0; as predicted; restored byte-identical: True
+   FAILED (predicted)       tests/agentifier/test_ff_sweep.py::TestSpecPhaseFFSweep::test_ff_while_pending_sweeps_instead_of_revising
+   FAILED (predicted)       tests/agentifier/test_ff_sweep.py::TestSweepFailureHandling::test_ff_press_resumes_after_pause
+   other failures: 0
+   summary: 2 failed, 4208 passed, 1 skipped in 94.70s (0:01:34)
+M run_cross_cutting_phase (the Fast Forward review turn never routed): predicted 3, failed 3; must-pass 0, failed 0; as predicted; restored byte-identical: True
+   FAILED (predicted)       tests/agentifier/test_ff_sweep.py::TestCrossCuttingFFSweep::test_review_confirm_begins_priority
+   FAILED (predicted)       tests/agentifier/test_ff_sweep.py::TestCrossCuttingFFSweep::test_review_revision_reruns_named_topic
+   FAILED (predicted)       tests/agentifier/test_ff_sweep.py::TestCrossCuttingFFSweep::test_review_locked_topic_rejected
+   FAILED (other, to explain) tests/agentifier/test_ff_sweep.py::TestCrossCuttingFFSweep::test_review_skip_line_skips_skippable_topic
+   other failures: 1
+   summary: 4 failed, 4206 passed, 1 skipped in 97.87s (0:01:37)
+M run_priority_phase (confirmation read before edits): predicted 1, failed 1; must-pass 0, failed 0; as predicted; restored byte-identical: True
+   FAILED (predicted)       tests/agentifier/test_prioritizer.py::TestRunPriorityPhase::test_edit_wins_over_affirmative_prefix_collision
+   other failures: 0
+   summary: 1 failed, 4209 passed, 1 skipped in 93.66s (0:01:33)
+M handle_reentry (the reset and the acknowledgement moved below the rediscovery): predicted 1, failed 1; must-pass 1, failed 0; as predicted; restored byte-identical: True
+   FAILED (predicted)       tests/agentifier/test_reselection.py::TestHandleReentryStale::test_stale_reentry_clears_candidate_pool
+   PASSED (must pass)      tests/agentifier/test_reselection.py::TestHandleReentryStale::test_vision_newer_resets_and_rediscovers
+   other failures: 0
+   summary: 1 failed, 4209 passed, 1 skipped in 96.46s (0:01:36)
+M finalize_specs (preserved features appended, not prepended): predicted 1, failed 1; must-pass 0, failed 0; as predicted; restored byte-identical: True
+   FAILED (predicted)       tests/agentifier/test_reselection.py::TestFinalizeMergePreserved::test_preserved_prepended_and_flags_cleared
+   other failures: 0
+   summary: 1 failed, 4209 passed, 1 skipped in 92.94s (0:01:32)
+M begin_priority_phase (the Prioritizer's overlay replaced by {}): predicted 3, failed 3; must-pass 4, failed 0; as predicted; restored byte-identical: True
+   FAILED (predicted)       tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_overlay_lands_on_the_feature_set
+   FAILED (predicted)       tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_normalization_runs_on_the_overlay
+   FAILED (predicted)       tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_carried_forward_names_are_passed_and_frozen
+   PASSED (must pass)      tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_draw_failure_degrades_to_mvp_with_a_banner
+   PASSED (must pass)      tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_unreadable_outcome_shows_the_banner
+   PASSED (must pass)      tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_ok_outcome_shows_no_banner
+   PASSED (must pass)      tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_empty_feature_set_short_circuits
+   other failures: 0
+   summary: 3 failed, 4207 passed, 1 skipped in 93.02s (0:01:33)
+M complete_agentifier (agentifier_revision_delta dropped from the revision pop): predicted 1, failed 1; must-pass 1, failed 0; as predicted; restored byte-identical: True
+   FAILED (predicted)       tests/agentifier/test_revision.py::TestCompleteAgentifierRevision::test_revision_state_cleared
+   PASSED (must pass)      tests/agentifier/test_revision.py::TestCompleteAgentifierRevision::test_carried_forward_merged_and_stamped
+   other failures: 0
+   summary: 1 failed, 4209 passed, 1 skipped in 93.57s (0:01:33)
+```
+
+**Every mutation failed exactly its predicted tests, and every must-pass test §60.4 named
+passed. There is one extra failure, explained here.** Under `run_cross_cutting_phase`'s
+mutation, the review turn is never routed. Beside the three predicted tests,
+`TestCrossCuttingFFSweep::test_review_skip_line_skips_skippable_topic` also fails. It is a
+fourth review-turn test, a `topic: skip` line inside the Fast Forward review, so it depends
+on exactly the routing the mutation disables. §60.4 counted three review tests, and this is
+the fourth. Its failure is the same contract biting, not a separate defect.
+
+Each restore was byte-identical, checked by sha256, and no mutation left a change behind.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12459 876 93%`, **at or under the baseline of 876**. `agentifier.py` stands at `1002 statements with 114 missed`; a docstring adds no statement |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); the §60.3 petition passes |
+
+**Also carried in this commit:** §27.4's add-only note retiring entries nine and ten. Its
+table stays as written.
+
+### 79.4 7q closed
+
+**The decision §60.7(e) made one item has now been taken once:** the `yield from` split and
+the promotion of the agentifier eight.
+
+| Commit | What it did | The proof |
+|---|---|---|
+| 7q0 `cdabf40` | The trace check, its baseline and its probes, recorded before any code changed | three baselines; both probes bite |
+| 7q1 `46fd5d2` | The cross-cutting split, and the analyst step `finalize_specs` shares | trace identity; strings; mutation (one misprediction, ruled); misses 891 → 876 |
+| 7q2 `609b5de` (amended from `1b34d15`) | The catalog split | trace identity; strings and counts identical; mutation 5/5; misses at 876 |
+| 7q3 (this commit) | The promotion of the eight, with their contracts | rename and token checks, check 4, the petition, trace identity, contracts against observed writes, §60.4's eight mutations |
+
+- **§27.4's entries nine and ten are retired.** `agentifier.py` carries no rule-12 `noqa`,
+  and with `--ignore-noqa` `ruff` flags nothing in it.
+- **Nothing observable changed.** Every main-thread trace is identical to the baseline at
+  `ba030e5`, in insertion order, and the set of string constants never changed.
+- **No code left `agentifier.py`,** and §76's scan and reset-seam test passed at every
+  commit.
+- **What carries to Phase 8:**
+  - the backlog's three other turns;
+  - the sentinel alternative;
+  - the racing nine (a defect);
+  - the Prioritizer banner (a test item);
+  - the five unreached annotated targets;
+  - any documented contract keys the suite never saw change.
+
+The next item is the plan's close-out: `CLEANUP_REPORT.md`, with the four "invariants the
+suite assumed rather than pinned" as findings.

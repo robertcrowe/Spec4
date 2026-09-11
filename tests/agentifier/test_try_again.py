@@ -329,7 +329,7 @@ class TestCallback:
 
     def test_pool_is_discarded_before_the_redraw(self) -> None:
         """The reset must land before the generator is handed to streaming —
-        _run_catalog_phase only re-runs Scout when the cached pool is gone."""
+        run_catalog_phase only re-runs Scout when the cached pool is gone."""
         session = _session()
         session["agentifier_scout_pool"] = [{"name": "old"}]
         session["agentifier_breadth_groups"] = [{"name": "old"}]
@@ -571,7 +571,7 @@ class TestDiscoveryGuidanceArtifact:
             "reconciliation": [],
         }
         with mock_litellm_stream("done"):
-            collect(agentifier._complete_agentifier(session))
+            collect(agentifier.complete_agentifier(session))
         return session["ai_features"]
 
     def test_history_is_written_in_order(self, tmp_path: Any) -> None:
@@ -713,7 +713,7 @@ class TestRedrawRunsScout:
         assert "stale_candidate" not in names
 
     def test_replay_does_not_short_circuit_the_redraw(self) -> None:
-        """_run_catalog_phase replays the last assistant turn when messages
+        """run_catalog_phase replays the last assistant turn when messages
         survive, which would swallow the redraw entirely."""
         session = _session()
         session["agentifier_messages"] = [

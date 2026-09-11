@@ -9,7 +9,7 @@ the final ai_features.json.
 
 Cleanup Phase 4i moved this module's leaf-pure edges into three siblings, one
 concern each, leaving the orchestrator's generator flow -- the four
-``_run_*_phase`` drivers, the transitions between them, and ``run`` -- here:
+``run_*_phase`` drivers, the transitions between them, and ``run`` -- here:
 
 * :mod:`spec4.agentifier._seed` -- the sub-agent registry and the async->sync
   bridge that drives it, the five ``_call_*`` wrappers, the orchestrator seed
@@ -141,7 +141,8 @@ from spec4.agentifier._seed import (
 
 #: Every name Phase 4i moved into ``_seed`` / ``_render`` / ``_ff_review``,
 #: re-exported here under its owning module's spelling (thirteen became public
-#: in 7g), plus the three names the orchestrator itself publishes. Load-bearing:
+#: in 7g), plus the eleven names the orchestrator itself publishes (eight since 7q,
+#: CLEANUP_INVENTORY.md 79). Load-bearing:
 #: ``[tool.mypy] strict`` implies ``no_implicit_reexport``.
 __all__ = [
     "_analyses_from_session",
@@ -177,6 +178,14 @@ __all__ = [
     "ORCHESTRATOR_SYSTEM_PROMPT",
     "reset_agentifier_flow",
     "run",
+    "run_catalog_phase",
+    "run_spec_phase",
+    "run_cross_cutting_phase",
+    "run_priority_phase",
+    "handle_reentry",
+    "finalize_specs",
+    "begin_priority_phase",
+    "complete_agentifier",
 ]
 
 _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
@@ -493,7 +502,7 @@ def _expand_infrastructure(
     Reads the tier registry (``required_infrastructure`` per tier) and injects
     ``kind: infrastructure`` substrate nodes implied by the *tiers* of the
     selected features. A registry lookup, never an LLM call. Called at the single
-    finalisation locus (``_complete_agentifier``), so infrastructure is added
+    finalisation locus (``complete_agentifier``), so infrastructure is added
     after cross-cutting analysis and the priority-review loop and is excluded
     from both by construction.
     """
@@ -689,11 +698,24 @@ def _draft_and_show_spec(
     yield spec_display
 
 
-def _finalize_specs(
+def finalize_specs(
     session: dict[str, Any],
     llm_config: dict[str, Any],
 ) -> Generator[str, None, None]:
-    """Complete spec phase: build features list, run CrossCuttingAnalyst, show first topic."""
+    """Complete spec phase: build features list, run CrossCuttingAnalyst, show first topic.
+
+    Its contract on ``session``: it writes ``ai_features`` and ``agentifier_spec_done``
+    first, before the Cross-Cutting Analyst's draw, so a failed or unreadable draw leaves them
+    written. On a re-selection it pops ``agentifier_reselection``,
+    ``agentifier_preserved_features`` and ``agentifier_preserved_selected``. It writes
+    ``_stream_status``. With no warranted topic it writes ``agentifier_cross_cutting_topics``,
+    ``agentifier_cross_cutting_decisions`` and ``agentifier_cross_cutting_done``, and hands off
+    to ``begin_priority_phase``. Otherwise the draw writes ``_stream_received_chars``, seeded
+    from the live key, and a stored analysis writes ``agentifier_cross_cutting_topics``,
+    ``agentifier_cross_cutting_analysis``, ``agentifier_cross_cutting_index`` and
+    ``agentifier_cross_cutting_decisions``. Either way the text shown is appended to
+    ``agentifier_messages`` and set as ``_display_override``.
+    """
     catalog_entries = (session.get("ai_catalog") or {}).get("ai_catalog", [])
     spec_results: list[dict[str, Any]] = session.get("agentifier_spec_results") or []
     candidates_data: list[dict[str, Any]] = session.get("agentifier_candidates") or []
@@ -726,7 +748,7 @@ def _finalize_specs(
     # doctrine. Records land in the top-level ``reconciliation`` block
     # (D-RC1 C). In revision mode, an edge naming a carried-forward feature
     # is unresolvable here (the snapshot merges later, in
-    # ``_complete_agentifier``) and is conservatively left untouched.
+    # ``complete_agentifier``) and is conservatively left untouched.
     reconciliation = reconcile_requires(features, feature_specs)
     ai_features: dict[str, Any] = {
         "ai_features": features,
@@ -750,7 +772,7 @@ def _finalize_specs(
         session["agentifier_cross_cutting_topics"] = []
         session["agentifier_cross_cutting_decisions"] = {}
         session["agentifier_cross_cutting_done"] = True
-        yield from _begin_priority_phase(session, llm_config)
+        yield from begin_priority_phase(session, llm_config)
         return
 
     _, mechanisms = load_patterns()
@@ -810,7 +832,7 @@ def _cc_draw_analysis(
 ) -> Generator[str, None, dict[str, Any] | None]:
     """Draw a full cross-cutting analysis for ``cc_input``; ``None`` ends the turn.
 
-    The step ``_finalize_specs`` and the cross-cutting phase's re-run share; they
+    The step ``finalize_specs`` and the cross-cutting phase's re-run share; they
     differ only in their failure texts. A failed or unreadable draw is stored as
     the assistant turn and shown, and the turn ends.
     """
@@ -881,7 +903,7 @@ def _discovery_guidance(session: dict[str, Any]) -> list[dict[str, Any]]:
     return events
 
 
-def _complete_agentifier(
+def complete_agentifier(
     session: dict[str, Any],
     display: str | None = None,
 ) -> Generator[str, None, None]:
@@ -890,6 +912,15 @@ def _complete_agentifier(
     ``display`` overrides the completion message. When None, the standard
     AI-feature-catalog summary is shown; a caller passes an override for the
     no-AI-surface case, where the empty catalog table would be misleading.
+
+    Its contract on ``session``: it writes ``ai_features`` (re-stored whole),
+    ``agentifier_state``, ``agentifier_stale_acknowledged``, ``agentifier_priority_done``,
+    ``_display_override`` and ``agentifier_artifact_msg_count``, and appends to
+    ``agentifier_messages``. In a revision round it pops ``agentifier_revision``,
+    ``agentifier_carried_forward``, ``agentifier_revision_version``,
+    ``agentifier_revision_prior_version``, ``agentifier_revision_delta`` and
+    ``agentifier_revision_cross_cutting``. It is the terminal step: it yields once and hands
+    off to nothing.
     """
     msgs = session["agentifier_messages"]
     ai_features = session.get("ai_features") or {}
@@ -1012,7 +1043,7 @@ def _handle_cc_ff_review(
         session["agentifier_cross_cutting_ff_review"] = False
         session["agentifier_cross_cutting_index"] = len(topics)
         session["agentifier_cross_cutting_done"] = True
-        yield from _begin_priority_phase(session, llm_config)
+        yield from begin_priority_phase(session, llm_config)
         return
 
     routed, unknown, locked_hits, saw_pair = _route_ff_revision_lines(
@@ -1096,12 +1127,20 @@ def _is_skip(text: str | None) -> bool:
 # ---------------------------------------------------------------------------
 
 
-def _run_spec_phase(
+def run_spec_phase(
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
 ) -> Generator[str, None, None]:
-    """Handle spec-drafting phase turns."""
+    """Handle spec-drafting phase turns.
+
+    Its contract on ``session``: it appends to ``agentifier_messages`` and writes
+    ``agentifier_spec_index``, ``agentifier_spec_results`` and ``_display_override``. A Fast
+    Forward sweep and its review write ``agentifier_spec_ff_locked`` and
+    ``agentifier_spec_ff_review``. Each Spec Drafter draw writes the stream side-channels
+    ``_stream_status`` and ``_stream_received_chars``, seeded from the live key. Confirming the
+    last spec hands off to ``finalize_specs``.
+    """
     msgs = session["agentifier_messages"]
     catalog_entries = (session.get("ai_catalog") or {}).get("ai_catalog", [])
     n_features = len(catalog_entries)
@@ -1148,7 +1187,7 @@ def _run_spec_phase(
             spec_index += 1
             session["agentifier_spec_index"] = spec_index
             if spec_index >= n_features:
-                yield from _finalize_specs(session, llm_config)
+                yield from finalize_specs(session, llm_config)
                 return
             revision = None
         else:
@@ -1242,7 +1281,7 @@ def _handle_spec_ff_review(
             return
         session["agentifier_spec_ff_review"] = False
         session["agentifier_spec_index"] = n
-        yield from _finalize_specs(session, llm_config)
+        yield from finalize_specs(session, llm_config)
         return
 
     routed, unknown, locked_hits, saw_pair = _route_ff_revision_lines(
@@ -1315,7 +1354,7 @@ def _cc_rerun_analysis(
         session["agentifier_cross_cutting_topics"] = []
         session["agentifier_cross_cutting_decisions"] = {}
         session["agentifier_cross_cutting_done"] = True
-        yield from _begin_priority_phase(session, llm_config)
+        yield from begin_priority_phase(session, llm_config)
         return None
     cc_input = CrossCuttingInput(
         ai_features=features,
@@ -1369,12 +1408,22 @@ def _cc_revise_topic(
     return _cc_apply_revision(session, revised, current_topic, analysis)
 
 
-def _run_cross_cutting_phase(
+def run_cross_cutting_phase(
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
 ) -> Generator[str, None, None]:
-    """Handle cross-cutting review turns (one topic at a time)."""
+    """Handle cross-cutting review turns (one topic at a time).
+
+    Its contract on ``session``: it appends to ``agentifier_messages`` and writes
+    ``_display_override``. The analysis and the topic cursor live in
+    ``agentifier_cross_cutting_topics``, ``agentifier_cross_cutting_analysis``,
+    ``agentifier_cross_cutting_index`` and ``agentifier_cross_cutting_decisions``. A Fast
+    Forward sweep and its review write ``agentifier_cc_ff_locked`` and
+    ``agentifier_cross_cutting_ff_review``. Each analyst draw writes the stream side-channels
+    ``_stream_status`` and ``_stream_received_chars``, seeded from the live key. The last
+    topic sets ``agentifier_cross_cutting_done`` and hands off to ``begin_priority_phase``.
+    """
     msgs = session["agentifier_messages"]
     analysis: dict[str, Any] | None = session.get("agentifier_cross_cutting_analysis")
 
@@ -1426,7 +1475,7 @@ def _run_cross_cutting_phase(
         if index >= len(topics):
             # All topics reviewed — transition to priority tagging
             session["agentifier_cross_cutting_done"] = True
-            yield from _begin_priority_phase(session, llm_config)
+            yield from begin_priority_phase(session, llm_config)
             return
 
         current_topic = topics[index]
@@ -1451,7 +1500,7 @@ def _run_cross_cutting_phase(
     yield display
 
 
-def _begin_priority_phase(
+def begin_priority_phase(
     session: dict[str, Any],
     llm_config: dict[str, Any],
 ) -> Generator[str, None, None]:
@@ -1461,13 +1510,19 @@ def _begin_priority_phase(
     draw, then a deterministic pass repairs the assignment against the wired
     graph (D-PP1 option B). The review turn that follows confirms or modifies
     that assignment over the whole set at once; it no longer originates it.
+
+    Its contract on ``session``: it writes ``ai_features`` (the overlay applied) and
+    ``_display_override``, appends to ``agentifier_messages``, and writes the stream
+    side-channels ``_stream_status`` and ``_stream_received_chars``: the Prioritizer's drain,
+    seeded from the live key. With no features it hands off to ``complete_agentifier``, whose
+    contract then applies.
     """
     msgs = session["agentifier_messages"]
     ai_features = dict(session.get("ai_features") or {})
     features = ai_features.get("ai_features") or []
 
     if not features:
-        yield from _complete_agentifier(session)
+        yield from complete_agentifier(session)
         return
 
     carried = session.get("agentifier_carried_forward") or []
@@ -1539,7 +1594,7 @@ def _begin_priority_phase(
 # ---------------------------------------------------------------------------
 
 
-def _run_priority_phase(
+def run_priority_phase(
     user_input: str | None,
     session: dict[str, Any],
     _llm_config: dict[str, Any],
@@ -1550,6 +1605,12 @@ def _run_priority_phase(
     reassigns them. Replies are parsed deterministically — no LLM turn — and an
     unrecognised reply re-prompts rather than advancing, so a correction can
     never be silently discarded.
+
+    Its contract on ``session``: replaying (``user_input`` is ``None``) writes nothing.
+    Otherwise it appends the reply, and its answer, to ``agentifier_messages``; an edit
+    writes ``ai_features``, with the priorities reassigned and normalised; and the answer is
+    set as ``_display_override``. A confirmation hands off to ``complete_agentifier``. It
+    makes no LLM call and publishes no stream counter.
     """
     msgs = session["agentifier_messages"]
     features: list[dict[str, Any]] = list(
@@ -1570,7 +1631,7 @@ def _run_priority_phase(
     # the affirmative "next" and silently end the phase.
     if not edits.saw_pair:
         if is_spec_confirmed(user_input):
-            yield from _complete_agentifier(session)
+            yield from complete_agentifier(session)
             return
         display = (
             "I couldn't read that as a priority change.\n\n"
@@ -1763,7 +1824,7 @@ def _catalog_complete_without_candidates(
         # A revision whose changes introduce no NEW AI surface (e.g. a
         # presentation-only tweak to an already-built feature). Don't
         # bail as if greenfield — carry the established AI surface
-        # forward unchanged and finalise. _complete_agentifier folds in
+        # forward unchanged and finalise. complete_agentifier folds in
         # agentifier_carried_forward under its revision block; there is
         # no new feature to spec-draft, so go straight there (mirroring
         # the zero-selection completion path).
@@ -1797,7 +1858,7 @@ def _catalog_complete_without_candidates(
                 "carry forward. You can continue to Designer or "
                 "StackAdvisor.\n\n"
             )
-        yield from _complete_agentifier(session)
+        yield from complete_agentifier(session)
         return
     # Greenfield vision with no AI surface (e.g. a purely
     # deterministic system). Finalise the agentifier stage with an
@@ -1819,7 +1880,7 @@ def _catalog_complete_without_candidates(
     session["agentifier_catalog_done"] = True
     session["agentifier_spec_done"] = True
     session["agentifier_cross_cutting_done"] = True
-    yield from _complete_agentifier(
+    yield from complete_agentifier(
         session,
         display=(
             "Scout did not find any AI-integration opportunities in "
@@ -2052,13 +2113,13 @@ def _catalog_breadth_turn(
         }
         session["agentifier_spec_done"] = True
         session["agentifier_cross_cutting_done"] = True
-        yield from _complete_agentifier(session)
+        yield from complete_agentifier(session)
         return None
 
     if reselection and not to_analyze:
         # No new features — keep the preserved set verbatim, skip tier review
         # and spec drafting, and go straight to assembly + cross-cutting +
-        # priority (which re-run over the preserved union via _finalize_specs).
+        # priority (which re-run over the preserved union via finalize_specs).
         session["ai_catalog"] = {"ai_catalog": []}
         session["agentifier_catalog_done"] = True
         session["agentifier_spec_index"] = 0
@@ -2070,7 +2131,7 @@ def _catalog_breadth_turn(
             f"\n\nKeeping **{n_p} feature{'s' if n_p != 1 else ''}** — "
             "re-checking cross-cutting concerns…\n\n"
         )
-        yield from _finalize_specs(session, llm_config)
+        yield from finalize_specs(session, llm_config)
         return None
 
     n_s = len(to_analyze)
@@ -2212,7 +2273,7 @@ def _catalog_reply(
             session["_display_override"] = _assistant_text
 
 
-def _run_catalog_phase(
+def run_catalog_phase(
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
@@ -2227,6 +2288,30 @@ def _run_catalog_phase(
          user_input=answer → parse level, run TierAnalyst on survivors, fall through to LLM.
       3. Candidates already cached: rebuild seed, fall through to LLM.
       4. Normal conversation turn: append user message, fall through to LLM.
+
+    Its contract on ``session``: it appends to ``agentifier_messages`` and writes the stream
+    side-channels ``_stream_status`` and ``_stream_received_chars``. The received-character
+    total is counted turn-locally (D-AT3), never seeded from the live key.
+    - A fresh start writes the revision block when the round is a revision
+      (``agentifier_revision``, ``agentifier_revision_version``,
+      ``agentifier_revision_prior_version``, ``agentifier_revision_delta``,
+      ``agentifier_revision_cross_cutting``, ``agentifier_carried_forward``). It then writes the
+      breadth question: ``agentifier_scout_pool``, ``agentifier_breadth_groups``,
+      ``agentifier_breadth_intro``, ``agentifier_breadth_nonce``,
+      ``agentifier_breadth_chosen``, ``agentifier_compositions`` and ``_display_override``.
+    - The breadth turn writes ``agentifier_breadth_chosen``,
+      ``agentifier_explicitly_rejected``, ``agentifier_preserved_selected``,
+      ``agentifier_candidates`` and ``agentifier_analyses``.
+    - The reply writes ``ai_catalog``, ``agentifier_catalog_done``,
+      ``agentifier_spec_index``, ``agentifier_spec_results`` and ``_display_override``.
+
+    When Scout surfaces nothing, or nothing is selected, it hands off to
+    ``complete_agentifier``, after writing ``agentifier_candidates``, ``agentifier_analyses``,
+    ``ai_features`` and the done-flags it skips (``agentifier_catalog_done``,
+    ``agentifier_spec_done``, ``agentifier_cross_cutting_done``). When a re-selection adds
+    nothing new, it hands off to ``finalize_specs``, after writing ``ai_catalog``,
+    ``agentifier_catalog_done``, ``agentifier_spec_index``, ``agentifier_spec_results``,
+    ``agentifier_candidates`` and ``agentifier_analyses``.
     """
     msgs = session["agentifier_messages"]
     # D-AT3: characters this turn yields as progress text before the LLM stream
@@ -2487,7 +2572,7 @@ def _catalog_finalize_breadth(
 
 # --- Full-restart reset (D-TA1) --------------------------------------------
 #
-# One list, two consumers: the stale-input rediscovery inside _handle_reentry,
+# One list, two consumers: the stale-input rediscovery inside handle_reentry,
 # and the developer-initiated "Try Again" on the breadth panel. Both need the
 # flow returned to the state a fresh Scout draw expects, so they must not drift
 # apart — an earlier partial list left agentifier_revision* behind, which would
@@ -2528,7 +2613,7 @@ _RESTART_DEFAULTS: dict[str, Any] = {
 }
 
 # Keys with no default_session entry: popped outright. The revision block is
-# re-derived from disk by _run_catalog_phase's fresh-start branch (it reads the
+# re-derived from disk by run_catalog_phase's fresh-start branch (it reads the
 # vision's revision_history and the latest *implemented* round), so clearing it
 # here is what lets a Try Again inside a revision round draw a genuinely new
 # candidate set while still being recognised as a revision.
@@ -2561,7 +2646,7 @@ def reset_agentifier_flow(session: dict[str, Any]) -> None:
     it solely under ``STATE_AGENTIFIER_COMPLETE``, which this demotes; earlier
     implemented rounds are never a write target at all. ``session["ai_features"]``
     is deliberately left in place so session and disk stay consistent while the
-    redraw runs — ``_complete_agentifier`` replaces it at the new terminal.
+    redraw runs — ``complete_agentifier`` replaces it at the new terminal.
     """
     for key, value in _RESTART_DEFAULTS.items():
         session[key] = copy.deepcopy(value)
@@ -2570,7 +2655,7 @@ def reset_agentifier_flow(session: dict[str, Any]) -> None:
     session["agentifier_state"] = STATE_IN_PROGRESS
 
 
-def _handle_reentry(
+def handle_reentry(
     _user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
@@ -2583,12 +2668,23 @@ def _handle_reentry(
     ai_features, pre-check the previously-selected features, and let the
     developer toggle the set without re-running discovery. Newly-checked
     features flow through the normal tier-review + spec drafting; still-checked
-    ones are preserved verbatim (handled at breadth-submit / _finalize_specs).
+    ones are preserved verbatim (handled at breadth-submit / finalize_specs).
+
+    Its contract on ``session``: it demotes ``agentifier_state`` first. With stale inputs it
+    runs ``reset_agentifier_flow``, which writes every key in ``_RESTART_DEFAULTS`` and pops
+    every key in ``_RESTART_POP``; it then writes ``agentifier_stale_acknowledged`` and hands
+    off to ``run_catalog_phase`` for a fresh draw. Otherwise it opens the re-selection panel,
+    writing ``agentifier_preserved_features``, ``agentifier_scout_pool``,
+    ``agentifier_breadth_groups``, ``agentifier_breadth_selection``,
+    ``agentifier_breadth_chosen``, ``agentifier_breadth_nonce``, ``agentifier_reselection``,
+    the four done-flags (``agentifier_catalog_done``, ``agentifier_spec_done``,
+    ``agentifier_cross_cutting_done``, ``agentifier_priority_done``), a fresh
+    ``agentifier_messages``, ``agentifier_breadth_intro`` and ``_display_override``.
     """
     # Re-entry re-opens the flow (reselection panel or, when inputs are stale, a
     # full rediscovery). Demote the completion state so the "Continue to Designer"
     # / "Download ai_features" buttons — gated on STATE_AGENTIFIER_COMPLETE — stop
-    # rendering against the pre-revision ai_features. _complete_agentifier restores
+    # rendering against the pre-revision ai_features. complete_agentifier restores
     # STATE_AGENTIFIER_COMPLETE at the true terminal, and every completion path
     # (new features, no-new-features, zero-selection, stale rediscovery) routes
     # through it, so the buttons reappear exactly when the flow re-completes.
@@ -2614,7 +2710,7 @@ def _handle_reentry(
                 "re-running discovery",
                 flush=True,
             )
-        yield from _run_catalog_phase(None, session, llm_config)
+        yield from run_catalog_phase(None, session, llm_config)
         return
 
     # Not stale → re-selection from the existing pool, no Scout/Composer.
@@ -2685,15 +2781,15 @@ def run(
     user_input = drop_orphan_or_route_to_fresh_start(msgs, user_input)
 
     if not session.get("agentifier_catalog_done"):
-        yield from _run_catalog_phase(user_input, session, llm_config)
+        yield from run_catalog_phase(user_input, session, llm_config)
     elif not session.get("agentifier_spec_done"):
-        yield from _run_spec_phase(user_input, session, llm_config)
+        yield from run_spec_phase(user_input, session, llm_config)
     elif not session.get("agentifier_cross_cutting_done"):
-        yield from _run_cross_cutting_phase(user_input, session, llm_config)
+        yield from run_cross_cutting_phase(user_input, session, llm_config)
     elif not session.get("agentifier_priority_done"):
-        yield from _run_priority_phase(user_input, session, llm_config)
+        yield from run_priority_phase(user_input, session, llm_config)
     else:
-        yield from _handle_reentry(user_input, session, llm_config)
+        yield from handle_reentry(user_input, session, llm_config)
 
 
 def _cc_ff_prepare(

@@ -477,7 +477,7 @@ class TestPrioritizerAgentRun:
 
 
 # ---------------------------------------------------------------------------
-# Orchestrator integration — _begin_priority_phase
+# Orchestrator integration — begin_priority_phase
 # ---------------------------------------------------------------------------
 
 
@@ -493,9 +493,9 @@ def _session(features: list[dict[str, Any]], **kw: Any) -> dict[str, Any]:
 
 class TestBeginPriorityPhase:
     def _run(self, session: dict[str, Any]) -> str:
-        from spec4.agentifier.agentifier import _begin_priority_phase
+        from spec4.agentifier.agentifier import begin_priority_phase
 
-        return "".join(_begin_priority_phase(session, _LLM_CONFIG))
+        return "".join(begin_priority_phase(session, _LLM_CONFIG))
 
     def test_overlay_lands_on_the_feature_set(self, stub_prioritizer: Any) -> None:
         stub_prioritizer.side_effect = None
@@ -637,9 +637,9 @@ class TestParsePriorityEdits:
 
 class TestRunPriorityPhase:
     def _run(self, session: dict[str, Any], text: str | None) -> str:
-        from spec4.agentifier.agentifier import _run_priority_phase
+        from spec4.agentifier.agentifier import run_priority_phase
 
-        return "".join(_run_priority_phase(text, session, _LLM_CONFIG))
+        return "".join(run_priority_phase(text, session, _LLM_CONFIG))
 
     def _session_with(self, features: list[dict[str, Any]]) -> dict[str, Any]:
         s = _session(features)

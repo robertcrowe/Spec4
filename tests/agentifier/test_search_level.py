@@ -504,7 +504,7 @@ class TestBreadthCandidates:
 
 
 # ---------------------------------------------------------------------------
-# _finalize_specs — explicitly_rejected sourced from session
+# finalize_specs — explicitly_rejected sourced from session
 # ---------------------------------------------------------------------------
 
 
@@ -523,10 +523,10 @@ class TestFinalizeSpecsExplicitlyRejected:
     """Verify explicitly_rejected is sourced from session, not hardcoded []."""
 
     def _run_finalize(self, rejected_list: list | None) -> dict:
-        """Invoke _finalize_specs with a minimal session and return ai_features."""
+        """Invoke finalize_specs with a minimal session and return ai_features."""
         import json as _json
         from unittest.mock import patch
-        from spec4.agentifier.agentifier import _finalize_specs
+        from spec4.agentifier.agentifier import finalize_specs
         from spec4.session import default_session
 
         session = default_session()
@@ -554,7 +554,7 @@ class TestFinalizeSpecsExplicitlyRejected:
         with patch(
             "spec4.agentifier.cross_cutting_analyst.acomplete", new=_fake_stream
         ):
-            list(_finalize_specs(session, _LLM_CONFIG))
+            list(finalize_specs(session, _LLM_CONFIG))
         return session.get("ai_features") or {}
 
     def test_rejected_list_propagated_to_artifact(self) -> None:

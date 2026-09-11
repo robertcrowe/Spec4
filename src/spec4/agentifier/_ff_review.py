@@ -12,8 +12,8 @@ so nothing here imports ``spec4.agentifier.agentifier``.
 
 The three handlers that complete these flows -- ``_handle_cc_ff_review``,
 ``_handle_spec_ff_review`` and ``_ff_sweep_specs`` -- stayed in ``agentifier``:
-each calls back into a phase driver there (``_begin_priority_phase``,
-``_finalize_specs``, ``_draft_spec``), which would be a cycle.
+each calls back into a phase driver there (``begin_priority_phase``,
+``finalize_specs``, ``_draft_spec``), which would be a cycle.
 """
 
 from __future__ import annotations
