@@ -8,13 +8,17 @@ Brainstormer-stamped ``revision_history`` and renders it into a phase-scoping
 note. None of them touch the session, the LLM, or the emitted phases.
 
 Split out of ``phaser.py`` in Phase 4e; the package ``__init__`` re-exports
-every name below under its original spelling.
+every name below under its original spelling. ``revision_delta`` itself lives in
+:mod:`spec4.agents._revision` since cleanup Phase 8, shared by the five agents
+that read it, and is re-exported here.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+
+from spec4.agents._revision import revision_delta as revision_delta
 
 
 def _load_phaser_design_note(design_dir: Path, version: int) -> str:
@@ -31,26 +35,6 @@ def _load_phaser_design_note(design_dir: Path, version: int) -> str:
         "No UI design mock was produced. UI design decisions are left to the "
         "developer's discretion."
     )
-
-
-def revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Return this round's revision delta, or ``None`` for a greenfield vision.
-
-    A revision round's vision carries an accumulating ``revision_history`` (each
-    round contributes one entry, stamped deterministically by Brainstormer); its
-    final entry is the delta for the current round — ``goal``, the
-    ``key_features_mvp`` name changes (``added`` / ``modified`` / ``removed``),
-    and ``rationale``. A greenfield vision has no ``revision_history``. The input
-    is the session-form vision envelope (``{"vision_statement": {...}}``); a
-    non-enveloped or greenfield vision yields ``None`` (not revision mode). Twin
-    of StackAdvisor's / Designer's reader of the same name.
-    """
-    vs = (vision or {}).get("vision_statement") if isinstance(vision, dict) else None
-    history = vs.get("revision_history") if isinstance(vs, dict) else None
-    if isinstance(history, list) and history:
-        last = history[-1]
-        return last if isinstance(last, dict) else None
-    return None
 
 
 def build_revision_note(delta: dict[str, Any]) -> str:

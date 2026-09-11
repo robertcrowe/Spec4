@@ -939,3 +939,103 @@ M 8d_trim (the one trim removed from the shared helper (8d, P11)): predicted 2, 
 | Tests | `4211 passed, 1 skipped` (exit 0) |
 | Coverage | `TOTAL 12459 876 93%`, unchanged in total. Three rows moved, as a lift moves them: `pattern_loader.py` 159 → 164 statements, `tier_analyst.py` 132 → 130 and `feature_specs.py` 344 → 341, each with its misses unchanged (18, 3, 80) |
 | Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
+
+## 7. 8d2: `revision_delta`, one body in `agents/_revision.py` (P10)
+
+Inventory §67.11's dedupe, homed as §2.1(b) ruled: a new leaf module that the five import
+from. 4j's retirement of `agents/_utils.py` stands.
+
+### 7.1 What landed
+
+| File | Change |
+|---|---|
+| `src/spec4/agents/_revision.py` | new: `revision_delta`, the one body, with the five docstrings merged into one, and `__all__`. It imports nothing from `spec4` |
+| `src/spec4/agentifier/_render.py` | the copy dropped; `from spec4.agents._revision import revision_delta`, which stays in `__all__` for `agentifier.py`'s import |
+| `src/spec4/agents/deployer.py` | the copy dropped; a plain import, since four call sites in the module use it |
+| `src/spec4/agents/designer.py` | the copy dropped; `import revision_delta as revision_delta`, the explicit re-export strict mypy needs for `layouts/designer.py` and `callbacks/designer/_wizard.py` |
+| `src/spec4/agents/phaser/_revision.py` | the copy dropped; the `as` re-export for the package `__init__`; one docstring sentence says where the function now lives |
+| `src/spec4/agents/stack_advisor/_stack_shape.py` | the same, for the package `__init__`; one docstring sentence |
+
+- **Every existing import path still resolves,** so no test and no other `src/` file
+  changes. That covers `stack_advisor.revision_delta`, `phaser.revision_delta`,
+  `deployer.revision_delta`, the `agentifier` re-export, and `agents.designer`'s.
+- **The merged docstring** keeps the text the five shared, and the envelope sentence
+  three of them carried. It drops the "twin of …" sentences, which no longer describe
+  anything.
+- **Footprint:** 6 files. `agents/_revision.py` is new, at 32 lines, and the five edited files take 11 insertions and 96 deletions.
+
+### 7.2 The proofs
+
+**Token identity, re-run against the parent commit.** `delta_tokens.py`, a scratch script using §67.11's method, sets the docstring aside and compares `tokenize` tokens:
+
+```
+new: agents/_revision.py, 69 body tokens, signature (vision: dict[str, Any] | None -> dict[str, Any] | None)
+src/spec4/agentifier/_render.py: 69 tokens; body identical: True; signature identical: True
+src/spec4/agents/deployer.py: 69 tokens; body identical: True; signature identical: True
+src/spec4/agents/designer.py: 69 tokens; body identical: True; signature identical: True
+src/spec4/agents/phaser/_revision.py: 69 tokens; body identical: True; signature identical: True
+src/spec4/agents/stack_advisor/_stack_shape.py: 69 tokens; body identical: True; signature identical: True
+```
+
+**Frozen strings.** Each of the five modules loses exactly its copy's two literals. In `deployer.py` and `designer.py` the count of `'vision_statement'` falls by one, because other code in them still uses it; elsewhere the literals are gone. No prompt text changes.
+
+```
+src/spec4/agentifier/_render.py: GONE 'revision_history', 'vision_statement'
+src/spec4/agents/deployer.py: GONE 'revision_history'; COUNT 5 -> 4 'vision_statement'
+src/spec4/agents/designer.py: GONE 'revision_history'; COUNT 4 -> 3 'vision_statement'
+src/spec4/agents/phaser/_revision.py: GONE 'revision_history', 'vision_statement'
+src/spec4/agents/stack_advisor/_stack_shape.py: GONE 'revision_history', 'vision_statement'
+```
+
+**The layering test passes with the new edge, and there is no cycle.** `agents/_revision.py` imports nothing from `spec4`, so it cannot close a cycle. Its one importer outside `agents/` is `agentifier/_render.py`, an agent-side module importing an agent-side one, which the layering rules allow. `tests/test_import_layering.py` passes, with the five test files that reach `revision_delta` through each old binding: `496 passed`.
+
+**Check 4 on the one patch string** (`patch_resolve.py`, with the map `[["revision_delta", "revision_delta"]]`):
+
+```
+PASS tests/test_designer_fullscreen.py:100 [path] spec4.callbacks.designer._wizard.revision_delta
+     (1) function revision_delta  (2) src/spec4/callbacks/designer/_wizard.py re-exports it from spec4.agents._revision; calls it at on_designer_carry_forward@164
+targets ending in a batch name (new side): 1; FAIL: 0; fourth-form candidates: 0
+```
+
+**The mutation: the one body never returns the history's last entry.** The prediction is
+that the five tests asserting a returned delta fail: one per former copy, each reaching
+the body through its own module's binding.
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8d2_delta (the one revision_delta never returns the history's last entry (8d2, P10)): predicted 5, failed 5; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/agentifier/test_revision.py::TestRevisionDelta::test_returns_last_history_entry
+   FAILED (predicted)       tests/test_designer.py::TestRevisionDelta::test_returns_last_history_entry
+   FAILED (predicted)       tests/test_agents.py::TestStackAdvisorRevisionMode::test_delta_returns_last_history_entry
+   FAILED (predicted)       tests/test_agents.py::TestPhaserRevisionMode::test_delta_returns_last_history_entry
+   FAILED (predicted)       tests/test_agents.py::TestDeployerRevisionMode::test_delta_returns_last_history_entry
+   FAILED (other, to explain) tests/agentifier/test_revision.py::TestFreshStartRevisionDetection::test_detects_revision_and_informs_scout
+   FAILED (other, to explain) tests/agentifier/test_revision.py::TestFreshStartRevisionDetection::test_zero_prior_ai_features_still_revision
+   FAILED (other, to explain) tests/agentifier/test_revision.py::TestRevisionScoutZeroNew::test_zero_new_candidates_finalises_carried_forward
+   FAILED (other, to explain) tests/agentifier/test_try_again.py::TestRevisionRound::test_revision_block_is_re_derived_from_disk
+   FAILED (other, to explain) tests/agentifier/test_try_again.py::TestRevisionRound::test_scout_is_told_it_is_a_revision
+   FAILED (other, to explain) tests/test_agents.py::TestDeployerRevisionMode::test_revision_seed_carries_prior_plan_and_scopes_delta
+   FAILED (other, to explain) tests/test_agents.py::TestDeployerRevisionMode::test_revision_seed_keeps_ai_features_whole
+   FAILED (other, to explain) tests/test_agents.py::TestDeployerRevisionMode::test_revision_seed_without_prior_plan_skipped_predecessor
+   FAILED (other, to explain) tests/test_agents.py::TestPhaserRevisionMode::test_revision_seed_used_when_prior_round_and_delta_exist
+   FAILED (other, to explain) tests/test_agents.py::TestStackAdvisorRevisionMode::test_revision_seed_used_when_prior_stack_and_delta_exist
+   FAILED (other, to explain) tests/test_designer.py::TestCarryForwardCallback::test_seeds_prior_mock_and_note_into_refine
+   other failures: 11
+   summary: 16 failed, 4195 passed, 1 skipped in 95.52s (0:01:35)
+```
+
+**As predicted: all five fail, one per former copy.** Each reaches the one body through its own module's binding: the `agentifier` re-export, `agents.designer`'s re-export, and `stack_advisor`, `phaser` and `deployer` as package or module attributes.
+
+**The 11 others are the same harm, reached through the real callers.** Under §60.6's amended failure condition they are evidence, not a defect. Every one is a revision-mode path that reads the delta:
+- the Agentifier's fresh-start revision detection, its zero-new-candidates round, and Try Again's revision round (`test_revision.py` ×3, `test_try_again.py` ×2);
+- the Deployer's, Phaser's and StackAdvisor's revision seeds (`test_agents.py` ×5);
+- the Designer's carry-forward callback (`test_designer.py` ×1).
+
+So every caller of the five former copies, the module's own tests and the real flows alike, now runs the one body. The commit was made before the mutation ran, because the harness refuses a dirty tree. This section was then amended in, under the standing rule for unpushed commits.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` twice · `222 files already formatted` · `Success: no issues found in 93 source files`: one more file, the new module |
+| Tests | `4211 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12439 876 93%`. Statements fall by 20, since four of the five copies are gone, and misses stay at 876. The rows that moved: `agentifier/_render.py` 253 → 247 statements, misses 11 → 11; `agents/_revision.py` new, 10 statements, 0 missed; `agents/deployer.py` 213 → 207 statements, misses 3 → 3; `agents/designer.py` 273 → 267 statements, misses 33 → 33; `agents/phaser/_revision.py` 35 → 29 statements, misses 0 → 0; `agents/stack_advisor/_stack_shape.py` 87 → 81 statements, misses 2 → 2 |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |

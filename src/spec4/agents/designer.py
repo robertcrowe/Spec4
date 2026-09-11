@@ -12,6 +12,7 @@ from spec4.app_constants import (
 )
 from spec4 import llm
 from spec4.agents._manifest import MANIFEST_END, MANIFEST_START
+from spec4.agents._revision import revision_delta as revision_delta
 from spec4.websearch import WEB_SEARCH_TOOL, search as web_search
 
 if TYPE_CHECKING:
@@ -263,24 +264,6 @@ def clear_session(design_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 # Revision mode — deterministic helpers (no LLM)
 # ---------------------------------------------------------------------------
-
-
-def revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Return this round's revision delta, or ``None`` for a greenfield vision.
-
-    A revision round's vision carries an accumulating ``revision_history`` (each
-    round contributes one entry, stamped deterministically by Brainstormer); its
-    final entry is the delta for the current round — ``goal``, the
-    ``key_features_mvp`` name changes (``added`` / ``modified`` / ``removed``),
-    and ``rationale``. A greenfield vision has no ``revision_history``. The input
-    is the session-form vision envelope (``{"vision_statement": {...}}``).
-    """
-    vs = (vision or {}).get("vision_statement") if isinstance(vision, dict) else None
-    history = vs.get("revision_history") if isinstance(vs, dict) else None
-    if isinstance(history, list) and history:
-        last = history[-1]
-        return last if isinstance(last, dict) else None
-    return None
 
 
 def build_revision_note(delta: dict[str, Any]) -> str:

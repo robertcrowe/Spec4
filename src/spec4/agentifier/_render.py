@@ -21,6 +21,7 @@ from spec4.agentifier.cross_cutting_analyst import SKIPPABLE_TOPICS
 from spec4.agentifier.grounding import build_grounding
 from spec4.agentifier.prioritizer import PRIORITIES
 from spec4.agents._feature_context import slug
+from spec4.agents._revision import revision_delta
 
 __all__ = [
     "PriorityEdits",
@@ -287,23 +288,6 @@ def build_ai_features(
 # ---------------------------------------------------------------------------
 # Revision mode — pure helpers (deterministic; no LLM)
 # ---------------------------------------------------------------------------
-
-
-def revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Return this round's revision delta, or ``None`` for a greenfield vision.
-
-    A revision round's vision carries an accumulating ``revision_history`` (each
-    round contributes one entry, stamped deterministically by Brainstormer); its
-    final entry is the delta for the current round — ``goal``, the
-    ``key_features_mvp`` name changes (``added`` / ``modified`` / ``removed``),
-    and ``rationale``. A greenfield vision has no ``revision_history``.
-    """
-    vs = (vision or {}).get("vision_statement") if isinstance(vision, dict) else None
-    history = vs.get("revision_history") if isinstance(vs, dict) else None
-    if isinstance(history, list) and history:
-        last = history[-1]
-        return last if isinstance(last, dict) else None
-    return None
 
 
 def merge_revision_snapshot(

@@ -7,6 +7,7 @@ from typing import Any, cast
 from spec4 import project_manager, llm, websearch
 from spec4.agents._feature_context import ai_features_for_deployer
 from spec4.agents._reask import stream_counting
+from spec4.agents._revision import revision_delta
 from spec4.agents._stack_context import (
     nfr_goals_for_deployer,
     phases_for_deployer,
@@ -392,26 +393,6 @@ def _build_existing_infra_block(code_review: dict[str, Any]) -> str:
         "values live in the developer's secret store.\n\n"
         f"```json\n{body}\n```\n\n"
     )
-
-
-def revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Return this round's revision delta, or ``None`` for a greenfield vision.
-
-    A revision round's vision carries an accumulating ``revision_history`` (each
-    round contributes one entry, stamped deterministically by Brainstormer); its
-    final entry is the delta for the current round — ``goal``, the
-    ``key_features_mvp`` name changes (``added`` / ``modified`` / ``removed``),
-    and ``rationale``. A greenfield vision has no ``revision_history``. The input
-    is the session-form vision envelope (``{"vision_statement": {...}}``); a
-    non-enveloped or greenfield vision yields ``None`` (not revision mode). Twin
-    of StackAdvisor's / Phaser's reader of the same name.
-    """
-    vs = (vision or {}).get("vision_statement") if isinstance(vision, dict) else None
-    history = vs.get("revision_history") if isinstance(vs, dict) else None
-    if isinstance(history, list) and history:
-        last = history[-1]
-        return last if isinstance(last, dict) else None
-    return None
 
 
 def build_revision_note(delta: dict[str, Any]) -> str:

@@ -5,7 +5,8 @@ pipeline can walk:
 
 * ``revision_delta`` / ``build_revision_note`` -- read the Brainstormer-stamped
   revision history off the vision and render the scoping note the revision seed
-  carries. Deterministic; the model never authors either.
+  carries. Deterministic; the model never authors either. ``revision_delta``
+  is re-exported from :mod:`spec4.agents._revision` (cleanup Phase 8).
 * ``_normalise_stack_shape`` / ``_keyed_from_list`` -- coerce the top-level
   blocks to the one shape their consumers (Phaser, the probes, the renderer)
   key over (D-SC18b, D-SC27).
@@ -21,26 +22,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from spec4.agents._revision import revision_delta as revision_delta
 from spec4.agents._turn_flow import extract_json_block
-
-
-def revision_delta(vision: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Return this round's revision delta, or ``None`` for a greenfield vision.
-
-    A revision round's vision carries an accumulating ``revision_history`` (each
-    round contributes one entry, stamped deterministically by Brainstormer); its
-    final entry is the delta for the current round — ``goal``, the
-    ``key_features_mvp`` name changes (``added`` / ``modified`` / ``removed``),
-    and ``rationale``. A greenfield vision has no ``revision_history``. The input
-    is the session-form vision envelope (``{"vision_statement": {...}}``); a
-    non-enveloped or greenfield vision yields ``None`` (not revision mode).
-    """
-    vs = (vision or {}).get("vision_statement") if isinstance(vision, dict) else None
-    history = vs.get("revision_history") if isinstance(vs, dict) else None
-    if isinstance(history, list) and history:
-        last = history[-1]
-        return last if isinstance(last, dict) else None
-    return None
 
 
 def build_revision_note(delta: dict[str, Any]) -> str:
