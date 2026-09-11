@@ -275,18 +275,18 @@ class TestStreamTurn:
         assert "tools" not in mock_llm.call_args[1]
 
     def test_history_has_tool_use_detects_both_shapes(self) -> None:
-        assert llm._history_has_tool_use([]) is False
-        assert llm._history_has_tool_use([{"role": "user", "content": "hi"}]) is False
+        assert llm.history_has_tool_use([]) is False
+        assert llm.history_has_tool_use([{"role": "user", "content": "hi"}]) is False
         # Tool-result message detected.
         assert (
-            llm._history_has_tool_use(
+            llm.history_has_tool_use(
                 [{"role": "tool", "tool_call_id": "x", "content": "r"}]
             )
             is True
         )
         # Assistant message with tool_calls detected.
         assert (
-            llm._history_has_tool_use(
+            llm.history_has_tool_use(
                 [
                     {
                         "role": "assistant",
@@ -468,24 +468,24 @@ class TestIsEffortRejectedError:
 
     def test_detects_a_refused_level(self) -> None:
         exc = Exception("max only works on Opus 4.6")
-        assert llm._is_effort_rejected_error(exc, self._SENT) is True
+        assert llm.is_effort_rejected_error(exc, self._SENT) is True
 
     def test_detects_an_invalid_effort_value(self) -> None:
         exc = Exception("Invalid value for reasoning_effort: 'max'")
-        assert llm._is_effort_rejected_error(exc, self._SENT) is True
+        assert llm.is_effort_rejected_error(exc, self._SENT) is True
 
     def test_a_call_that_sent_no_effort_can_never_match(self) -> None:
         """Rule one: no parameter sent, so no parameter can have been refused."""
         exc = Exception("Invalid value for reasoning_effort: 'max'")
-        assert llm._is_effort_rejected_error(exc, {"model": "m"}) is False
+        assert llm.is_effort_rejected_error(exc, {"model": "m"}) is False
 
     def test_ignores_an_unrelated_error(self) -> None:
         exc = Exception("rate limit exceeded")
-        assert llm._is_effort_rejected_error(exc, self._SENT) is False
+        assert llm.is_effort_rejected_error(exc, self._SENT) is False
 
     def test_ignores_an_auth_error_even_with_the_effort_sent(self) -> None:
         exc = Exception("authentication failed: bad api key")
-        assert llm._is_effort_rejected_error(exc, self._SENT) is False
+        assert llm.is_effort_rejected_error(exc, self._SENT) is False
 
     def test_the_default_effort_constant_matches_llm_selection(self) -> None:
         """The literal is duplicated to avoid an import cycle; pin them equal."""
@@ -708,23 +708,23 @@ class TestIsToolIncompatibleError:
         exc = Exception(
             "This model does not support auto tool, please use tool_choice."
         )
-        assert llm._is_tool_incompatible_error(exc) is True
+        assert llm.is_tool_incompatible_error(exc) is True
 
     def test_detects_tool_choice_phrase(self) -> None:
         exc = Exception("Invalid request: tool_choice not allowed for this model")
-        assert llm._is_tool_incompatible_error(exc) is True
+        assert llm.is_tool_incompatible_error(exc) is True
 
     def test_detects_unsupported_tool(self) -> None:
         exc = Exception("unsupported parameter: tool")
-        assert llm._is_tool_incompatible_error(exc) is True
+        assert llm.is_tool_incompatible_error(exc) is True
 
     def test_ignores_unrelated_error(self) -> None:
         exc = Exception("rate limit exceeded")
-        assert llm._is_tool_incompatible_error(exc) is False
+        assert llm.is_tool_incompatible_error(exc) is False
 
     def test_requires_tool_keyword(self) -> None:
         exc = Exception("not support this feature")
-        assert llm._is_tool_incompatible_error(exc) is False
+        assert llm.is_tool_incompatible_error(exc) is False
 
 
 class TestStreamTurnToolFallback:

@@ -76,7 +76,7 @@ def build_system_prompt(base: str, search_config: SearchConfig | str | None) -> 
 # `llm_config["temperature"]` is likewise ignored rather than forwarded.
 
 
-def _history_has_tool_use(messages: list[dict[str, Any]]) -> bool:
+def history_has_tool_use(messages: list[dict[str, Any]]) -> bool:
     """Return True if the message log contains tool calls or tool results.
 
     Anthropic (via litellm) rejects requests whose message history contains
@@ -94,7 +94,7 @@ def _history_has_tool_use(messages: list[dict[str, Any]]) -> bool:
     return False
 
 
-def _is_tool_incompatible_error(exc: Exception) -> bool:
+def is_tool_incompatible_error(exc: Exception) -> bool:
     """Return True if the error indicates the model rejects tool calling."""
     msg = str(exc).lower()
     return "tool" in msg and any(
@@ -127,7 +127,7 @@ _EFFORT_REJECTION_MARKERS = (
 )
 
 
-def _is_effort_rejected_error(exc: Exception, kwargs: dict[str, Any]) -> bool:
+def is_effort_rejected_error(exc: Exception, kwargs: dict[str, Any]) -> bool:
     """Whether this error is "the level was rejected", not "the run failed".
 
     D-EF3, the second of two failure shapes. The first — a model that does not
@@ -179,7 +179,7 @@ def _send_with_effort_fallback(kwargs: dict[str, Any]) -> tuple[Any, str | None]
     try:
         return litellm.completion(**kwargs), None
     except LiteLLMBadRequestError as exc:
-        if not _is_effort_rejected_error(exc, kwargs):
+        if not is_effort_rejected_error(exc, kwargs):
             raise
         rejected = _drop_effort(kwargs)
         note = f"{_DEFAULT_EFFORT} (fallback from {rejected})"
@@ -193,7 +193,7 @@ async def _asend_with_effort_fallback(
     try:
         return await litellm.acompletion(**kwargs), None
     except LiteLLMBadRequestError as exc:
-        if not _is_effort_rejected_error(exc, kwargs):
+        if not is_effort_rejected_error(exc, kwargs):
             raise
         rejected = _drop_effort(kwargs)
         response = await litellm.acompletion(**kwargs)
@@ -867,7 +867,7 @@ def stream_turn(  # noqa: C901, PLR0912, PLR0915, PLR0913  # entry guards plus t
         try:
             response = _open_stream(kwargs, agent_name)
         except LiteLLMBadRequestError as exc:
-            if tools and _is_tool_incompatible_error(exc):
+            if tools and is_tool_incompatible_error(exc):
                 tools = None
                 kwargs.pop("tools", None)
                 yield (
@@ -991,7 +991,7 @@ def _stream_turn_tools(
 ) -> list[dict[str, Any]] | None:
     """The web-search tool, unless a JSON-format turn has to suppress it."""
     suppress_tools_for_format = (
-        response_format is not None and not _history_has_tool_use(messages)
+        response_format is not None and not history_has_tool_use(messages)
     )
     tools = (
         [WEB_SEARCH_TOOL] if search_config and not suppress_tools_for_format else None

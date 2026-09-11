@@ -12980,3 +12980,132 @@ The batch's other two tier-B classes, `TestCapturePassesPlanningContext` and
 - It changes no test beyond the substitution, and it has no exception.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.
+
+### 69.11 Recorded at review, by 7j's commit
+
+- **§68.10's table is the reference for check 4's landings for the rest of the phase.** The
+  re-run's value showed at once: it made batch 5's second string (`:88`) visible, where the
+  output kept at 7g had shown only one.
+- **The five `revision_delta` bodies were compared again at `55da82a`.** They were still
+  one 69-token body, with the same signature and only the docstrings differing. §67.11's
+  result stands unchanged.
+
+## 70. Phase 7j — rename batch 10: `llm`, three names; `_record_usage` stays private
+
+§60.7(j) 7j: one commit, default mode, under the rename check and the token check. Three
+of the batch's four names take their underscore-free spelling. The fourth, `_record_usage`,
+stays private under §60.7(c) (§70.2). The batch has no documented exception. This is the
+last rename batch that commits. Batch 11 renames nothing and makes no commit (§60.7(f)).
+
+### 70.1 What landed
+
+| Private | Public | Owner | Tests / `src/` |
+|---|---|---|---:|
+| `_is_effort_rejected_error` | `is_effort_rejected_error` | `llm.py` | 5 / 3 |
+| `_is_tool_incompatible_error` | `is_tool_incompatible_error` | `llm.py` | 5 / 2 |
+| `_history_has_tool_use` | `history_has_tool_use` | `llm.py` | 4 / 2 |
+| | | | **14 / 7**, as §60.2 recorded, less `_record_usage`'s 3 / 6 |
+
+- **Footprint: 2 files,** `llm.py` and `tests/test_llm.py`. All 21 occurrences at `55da82a`
+  were rewritten, giving 21 insertions and 21 deletions. `ruff format` changed nothing, and
+  the longest added line is 85 characters. Nothing in `scripts/`, `evals/`, the docs or
+  `.spec4/` names any of the three.
+- **String references: none.** `llm.py`'s `__all__` does not list these names, and no
+  patch string names them.
+- **No module-path occurrences, no shadow flip, and no D-number comments touched.**
+- **`app.py` (D-LR1): untouched.**
+- **Node ids unchanged.** Some test names spell the new names:
+  - `TestIsEffortRejectedError`;
+  - `TestIsToolIncompatibleError`;
+  - `test_history_has_tool_use_detects_both_shapes`;
+  - `test_response_format_keeps_tools_when_history_has_tool_use`.
+
+  Each holds the new name only inside a longer identifier. 4,200 collected.
+
+### 70.2 `_record_usage` stays private — *rename blocked by net attribute access*
+
+This is the same shape as `_start_gen` (§69.2) and §60.7(c):
+
+| Name | Owner | Net entry, where it is reached by attribute | Would become |
+|---|---|---|---|
+| `_record_usage` | `llm.py` | `tests/test_streaming_characterization.py:344` — `llm._record_usage(` | `record_usage` |
+
+The block is still where §60.7(c) recorded it. The diff touches none of `_record_usage`'s
+other references, and no changed line mentions it. Those references are:
+- in `llm.py`: its definition at `:414`, its four call sites (`:534`, `:577`, `:662`,
+  `:752`), and the `_USAGE_LOCK` comment at `:276`;
+- in `tests/test_usage_capture.py`: the call at `:1375` and the docstring at `:256`.
+
+**One file blocks two of the three net-blocked names.** `test_streaming_characterization.py`
+reaches both `_record_usage` (`:344`) and `_start_gen` (`:402`, §69.2) by attribute. So the
+next time that file is legitimately opened, both renames come with it in **one petition,
+not two**. The third net-blocked name is blocked elsewhere. `_with_readme_attribution` is
+blocked in `tests/test_project_manager_golden.py:168–173` (§60.7(c)), and it is deferred to
+Phase 8 with root-siblings besides (§60.7(f)). Its rename comes with that file and that
+work. At review of 7i the ruling said all three were blocked in the one file; §60.7(c)
+places the third in the golden test, and this note follows §60.7(c).
+
+### 70.3 The collision check, in the standing form
+
+The check ran on all three new names, before the substitution, at `55da82a`:
+
+- **None occurs as a token.** No Dash id spells any of them, and no other definition
+  matches the pattern.
+- **The only hits are longer identifiers:** the test class and method names listed in
+  §70.1.
+
+### 70.4 Check 4
+
+No patch string names any of the three, in any of the three forms. Check 4 found zero
+targets before the substitution and zero after it. It found no fourth-form candidate.
+
+### 70.5 The rename check and the token check — both clean
+
+- **Rename check:** the §60.2 shell function, run with `P=HEAD` over the working tree,
+  printed `rename check: EMPTY`, and the scratch implementation printed the same.
+- **Token check:** `hunks 20; old->new token substitutions 21; layout 0; §54.7 aliases 0;
+  OTHER 0`.
+
+The batch has no documented exception and no forced correction.
+
+### 70.6 Petitions
+
+None. No net entry holds any of the three names; §60.2 records them as 0 / 0 / 0. The
+test hunks sit in `TestStreamTurn`, `TestIsEffortRejectedError` and
+`TestIsToolIncompatibleError`, none of which is a listed class.
+
+### 70.7 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | none in the diff |
+| 456 node ids | **456 / 456 collect**; 4,200 collected |
+| 19 tier-B files / 33 classes | **no tier-B file has a hunk**; no tier-A node is touched |
+
+### 70.8 Record changes carried in this commit
+
+- **§69.11, recorded at review of 7i.** It records that §68.10's table is the reference,
+  and that the `revision_delta` comparison was re-run with the same result.
+- **Both sections went in through the add-only step.** The guard finds no hunk that
+  deletes a line.
+
+### 70.9 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped` (exit 0); 4,200 collected |
+| Coverage | same run | `TOTAL 12421 stmts, 891 miss, 93%` — identical to §60.1, at the ≤ 891 ceiling |
+
+### 70.10 What this sub-phase did not do
+
+- It leaves `_record_usage` private, with every one of its references unchanged.
+- It adds no phase-letter note beside §27, and it leaves §67.11's "PB" as it is. The plan
+  and the repo's history do not contain the letters. Matched by content, the plan places
+  dedupe in Phase 5, not Phase 4, and two of the letters do not resolve at all. The mapping
+  is held for a ruling.
+- It changes no test beyond the substitution.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.
