@@ -66,7 +66,7 @@ _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_init_turn(n: Any, session: Any) -> Any:
+def on_init_turn(n: int | None, session: Any) -> Any:
     if not n or session.get("_initial_turn_done") or session.get("messages"):
         return no_update, no_update
     # The layout already disables the interval while the gate is open; this is
@@ -104,7 +104,7 @@ def on_init_turn(n: Any, session: Any) -> Any:
     prevent_initial_call=True,
 )
 def on_chat_submit(
-    _n_clicks: Any, _n_submit: Any, user_input: Any, session: Any
+    _n_clicks: int | None, _n_submit: int | None, user_input: str | None, session: Any
 ) -> Any:
     if not user_input or not user_input.strip():
         return no_update, no_update, no_update
@@ -145,7 +145,7 @@ from spec4.app_constants import FF_PROMPT  # noqa: E402
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_fast_forward(n_clicks: Any, session: Any) -> Any:
+def on_fast_forward(n_clicks: int | None, session: Any) -> Any:
     if not n_clicks:
         return no_update, no_update
     # Turn-integrity guard: ignore clicks while a stream is in flight, or while
@@ -217,7 +217,7 @@ def _start_retry_turn(session: dict[str, Any]) -> tuple[dict[str, Any], int]:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_chat_retry(n_clicks: Any, session: Any) -> Any:
+def on_chat_retry(n_clicks: int | None, session: Any) -> Any:
     """Re-run the turn that failed, on the model it is already using (D-ER1).
 
     A provider error (overload, rate limit, dropped connection) leaves the
@@ -272,7 +272,9 @@ def _breadth_summary(selected: list[str]) -> str:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_breadth_submit(n_clicks: Any, selected: Any, session: Any) -> Any:
+def on_breadth_submit(
+    n_clicks: int | None, selected: list[str] | None, session: Any
+) -> Any:
     if not n_clicks:
         return no_update, no_update
     if session.get("_stream_id"):
@@ -304,7 +306,9 @@ def on_breadth_submit(n_clicks: Any, selected: Any, session: Any) -> Any:
     State("breadth-retry-input", "value"),
     prevent_initial_call=True,
 )
-def on_breadth_try_again(n_clicks: Any, session: Any, note: Any = None) -> Any:
+def on_breadth_try_again(
+    n_clicks: int | None, session: Any, note: str | None = None
+) -> Any:
     """Discard the current candidate set and run Scout again (D-TA2).
 
     Session-only. Nothing on disk is touched: the reset demotes
@@ -396,7 +400,7 @@ def on_breadth_try_again(n_clicks: Any, session: Any, note: Any = None) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_breadth_change(value: Any, intent_store: Any, session: Any) -> Any:
+def on_breadth_change(value: list[str] | None, intent_store: Any, session: Any) -> Any:
     """Live panel closure: as the developer toggles a candidate, force-check and
     lock the producers a selected feature requires, and turn coordinators on/off
     by member count — mirroring the authoritative backend closure at submit.
@@ -459,7 +463,7 @@ _EMPTY_TURN_NOTICE = (
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_stream_poll(_n: Any, session: Any) -> Any:
+def on_stream_poll(_n: int | None, session: Any) -> Any:
     stream_id = session.get("_stream_id")
     if not stream_id:
         return no_update, 0

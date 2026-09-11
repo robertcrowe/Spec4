@@ -58,7 +58,12 @@ def on_provider_hint(provider_label: str | None) -> Any:
     prevent_initial_call=True,
 )
 def on_setup_connect(  # noqa: PLR0913  # parameters are the callback's Input/State list
-    n: Any, provider_label: Any, api_key: Any, save_prefs: Any, session: Any, prefs: Any
+    n: int | None,
+    provider_label: Any,
+    api_key: str | None,
+    save_prefs: bool | None,
+    session: Any,
+    prefs: Any,
 ) -> Any:
     if not n:
         return no_update, no_update
@@ -128,7 +133,7 @@ def on_setup_connect(  # noqa: PLR0913  # parameters are the callback's Input/St
     State("prefs", "data"),
     prevent_initial_call=True,
 )
-def on_setup_clear(n: Any, prefs: Any) -> Any:
+def on_setup_clear(n: int | None, prefs: Any) -> Any:
     if not n:
         return no_update
     return _prefs_keep_working_dir(prefs)
@@ -140,7 +145,7 @@ def on_setup_clear(n: Any, prefs: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_setup_back_provider(n: Any, session: Any) -> Any:
+def on_setup_back_provider(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     return {**session, "available_models": None, "setup_error": None}
@@ -160,7 +165,7 @@ def on_setup_back_provider(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_setup_effort_options(model: Any, effort: Any, session: Any) -> Any:
+def on_setup_effort_options(model: str | None, effort: str | None, session: Any) -> Any:
     """Re-offer the effort levels whenever the resolved model changes.
 
     The success criterion is that the offered values always match what the
@@ -197,7 +202,11 @@ def on_setup_effort_options(model: Any, effort: Any, session: Any) -> Any:
     prevent_initial_call=True,
 )
 def on_setup_model_continue(
-    n: Any, model: Any, chosen_effort: Any, session: Any, prefs: Any
+    n: int | None,
+    model: str | None,
+    chosen_effort: str | None,
+    session: Any,
+    prefs: Any,
 ) -> Any:
     if not n or not model:
         return no_update, no_update, no_update, no_update, no_update
@@ -245,7 +254,7 @@ def on_setup_model_continue(
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_setup_back_model(n: Any, session: Any) -> Any:
+def on_setup_back_model(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     return {**session, "model": None, "llm_config": None, "setup_error": None}
@@ -298,7 +307,11 @@ def on_search_provider_hint(provider_label: str | None) -> Any:
     prevent_initial_call=True,
 )
 def on_setup_search_connect(
-    n: Any, provider_label: Any, search_key: Any, session: Any, prefs: Any
+    n: int | None,
+    provider_label: str | None,
+    search_key: str | None,
+    session: Any,
+    prefs: Any,
 ) -> Any:
     if not n:
         return no_update, no_update, no_update
@@ -349,7 +362,7 @@ def on_setup_search_connect(
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_setup_search_skip(n: Any, session: Any) -> Any:
+def on_setup_search_skip(n: int | None, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return {

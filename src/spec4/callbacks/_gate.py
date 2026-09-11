@@ -53,7 +53,9 @@ def _gate_answered(session: dict[str, Any], agent: str, **extra: Any) -> dict[st
     State("prefs", "data"),
     prevent_initial_call=False,
 )
-def on_gate_provider_change(provider_label: Any, session: Any, prefs: Any) -> Any:
+def on_gate_provider_change(
+    provider_label: str | None, session: Any, prefs: Any
+) -> Any:
     """Update the credential hint and the key field for the chosen provider.
 
     Refilling the key matters here in a way it does not in the setup wizard.
@@ -86,7 +88,7 @@ def on_gate_provider_change(provider_label: Any, session: Any, prefs: Any) -> An
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_gate_effort_options(model: Any, effort: Any, session: Any) -> Any:
+def on_gate_effort_options(model: str | None, effort: str | None, session: Any) -> Any:
     """Re-offer the effort levels whenever the gate's chosen model changes.
 
     The gate's twin of :func:`on_setup_effort_options`, and deliberately its
@@ -115,7 +117,7 @@ def on_gate_effort_options(model: Any, effort: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_gate_use_default(n: Any, session: Any) -> Any:
+def on_gate_use_default(n: int | None, session: Any) -> Any:
     """Answer "use the default" — which stores no entry.
 
     Dropping any existing override is what makes the answer live: the agent
@@ -137,7 +139,7 @@ def on_gate_use_default(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_gate_keep(n: Any, session: Any) -> Any:
+def on_gate_keep(n: int | None, session: Any) -> Any:
     """Keep a carried-forward override: no key re-entry, no re-probe.
 
     The entry survived `reset_for_new_project` intact — credential, model list
@@ -159,7 +161,7 @@ def on_gate_keep(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_gate_pick(n: Any, session: Any) -> Any:
+def on_gate_pick(n: int | None, session: Any) -> Any:
     """Open the fields from the gate card itself, at agent entry."""
     if not n:
         return no_update
@@ -172,7 +174,7 @@ def on_gate_pick(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_gate_chip(n: Any, session: Any) -> Any:
+def on_gate_chip(n: int | None, session: Any) -> Any:
     """Re-open the same card mid-agent, from the control-row chip.
 
     Refused while a turn is streaming: that turn is already committed to a
@@ -191,7 +193,7 @@ def on_gate_chip(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_chat_retry_model(n: Any, session: Any) -> Any:
+def on_chat_retry_model(n: int | None, session: Any) -> Any:
     """Open the model picker from the failed-turn panel.
 
     Retrying a step on the model that just failed is the right move for an
@@ -219,7 +221,7 @@ def on_chat_retry_model(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_gate_back(n: Any, session: Any) -> Any:
+def on_gate_back(n: int | None, session: Any) -> Any:
     """Collapse the fields back to the resting card, discarding the draft."""
     if not n:
         return no_update
@@ -237,7 +239,7 @@ def on_gate_back(n: Any, session: Any) -> Any:
     prevent_initial_call=True,
 )
 def on_gate_connect(
-    n: Any, provider_label: Any, api_key: Any, session: Any, prefs: Any
+    n: int | None, provider_label: Any, api_key: str | None, session: Any, prefs: Any
 ) -> Any:
     """Fetch the model list — the hard gate, exactly as in the setup wizard.
 
@@ -299,7 +301,9 @@ def on_gate_connect(
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_gate_continue(n: Any, model: Any, chosen_effort: Any, session: Any) -> Any:
+def on_gate_continue(
+    n: int | None, model: str | None, chosen_effort: str | None, session: Any
+) -> Any:
     """Commit the override and answer the gate — and, from a failed step, re-run it.
 
     The entry is normally written whatever the probes return, `None/None`

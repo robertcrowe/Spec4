@@ -240,7 +240,7 @@ def on_status_bar(session: Any, prefs: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_status_bar_dir(n: Any, session: Any) -> Any:
+def on_status_bar_dir(n: int | None, session: Any) -> Any:
     """Reopen the directory picker from the bar's working-directory field.
 
     The one route back to the picker, and it is on every screen. The setup
@@ -275,7 +275,9 @@ def on_status_bar_dir(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_status_bar_setup(model_n: Any, settings_n: Any, session: Any) -> Any:
+def on_status_bar_setup(
+    model_n: int | None, settings_n: int | None, session: Any
+) -> Any:
     """Open the setup wizard at Provider, from the bar's model slot or Settings.
 
     The bar's second control, on every screen alongside the directory, and
@@ -362,7 +364,7 @@ def _resolve_root(session: dict[str, Any], prefs: dict[str, Any]) -> dict[str, A
     State("prefs", "data"),
     prevent_initial_call="initial_duplicate",
 )
-def on_browser_navigate(pathname: Any, session: Any, prefs: Any) -> Any:
+def on_browser_navigate(pathname: str | None, session: Any, prefs: Any) -> Any:
     """URL → session phase, on first mount and on every back/forward after it.
 
     This is the app's one router. It runs on the initial call as well as on
@@ -433,7 +435,7 @@ def _needs_restoring(
     State("prefs", "data"),
     prevent_initial_call=True,
 )
-def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
+def on_dir_select(n: int | None, session: Any, prefs: Any) -> Any:
     if not n:
         return no_update, no_update, no_update
     # `working_dir_layout` shows home when the browsed path cannot be opened,
@@ -460,7 +462,7 @@ def on_dir_select(n: Any, session: Any, prefs: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_dir_up(n: Any, session: Any) -> Any:
+def on_dir_up(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     current = pathlib.Path(session.get("browser_path") or _HOME)
@@ -474,7 +476,7 @@ def on_dir_up(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_dir_path_enter(n: Any, value: Any, session: Any) -> Any:
+def on_dir_path_enter(n: int | None, value: str | None, session: Any) -> Any:
     if not n or not value:
         return no_update
     p = pathlib.Path(value)
@@ -489,7 +491,7 @@ def on_dir_path_enter(n: Any, value: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_subdir_click(n_clicks_list: Any, session: Any) -> Any:
+def on_subdir_click(n_clicks_list: list[int | None], session: Any) -> Any:
     if not ctx.triggered_id or not any(n for n in n_clicks_list if n):
         return no_update
     return {**session, "browser_path": ctx.triggered_id["path"]}
@@ -502,7 +504,7 @@ def on_subdir_click(n_clicks_list: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_create_folder(n: Any, name: Any, session: Any) -> Any:
+def on_create_folder(n: int | None, name: str | None, session: Any) -> Any:
     if not n or not name or not name.strip():
         return no_update
     current = pathlib.Path(session.get("browser_path") or _HOME)

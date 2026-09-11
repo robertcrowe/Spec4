@@ -70,7 +70,7 @@ _ARTIFACTS_PHASE = PATH_TO_PHASE[ARTIFACTS_PATH]
     Input("round-tree", "id"),
     State("session", "data"),
 )
-def on_round_tree(_id: Any, session: Any) -> Any:
+def on_round_tree(_id: str, session: Any) -> Any:
     """Recompute the round tree from disk, from scratch, on every render.
 
     D-LR4: there is no cache here and no ``dcc.Store`` behind it. The whole
@@ -131,7 +131,7 @@ def select_artifact(
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_round_tree_line(n_clicks_list: Any, session: Any) -> Any:
+def on_round_tree_line(n_clicks_list: list[int | None], session: Any) -> Any:
     """A round-tree line click → open that file in the Artifact View.
 
     The target is read from ``ctx.triggered_id`` — the id of the line that was
@@ -186,7 +186,7 @@ def on_round_tree_line(n_clicks_list: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_artifact_round(n_clicks_list: Any, session: Any) -> Any:
+def on_artifact_round(n_clicks_list: list[int | None], session: Any) -> Any:
     """A round in the selector was chosen → move the selection to that round.
 
     The one place the Artifact View writes the session, and it writes exactly
@@ -243,7 +243,7 @@ def session_round(session: Any) -> int | None:
     Input("artifact-view-content", "id"),
     State("session", "data"),
 )
-def on_artifact_pane(_id: Any, session: Any) -> Any:
+def on_artifact_pane(_id: str, session: Any) -> Any:
     """Redraw the content pane: the header line and the file body.
 
     Single-purpose and read-only. It resolves, it reads, it renders — it never
@@ -282,7 +282,7 @@ def on_artifact_pane(_id: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_artifact_download(n_clicks: Any, session: Any) -> Any:
+def on_artifact_download(n_clicks: int | None, session: Any) -> Any:
     """The Download click → a copy of exactly the file the pane is showing.
 
     The click hands over nothing but itself; the round and the path are read
@@ -322,7 +322,7 @@ def on_artifact_download(n_clicks: Any, session: Any) -> Any:
     Input("round-cost", "id"),
     State("session", "data"),
 )
-def on_round_cost(_id: Any, session: Any) -> Any:
+def on_round_cost(_id: str, session: Any) -> Any:
     """Recompute the round's cost from ``usage.json``, from scratch, every time.
 
     The same shape as ``on_round_tree`` above and for the same reason: no
@@ -380,7 +380,7 @@ def _build_phases_zip(session: dict[str, Any]) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_vision(n: Any, session: Any) -> Any:
+def dl_vision(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     return _send_json(session.get("vision_statement"), ARTIFACT_VISION)
@@ -392,7 +392,7 @@ def dl_vision(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_stack(n: Any, session: Any) -> Any:
+def dl_stack(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     return _send_json(session.get("stack_statement"), ARTIFACT_STACK)
@@ -404,7 +404,7 @@ def dl_stack(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_code_review(n: Any, session: Any) -> Any:
+def dl_code_review(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     return _send_json(session.get("code_review"), ARTIFACT_CODE_REVIEW)
@@ -416,7 +416,7 @@ def dl_code_review(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_features(n: Any, session: Any) -> Any:
+def dl_features(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     return _send_json(session.get("ai_features"), ARTIFACT_AI_FEATURES)
@@ -428,7 +428,7 @@ def dl_features(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_phases(n: Any, session: Any) -> Any:
+def dl_phases(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     return _build_phases_zip(session)
@@ -440,7 +440,7 @@ def dl_phases(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def dl_deployment(n: Any, session: Any) -> Any:
+def dl_deployment(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     messages = session.get("deployer_messages") or []
@@ -513,7 +513,7 @@ def _register_open_artifact(key: str) -> Any:
         State("session", "data"),
         prevent_initial_call=True,
     )
-    def on_open_artifact(n: Any, session: Any) -> Any:
+    def on_open_artifact(n: int | None, session: Any) -> Any:
         """A click on ``btn-open-<key>`` → that artifact, open in place."""
         if not n:
             return no_update, no_update

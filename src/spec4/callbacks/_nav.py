@@ -60,7 +60,7 @@ def _switch_agent(
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_agent_pill_click(n_clicks_list: Any, session: Any) -> Any:
+def on_agent_pill_click(n_clicks_list: list[int | None], session: Any) -> Any:
     """Pipeline pill click → navigate to that agent.
 
     Chat-view pills disable themselves on unmet preconditions, so this check is
@@ -113,7 +113,9 @@ def on_agent_pill_click(n_clicks_list: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_project_mode_choice(n_existing: Any, n_new: Any, session: Any) -> Any:
+def on_project_mode_choice(
+    n_existing: int | None, n_new: int | None, session: Any
+) -> Any:
     """Record whether the working directory holds an existing project (D-PM1).
 
     Session-only: the answer is never persisted, so the next launch asks again.
@@ -136,7 +138,7 @@ def on_project_mode_choice(n_existing: Any, n_new: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_rescan_project(n: Any, session: Any) -> Any:
+def on_rescan_project(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     return {
@@ -159,7 +161,7 @@ def on_rescan_project(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_review_to_brainstormer(n: Any, session: Any) -> Any:
+def on_review_to_brainstormer(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     return _switch_agent(session, "brainstormer")
@@ -172,7 +174,7 @@ def on_review_to_brainstormer(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_brainstormer_to_designer(n: Any, session: Any) -> Any:
+def on_brainstormer_to_designer(n: int | None, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return {**session, "phase": "designer"}, "/design"
@@ -185,7 +187,7 @@ def on_brainstormer_to_designer(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_brainstormer_to_agentifier(n: Any, session: Any) -> Any:
+def on_brainstormer_to_agentifier(n: int | None, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return _switch_agent(session, "agentifier", extra={"phase": "chat"}), "/chat"
@@ -198,7 +200,7 @@ def on_brainstormer_to_agentifier(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_agentifier_to_designer(n: Any, session: Any) -> Any:
+def on_agentifier_to_designer(n: int | None, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return {**session, "phase": "designer"}, "/design"
@@ -210,7 +212,7 @@ def on_agentifier_to_designer(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_stack_to_phaser(n: Any, session: Any) -> Any:
+def on_stack_to_phaser(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     return _switch_agent(session, "phaser")
@@ -227,7 +229,7 @@ def on_stack_to_phaser(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_phaser_to_deployer(n: Any, session: Any) -> Any:
+def on_phaser_to_deployer(n: int | None, session: Any) -> Any:
     if not n:
         return no_update
     return _switch_agent(session, "deployer")
@@ -240,7 +242,7 @@ def on_phaser_to_deployer(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_deployer_new_project(n: Any, session: Any) -> Any:
+def on_deployer_new_project(n: int | None, session: Any) -> Any:
     if not n:
         return no_update, no_update
     fresh = reset_for_new_project(session or {})
