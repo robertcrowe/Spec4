@@ -16682,3 +16682,68 @@ the promotion of the agentifier eight.
 
 The next item is the plan's close-out: `CLEANUP_REPORT.md`, with the four "invariants the
 suite assumed rather than pinned" as findings.
+
+## 80. Phase 7 close-out: the rulings at review of the re-measurement
+
+These rulings were made at review of `CLEANUP_REPORT.md` §7 (commit `6956aca`), after
+the tools commit (`85a9cb6`). There are three, and one correction.
+
+### 80.1 `tests/test_agents.py` joins the Phase 8 list
+
+**Ruled: a test-structure item on the Phase 8 list, sized at 5,268 lines and 293
+tests.**
+- **This is a gap in the record, not a decision to defer.** Phase 0 named the file a
+  split candidate (§2), and §50 named it again. Neither ruled on it, and no sub-phase
+  took it up.
+- **The split is mechanical under the tools that now exist.** The floor and petition
+  checks (`scripts/cleanup/floor_check.py`, `petition_check.py`) make a file split
+  provable in the same way they make a rename provable.
+- **It is the largest single cost** to every petition check that has to walk it.
+
+### 80.2 The UI-callback coverage gap goes to `BACKLOG.md`, as the cleanup's known limit
+
+**Ruled: not a Phase 8 item.**
+- **Raising callback coverage is product work.** It means writing tests for behaviour
+  nobody has pinned.
+- **The cleanup's job was to make that work possible.** The paired trace-identity and
+  mutation tools are what it hands over.
+- **It is recorded as the cleanup's known limit, not as unfinished cleanup.**
+
+The fold carries it to `BACKLOG.md` with the six modules and their figures, and with
+`callbacks/designer/_wizard.py` named first:
+
+| Module | Phase 0 | Now |
+|---|---:|---:|
+| `callbacks/designer/_wizard.py` | within `callbacks/designer.py` | 49.6% |
+| `callbacks/designer` family (was `callbacks/designer.py`) | 73.5% | 76.5% |
+| `feature_specs.py` | 75.5% | 76.7% |
+| `callbacks/__init__` family (was `callbacks/__init__.py`) | 76.9% | 78.6% |
+| `websearch.py` | 78.7% | 80.5% |
+| `session.py` | 81.6% | 82.7% |
+| `providers.py` | 82.8% | 83.9% |
+
+### 80.3 The re-measurement is a command: the twelfth tool
+
+**Ruled: `scripts/cleanup/remeasure.py` is committed as the twelfth tool** (commit
+`18a271c`).
+- **§7's tables are then reproduced by a command,** not by reading how the figures
+  were made.
+- **Phase 8's close-out can run the same comparison against this tree.** Its coverage
+  base is `scripts/cleanup/data/coverage_85a9cb6.txt`.
+
+### 80.4 A correction to `CLEANUP_REPORT.md` §7.7
+
+§7.7 gave Phase 0's `tests/` as 53,705 lines, but §2 recorded 53,708. The difference is
+Phase 0's convention that an empty `__init__.py` counts as one line: the scratch script
+that fed §7.7 had not yet matched it. The figure is corrected in the twelfth tool's
+commit, and the tool reports 53,708.
+
+### 80.5 What remains of the close-out
+
+Three items remain, in this order:
+1. the symptom checklist;
+2. the docs;
+3. the fold, followed by a stop.
+
+The fold is the last change to this record under the plan. After it, this file is
+history, and `BACKLOG.md` and the Phase 8 list are the live documents.

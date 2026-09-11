@@ -264,6 +264,7 @@ This is consolidated from the record's Phase 8 list and the deferrals across Pha
 | Documented contract keys the suite never saw change | 31 keys across 4 generators: one contract test each | §79.3 |
 | Annotated targets no test reaches: `on_designer_generate_mock` ×3, `on_provider_hint`, `_designer_tool_call_followup` | 3 functions | §77.9 |
 | Feature-spec section guards: `> 2` against its siblings' `> 3`. Check that real output reaches it before deciding | 3 builders | §78.2 |
+| `tests/test_agents.py`: split it by source module, a test-structure item | 5,268 lines, 293 tests | §2, §50; ruled at review of §7 (record §80.1) |
 | PLR2004, deferred with a size | 230 in `tests/`, 25 in `evals/`, 6 in `scripts/` | §78.4 |
 
 ### 5.4 The tooling itself
@@ -297,7 +298,8 @@ the same commands and the same tool versions, and compared with the Phase 0 tree
 ### 7.1 The conclusion
 
 **On every measure Phase 0 took, the cleanup did what Phase 0 said was needed, except
-one. That one is the weakness Phase 0 found first.**
+one it was never going to reach: coverage of the UI callbacks, the weakness Phase 0 found
+first. That is recorded as the cleanup's known limit (record §80.2).**
 
 - **The gate is green where Phase 0 found it red on three of five checks.** Phase 0 had
   one failing test, 130 unformatted files and 30 mypy errors. The gate now also enforces
@@ -316,17 +318,21 @@ one. That one is the weakness Phase 0 found first.**
 - **Coverage rose from 91% to 93%,** with misses down from 1,020 to 876. Every family of
   split modules rose. Of the 51 modules at the same path, one fell: `pattern_loader.py`,
   by 0.2 points, because three of its covered statements were deleted.
-- **The exception: the UI callbacks are still the least-covered code.**
+- **The known limit: the UI callbacks are still the least-covered code.**
+  - `callbacks/designer/_wizard.py` is at 49.6%.
   - Phase 0's six lowest-covered modules are still the six lowest families, at 76.5% to
     83.9%.
-  - `callbacks/designer/_wizard.py` is at 49.6%.
   - Phase 1's net for this layer was contract tests: the component-id snapshot, goldens,
-    and state containers. They pin the layer's shape, not its branches. No later phase
-    targeted the gap.
-- **Two things are still open.**
-  - `tests/test_agents.py` is 5,268 lines. Phase 0 named it a split candidate, and §50 did
-    again. No phase took it up or ruled on it.
-  - §27.4's three backlog turns are on Phase 8's list (§5.1).
+    and state containers. They pin the layer's shape, not its branches.
+  - Raising that coverage means pinning behaviour nobody has pinned, which is product
+    work. The cleanup made that work possible, and it hands over the trace-identity and
+    mutation tools for it. The gap goes to `BACKLOG.md` as the cleanup's known limit, not
+    as unfinished cleanup.
+- **Two items carry to Phase 8's list.**
+  - `tests/test_agents.py`, at 5,268 lines and 293 tests, is now a test-structure item
+    (§5.3). Phase 0 and §50 each named it a split candidate, and neither ruled. The floor
+    and petition checks make the split provable.
+  - §27.4's three backlog turns (§5.1).
 
 ### 7.2 How it was measured
 
@@ -557,7 +563,8 @@ what the gate accepts still counts:
   list.
 - **`tests/test_agents.py` was never split.** Phase 0 named it a split candidate, and §50
   did again, noting that its runtime was the chunk factory (fixed in 6g) and "not a reason
-  to split it". No sub-phase took it up or ruled on it.
+  to split it". No sub-phase took it up or ruled on it. It is now on Phase 8's list
+  (§5.3).
 
 ### 7.8 The import graph and module state
 
