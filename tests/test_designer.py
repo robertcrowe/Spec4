@@ -1550,6 +1550,27 @@ class TestMockDeliveryAck:
         assert disabled is True
         assert self._GEN_ID not in dmod._MOCK_BUFFERS
 
+    def test_runaway_valve_sends_the_whole_message_and_no_store(self) -> None:
+        """The test above pins one phrase. This pins the whole message -- the only
+        thing that tells the user the mock is saved, and both ways back to it --
+        and that the valve delivers no step-6 store alongside it."""
+        from dash import no_update
+
+        dmod = self._buffer()
+        dmod._MOCK_BUFFERS[self._GEN_ID]["delivered"] = dmod._MAX_DELIVERY_TICKS
+        buf, new_store, _ = dmod.on_mock_stream_poll(
+            1, {"step": 5, "_gen_id": self._GEN_ID}
+        )
+        assert buf == {
+            "error": (
+                "The mock was generated and saved, but this page "
+                "stopped receiving updates and could not display it. "
+                "Refresh the page to load the saved mock, or click "
+                "Retry to regenerate."
+            )
+        }
+        assert new_store is no_update
+
 
 # ---------------------------------------------------------------------------
 # render_designer_step — buffer ticks must not re-render the step subtree

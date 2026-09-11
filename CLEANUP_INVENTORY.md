@@ -13454,3 +13454,145 @@ there.
   does is in the seam comment.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.
+
+## 72. Phase 7l — M8 pinned: the runaway-valve message, whole
+
+§60.7(j) 7l: one commit. At review of 7k it was ruled for default mode: one test in an
+existing class, with its acceptance mutation already written. It closes §59.6 item 6 and
+§60.5's M8 gap. Before this commit, the valve's user-facing message was pinned by one
+phrase alone, in two tests. §60.5 found M8 caught by nothing in the whole suite. The new
+test pins the whole message.
+
+### 72.1 What landed
+
+One test, `tests/test_designer.py::TestMockDeliveryAck::test_runaway_valve_sends_the_whole_message_and_no_store`.
+It sits beside `test_runaway_valve_reports_the_saved_mock`, as §60.7(i)3 placed it. The
+diff is 21 lines added and nothing removed, and no production file changes.
+
+```python
+    def test_runaway_valve_sends_the_whole_message_and_no_store(self) -> None:
+        """The test above pins one phrase. This pins the whole message -- the only
+        thing that tells the user the mock is saved, and both ways back to it --
+        and that the valve delivers no step-6 store alongside it."""
+        from dash import no_update
+
+        dmod = self._buffer()
+        dmod._MOCK_BUFFERS[self._GEN_ID]["delivered"] = dmod._MAX_DELIVERY_TICKS
+        buf, new_store, _ = dmod.on_mock_stream_poll(
+            1, {"step": 5, "_gen_id": self._GEN_ID}
+        )
+        assert buf == {
+            "error": (
+                "The mock was generated and saved, but this page "
+                "stopped receiving updates and could not display it. "
+                "Refresh the page to load the saved mock, or click "
+                "Retry to regenerate."
+            )
+        }
+        assert new_store is no_update
+```
+
+- **The positive half:** `buf` equals the whole message. Every clause is present, including
+  the two §60.5 found unpinned: the saved-mock clause and the Retry route.
+- **The negative half:** the valve delivers nothing else. `buf` carries no step-6
+  `complete` payload and no progress field, and `new_store` is `no_update`.
+
+The test above already asserts the rest of what must be absent afterwards: the buffer
+popped and the interval off. This is §51.6's pairing, as §60.5 item 4 asks.
+
+The test does not cite this record. §72.5 explains why.
+
+### 72.2 The acceptance mutations, on the full suite
+
+Each mutation below was anchored in `callbacks/designer/__init__.py:275–278`, run on the
+full suite, and then restored from the saved bytes, with its sha256 checked:
+
+| Mutation | Change to the valve message | Full suite | Tests that fail | Restored |
+|---|---|---|---|---|
+| **R, restated** (§60.7(i)3) | everything except "Refresh the page" replaced: the four fragments → `"Generation failed. Refresh the page."` | `1 failed, 4199 passed, 1 skipped` | **the new test, and only the new test** | byte-identical |
+| M8, as §56 defined it | `"The mock was generated and saved, but this page "` → `"Generation failed. "` | `1 failed, 4199 passed, 1 skipped` | the new test only | byte-identical |
+| M8b | the whole four-fragment message → `"Generation failed."` | `3 failed, 4197 passed, 1 skipped` | the new test, `test_runaway_valve_reports_the_saved_mock`, and the twin `TestMockBuffers::test_the_runaway_valve_reports_the_saved_mock` | byte-identical |
+| M8c | `"Refresh the page … Retry to regenerate."` removed | `3 failed, 4197 passed, 1 skipped` | the same three | byte-identical |
+| none (the control) | — | `4200 passed, 1 skipped` (§72.4) | none | — |
+
+§60.5's acceptance check, item by item:
+1. **Under M8, the new test fails and nothing else does.** The suite goes from 0 failures
+   to 1. The restated mutation of §60.7(i)3 does the same, and it is the stronger case: it
+   keeps the one phrase the other two tests pin, and those two tests still pass under it.
+2. **Under M8b and M8c, the new test fails alongside the two that already caught them.**
+3. **Unmutated, the suite is green.**
+4. **Positive is paired with negative**, as §72.1 describes.
+
+Every anchor matched exactly once. Under §60.5's harness rule, anything else is an error
+that stops the run, not a skip. The harness output, verbatim:
+
+```
+R  restated: all but 'Refresh the page' replaced: exactly the expected set fails; restored byte-identical: True
+   FAILED tests/test_designer.py::TestMockDeliveryAck::test_runaway_valve_sends_the_whole_message_and_no_store
+   summary: 1 failed, 4199 passed, 1 skipped in 88.95s (0:01:28)
+M8 as §56 defined it: exactly the expected set fails; restored byte-identical: True
+   FAILED tests/test_designer.py::TestMockDeliveryAck::test_runaway_valve_sends_the_whole_message_and_no_store
+   summary: 1 failed, 4199 passed, 1 skipped in 89.71s (0:01:29)
+M8b whole message replaced: exactly the expected set fails; restored byte-identical: True
+   FAILED tests/test_designer.py::TestMockDeliveryAck::test_runaway_valve_reports_the_saved_mock
+   FAILED tests/test_designer.py::TestMockDeliveryAck::test_runaway_valve_sends_the_whole_message_and_no_store
+   FAILED tests/test_streaming_characterization.py::TestMockBuffers::test_the_runaway_valve_reports_the_saved_mock
+   summary: 3 failed, 4197 passed, 1 skipped in 90.35s (0:01:30)
+M8c 'Refresh the page ... Retry to regenerate.' removed: exactly the expected set fails; restored byte-identical: True
+   FAILED tests/test_designer.py::TestMockDeliveryAck::test_runaway_valve_reports_the_saved_mock
+   FAILED tests/test_designer.py::TestMockDeliveryAck::test_runaway_valve_sends_the_whole_message_and_no_store
+   FAILED tests/test_streaming_characterization.py::TestMockBuffers::test_the_runaway_valve_reports_the_saved_mock
+   summary: 3 failed, 4197 passed, 1 skipped in 93.37s (0:01:33)
+exit=0
+```
+
+### 72.3 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | none in the diff. The twin, `test_streaming_characterization.py::TestMockBuffers::test_the_runaway_valve_reports_the_saved_mock`, is in a whole-file entry and is untouched |
+| 456 node ids | **456 / 456 collect**; 4,201 collected (one new test) |
+| 19 tier-B files / 33 classes | **1 file with a hunk, outside every listed class** (below, §51.6's template) |
+| tier-A nodes | `TestMockDeliveryAck` holds one: `test_delivery_preserves_prior_store_keys` (1477–1508). **Check 1 over the node, as §60.3 now defines it, passes in its strongest form:** the diff has no hunk inside the node, which is byte-identical to `0b2991c` |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_designer.py` | `TestCapturePassesPlanningContext` **794–879**; `TestRetryReproducesTheDraw` **896–979**; `TestRefinePersistsManifest` **1003–1041** | 1 — 1553–1573 | **none inside a listed class** |
+
+### 72.4 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4200 passed, 1 skipped` (exit 0): one more than 7k, the new test; 4,201 collected |
+| Coverage | same run | `TOTAL 12425 stmts, 891 miss, 93%`, identical to 7k (§71.9). No production line changed |
+
+### 72.5 For the close-out: the record is cited from code
+
+This record is cited by name in **18 places in code**. The plan's close-out deletes the
+record or folds it into `BACKLOG.md`, and each citation would then name a document that
+no longer exists. **Close-out re-points or drops every one** in the same commit that folds
+the record. The citations are:
+- 16 older ones:
+  - four noqa reasons: `agentifier.py:1255` and `:1624`, `brainstormer.py:663`,
+    `code_scanner/__init__.py:160`;
+  - module docstrings and comments in `agents/_utils.py`, `callbacks/__init__.py`,
+    `callbacks/_chat.py`, `callbacks/_gate.py`, `callbacks/_shared.py` and
+    `layouts/_chat.py`;
+  - six test files: `tests/_chunks.py`, `agentifier/test_requires_inversion_arms.py`,
+    `test_callbacks_stream_poll.py`, `test_import_layering.py`, `test_renderer_goldens.py`
+    and `test_streaming_characterization.py`;
+- 2 from 7k: the seam comments at `_usage.py:28` and `project_manager.py:355`.
+
+7l adds none.
+
+### 72.6 What this sub-phase did not do
+
+- It changes no production code.
+- It leaves the twin in `test_streaming_characterization.py` as it is, since it is a
+  whole-file entry.
+- It changes no existing test, and it leaves the tier-A node untouched.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.
