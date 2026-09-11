@@ -273,7 +273,7 @@ Whether to bring §4's checks inside: into the gate, and under mypy. They are co
 ## 6. Still to do, after review: the fold and the final audit
 
 This is the plan's last phase (`SPEC4_CLEANUP_PLAN.md`, Phase 7 "Final audit and
-documentation"). It is not yet done.
+documentation"). Its first item is done, and §7 holds the results. The other three are not.
 - **Re-run Phase 0's measurements:** `uvx vulture`, `uv run --with deptry deptry .`, the ruff
   rule-set statistics and the layering contract. Add them here as before/after: the
   file-size table, coverage per module, and dead-code candidates, which should be zero or
@@ -286,3 +286,275 @@ documentation"). It is not yet done.
 - **Fold `CLEANUP_INVENTORY.md`** into a `BACKLOG.md`: §5 above, the record's bugs-found
   entries, and the two existing horizon items (CodeScanner incremental scan, Designer mock
   capture).
+
+## 7. Phase 0, re-measured
+
+These are Phase 0's measurements (`CLEANUP_INVENTORY.md` §1–§8) re-run at `85a9cb6`, with
+the same commands and the same tool versions, and compared with the Phase 0 tree
+(`1d1dcbd`). They show whether the cleanup did what Phase 0 said it needed to.
+
+### 7.1 The conclusion
+
+**On every measure Phase 0 took, the cleanup did what Phase 0 said was needed, except
+one. That one is the weakness Phase 0 found first.**
+
+- **The gate is green where Phase 0 found it red on three of five checks.** Phase 0 had
+  one failing test, 130 unformatted files and 30 mypy errors. The gate now also enforces
+  complexity, branch, argument, statement, magic-value, `SIM`, `B` and `ARG` rules. At
+  Phase 0 it enforced only `E` and `F`.
+- **Complexity is down to reasoned exceptions.**
+  - The findings fell from 151 to 30, and every one of the 30 carries a reasoned `noqa`.
+  - The worst cyclomatic complexity fell from 61 to 24.
+  - Files over 1,300 lines went from 8 to 2.
+  - The longest function went from 659 lines to 185.
+- **Dead code is zero or justified.**
+  - Every remaining vulture line has its reason in the record.
+  - So does every public name with no reference outside its file.
+  - deptry has no real finding left.
+- **The one import cycle is gone,** and a test pins the layering.
+- **Coverage rose from 91% to 93%,** with misses down from 1,020 to 876. Every family of
+  split modules rose. Of the 51 modules at the same path, one fell: `pattern_loader.py`,
+  by 0.2 points, because three of its covered statements were deleted.
+- **The exception: the UI callbacks are still the least-covered code.**
+  - Phase 0's six lowest-covered modules are still the six lowest families, at 76.5% to
+    83.9%.
+  - `callbacks/designer/_wizard.py` is at 49.6%.
+  - Phase 1's net for this layer was contract tests: the component-id snapshot, goldens,
+    and state containers. They pin the layer's shape, not its branches. No later phase
+    targeted the gap.
+- **Two things are still open.**
+  - `tests/test_agents.py` is 5,268 lines. Phase 0 named it a split candidate, and §50 did
+    again. No phase took it up or ruled on it.
+  - §27.4's three backlog turns are on Phase 8's list (§5.1).
+
+### 7.2 How it was measured
+
+- **The tool versions are Phase 0's:** ruff 0.15.12, vulture 2.16 and deptry 0.25.1, all
+  run through `uvx` as Phase 0 ran them. Each tool was run on both trees, so each
+  before/after pair comes from the same tool; the Phase 0 tree was extracted with
+  `git archive 1d1dcbd`. Run on that tree, both reproduce Phase 0's recorded figures:
+  - deptry: 246 findings (240 / 3 / 3);
+  - ruff's complexity statistics: 151;
+  - ruff's `ARG` statistics: 171, read with `noqa` respected as Phase 0 read them.
+- **§2, §6, §7 and §8 were ast and grep walks, and were re-implemented.** The
+  re-implementation was checked first on the Phase 0 tree, where it reproduces every
+  recorded figure:
+  - 60 files and 36,535 lines;
+  - the one cycle;
+  - the importer counts, 21 and 18;
+  - the cross-reference counts: 279, 228, 51, 33, 18 and 214.
+
+  Two conventions had to be matched to get there:
+  - an empty file counts as one line;
+  - `from P import m` is an edge to P as well as to `P.m`.
+- **One figure does not reproduce exactly.** Vulture finds 70 lines on the Phase 0 tree
+  without the whitelist, where §3.1 recorded 71.
+- **Coverage was not re-run on the Phase 0 tree.** Its per-module figures are §1.3's.
+- **Runtime is not compared with Phase 0.** The Phase 0 figure is from another session
+  and the comparison would not be paired (§3's rule). §1's paired delta is the runtime
+  figure.
+
+### 7.3 The gate
+
+| Check | Phase 0 (`1d1dcbd`) | Now (`85a9cb6`) |
+|---|---|---|
+| Tests | 1 failed, 4,116 passed, 1 skipped (4,118 collected) | 4,210 passed, 1 skipped (4,211) |
+| Coverage, `--cov=spec4` | 11,676 statements, 1,020 missed, 91% | 12,459 statements, 876 missed, 93% |
+| `ruff check src/ tests/` | clean under `E`, `F` | clean under `E`, `F`, `C90`, `PLR0912`/`0913`/`0915`, `PLR2004`, `SIM`, `B`, `ARG` |
+| `ruff format --check src/ tests/` | 130 would be reformatted, 50 formatted | 221 formatted, none to reformat |
+| `mypy src/` (strict) | 30 errors in 13 files, 60 checked | no errors, 92 checked |
+
+### 7.4 Coverage per module
+
+**The modules Phase 4 split, compared as families:** each Phase 0 module against the sum
+of the modules it became.
+
+| Phase 0 module | Phase 0 | Now | Became |
+|---|---|---|---|
+| `agentifier/agentifier.py` | 1,413 / 165 / 88.3% | 1,509 / 139 / 90.8% | 4 modules (4i) |
+| `agents/_utils.py` | 1,092 / 71 / 93.5% | 1,222 / 71 / 94.2% | 5 modules (4a) |
+| `project_manager.py` | 758 / 30 / 96.0% | 817 / 20 / 97.6% | 5 modules (4b) |
+| `callbacks/__init__.py` | 681 / 157 / 76.9% | 734 / 157 / 78.6% | 7 modules (4g, 4g2) |
+| `agents/code_scanner.py` | 622 / 68 / 89.1% | 682 / 21 / 96.9% | a package of 4 (4c) |
+| `callbacks/designer.py` | 427 / 113 / 73.5% | 463 / 109 / 76.5% | a package of 4 (4h) |
+| `agents/stack_advisor.py` | 399 / 35 / 91.2% | 455 / 8 / 98.2% | a package of 4 (4d) |
+| `agents/phaser.py` | 301 / 8 / 97.3% | 355 / 8 / 97.7% | a package of 4 (4e) |
+| `layouts/_chat.py` | 181 / 2 / 98.9% | 224 / 1 / 99.6% | 4 modules (4f) |
+
+(Statements / missed / cover.) Every family rose.
+
+**The 51 modules at the same path:** 20 rose, 30 are unchanged, and one fell.
+- **The one that fell** is `agentifier/pattern_loader.py`, from 88.9% to 88.7%. Its misses
+  stayed at 18. Its statements fell from 162 to 159, because Phase 2 deleted three covered
+  statements: the unread dataclass fields in §13.2's items 2 and 3.
+- **The largest rises:**
+  - `agents/brainstormer.py`, 90.7% to 97.1%;
+  - `layouts/__init__.py`, 90.0% to 96.2%.
+
+**The lowest-covered code now:**
+
+| Module | Cover |
+|---|---:|
+| `callbacks/designer/_wizard.py` | 49.6% |
+| `spec4/__init__.py` (5 statements) | 60.0% |
+| `callbacks/_nav.py` | 62.2% |
+| `callbacks/_chat.py` | 74.5% |
+| `agents/_turn_flow.py` | 75.4% |
+| `feature_specs.py` | 76.7% |
+| `callbacks/__init__.py` | 78.3% |
+| `callbacks/_artifacts.py` | 78.6% |
+| `callbacks/designer/_refine.py` | 80.0% |
+| `websearch.py` | 80.5% |
+
+Phase 0's six lowest, the Phase 1 targets, are all still below 84%:
+
+| Module | Phase 0 | Now |
+|---|---:|---:|
+| `callbacks/designer` family | 73.5% | 76.5% |
+| `feature_specs.py` | 75.5% | 76.7% |
+| `callbacks/__init__` family | 76.9% | 78.6% |
+| `websearch.py` | 78.7% | 80.5% |
+| `session.py` | 81.6% | 82.7% |
+| `providers.py` | 82.8% | 83.9% |
+
+### 7.5 Dead code
+
+**vulture** (`uvx vulture src/ tests/ --min-confidence 60`):
+
+| | Phase 0 | Now |
+|---|---:|---:|
+| Without the whitelist | 70 (`src/` 48, `tests/` 22) | 60 (`src/` 37, `tests/` 23) |
+| With `vulture_whitelist.py` | 32 (`src/` 10, `tests/` 22) | 26 (`src/` 3, `tests/` 23) |
+
+**Every one of the 26 is justified in the record:**
+- **`src/`, 3:** the `DesignerSession` TypedDict keys `preference_text`, `mock_html` and
+  `finalized`. They are read by subscript, which vulture cannot see (§13.3).
+- **`tests/`, 14:** mock attribute assignments (§13.3).
+- **`tests/`, 4:** the `tavily_key` slots in stubs that match `_start_gen`'s positional
+  signature (§13.3).
+- **`tests/`, 1:** the `return; yield` empty-async-generator idiom (§13.3).
+- **`tests/`, 4:** autouse fixtures.
+  - `_clean_sink`, `_clean_state` and `_clean_containers` are justified in §13.3.
+  - `_clean_streams` is new since Phase 2 (`tests/test_callbacks_stream_poll.py:149`). It
+    is `@pytest.fixture(autouse=True)`, the same pattern.
+
+**ruff `--select F401,F811,F841,ARG`**, with `noqa` respected as Phase 0 read it:
+- **`src/`:** 9 → 0.
+- **`tests/`:** 162 → 178 (`ARG001` 113, `ARG005` 48, `ARG002` 17). Test-side `ARG` is stub
+  and fixture signatures. It is not a cleanup target (§3.2, §13.6), and it sits under
+  `tests/`'s per-file ignore.
+- **`F401`, `F811`, `F841`:** none at either end. Three re-export `F401`s carry a `noqa`
+  in both trees.
+
+**§7's cross-reference:** every top-level `def` and `class`, against the files that mention
+it.
+
+| | Phase 0 | Now |
+|---|---:|---:|
+| Top-level definitions | 829 | 1,093 |
+| With no reference outside their own file | 279 | 513 |
+| of which private | 228 | 457 |
+| of which public | 51 | 56 |
+| of the public ones: Dash callbacks | 33 | 32 |
+| of the public ones: the review list | 18 | 24 |
+| Referenced only from `tests/`, `evals/` or `scripts/` | 214 | 135 |
+
+**None of the 24 on the review list is dead.**
+- 17 are Phase 0's list. Phase 2 re-grepped each one and found callers in its own module
+  (§13.3). The splits moved some, for example `RoundsOnDisk` to `_paths.py` and
+  `PriorityEdits` to `agentifier/_render.py`.
+- Phase 0's eighteenth, `download_button_id`, was deleted (§13.2).
+- The 7 new names are public functions of 4a's split, each used by its own module
+  (§25.7): `ai_served_feature_ids`, `designer_affordance_hints`,
+  `project_feature_for_stack`, `served_product_feature_ids`, `short_text`,
+  `render_one_style` and `stale_phrase`.
+
+Making any of the 24 private would be a rename.
+
+### 7.6 Dependencies
+
+**`uvx deptry .`, Phase 0's form:** 246 findings then, 347 now.
+
+| Rule | Phase 0 | Now |
+|---|---:|---:|
+| DEP001: the project's own `spec4` imports | 210 | 314 |
+| DEP001: `evals/` sibling imports | 29 | 29 |
+| DEP001: `yaml` | 1 | 1 |
+| DEP002 | 3 | 0 |
+| DEP004 | 3 | 3 |
+
+- **There is no real finding left.**
+  - DEP002 is gone. `dash-iconify` was removed (§13.2). `gunicorn` and `pyyaml` are
+    suppressed in `pyproject.toml`, each with its reason.
+  - DEP004 is the same three dev-only imports Phase 0 accepted: `pytest` in two
+    `evals/scout/` files, and `playwright` in `scripts/screenshot_ui.py`.
+- **Most of DEP001 is noise.** deptry run from an isolated cache cannot see `spec4`
+  installed, so each of the project's own imports is reported. There are more of them now
+  because there are more modules. `yaml` is the pyyaml name-mapping false positive §4
+  noted: §4 counted "30 sibling-module imports inside `evals/`", and one of the 30 is this
+  line.
+- **The plan's Phase 7 form, `uv run --with deptry deptry .`,** reports the same findings
+  with the noise moved: DEP001 29 (`evals/` only), DEP003 314, DEP004 3.
+- **`scripts/cleanup/` adds nothing.** deptry's output was byte-identical before and after
+  the tools went in.
+
+### 7.7 Complexity and size
+
+**ruff `--select C90,PLR0912,PLR0913,PLR0915,SIM,B src/`,** with `noqa` ignored so that
+what the gate accepts still counts:
+
+| Rule | Phase 0 | Now |
+|---|---:|---:|
+| `C901` complexity | 61 | 9 |
+| `PLR0912` branches | 40 | 6 |
+| `PLR0915` statements | 25 | 3 |
+| `PLR0913` arguments | 12 | 12 |
+| `B` (`B905`, `B904`, `B007`) | 7 | 0 |
+| `SIM` (`SIM105`, `SIM117`, `SIM905`) | 6 | 0 |
+| **Total** | **151** | **30** |
+
+- **Every one of the 30 carries a reasoned `noqa`.**
+- **`PLR0913` is the same twelve signatures,** most of them moved by the splits. Their
+  argument counts match one for one.
+- **The most complex functions:**
+  - At Phase 0, the ten worst ran from 61 (`_format_stack_as_text`) down through 39, 38
+    (`_run_catalog_phase`) and 33 to 23.
+  - Now, nine functions are over the threshold: `stream_turn` 24, `deployer.run` 21,
+    `_validate_frontmatter` 17, `brainstormer.run` 14, `_artifact_button_state` 13,
+    `code_scanner.run` 12, `_spec_field` 12, `_validate_dependencies` 11 and `_has_cycle`
+    11.
+
+**File sizes** (§2's table, same method):
+
+| | Phase 0 | Now |
+|---|---|---|
+| `src/spec4/` | 60 files, 36,535 lines | 92 files, 40,284 lines |
+| Files over 1,300 lines | 8 | 2: `agentifier/agentifier.py` 2,874, `agents/_feature_context.py` 1,329 |
+| Longest functions | `_run_catalog_phase` 659, `phaser.run` 499, `deployer.run` 343, `brainstormer.run` 236 | `deployer.run` 185, `code_scanner.run` 175, `stream_turn` 174, `chat_layout` 163 |
+| `tests/` | 120 files, 53,705 lines | 129 files, 56,534 lines |
+| Largest test file | `test_agents.py`, 5,284 lines, 333 functions | `test_agents.py`, 5,268 lines, 332 functions |
+
+- **`agentifier/agentifier.py` is still the largest file.** 4i kept the generator flow
+  there, and 7q moved no code out of it (§79).
+- **The two longest functions are two of §27.4's backlog turns,** which are on Phase 8's
+  list.
+- **`tests/test_agents.py` was never split.** Phase 0 named it a split candidate, and §50
+  did again, noting that its runtime was the chunk factory (fixed in 6g) and "not a reason
+  to split it". No sub-phase took it up or ruled on it.
+
+### 7.8 The import graph and module state
+
+| | Phase 0 | Now |
+|---|---|---|
+| Modules | 60 | 92 |
+| Cycles | 1: `layouts` ↔ `layouts._chat` | 0, closed at 4f (§21) |
+| Layer violations: lower layers → UI; `layouts` → `callbacks`/`app`; anything → `app` | 0 | 0, pinned since Phase 4 by `tests/test_import_layering.py` |
+| Importers of `llm` / `project_manager` | 21 / 18 | 21 / 23 |
+| Import edges only under `TYPE_CHECKING` | 0 | 3 (7o) |
+| `global` statements | 0 | 0 |
+
+- **§6.2's seven lazy couplings are all still there,** relocated by the splits. For
+  example, `callbacks` → `agentifier.agentifier` is now `callbacks._chat` →
+  `agentifier.agentifier`.
+- **Phase 3 classified §8's eight module-state items** and fixed item 1's unlocked writes
+  (§14).
