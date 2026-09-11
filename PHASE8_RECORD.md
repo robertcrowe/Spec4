@@ -491,3 +491,113 @@ carries the proof.
 
 **Stopping here.** Committed as `phase8: pre-work (§1)`, this file only. Phase 8 begins on
 approval of §1.
+
+## 2. §1 approved: the rulings Phase 8 runs under, and 8a0, the stale PLR2004 figures
+
+§1 was approved on 2026-09-11. The rulings below bind Phase 8, and where they differ from
+§1's proposals they win. §1's findings otherwise stand as written.
+
+### 2.1 The rulings
+
+**(a) PLR2004 in `scripts/`.** It is not a stop: §1.1's stop covered the gate. The three
+stale figures, in the report, in BACKLOG 1.3 and in `pyproject.toml`'s comment, are
+corrected as the mechanical half's first commit, 8a0 (§2.3). The pre-work could not
+touch two of those three files. The 14 findings belong to the tools and are settled by
+D13. Until then the ignore carries a size of 20.
+
+**(b) `revision_delta`'s home.** It is not `agents/_utils.py`: 4j's retirement of the
+façade stands. The home is a new leaf module, `agents/_revision.py`, which holds the one
+function and which the five import from. That is the leaf-pure-sibling shape the splits
+used.
+- **The proof:** the token-identical finding, plus the layering test passing with the new
+  edge.
+- **If the new edge makes a cycle,** stop and report.
+- P10 is mechanical with that home, as sub-phase 8d2.
+
+**(c) `_fmt_usd` and `str`: decided by measurement, not by asking.** The width sweep runs
+over `src/`'s callers.
+- **If no production caller passes a string,** the test's string case is dead behaviour.
+  The annotation narrows, and the test line changes, with a petition if it is a floor
+  node.
+- **If one does,** the widened annotation is correct, and the question closes.
+- P18 is mechanical with that rule, in 8b.
+
+**(d) P16 and `run_with_timeout`.** Both of P16's rows are taken. For `run_with_timeout`,
+"nothing in `src/` calls it" is a dead-code question before it is a typing one:
+- if nothing in `src/`, `tests/`, `scripts/` or `evals/` calls it, it is deleted under
+  Phase 2's rule, not typed;
+- if tests call it, the PEP 695 form is approved as annotation-only.
+
+**Measured on recording:** `tests/agentifier/test_subagents.py:181` and `:195` call it, and
+nothing in `src/`, `scripts/` or `evals/` does. So P17's PEP 695 form is approved, in 8b.
+
+**(e) §1.4's two proofs are approved, with one condition each.**
+- **The racing nine (P19):** the proof asserts the stream's terminal state, the entry's
+  `finalised` latch or `claim_finalise`'s one-shot. It never uses a sleep or a timeout, so
+  it cannot pass by timing.
+- **The `> 2` reachability check (P23a):** it reads `.spec4/` read-only, and records which
+  files it read. Rule 2 forbade editing the tracked output; reading the only real model
+  output in the repo is what that output is there for. D1 remains a decision after the
+  check answers.
+
+**(f) The trim's home.** It goes in `agentifier/pattern_loader.py`, beside
+`MechanismPattern`, if both `tier_analyst` and `feature_specs` already import from it.
+If either does not, it is a new edge and gets the same layering check as `_revision.py`.
+
+**Measured on recording:** both already do (`agentifier/tier_analyst.py:17`,
+`feature_specs.py:34`), so there is no new edge.
+
+**(g) The 31 contract keys.** The tool extension that re-derives the write sets is
+approved. It lands with the contract-test sub-phase, 8g, and the tests are written from
+the re-derived set, not from §79.3's quote.
+
+**(h) The rest.**
+- The mtime sleeps (P32) join the mechanical half, under `os.utime`, as 8e2.
+- `persist_artifacts`' name (P31) stays a decision (D5).
+- The turns-before-topology dependency stands: 8i before D9.
+
+### 2.2 The mechanical half, as ruled
+
+This table replaces §1.5's where the two differ. §1.5's per-commit gate and §1.6's modes
+stand, and the new sub-phases take the mode of the one beside them.
+
+| Sub-phase | Item(s) | Commits | The check that proves it | What changed from §1.5 |
+|---|---|---:|---|---|
+| 8a0 | the three stale PLR2004 figures | 1 | the parsed `pyproject.toml` is unchanged; the ruff counts re-measured | new, (a) |
+| 8a | P23a: the `> 2` reachability evidence | 1, record only | §1.4, reading `.spec4/` read-only, with the files read listed | (e) |
+| 8b | P16, P17, P18: the type rows | 1 | strip check; strict mypy; the width sweep, with each value's caller recorded for P18 | P18 joins, (c); P17's form settled, (d) |
+| 8c | P20: the Prioritizer banner | 1 | `probe_A`'s anchor | — |
+| 8d | P11: the trim, as one helper in `pattern_loader.py` | 1 | one mutation fails a test on each side; frozen strings; no new edge | (f) |
+| 8d2 | P10: `revision_delta`, one body in `agents/_revision.py` | 1 | token identity; the layering test with the new edge; one mutation on the one body; check 4 | new, (b) |
+| 8e | P22: the five unreached targets | 1 | the sweep; one mutation per function | — |
+| 8e2 | P32: mtimes set with `os.utime` | 1 | one mutation per fixture | new, (h) |
+| 8f | P19: the racing nine | 1 | the terminal-state assertion, with no sleep and no timeout; the traced runs | (e) |
+| 8g | P21: four contract tests, and the write-set extension | 1–2 | the extension shown to bite; one mutation per test | (g) |
+| 8h | P14: the prop-bound inputs | 2 | as §1.5 | — |
+| 8i0–8i3 | P5–P7: the three turns | 4 | as §1.5 | — |
+| **stop** | the half closes: `remeasure.py`, then review | 0 | | |
+
+The decision half loses D2 (P18), D3 (P10) and D15 (P32), which are now mechanical.
+
+### 2.3 Commit 8a0: the three stale PLR2004 figures
+
+| File | Was | Now |
+|---|---|---|
+| `CLEANUP_REPORT.md` §1 | `scripts/` (6) | `scripts/` (20: 6 at promotion, and 14 in `scripts/cleanup/` since the tools were committed, which go with Phase 8's tools decision) |
+| `CLEANUP_REPORT.md` §5.3 | 6 in `scripts/` | 20 in `scripts/`, 6 at promotion, the 14 going with §5.4 |
+| `BACKLOG.md` 1.3 | 6 in `scripts/` | 20 in `scripts/`, 6 at promotion, the 14 going with the tools (1.4) |
+| `pyproject.toml`, the per-file-ignores comment | "6 in scripts/. Those counts are the size of the later work." | the same, then: `scripts/` carries 20 since the tools were committed, and the 14 go with the tools decision |
+
+**The proof.**
+- **`pyproject.toml` changes in a comment alone.** Parsed with `tomllib`, HEAD's file and
+  the new one are equal: `parsed pyproject.toml identical to HEAD: True`.
+- **The figures are the ones measured.** `ruff check --isolated --select PLR2004` gives
+  `tests/` 230, `evals/` 25, `scripts/` 20 and `src/` 0.
+- **Footprint:** 3 files, 8 insertions and 4 deletions, plus this section.
+
+| Gate | Result |
+|---|---|
+| Ruff, `src/ tests/` and `.` / format / mypy | `All checks passed!` twice · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12459 876 93%`; every per-module row identical to `coverage_85a9cb6.txt` |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |

@@ -62,7 +62,7 @@ Section numbers (§N) refer to `CLEANUP_INVENTORY.md`. The tools named below are
 | Annotated targets no test reaches: `on_designer_generate_mock` ×3, `on_provider_hint`, `_designer_tool_call_followup` | 3 functions | §77.9 |
 | Feature-spec section guards: `> 2` against its siblings' `> 3`. Check that real output reaches it before deciding | 3 builders | §78.2 |
 | `tests/test_agents.py`: split it by source module, a test-structure item. The floor and petition checks make the split provable | 5,268 lines, 293 tests | §2, §50; ruled in §80.1 |
-| PLR2004, deferred with a size | 230 in `tests/`, 25 in `evals/`, 6 in `scripts/` | §78.4 |
+| PLR2004, deferred with a size | 230 in `tests/`, 25 in `evals/`, 20 in `scripts/` (6 at promotion; the 14 in `scripts/cleanup/` go with the tools, 1.4) | §78.4; `PHASE8_RECORD.md` §1.1 |
 
 ### 1.4 The tooling
 

@@ -54,7 +54,9 @@ test was pruned for speed: that is forbidden (§3).
 
 **The promoted rules.** Today's rule set is 5p's (E, F, C90, PLR0912, PLR0913, PLR0915,
 SIM, B, ARG) plus PLR2004, which was promoted at 7p3. PLR2004 is enforced in `src/`, and
-deferred with a recorded size in `tests/` (230 findings), `evals/` (25) and `scripts/` (6).
+deferred with a recorded size in `tests/` (230 findings), `evals/` (25) and `scripts/`
+(20: 6 at promotion, and 14 in `scripts/cleanup/` since the tools were committed, which
+go with Phase 8's tools decision; `PHASE8_RECORD.md` §1.1, §2).
 `uv run ruff check .` passes on the whole repo.
 
 ## 2. The findings
@@ -268,7 +270,7 @@ were named but never ruled on. This section is the list as the close-out left it
 | Annotated targets no test reaches: `on_designer_generate_mock` ×3, `on_provider_hint`, `_designer_tool_call_followup` | 3 functions | §77.9 |
 | Feature-spec section guards: `> 2` against its siblings' `> 3`. Check that real output reaches it before deciding | 3 builders | §78.2 |
 | `tests/test_agents.py`: split it by source module, a test-structure item | 5,268 lines, 293 tests | §2, §50; ruled at review of §7 (record §80.1) |
-| PLR2004, deferred with a size | 230 in `tests/`, 25 in `evals/`, 6 in `scripts/` | §78.4 |
+| PLR2004, deferred with a size | 230 in `tests/`, 25 in `evals/`, 20 in `scripts/` (6 at promotion; the 14 in `scripts/cleanup/` go with §5.4) | §78.4; `PHASE8_RECORD.md` §1.1 |
 
 ### 5.4 The tooling itself
 
