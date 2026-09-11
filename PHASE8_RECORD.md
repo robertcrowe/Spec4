@@ -1121,3 +1121,84 @@ M 8e_followup (the designer's tool follow-up searches without the configured sea
 | Tests | `4217 passed, 1 skipped` (exit 0): six more, the new tests |
 | Coverage | `TOTAL 12439 852 93%`: **misses fall from 876 to 852.** The three functions' bodies are now run as well as reached. The rows that moved: `agents/designer.py` 33 → 24 missed (88% → 91%); `callbacks/_setup.py` 16 → 15 missed (82% → 83%); `callbacks/designer/_wizard.py` 63 → 50 missed (50% → 60%); `providers.py` 15 → 14 missed (84% → 85%) |
 | Floor / off-limits | **456 / 456** (`FAILURES: 0`). `test_setup_search_provider.py`'s hunk (`@@ -206,0 +207,24 @@`) follows `TestSkip`, and the file holds no entry. `test_designer.py`'s (`@@ -2413,0 +2414,99 @@`) follows its last class, after all 15 of its entries |
+
+## 9. 8e2: mtimes set with `os.utime`, not raced with a sleep (P32)
+
+Inventory §62.8's fix, which the fold did not carry. §2.1(h) brought it into the
+mechanical half. Five fixtures slept before an mtime comparison. On this WSL2 host a file
+can be written with an mtime seconds ahead of the clock (§66.8), so no sleep length made
+the order certain. Each fixture now sets every file's mtime explicitly, so the order is a
+fact of the fixture. Nothing under `src/` changes.
+
+### 9.1 What landed
+
+| File | Fixture | The order set |
+|---|---|---|
+| `tests/test_agent_pill_click.py` | `_stale_mock_project` | vision 1000; mock, manifest and stack 2000; AI features 3000 |
+| `tests/test_stale_ai_features.py` | `_make_project` | stack, phase 1 and plan 1000; AI features 2000 |
+| `tests/test_stale_ai_features.py` | `_designer_project` | vision and AI features 1000; mock 2000; the `newer` input, when given, 3000 |
+| `tests/test_agent_rows.py` | `two_state_project` | code review and feature specs 1000; AI features 2000; vision 3000 |
+| `tests/test_deployer_invariants.py` | `TestStalenessRegistry::test_editing_feature_specs_marks_the_plan_stale` | phases and feature specs 1000; the plan 2000; the edited feature specs 3000 |
+
+- **Each file's `import time` becomes `import os`.** Nothing else in the four files used
+  `time`.
+- **The re-writes that existed only to bump an mtime are gone,** with the sleeps before
+  them: `two_state_project`'s second `vision.json` write, and the plan-then-edit spacing in
+  the Deployer test. The content each wrote was identical to what was already on disk.
+- **Floor.** The four helpers sit outside every entry, but floor nodes call them:
+  - `_stale_mock_project` feeds tier-A
+    `tests/test_agent_pill_click.py::TestNoEnabledButtonIsRefused::test_every_enabled_button_navigates`;
+  - `_designer_project` feeds tier-A
+    `tests/test_stale_ai_features.py::test_stale_mock_allows_stack_advisor`;
+  - `two_state_project` feeds tier-B `tests/test_agent_rows.py::TestAMissingUsageEntry`
+    and `::TestItLeadsTheProjectView`.
+
+  Their hunks are allowed and reported (§51.6). `test_deployer_invariants.py` holds no
+  entry.
+- **Footprint:** 4 files, 40 insertions and 14 deletions, plus this section. The four files' own tests pass: `110 passed`.
+
+### 9.2 One mutation per fixture: the order flipped
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8e2_pill_click (_stale_mock_project: the AI features set older than the mock (8e2, P32)): predicted 2, failed 2; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/test_agent_pill_click.py::TestStackAdvisorReachable::test_button_and_click_agree
+   FAILED (predicted)       tests/test_agent_pill_click.py::TestBlockedClickSurfacesError::test_phaser_stale_mock_sets_error
+   other failures: 0
+   summary: 2 failed, 4215 passed, 1 skipped in 93.05s (0:01:33)
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8e2_make_project (_make_project: the AI features set older than downstream (8e2, P32)): predicted 1, failed 1; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/test_stale_ai_features.py::test_ai_features_change_flags_all_downstream
+   other failures: 0
+   summary: 1 failed, 4216 passed, 1 skipped in 91.84s (0:01:31)
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8e2_designer_project (_designer_project: the 'newer' input set older than the mock (8e2, P32)): predicted 3, failed 3; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/test_stale_ai_features.py::test_designer_flags_ai_features_change
+   FAILED (predicted)       tests/test_stale_ai_features.py::test_designer_flags_vision_change
+   FAILED (predicted)       tests/test_stale_ai_features.py::test_stale_mock_blocks_phaser
+   other failures: 0
+   summary: 3 failed, 4214 passed, 1 skipped in 91.28s (0:01:31)
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8e2_two_state_project (two_state_project: the vision set back before the Agentifier's output (8e2, P32)): predicted 0, failed 0; must-pass 0, failed 0; A WRONG PREDICTION
+   FAILED (other, to explain) tests/test_agent_rows.py::TestContinueForAnInProgressAgent::test_no_other_state_is_touched_by_a_transcript[agentifier-needs_update]
+   other failures: 1
+   summary: 1 failed, 4216 passed, 1 skipped in 91.96s (0:01:31)
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8e2_deployer (the deployer staleness test: the edited feature specs set older than the plan (8e2, P32)): predicted 1, failed 1; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/test_deployer_invariants.py::TestStalenessRegistry::test_editing_feature_specs_marks_the_plan_stale
+   other failures: 0
+   summary: 1 failed, 4216 passed, 1 skipped in 93.86s (0:01:33)
+```
+
+**Each flip fails the tests that read its order, and nothing else.** So in every fixture the order now carries an assertion as a fact of the fixture, where before it rested on a sleep.
+
+**One prediction was wrong, and it is recorded as made.** For `two_state_project` I predicted that no test would fail. The read behind that prediction found only `test_the_fixture_exercises_more_than_one_state`, which asserts more than one state and survives a flip. It missed a parametrized case: `TestContinueForAnInProgressAgent::test_no_other_state_is_touched_by_a_transcript[agentifier-needs_update]` pins Agentifier's `needs_update` state directly, and it fails under the flip. So the fixture is pinned. The harness's "A WRONG PREDICTION" is right twice over: a case that predicts no failures can never read "as predicted" (§3.3), and this prediction was also wrong.
+
+**The first chain was killed for low memory,** by the session's harness during the gate suite. The commit and the floor check had finished; no mutation had started, the tree was clean, and no process survived. The gate and the five mutations were then re-run from the committed tree, and those are the results above. The commit was made before the mutations ran, because the harness refuses a dirty tree. This section was then amended in, under the standing rule for unpushed commits.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `222 files already formatted` · mypy unchanged: no `src/` file changed |
+| Tests | `4217 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12439 852 93%`; every per-module row identical to 8e's |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`). Every hunk sits in an import line, a module-level helper, or the Deployer test, and none is inside a floor entry. The floor nodes that call the helpers are listed in §9.1 |

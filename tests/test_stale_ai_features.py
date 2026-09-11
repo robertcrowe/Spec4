@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import time
+import os
 from pathlib import Path
 
 from spec4 import project_manager as pm
@@ -16,9 +16,12 @@ def _make_project(tmp_path: Path) -> str:
     (v0 / "stack.json").write_text("{}")
     (v0 / "phases" / "phase1.md").write_text("x")
     (v0 / "deployment-plan.md").write_text("x")
-    time.sleep(0.05)
     # ai_features.json updated last (newest) — simulates adding a feature
     (v0 / "ai_features.json").write_text("{}")
+    # The order is set, not raced (PHASE8_RECORD.md 8e2).
+    for rel in ("stack.json", "phases/phase1.md", "deployment-plan.md"):
+        os.utime(v0 / rel, (1000, 1000))
+    os.utime(v0 / "ai_features.json", (2000, 2000))
     return str(tmp_path)
 
 
@@ -63,9 +66,13 @@ def _designer_project(tmp_path: Path, newer: str | None) -> str:
     (v0 / "vision.json").write_text("{}")
     (v0 / "ai_features.json").write_text("{}")
     (v0 / "design" / "mock.html").write_text("<html></html>")  # newest initially
+    # The order is set, not raced (PHASE8_RECORD.md 8e2).
+    os.utime(v0 / "vision.json", (1000, 1000))
+    os.utime(v0 / "ai_features.json", (1000, 1000))
+    os.utime(v0 / "design" / "mock.html", (2000, 2000))
     if newer:
-        time.sleep(0.05)
         (v0 / newer).write_text("{}")  # now newer than the mock -> stale
+        os.utime(v0 / newer, (3000, 3000))
     return str(tmp_path)
 
 

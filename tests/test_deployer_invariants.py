@@ -22,7 +22,7 @@ mark the plan stale.
 
 from __future__ import annotations
 
-import time
+import os
 from pathlib import Path
 from typing import Any
 
@@ -85,12 +85,17 @@ class TestStalenessRegistry:
             wd, [{"phase_number": 1, "phase_title": "Steel"}], 0
         )
         project_manager.save_feature_specs(wd, {"nfr_goals": ["Fast"]}, 0)
-        time.sleep(0.02)
         project_manager.save_deployment_plan(wd, "# Deployment Plan\n", 0)
+        # The order is set, not raced (PHASE8_RECORD.md 8e2): the inputs at
+        # 1000, the plan at 2000, and the edited feature specs at 3000.
+        v0 = tmp_path / ".spec4" / "v0"
+        for path in [*(v0 / "phases").rglob("*"), v0 / "feature_specs.json"]:
+            os.utime(path, (1000, 1000))
+        os.utime(v0 / "deployment-plan.md", (2000, 2000))
         assert project_manager.detect_stale_inputs(wd, "deployer") == {}
 
-        time.sleep(0.02)
         project_manager.save_feature_specs(wd, {"nfr_goals": ["Fast", "Offline"]}, 0)
+        os.utime(v0 / "feature_specs.json", (3000, 3000))
         assert "feature specs" in project_manager.detect_stale_inputs(wd, "deployer")
 
     def test_design_manifest_is_not_a_deployer_input(self) -> None:

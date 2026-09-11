@@ -19,8 +19,8 @@ hand-rolled file would let the two drift without the suite noticing.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
-import time
 from typing import Any
 
 import pytest
@@ -102,11 +102,17 @@ def two_state_project(tmp_path: pathlib.Path) -> pathlib.Path:
     (base / "code_review.json").write_text("{}")
     (base / "vision.json").write_text("{}")
     (base / "feature_specs.json").write_text("{}")
-    time.sleep(0.02)
     (base / "ai_features.json").write_text("{}")
-    time.sleep(0.02)
-    # Now bump an Agentifier input past its output, so it reads stale.
-    (base / "vision.json").write_text("{}")
+    # The order is set, not raced (PHASE8_RECORD.md 8e2): the inputs at 1000,
+    # the Agentifier's output at 2000, and then an Agentifier input bumped past
+    # its output, so it reads stale.
+    for rel, t in (
+        ("code_review.json", 1000),
+        ("feature_specs.json", 1000),
+        ("ai_features.json", 2000),
+        ("vision.json", 3000),
+    ):
+        os.utime(base / rel, (t, t))
     return tmp_path
 
 

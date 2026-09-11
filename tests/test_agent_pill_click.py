@@ -9,7 +9,7 @@ than being swallowed into a silent no-op.
 
 from __future__ import annotations
 
-import time
+import os
 from typing import Any
 from unittest.mock import patch
 
@@ -48,8 +48,16 @@ def _stale_mock_project(tmp_path: Any) -> str:
     (v0 / "design" / "mock.html").write_text("<html></html>")
     (v0 / "design" / "manifest.json").write_text("{}")
     (v0 / "stack.json").write_text("{}")
-    time.sleep(0.05)
-    (v0 / "ai_features.json").write_text("{}")  # now newer than the mock
+    # The order is set, not raced (PHASE8_RECORD.md 8e2): the mock and its siblings
+    # at 2000, the vision before them, the AI features after.
+    for rel, t in (
+        ("vision.json", 1000),
+        ("design/mock.html", 2000),
+        ("design/manifest.json", 2000),
+        ("stack.json", 2000),
+        ("ai_features.json", 3000),  # now newer than the mock
+    ):
+        os.utime(v0 / rel, (t, t))
     return str(tmp_path)
 
 
