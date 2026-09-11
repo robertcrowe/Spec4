@@ -44,7 +44,7 @@ from spec4.layouts.designer import _default_designer_session
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_add_gui(n: Any, store: Any) -> Any:
+def on_designer_add_gui(n: int | None, store: Any) -> Any:
     if not n or not store:
         return no_update
     return {**store, "step": 2}
@@ -70,7 +70,7 @@ def _skip_to_stack_advisor(session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_skip_1(n: Any, session: Any) -> Any:
+def on_designer_skip_1(n: int | None, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return _skip_to_stack_advisor(session)
@@ -83,7 +83,7 @@ def on_designer_skip_1(n: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_skip_2(n: Any, session: Any) -> Any:
+def on_designer_skip_2(n: int | None, session: Any) -> Any:
     if not n:
         return no_update, no_update
     return _skip_to_stack_advisor(session)
@@ -101,7 +101,11 @@ def on_designer_skip_2(n: Any, session: Any) -> Any:
     prevent_initial_call=True,
 )
 def on_designer_step2_choice(
-    n_modify: Any, n_create: Any, store: Any, session: Any, image_support: Any
+    n_modify: int | None,
+    n_create: int | None,
+    store: Any,
+    session: Any,
+    image_support: Any,
 ) -> Any:
     if not ctx.triggered_id or not (n_modify or n_create):
         return no_update, no_update, no_update
@@ -144,7 +148,7 @@ def on_designer_step2_choice(
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_carry_forward(n: Any, store: Any, session: Any) -> Any:
+def on_designer_carry_forward(n: int | None, store: Any, session: Any) -> Any:
     """Revision round — carry the prior approved mock forward and apply the delta.
 
     Loads the latest *implemented* round's ``mock.html`` as the baseline, prefills
@@ -179,7 +183,9 @@ def on_designer_carry_forward(n: Any, store: Any, session: Any) -> Any:
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_preferences_next(n: Any, pref_text: Any, store: Any) -> Any:
+def on_designer_preferences_next(
+    n: int | None, pref_text: str | None, store: Any
+) -> Any:
     if not n or not store:
         return no_update
     return {**store, "preference_text": pref_text or "", "step": 4}
@@ -192,7 +198,9 @@ def on_designer_preferences_next(n: Any, pref_text: Any, store: Any) -> Any:
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_screenshot_upload(contents: Any, annotations: Any, store: Any) -> Any:
+def on_designer_screenshot_upload(
+    contents: str | None, annotations: list[str | None], store: Any
+) -> Any:
     if not contents or not store:
         return no_update
     screenshots: list[dict[str, str]] = list(store.get("screenshots", []))
@@ -209,7 +217,7 @@ def on_designer_screenshot_upload(contents: Any, annotations: Any, store: Any) -
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_screenshot_delete(n_clicks_list: Any, store: Any) -> Any:
+def on_designer_screenshot_delete(n_clicks_list: list[int | None], store: Any) -> Any:
     if not any(n for n in (n_clicks_list or []) if n):
         return no_update
     triggered = ctx.triggered_id
@@ -288,7 +296,7 @@ def on_designer_generate_mock(
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_approve(n: Any, store: Any, session: Any) -> Any:
+def on_designer_approve(n: int | None, store: Any, session: Any) -> Any:
     """Finalize and save the mock, marking it approved — but stay on Designer.
 
     The user is shown a confirmation and a 'Continue to Stack Advisor' button
@@ -325,7 +333,7 @@ def on_designer_approve(n: Any, store: Any, session: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_continue_stack(n: Any, session: Any) -> Any:
+def on_designer_continue_stack(n: int | None, session: Any) -> Any:
     """Proceed from an approved mock into Stack Advisor."""
     if not n:
         return no_update, no_update
@@ -346,7 +354,7 @@ def on_designer_continue_stack(n: Any, session: Any) -> Any:
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_step_back(n: Any, store: Any) -> Any:
+def on_designer_step_back(n: int | None, store: Any) -> Any:
     """One step back inside the wizard — never out of it.
 
     The button is rendered by the two steps that have somewhere to go back to
@@ -370,7 +378,7 @@ def on_designer_step_back(n: Any, store: Any) -> Any:
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_start_over(n: Any, store: Any, session: Any) -> Any:
+def on_designer_start_over(n: int | None, store: Any, session: Any) -> Any:
     """Discard the mock and start Designer again from its first question.
 
     Which model to draw with *is* Designer's first question, so starting over

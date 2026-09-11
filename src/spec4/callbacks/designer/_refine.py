@@ -33,7 +33,7 @@ from spec4.callbacks.designer._mock_gen import (
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_refine(n: Any, store: Any) -> Any:
+def on_designer_refine(n: int | None, store: Any) -> Any:
     if not n or not store:
         return no_update
     return {**store, "step": 7, "refine_text": ""}
@@ -45,7 +45,7 @@ def on_designer_refine(n: Any, store: Any) -> Any:
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_refine_cancel(n: Any, store: Any) -> Any:
+def on_designer_refine_cancel(n: int | None, store: Any) -> Any:
     if not n or not store:
         return no_update
     return {**store, "step": 6, "refine_images": [], "refine_text": ""}
@@ -61,7 +61,11 @@ def on_designer_refine_cancel(n: Any, store: Any) -> Any:
     prevent_initial_call=True,
 )
 def on_designer_refine_upload(
-    contents: Any, filename: Any, annotations: Any, refine_text: Any, store: Any
+    contents: str | list[str] | None,
+    filename: str | list[str] | None,
+    annotations: list[str | None],
+    refine_text: str | None,
+    store: Any,
 ) -> Any:
     if not contents or not store:
         return no_update
@@ -85,7 +89,10 @@ def on_designer_refine_upload(
     prevent_initial_call=True,
 )
 def on_designer_refine_image_delete(
-    n_clicks_list: Any, annotations: Any, refine_text: Any, store: Any
+    n_clicks_list: list[int | None],
+    annotations: list[str | None],
+    refine_text: str | None,
+    store: Any,
 ) -> Any:
     if not any(n for n in (n_clicks_list or []) if n):
         return no_update
@@ -193,7 +200,7 @@ def on_designer_regenerate(  # noqa: PLR0913  # parameters are the callback's In
     prevent_initial_call=True,
 )
 def on_designer_revise_stale(
-    n: Any, store: Any, session: Any, image_support: Any
+    n: int | None, store: Any, session: Any, image_support: Any
 ) -> Any:
     """Discard a stale mock and regenerate greenfield from the current catalog.
 
@@ -264,7 +271,9 @@ def on_designer_revise_stale(
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_retry_model(n: Any, store: Any, buffer_data: Any, session: Any) -> Any:
+def on_designer_retry_model(
+    n: int | None, store: Any, buffer_data: Any, session: Any
+) -> Any:
     """Open the model picker from a failed draw, keeping the draw recoverable.
 
     Opening the picker writes `session`, which rebuilds the page and re-creates
@@ -359,7 +368,9 @@ def _rerun_failed_draw(store: Any, session: Any, image_support: Any) -> Any:
     State("image-support-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> Any:
+def on_designer_retry(
+    n: int | None, store: Any, session: Any, image_support: Any
+) -> Any:
     """Re-run the failed draw on the model it already has."""
     if not n or not store:
         return no_update, no_update, no_update, no_update
@@ -377,7 +388,9 @@ def on_designer_retry(n: Any, store: Any, session: Any, image_support: Any) -> A
     State("image-support-store", "data"),
     prevent_initial_call=True,
 )
-def on_designer_auto_retry(n: Any, store: Any, session: Any, image_support: Any) -> Any:
+def on_designer_auto_retry(
+    n: int | None, store: Any, session: Any, image_support: Any
+) -> Any:
     """Draw again as soon as a different model has been chosen.
 
     Choosing a model from a failed draw *is* the decision to re-run it, so no

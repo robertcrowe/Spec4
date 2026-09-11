@@ -1618,3 +1618,223 @@ never seen changing, in all: 0; contracts failing: 0
 | Tests | `4222 passed, 1 skipped`: 8g1's 4,217 + 5, exit 0 |
 | Coverage | `TOTAL 12439 834 93%`: misses 852 → 834, all in `agentifier/agentifier.py` |
 | Floor / off-limits | `456 (expect 456)`, `0` failures; the one file is new and holds no entry |
+
+## 12. 8h: the prop-bound callback inputs (P14)
+
+Every Dash callback parameter that is bound to a component prop other than a store's
+`data`, and annotated bare `Any`, gets the type that prop delivers. It is 7o's shape: a row
+map, the strip check, strict mypy and the width sweep. It is two commits, top-level
+`callbacks/` and then `callbacks/designer/`, as §1.5 set.
+
+### 12.1 The row map
+
+**How a row is found.** Dash binds a callback's parameters positionally to the `Input` and
+`State` dependencies its decorator lists. A scratch script walks every `@callback` in
+`src/spec4`, pairs each parameter with its (component id, prop), and finds the
+component's class where an `id=` keyword creates that id.
+- **87 callbacks; 0 whose dependency count differs from its parameter count.**
+- **107 prop-bound `Any` parameters on 78 lines.** Store parameters (`data`) sit on 85
+  lines, and they stay `Any`: the session-dict edge (§1.2, P13).
+- **§1.2 quoted §60.5's prop rule as 107 on 81 lines.** The parameter count is the same.
+  The line count is 78 here, measured on the tree 8h edits.
+
+**The prop gives the type.** The 105 rows applied, as they stand at 8h2:
+
+| Prop | Type | Rows |
+|---|---|---:|
+| `n_clicks`, `n_submit`, `n_intervals` | `int \| None` | 66 |
+| `n_clicks`, on an id pattern-matched with `ALL` | `list[int \| None]` | 6 |
+| `value` of `dmc.Select`, `PasswordInput`, `TextInput`, `Textarea` | `str \| None` | 20 |
+| `value` of an ALL-matched `dmc.Textarea` | `list[str \| None]` | 3 |
+| `value` of `dmc.CheckboxGroup` | `list[str] \| None` | 2 |
+| `pathname`; `contents` of the single-file `dcc.Upload` | `str \| None` | 2 |
+| `contents`, `filename` of the `dcc.Upload` declared `multiple=True` | `str \| list[str] \| None` | 2 |
+| `checked` | `bool \| None` | 1 |
+| `id` | `str` | 3 |
+
+- **Seventeen rows were resolved by reading, not by the script.** In 14, the id is a
+  computed expression (`GATE_IDS["model"]`, `ids["provider"]`), and the component was
+  read at `layouts/_setup.py:152–153`, `:164–165`, `:200–201` and `:211–212`. In 3, an
+  `Input` on the `id` prop receives the id itself: `round-tree`, `artifact-view-content`
+  and `round-cost`, each a string.
+- **The three `annotations` rows are ALL-matched `dmc.Textarea`s**
+  (`layouts/designer.py:297`, `:537`), so each receives a list of values.
+- **The two `multiple=True` rows were `str | None` in the map as first applied.** The width
+  sweep rejected them at 8h2's first commit, and §12.4 records that.
+- **The row map is not committed.** It lives in the session scratchpad, as 105 rows in
+  `rows_7o.json`'s shape, with the two rows that came out beside them. 7o's map is committed
+  as `scripts/cleanup/data/rows_7o.json`, so 7o5's sweep can be re-run from the repo. 8h's
+  cannot, until its map is committed beside it. That is a change under `scripts/cleanup/`,
+  and it is put to review, not taken.
+
+**Two rows come out, on 7o's rule (inventory §77.2):**
+
+| Row | Why it stays `Any` |
+|---|---|
+| `callbacks/_setup.py:61`, `on_setup_connect`'s `provider_label` | It goes bare to `providers.provider_key_for_label(label: str)` (`:65`). `str \| None` is not a `str`, so the type the prop gives fails mypy there |
+| `callbacks/_gate.py:240`, `on_gate_connect`'s `provider_label` | The same call, bare, at `:252` |
+
+- **Typing them would need `or ""` at the call, a runtime change.** The strip check
+  forbids that here. The two other `provider_label` rows, `on_gate_provider_change` and
+  `on_setup_search_connect`, already pass `provider_label or ""`, so they are typed.
+
+**The map was wrong in the dry run, and the dry run caught it.** Applied to a `git
+archive` export of 8g2's tree, the first map failed strict mypy with 12 errors:
+- **10 were the six `ALL`-matched `n_clicks` rows, typed `int | None`.** An id naming `ALL`
+  is a Python name, so the script's literal evaluation left the id as source text and
+  missed the pattern. The script now finds the pattern in that text, and the six rows are
+  `list[int | None]`.
+- **2 were the two `provider_label` rows above.**
+
+The second map, 105 rows, is the one applied. On two exports of 8g2's tree, one with
+8h1's 76 rows and one with all 105, each after `ruff format`:
+- strict mypy: `Success: no issues found in 93 source files`, both;
+- the strip check against 8g2: `files changed: 6; files with residue: 0`, then
+  `files changed: 9; files with residue: 0`;
+- `ruff check`: `All checks passed!`, both. Before formatting, the widened signatures gave
+  17 E501s, all in files the format then rewrote.
+
+### 12.2 Commit 8h1: top-level `callbacks/`
+
+**`3d046e9`: 76 rows in six files.** `__init__.py` 11, `_artifacts.py` 13, `_chat.py` 12,
+`_gate.py` 14, `_nav.py` 11 and `_setup.py` 15.
+- **How it was applied.** A scratch script replaced exactly `name: Any` with `name: <type>`
+  on each row's line, requiring one match per row. `ruff format` then ran on the six files,
+  and reformatted five.
+- **The six files are byte-identical to the dry run's export** (`cmp`, file by file).
+- **Footprint:** `6 files changed, 82 insertions(+), 57 deletions(-)`, all under
+  `src/spec4/callbacks/`. No test and no floor file changed.
+
+### 12.3 Commit 8h2: `callbacks/designer/`
+
+**`ba46e15`: 29 rows in three files.** `designer/__init__.py` 1, `_refine.py` 13 and
+`_wizard.py` 15.
+- **Applied as 8h1 was, then formatted.** At the first commit, `7dfb44f`, the three files
+  were byte-identical to the dry run's full export. So were 8h1's six, so the two commits
+  together are the export.
+- **Amended once,** before its proof passed: `on_designer_refine_upload`'s `contents` and
+  `filename` were widened to `str | list[str] | None` (§12.4). Nothing else changed.
+- **Footprint, amended:** `3 files changed, 42 insertions(+), 21 deletions(-)`, all under
+  `src/spec4/callbacks/designer/`. No test and no floor file changed.
+
+### 12.4 The proofs
+
+**The strip check, per commit, against the commit before:**
+
+```
+8h1, 3d046e9 against 676246d: files changed: 6; files with residue: 0
+8h2, ba46e15 against 3d046e9: files changed: 3; files with residue: 0
+```
+
+**The width sweep met a limit, at 8h1's first run.** One of the 105 rows is a closure:
+`on_open_artifact` (`callbacks/_artifacts.py:516` at `676246d`). `_register_open_artifact(key)`
+defines it and registers it once per artifact key.
+- **The committed sweep resolves a target by attribute from its module,** and a nested def
+  is not a module attribute. The run stopped with an internal error at that row:
+  `AttributeError: 'function' object has no attribute 'on_open_artifact'`. It had
+  registered 23 targets and reached none.
+- **An AST scan found no other such row.** Of the 105, it is the only one whose enclosing
+  chain at `676246d` is longer than its own name.
+- **Recorded as the sweep's known limit, beside check 4's alias case (§10.1).** "The sweep
+  learns nested defs" goes with D13, since changing the committed tool is D13's question.
+- **So 8h1's proof is taken in two parts:**
+  - the committed sweep, on the 75 module-level rows;
+  - a scratch copy on the one closure row. It differs from the committed tool only in
+    this: when a qualified name does not resolve, it takes the nested def's code object
+    from the enclosing function's `co_consts`. Every registration shares that code object.
+- **Two attempts were killed by the environment for "low memory".** A sampler, reading
+  every 10 seconds through the second attempt, never saw less than 14.2 GB available. The
+  second kill landed after the committed sweep had finished and written its output. The
+  closure run was then taken in the foreground, and so was everything after. The sweep
+  writes nothing in the repo, and the tree was clean each time.
+
+**The width sweep on the new row map.** `WIDTH_SWEEP_BASE` is `676246d`, the tree the
+rows' lines were read on. Each run passed `4222 passed, 1 skipped`, and each peaked at
+284–292 MB:
+
+```
+8h1, the committed tool, 75 rows, at 3d046e9:
+width_sweep: targets 75; reached 49; never reached 26; rejected by a real value 0 []; by stand-ins only 0; checker errors 0 []
+8h1, the scratch copy, the closure row, at 3d046e9:
+width_sweep: targets 1; reached 1; never reached 0; rejected by a real value 0 []; by stand-ins only 0; checker errors 0 []
+8h2, the committed tool, 29 rows, at ba46e15:
+width_sweep: targets 29; reached 16; never reached 13; rejected by a real value 0 []; by stand-ins only 0; checker errors 0 []
+```
+
+- **On the final trees: 105 targets, 66 reached, 39 never reached, 0 rejected.**
+- **Every value came from a test calling the callback directly,** 669 in all (549, 19 and
+  101). Dash's dispatch does not run in-process. There were 0 stand-ins.
+- **Each arriving type is a member of its annotation:**
+  - `int` and `None` at `int | None`;
+  - `str` and `None` at `str | None`;
+  - `str` at `str`;
+  - `list` at the list types;
+  - `bool` at `bool | None`;
+  - both `str` and `list` at the two `str | list[str] | None` rows.
+- **The 39 never reached rest on the prop's contract alone,** as every row's type was drawn
+  from it. The sweep shows only that no test passes a value outside a reached row's type.
+  - 8h1's 26 are in 23 functions: the six `dl_*` downloads; eight navigation hand-offs;
+    the folder browser's `on_dir_up`, `on_dir_path_enter`, `on_subdir_click` and
+    `on_create_folder`; `on_breadth_change` and `on_breadth_submit`; `on_gate_back`;
+    `on_setup_back_model` and `on_setup_clear`. The eight hand-offs are
+    `on_brainstormer_to_agentifier`, `on_brainstormer_to_designer`,
+    `on_agentifier_to_designer`, `on_review_to_brainstormer`, `on_stack_to_phaser`,
+    `on_phaser_to_deployer`, `on_deployer_new_project` and `on_rescan_project`.
+  - 8h2's 13 are in 11 functions: `on_designer_add_gui`, `on_designer_approve`,
+    `on_designer_continue_stack`, `on_designer_preferences_next`, `on_designer_refine`,
+    `on_designer_refine_cancel`, `on_designer_revise_stale`,
+    `on_designer_screenshot_delete`, `on_designer_screenshot_upload`,
+    `on_designer_skip_1` and `on_designer_skip_2`.
+  - Tests for them are not P14's work, and none were written.
+
+**The sweep rejected two of 8h2's rows on real values, and the rows were wrong.** At the
+first 8h2 commit, `7dfb44f`, the sweep over the 29 designer rows gave:
+
+```
+width_sweep: targets 29; reached 16; never reached 13; rejected by a real value 2 ['callbacks/designer/_refine.py:64:contents', 'callbacks/designer/_refine.py:64:filename']; by stand-ins only 0; checker errors 0 []
+```
+
+- **Both rejections are in `on_designer_refine_upload`** (`callbacks/designer/_refine.py:64`
+  at `676246d`): `contents` and `filename`, typed `str | None`.
+  `TestRefineImageAnnotations::test_multiple_files_selected_at_once_are_all_appended`
+  passes lists: `['data:image/png;base64,a', 'data:image/png;base64,b']` and
+  `['a.png', 'b.png']`. `::test_upload_syncs_existing_annotation_and_appends_new_image`
+  passes a `str`.
+- **The row map's prop rule was wrong for this component.** It gave `contents` and
+  `filename` the single-file type and never read `dcc.Upload`'s `multiple`. The refine
+  upload is declared `multiple=True` (`layouts/designer.py:579–582`), so Dash delivers a
+  list. The body already takes both shapes: `contents if isinstance(contents, list) else
+  [contents]`, and the same for `filename`.
+- **So the width the tests exercise is `str | list[str] | None`.** Both rows were widened
+  to it, the annotation only. The screenshot upload is `multiple=False`
+  (`layouts/designer.py:330–333`), so its `contents: str | None` stands. No test reaches it.
+- **The fix was amended into 8h2,** since it was unpushed and its proof had not yet passed:
+  whole or carry. It passed strict mypy, and the strip check against 8h1 gave
+  `files changed: 3; files with residue: 0`. The gate and the sweep were then re-run on
+  the amended commit, `ba46e15`, as above.
+- **This is the sweep doing its job.** Strict mypy passed the narrow rows, both in the dry
+  run and at the first commit. mypy checks the body against the annotation, not the values
+  Dash sends in, so only the sweep could catch it.
+
+**5p's grep moved, and §1.2 said it would not: 230 → 234 → 236.** That was a wrong
+prediction about a line count. The annotations fell as predicted:
+- **`Any`-annotated parameters, by AST, fell by exactly the rows.** In 8h1's six files, 148
+  → 72, which is −76. In 8h2's three, 75 → 46, which is −29.
+- **The grep counts lines, and `ruff format` split four signatures one parameter per
+  line.** The widened annotations pushed each past 88 characters. Store parameters that
+  shared a line then each got a line of their own:
+  - 8h1, `_setup.py`, 9 → 13: `on_setup_connect` +2, `on_setup_model_continue` +1,
+    `on_setup_search_connect` +1;
+  - 8h2, `designer/_wizard.py`, 15 → 17: `on_designer_step2_choice` +2.
+- **§1.2's reasoning held for every line it looked at.** Each of the 78 lines keeps an `Any`
+  for its store. It did not foresee the format pass adding lines.
+- **So 5p's grep is a count of lines, not of annotations.** When a format pass splits a
+  signature, the grep rises even though annotations fall. §12's AST count is the figure
+  that measures the work.
+
+| Gate | 8h1, `3d046e9` | 8h2, `ba46e15` |
+|---|---|---|
+| Ruff / format / mypy | `All checks passed!` (`src/ tests/` and `.`); `240 files already formatted`; `Success: no issues found in 93 source files` | the same, at `7dfb44f` and again with the fix before the amend |
+| Tests | `4222 passed, 1 skipped`, exit 0: unchanged, as annotations should leave it | `4222 passed, 1 skipped`, exit 0, at `7dfb44f` and at `ba46e15` |
+| Coverage | `TOTAL 12439 834 93%`: unchanged | `TOTAL 12439 834 93%`: unchanged, at both |
+| Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`; no file under `tests/` touched | the same, at both |
