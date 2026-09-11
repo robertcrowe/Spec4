@@ -136,7 +136,7 @@ def _poll_with_entry(entry: dict[str, Any]) -> Any:
     )
     with (
         patch("spec4.callbacks._chat.streaming.get", return_value=entry),
-        patch("spec4.callbacks._chat._persist_artifacts"),
+        patch("spec4.callbacks._chat.persist_artifacts"),
     ):
         return on_stream_poll(1, session)
 

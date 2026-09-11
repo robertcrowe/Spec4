@@ -2394,7 +2394,7 @@ def reset_agentifier_flow(session: dict[str, Any]) -> None:
     """Return the Agentifier flow to the state a fresh Scout draw expects.
 
     Session-only: no artifact on disk is read, written, or deleted. The current
-    round's ``ai_features.json`` survives because ``_persist_artifacts`` writes
+    round's ``ai_features.json`` survives because ``persist_artifacts`` writes
     it solely under ``STATE_AGENTIFIER_COMPLETE``, which this demotes; earlier
     implemented rounds are never a write target at all. ``session["ai_features"]``
     is deliberately left in place so session and disk stay consistent while the

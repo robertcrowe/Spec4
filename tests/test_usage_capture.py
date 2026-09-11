@@ -10,7 +10,7 @@ Covers:
 - project_manager.save_usage: schema, read-modify-write append, rollups and
   totals derived from history, atomic write, fast-forward note.
 - staleness: usage.json is declared a non-artifact and moves no agent state.
-- session._persist_artifacts: flushes the sink under the pinned version.
+- session.persist_artifacts: flushes the sink under the pinned version.
 - usage_report: the per-agent table.
 """
 
@@ -33,7 +33,7 @@ from spec4 import llm, project_manager, usage_report
 from spec4.agents.designer import generate_mock_streaming
 from spec4.app_constants import FF_PROMPT, STATE_VISION_COMPLETE
 from spec4.layouts._chat import turn_token_text
-from spec4.session import default_session, _persist_artifacts
+from spec4.session import default_session, persist_artifacts
 from tests._chunks import make_stream_chunk, make_usage
 
 _CFG = {"model": "gpt-4o-mini", "api_key": "sk-test"}
@@ -725,7 +725,7 @@ class TestSaveUsageReadModifyWrite:
         session = {**default_session(), "working_dir": str(tmp_path)}
         anthropic_cfg = {"model": "claude-sonnet-4-5-20250929", "api_key": "k"}
         _stream_one("phaser", 300, 50, cfg=anthropic_cfg)
-        _persist_artifacts(session)
+        persist_artifacts(session)
 
         data = project_manager.load_usage(tmp_path, 0)
         assert data is not None
@@ -954,7 +954,7 @@ class TestPersistFlush:
     ) -> None:
         _stream_one("scout")
         session = {**default_session(), "working_dir": str(tmp_path)}
-        _persist_artifacts(session)
+        persist_artifacts(session)
         assert session["phase_version"] == 0
         data = project_manager.load_usage(tmp_path, 0)
         assert data is not None
@@ -973,7 +973,7 @@ class TestPersistFlush:
                 {"role": "assistant", "content": "done"},
             ],
         }
-        _persist_artifacts(session)
+        persist_artifacts(session)
         data = project_manager.load_usage(tmp_path, 0)
         assert data is not None
         assert data["notes"]["fast_forward"] is True
@@ -981,9 +981,9 @@ class TestPersistFlush:
     def test_every_turn_writes_not_only_round_end(self, tmp_path: Path) -> None:
         session = {**default_session(), "working_dir": str(tmp_path)}
         _stream_one("brainstormer")
-        _persist_artifacts(session)
+        persist_artifacts(session)
         _stream_one("stack_advisor")
-        _persist_artifacts(session)
+        persist_artifacts(session)
         data = project_manager.load_usage(tmp_path, 0)
         assert data is not None
         assert set(data["agents"]) == {"brainstormer", "stack_advisor"}
@@ -1000,7 +1000,7 @@ class TestPersistFlush:
         with patch(
             "spec4.project_manager.save_usage", side_effect=OSError("disk full")
         ):
-            _persist_artifacts(session)
+            persist_artifacts(session)
         assert (tmp_path / ".spec4" / "v0" / "vision.json").exists()
 
 
@@ -1212,7 +1212,7 @@ class TestTurnTokenReadout:
         }
         _stream_one("brainstormer", 4180, 312)
         _stream_one("feature_speccer", 900, 40)
-        _persist_artifacts(session)
+        persist_artifacts(session)
         assert session["_turn_usage"] == {
             "agent": "brainstormer",
             "input": 5080,
@@ -1222,7 +1222,7 @@ class TestTurnTokenReadout:
         }
         # A turn that made no call clears the previous numbers, and says so
         # rather than rendering nothing — a blank row reads as a broken counter.
-        _persist_artifacts(session)
+        persist_artifacts(session)
         assert session["_turn_usage"] == {
             "agent": "brainstormer",
             "input": 0,
@@ -1344,7 +1344,7 @@ class TestFinalisationRunsOnce:
 
     The done branch is re-entrant by design — entries are evicted at the next
     ``start()`` rather than popped, so racing polls both reach it and were
-    assumed to return a byte-identical store. `_persist_artifacts` broke that
+    assumed to return a byte-identical store. `persist_artifacts` broke that
     assumption: it drains the process-global usage sink, so the second run found
     it empty, set `_turn_usage` to None, and the chat row lost its token numbers
     while the chars counter beside them stayed. Observed on a finished
@@ -1418,7 +1418,7 @@ class TestFinalisationRunsOnce:
         from spec4.callbacks import on_stream_poll
 
         live, _ = self._finished_stream(tmp_path)
-        with patch("spec4.callbacks._chat._persist_artifacts") as persist:
+        with patch("spec4.callbacks._chat.persist_artifacts") as persist:
             for n in (1, 2, 3):
                 on_stream_poll(n, live)
         assert persist.call_count == 1

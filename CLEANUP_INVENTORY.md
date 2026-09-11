@@ -11075,6 +11075,17 @@ assertions paired with positive; one mutation per seam. It also assumes Rule 1 a
 for Phases 5 and 6 (§50.5(e)) — one commit and one report per sub-phase — which needs
 confirming for Phase 7.
 
+*The mutation rule, as amended at review of 7n1 (§73.5), which §60.7 carries.* It is one
+mutation per seam, read forward:
+- **The new test must fail under it.**
+- **Every other failure is listed and explained.**
+- **A mutation that fails only pre-existing tests, and not the new one, is the failure
+  condition.** It shows the new test does not bite.
+
+Other tests failing alongside it is not a defect; it is evidence that the harm is real. The
+inverted reading, that nothing else may fail, belongs to 6f's redundancy check (§56.1), where
+a second catcher was the point. It does not apply to a seam's proof.
+
 | # | Sub-phase | Scope | Commits | The check that proves it | Petition |
 |---|---|---|---:|---|---|
 | 7a | Rename batch 1 — `session` | 5 names, 281 sites (6 with `_load_working_dir`, if §60.4's reading is taken); `app.py:26, 92, 387` | 1 | rename check; gate | §54.7 × 3 whole-file entries; §60.3 × 2 files (3 tier-A nodes; +1 in `test_session.py` with `_load_working_dir`) |
@@ -13596,3 +13607,439 @@ the record. The citations are:
 - It changes no existing test, and it leaves the tier-A node untouched.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.
+
+## 73. Phase 7n1 — `persist_artifacts`: the first non-agentifier seam
+
+§60.7(j) 7n, the first of three commits. It was planned in plan mode with `ultrathink` and
+approved with three amendments, and it continues PE (§27's cross-reference).
+`_persist_artifacts` is promoted as-is on its §60.4 proposal, as §60.7(e) ruled. It gets a
+public name, a documented session-key contract, and two tests that pin the contract's two
+halves. One mutation, §60.4's, breaks both halves at once.
+
+### 73.1 What landed
+
+| File | Change |
+|---|---|
+| `src/spec4/session.py` | `_persist_artifacts` → `persist_artifacts`, and its first docstring, which is the contract (§73.3) |
+| `tests/test_session.py` | `import copy`; two new tests in `TestPersistArtifacts` (§73.4); the import and 16 calls renamed |
+| 12 more files | by substitution alone (below) |
+
+The 12 files changed by substitution alone:
+- the 8 patch strings: `test_callbacks_stream_poll.py` ×6, `test_stream_error_recovery.py`
+  ×1 and `test_usage_capture.py` ×1;
+- direct imports and calls in `agentifier/test_try_again.py`, `test_agents.py`,
+  `test_project_manager.py`, `test_project_mode.py` and `test_usage_capture.py`;
+- the `src/` mentions: `_chat.py`'s import (`:32`), call (`:582`), failure log line (`:586`)
+  and two docstrings (`:15`, `:309`); `agentifier.py:2397`; `deployer.py:634` and `:679`;
+  `llm.py:266`;
+- one comment outside the gate, `scripts/e2e_agentifier.py:525`.
+
+- **Footprint: 14 files, 133 insertions and 60 deletions.** The substitution rewrote 60
+  occurrences. The only other lines are the docstring, `import copy` and the two tests.
+- **The rename reached more mentions than planned.** The plan named the `_chat` and
+  `agentifier.py` mentions. The rename also found three comments in `deployer.py` and
+  `llm.py`, and one in `scripts/`. Each only names the function, so each stays true.
+- **The old name is gone.** A grep of `src/`, `tests/`, `scripts/` and `evals/` for
+  `_persist_artifacts` returns nothing. `.spec4/` is not searched, under Rule 2.
+- **This closes `_persist_artifacts`'s §55 `promote` row.**
+
+### 73.2 The name, kept: a choice, with its reasoning and its size
+
+§60.4 noted that `persist_artifacts` under-describes the usage flush, and left the name to
+Phase 7. **It is kept.** The contract docstring's first line names the flush ("Flush the
+finished turn to disk: the round's artifacts and its LLM usage"), and every site moved by
+the underscore alone. A better verb would be a rename nobody has sized. **Sized here, so
+Phase 8 can reopen it with the number attached:** 60 occurrences in 14 files.
+- **Tests: 49,** of which 8 are patch strings.
+- **`src/`: 10.** They are the definition; `_chat`'s import, call and log line; and six
+  mentions in docstrings and comments in `_chat.py`, `agentifier.py`, `deployer.py` and
+  `llm.py`.
+- **`scripts/`: 1.**
+
+None sits in a net entry.
+
+### 73.3 The contract, in full
+
+```python
+def persist_artifacts(session: dict[str, Any]) -> None:
+    """Flush the finished turn to disk: the round's artifacts and its LLM usage.
+
+    Called once per turn, when the stream finalises. It writes at most these
+    five session keys, and no others:
+
+    * ``phase_version`` -- only when it is ``None``: the round is resolved and
+      pinned by the first persist, and every artifact is then written under
+      ``.spec4/v{phase_version}/``.
+    * ``_turn_usage`` -- on every call with a working directory: the finished
+      turn's token readout.
+    * ``_deployer_plan_existed`` and ``_deployer_plan_markdown`` -- only when a
+      staged deployment plan is saved.
+    * ``_deployer_readme_markdown`` -- only when a staged README is saved.
+
+    It also drains ``llm``'s process-global usage sink into the round's
+    ``usage.json``, and writes each completed agent's artifact.
+
+    With no ``working_dir`` it is a no-op: nothing is written, to the session or
+    to disk, and the usage sink is not drained -- the records wait for the next
+    turn that has a project.
+    """
+```
+
+**How the contract was verified before it was written.** Its call tree was read in full:
+- `persist_artifacts` itself writes `phase_version` (`:553`, only when `None`) and
+  `_turn_usage` (`:572`);
+- `_persist_spec_artifacts` writes no session key;
+- `_persist_plan_artifacts` writes the three `_deployer_*` keys, each only after the save
+  it describes.
+
+With no working dir the function returns at `:543`, before the drain.
+
+### 73.4 The two tests: the contract's two halves
+
+```python
+    def test_writes_only_its_contract_keys(self) -> None:
+        """The docstring's contract: at most five session keys, and no others.
+
+        Set up so that all five are written -- an unpinned round, a staged plan
+        and a staged README -- then compare the whole session before and after.
+        """
+        session = self._base_session(
+            phase_version=None,
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_plan_markdown="# Plan\n\n## Deployment Steps\n\n1. Ship\n",
+            _deployer_plan_existed=False,
+            _deployer_readme_markdown="# App\n",
+        )
+        before = copy.deepcopy(session)
+        with (
+            patch("spec4.session.project_manager") as mock_pm,
+            patch("spec4.session.llm.drain_usage_records", return_value=[]),
+        ):
+            mock_pm.resolve_phase_version.return_value = (3, True)
+            persist_artifacts(session)
+        assert set(before) <= set(session)
+        changed = {k for k in session if k not in before or session[k] != before[k]}
+        assert changed == {
+            "phase_version",
+            "_turn_usage",
+            "_deployer_plan_existed",
+            "_deployer_plan_markdown",
+            "_deployer_readme_markdown",
+        }
+
+    def test_no_working_dir_writes_and_drains_nothing(self) -> None:
+        """The contract's other half: with no project it is a no-op. The session
+        is untouched and the usage sink is not drained, so the records wait for
+        the next turn that has a project."""
+        session = self._base_session(
+            working_dir=None,
+            phase_version=None,
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_plan_markdown="# Plan\n\n## Deployment Steps\n\n1. Ship\n",
+            _deployer_readme_markdown="# App\n",
+        )
+        before = copy.deepcopy(session)
+        with (
+            patch("spec4.session.project_manager") as mock_pm,
+            patch("spec4.session.llm.drain_usage_records", return_value=[]) as drain,
+        ):
+            persist_artifacts(session)
+        assert session == before
+        drain.assert_not_called()
+        mock_pm.save_usage.assert_not_called()
+```
+
+- **The first test covers the positive half and one negative half.** All five keys are
+  written. Nothing else changes or appears, and no key is removed.
+- **The second test covers the no-op half, which amendment 1 added.** It is seeded with a
+  staged plan and a README, so any write would show. It is the same shape as 7n3's test,
+  so the two seams' proofs are symmetrical.
+- **What the key-set test adds, stated exactly.** This was corrected at review of 7n1,
+  because the first draft over-claimed. A persist that wipes D-PM1's `project_mode` was
+  already pinned at two levels, and §73.5's mutation runs measured which:
+  - **The browser walk,**
+    `tests/integration/test_page_slot_e2e.py::TestClickingTheChatBoxAfterTheArtifactView::test_the_frame_is_still_there`,
+    catches **any** wipe, whether before or after the round is resolved.
+  - **`test_project_manager.py::TestGreenfieldScanStaysAtV0::test_brownfield_scan_writes_v1`**
+    catches an **early** wipe, one that comes before `session_is_brownfield` reads the answer,
+    because the round then flips from v1 to v0.
+  - **No unit-level test pinned a late wipe** until the key-set test.
+    `test_project_mode.py::TestAnswerIsSessionScoped::test_answer_is_not_written_to_disk`
+    checks only that the answer never reaches disk.
+
+  So the new tests are not redundant, even though the walk catches both placements. §54's
+  rule 2 does not trade granularity for a broader path (§54.1), and a browser walk is the
+  broadest path there is.
+
+### 73.5 The proofs: §71 adapted for a promotion, as approved
+
+§71's four-way check proved stdlib isolation, a property a promotion does not have. For a
+promotion the proofs are four.
+
+**1. The rename and token checks.** Their only non-substitution changes are the contract
+and its tests. The §60.2 shell function ran with `P=HEAD` over the working tree, and the
+scratch implementation agreed line for line. It printed three hunks: `session.py`'s
+docstring, `test_session.py`'s `import copy`, and the two tests. The output is the
+reverse-substituted view, so `persist_artifacts` prints as `_persist_artifacts`. Verbatim,
+with only the temp-dir prefixes shortened:
+
+```
+diff -ru '--exclude=CLEANUP_INVENTORY.md' p/src/spec4/session.py c/src/spec4/session.py
+--- p/src/spec4/session.py
++++ c/src/spec4/session.py
+@@ -517,6 +517,27 @@
+ 
+ 
+ def _persist_artifacts(session: dict[str, Any]) -> None:
++    """Flush the finished turn to disk: the round's artifacts and its LLM usage.
++
++    Called once per turn, when the stream finalises. It writes at most these
++    five session keys, and no others:
++
++    * ``phase_version`` -- only when it is ``None``: the round is resolved and
++      pinned by the first persist, and every artifact is then written under
++      ``.spec4/v{phase_version}/``.
++    * ``_turn_usage`` -- on every call with a working directory: the finished
++      turn's token readout.
++    * ``_deployer_plan_existed`` and ``_deployer_plan_markdown`` -- only when a
++      staged deployment plan is saved.
++    * ``_deployer_readme_markdown`` -- only when a staged README is saved.
++
++    It also drains ``llm``'s process-global usage sink into the round's
++    ``usage.json``, and writes each completed agent's artifact.
++
++    With no ``working_dir`` it is a no-op: nothing is written, to the session or
++    to disk, and the usage sink is not drained -- the records wait for the next
++    turn that has a project.
++    """
+     working_dir = session.get("working_dir")
+     if not working_dir:
+         return
+diff -ru '--exclude=CLEANUP_INVENTORY.md' p/tests/test_session.py c/tests/test_session.py
+--- p/tests/test_session.py
++++ c/tests/test_session.py
+@@ -1,3 +1,4 @@
++import copy
+ import json
+ import pathlib
+ from typing import Any
+@@ -364,6 +365,57 @@
+             _persist_artifacts(session)
+         mock_pm.save_readme.assert_not_called()
+ 
++    def test_writes_only_its_contract_keys(self) -> None:
++        """The docstring's contract: at most five session keys, and no others.
++
++        Set up so that all five are written -- an unpinned round, a staged plan
++        and a staged README -- then compare the whole session before and after.
++        """
++        session = self._base_session(
++            phase_version=None,
++            deployer_state=STATE_DEPLOYER_COMPLETE,
++            _deployer_plan_markdown="# Plan\n\n## Deployment Steps\n\n1. Ship\n",
++            _deployer_plan_existed=False,
++            _deployer_readme_markdown="# App\n",
++        )
++        before = copy.deepcopy(session)
++        with (
++            patch("spec4.session.project_manager") as mock_pm,
++            patch("spec4.session.llm.drain_usage_records", return_value=[]),
++        ):
++            mock_pm.resolve_phase_version.return_value = (3, True)
++            _persist_artifacts(session)
++        assert set(before) <= set(session)
++        changed = {k for k in session if k not in before or session[k] != before[k]}
++        assert changed == {
++            "phase_version",
++            "_turn_usage",
++            "_deployer_plan_existed",
++            "_deployer_plan_markdown",
++            "_deployer_readme_markdown",
++        }
++
++    def test_no_working_dir_writes_and_drains_nothing(self) -> None:
++        """The contract's other half: with no project it is a no-op. The session
++        is untouched and the usage sink is not drained, so the records wait for
++        the next turn that has a project."""
++        session = self._base_session(
++            working_dir=None,
++            phase_version=None,
++            deployer_state=STATE_DEPLOYER_COMPLETE,
++            _deployer_plan_markdown="# Plan\n\n## Deployment Steps\n\n1. Ship\n",
++            _deployer_readme_markdown="# App\n",
++        )
++        before = copy.deepcopy(session)
++        with (
++            patch("spec4.session.project_manager") as mock_pm,
++            patch("spec4.session.llm.drain_usage_records", return_value=[]) as drain,
++        ):
++            _persist_artifacts(session)
++        assert session == before
++        drain.assert_not_called()
++        mock_pm.save_usage.assert_not_called()
++
+ 
+ class TestLoadWorkingDir:
+     def _base_session(self) -> dict[str, Any]:
+```
+
+The token check reports `hunks 62; old->new token substitutions 60; layout 0; §54.7
+aliases 0; OTHER 3`. The three OTHER lines are the docstring insert, `import copy` and the
+tests insert.
+
+**2. The contract tests, with the mutation.**
+
+The mutation is §60.4's, placed per amendment 1 as the first statement of the body, before
+the working-dir guard:
+
+```python
+    session["project_mode"] = None
+    working_dir = session.get("working_dir")
+```
+
+It was anchored exactly once, run on the full suite, then restored from the saved bytes,
+with its sha256 checked:
+
+| Test | Under the mutation | Why |
+|---|---|---|
+| `test_session.py::TestPersistArtifacts::test_writes_only_its_contract_keys` (new) | **FAIL** | `project_mode` is a key outside the contract's five |
+| `test_session.py::TestPersistArtifacts::test_no_working_dir_writes_and_drains_nothing` (new) | **FAIL** | the no-op half: with no working dir, the session still changed |
+| `test_project_manager.py::TestGreenfieldScanStaysAtV0::test_brownfield_scan_writes_v1` | **FAIL** | the wipe comes before `session_is_brownfield` reads the answer, so the round flips from v1 to v0 |
+| `tests/integration/test_page_slot_e2e.py::TestClickingTheChatBoxAfterTheArtifactView::test_the_frame_is_still_there` | **FAIL** | the walk opens an existing project, and with the answer wiped at every persist the frame the browser shows changes |
+| everything else | pass | `4 failed, 4198 passed, 1 skipped` |
+
+**The two extra failures are deterministic, and they are evidence, not noise.** A probe ran
+the two tests three times unmutated (pass, pass, pass) and three times mutated (fail, fail,
+fail), restoring the file byte-identical.
+
+**Under the mutation rule as amended at this review (§60.6), this result is a pass.** Both
+new tests fail, and every other failure is listed and explained. The plan had predicted
+exactly the two new tests. That prediction applied the inverted reading, which belongs to
+6f's redundancy check (§56.1). The contract keys are not decoration: wiping one changes which
+round is written and what a browser shows.
+
+**A diagnostic, recorded for §73.4's claim.** The same line was also placed at the end of the
+body, after the round is resolved (§60.4's literal "append"). There it fails the key-set test
+and the browser walk only: `2 failed, 4200 passed, 1 skipped`, restored byte-identical. That
+placement leaves the no-op half untested, which is why amendment 1 moved it. It is not the
+committed proof.
+
+The harness outputs, verbatim:
+
+```
+M persist_artifacts: session['project_mode'] = None before the guard: UNEXPECTED; restored byte-identical: True
+   FAILED tests/integration/test_page_slot_e2e.py::TestClickingTheChatBoxAfterTheArtifactView::test_the_frame_is_still_there
+   FAILED tests/test_project_manager.py::TestGreenfieldScanStaysAtV0::test_brownfield_scan_writes_v1
+   FAILED tests/test_session.py::TestPersistArtifacts::test_no_working_dir_writes_and_drains_nothing
+   FAILED tests/test_session.py::TestPersistArtifacts::test_writes_only_its_contract_keys
+   summary: 4 failed, 4198 passed, 1 skipped in 101.70s (0:01:41)
+```
+
+The harness printed "UNEXPECTED" against the plan's prediction of exactly two. The ruling
+recorded above reads the same result as a pass.
+
+```
+unmutated run 1: [] 2 passed in 8.71s
+unmutated run 2: [] 2 passed in 8.74s
+unmutated run 3: [] 2 passed in 8.60s
+mutated   run 1: ['test_brownfield_scan_writes_v1', 'test_the_frame_is_still_there'] 2 failed in 21.45s
+mutated   run 2: ['test_brownfield_scan_writes_v1', 'test_the_frame_is_still_there'] 2 failed in 21.26s
+mutated   run 3: ['test_brownfield_scan_writes_v1', 'test_the_frame_is_still_there'] 2 failed in 21.27s
+restored byte-identical: True
+```
+
+```
+   FAILED tests/integration/test_page_slot_e2e.py::TestClickingTheChatBoxAfterTheArtifactView::test_the_frame_is_still_there
+   FAILED tests/test_session.py::TestPersistArtifacts::test_writes_only_its_contract_keys
+   summary: 2 failed, 4200 passed, 1 skipped in 103.10s (0:01:43)
+restored byte-identical: True
+```
+
+**3. Check 4's landings.** Eight rewritten strings, and one new string used twice:
+
+| String | Form | Module named | How the caller reaches it | The patch lands on |
+|---|---|---|---|---|
+| `test_callbacks_stream_poll.py:107`, `:126`, `:186`, `:240`, `:263`, `:660` | `patch("…")` path | `spec4.callbacks._chat` | re-exports it from `spec4.session`, and calls it | `_poll_finalise@582` |
+| `test_stream_error_recovery.py:139` | path | `spec4.callbacks._chat` | the same | `_poll_finalise@582` |
+| `test_usage_capture.py:1421` | path | `spec4.callbacks._chat` | the same | `_poll_finalise@582` |
+| `test_session.py:387`, `:415` (new) | path, a module attribute | `spec4.session.llm`, which is `spec4.llm` | `persist_artifacts` reads `llm.drain_usage_records`, with `llm` being `session`'s binding of `spec4.llm` | `persist_artifacts@559` |
+
+All pass. The new string is checked in amendment 2's module-attribute form: the target is
+the function `drain_usage_records`, and the module patched is the very object
+`persist_artifacts` resolves it through. These rows join §68.10's landing reference.
+
+**4. The old name is gone,** by the grep in §73.1.
+
+### 73.6 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | none in the diff |
+| 456 node ids | **456 / 456 collect**; 4,203 collected (two new tests) |
+| 19 tier-B files / 33 classes | **5 files with hunks, 16 hunks, none inside a listed class** (below) |
+| tier-A nodes | none touched. `test_session.py`'s one, `TestLoadWorkingDir::test_picking_a_directory_reopens_the_question`, is outside the diff |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_agents.py` | `TestLoadDesignManifest` **2271–2298**; `TestAiFeaturesForPhaserFullSurface` **4962–5060**; `TestPhaserSpecReferenceDirective` **5227–5268** | 2 — 2526, 2547 | **none inside a listed class** |
+| `test_callbacks_stream_poll.py` | `TestStreamedTokenCounter` **737–757** | 6 — 107, 126, 186, 240, 263, 660 | **none inside a listed class** |
+| `test_project_manager.py` | `TestPhaseSpecPreamble` **745–946**; `TestRenderPhaseStackRoutingAndNfr` **949–1044**; `TestPreambleTwoAltitudesAndSurfaces` **1047–1175**; `TestSessionIsBrownfield` **1178–1204** | 5 — 340, 353, 366, 1212, 1222 | **none inside a listed class** |
+| `test_project_mode.py` | `TestDesignerFollowsTheAnswer` **274–316** | 2 — 346, 348 | **none inside a listed class** |
+| `test_stream_error_recovery.py` | `TestEmptyTurnBackstop` **194–250** | 1 — 139 | **none inside a listed class** |
+
+No petition is needed. No net entry holds the name, as 7n's plan found.
+
+### 73.7 Gate results (verbatim), and coverage per file
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4202 passed, 1 skipped` (exit 0): two more than 7l, the two new tests; 4,203 collected |
+| Coverage | same run | `TOTAL 12425 stmts, 891 miss, 93%`, identical to 7l. A docstring adds no statement |
+
+| File | Before (`3f73b8a`) | After | The missed lines |
+|---|---|---|---|
+| `src/spec4/session.py` | 196 stmts, 34 miss | 196 stmts, 34 miss | the same lines, moved down 21 by the new docstring (for example `574–575` → `595–596`) |
+
+### 73.8 Record changes carried in this commit
+
+- **§60.6: the mutation rule is amended,** as ruled at review of 7n1. The new test must fail;
+  every other failure is listed and explained; a mutation that fails only pre-existing tests
+  is the failure condition. The inverted reading belongs to 6f (§56.1).
+- **This section is appended through the add-only step.** The §60.6 amendment only inserts
+  lines, so the guard finds no hunk in this record's diff that deletes a line.
+
+### 73.9 What this sub-phase did not do
+
+- It did not stop for a design change. The template held, with a clarification of the rule
+  rather than a change of design, so 7n2 and 7n3 follow back to back, as ruled at review of
+  7n1. The stop comes after 7n3.
+- It adds no seam beyond the contract: no parameter, no return value, and no change to
+  what the function does.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.
+
+### 73.10 The amend
+
+The first commit of this sub-phase, `b069414`, was made **without this section**. Its code,
+tests, gate and checks were all as recorded above, and its record change was §60.6's
+amendment alone. Three things combined:
+- **The add-only step refused this section, correctly by its own rule.** The verbatim
+  rename-check output in §73.5 carries a diff's whitespace-only context lines: the two blank
+  lines between top-level functions in `session.py`. The step's blank-run check read those
+  as a run of blank lines.
+- **The commit chain did not stop.** It relied on `set -e` to halt at the first failing
+  step, and in this shell `set -e` did not take effect. Every earlier chain ran green, so
+  this was never exercised.
+- **The commit ran anyway,** and its message described a section it did not contain.
+
+`b069414` had not been pushed, so it is amended: this section and this note are the only
+additions. As at 7d (§64.10–§64.11), a commit cannot name its own hash, so 7n2's commit
+records the amended one. Two fixes go with it:
+- **Every chain now stops on each step's exit status explicitly** (`|| die`), not through
+  `set -e`.
+- **The add-only step's blank-run check now skips fenced blocks,** where verbatim output
+  lives. It still refuses a run of blank lines in the prose. "Add only, stop on anything it
+  did not write, verify the old record intact at the front" is unchanged.

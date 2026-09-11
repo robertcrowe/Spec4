@@ -104,7 +104,7 @@ class TestStreamPollNormalDone:
 
         with (
             patch("spec4.callbacks._chat.streaming.get", return_value=done_entry),
-            patch("spec4.callbacks._chat._persist_artifacts", return_value=None),
+            patch("spec4.callbacks._chat.persist_artifacts", return_value=None),
         ):
             result = on_stream_poll(1, session)
 
@@ -123,7 +123,7 @@ class TestStreamPollNormalDone:
 
         with (
             patch("spec4.callbacks._chat.streaming.get", return_value=done_entry),
-            patch("spec4.callbacks._chat._persist_artifacts", return_value=None),
+            patch("spec4.callbacks._chat.persist_artifacts", return_value=None),
         ):
             result = on_stream_poll(1, session)
 
@@ -183,7 +183,7 @@ class TestStreamPollDoneFinalisation:
         _wait_until(lambda: (streaming.get(stream_id) or {}).get("done") is True)
 
         session = _session_with_stream(_stream_id=stream_id)
-        with patch("spec4.callbacks._chat._persist_artifacts", return_value=None):
+        with patch("spec4.callbacks._chat.persist_artifacts", return_value=None):
             first = on_stream_poll(1, session)
             survived = streaming.get(stream_id)
             second = on_stream_poll(1, _session_with_stream(_stream_id=stream_id))
@@ -237,7 +237,7 @@ class TestStreamPollDoneFinalisation:
 
         with (
             patch("spec4.callbacks._chat.streaming.get", return_value=done_entry),
-            patch("spec4.callbacks._chat._persist_artifacts", return_value=None),
+            patch("spec4.callbacks._chat.persist_artifacts", return_value=None),
         ):
             result_a = on_stream_poll(1, _session_with_stream())
             result_b = on_stream_poll(1, _session_with_stream())
@@ -260,7 +260,7 @@ class TestStreamPollDoneFinalisation:
         with (
             patch("spec4.callbacks._chat.streaming.get", return_value=done_entry),
             patch(
-                "spec4.callbacks._chat._persist_artifacts",
+                "spec4.callbacks._chat.persist_artifacts",
                 side_effect=RuntimeError("boom"),
             ),
         ):
@@ -657,7 +657,7 @@ class TestStreamPollStatusLine:
 
         with (
             patch("spec4.callbacks._chat.streaming.get", return_value=entry),
-            patch("spec4.callbacks._chat._persist_artifacts", return_value=None),
+            patch("spec4.callbacks._chat.persist_artifacts", return_value=None),
         ):
             result = on_stream_poll(1, session)
 

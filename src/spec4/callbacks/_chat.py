@@ -12,7 +12,7 @@ re-runs a failed step once the developer picks a model. The direction is one-way
 -- nothing here imports ``_gate`` or ``_nav``, and nothing here imports the
 ``spec4.callbacks`` package, which rule 4 of the layering contract forbids
 (CLEANUP_INVENTORY.md 15.2). It is also why the ``_chat`` module remains the
-patch surface for ``_get_agent_gen``, ``_persist_artifacts`` and ``streaming``:
+patch surface for ``_get_agent_gen``, ``persist_artifacts`` and ``streaming``:
 every path that reaches them, gate answers included, runs through this module.
 """
 
@@ -29,7 +29,7 @@ from spec4.agentifier.panel_closure import close_selection, pool_from_dicts
 from spec4.layouts._llm_gate import is_open as _gate_is_open
 from spec4.session import (
     _get_agent_gen,
-    _persist_artifacts,
+    persist_artifacts,
 )
 
 
@@ -306,7 +306,7 @@ def on_breadth_try_again(n_clicks: Any, session: Any, note: Any = None) -> Any:
 
     Session-only. Nothing on disk is touched: the reset demotes
     ``agentifier_state``, which is the sole condition under which
-    ``_persist_artifacts`` writes ``ai_features.json``, so the current round's
+    ``persist_artifacts`` writes ``ai_features.json``, so the current round's
     artifact is retained until the flow re-completes and replaces it. Earlier
     implemented rounds are read (for revision carry-forward) but never written.
 
@@ -579,11 +579,11 @@ def _poll_finalise(
     """Claim the finalise once, persist artifacts, apply any display override."""
     if streaming.claim_finalise(stream_id):
         try:
-            _persist_artifacts(agent_session)
+            persist_artifacts(agent_session)
         except Exception as exc:  # a side effect — never strand the chat
             if _DEV_MODE:
                 print(
-                    f"[poll {stream_id[:8]}] _persist_artifacts failed "
+                    f"[poll {stream_id[:8]}] persist_artifacts failed "
                     f"({type(exc).__name__}: {exc}); finalising anyway",
                     flush=True,
                 )

@@ -631,7 +631,7 @@ def run(  # noqa: C901, PLR0912, PLR0915  # ten-yield generator; every remaining
                     "Feel free to continue refining or ask any follow-up questions."
                 )
                 messages.append({"role": "assistant", "content": keep_msg})
-                # Drop the staged plan so _persist_artifacts can't save it on a
+                # Drop the staged plan so persist_artifacts can't save it on a
                 # later turn — the developer just told us not to.
                 session["_deployer_plan_markdown"] = None
                 yield keep_msg
@@ -676,7 +676,7 @@ def run(  # noqa: C901, PLR0912, PLR0915  # ten-yield generator; every remaining
     last_text = last_assistant_text(messages)
     if session.get("_deployer_generating_readme"):
         # This turn authored the project README (set by the pending-readme
-        # handler above). Stage it for _persist_artifacts to write to the
+        # handler above). Stage it for persist_artifacts to write to the
         # project root; the deployment plan is already complete and saved.
         session["_deployer_generating_readme"] = False
         session["_deployer_readme_markdown"] = last_text

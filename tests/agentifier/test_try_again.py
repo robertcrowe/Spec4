@@ -32,7 +32,7 @@ from spec4.agentifier.scout import Candidate, ScoutOutput
 from spec4.agentifier.tier_analyst import TierAnalystOutput
 from spec4.app_constants import STATE_AGENTIFIER_COMPLETE, STATE_IN_PROGRESS
 from spec4.callbacks import on_breadth_try_again
-from spec4.session import default_session, _persist_artifacts
+from spec4.session import default_session, persist_artifacts
 
 from .test_agentifier_orchestrator import (
     _LLM_CONFIG,
@@ -189,7 +189,7 @@ class TestDiskIsUntouched:
         assert (_digest(prior), _digest(current)) == before
 
     def test_persist_after_reset_writes_nothing(self, tmp_path: Any) -> None:
-        """The retention guarantee: _persist_artifacts writes ai_features.json
+        """The retention guarantee: persist_artifacts writes ai_features.json
         only under STATE_AGENTIFIER_COMPLETE, which the reset demotes."""
         wd, prior, current = _project(tmp_path)
         before = (_digest(prior), _digest(current))
@@ -201,7 +201,7 @@ class TestDiskIsUntouched:
             "ai_features": {"ai_features": [{"name": "replacement"}]},
         }
         reset_agentifier_flow(session)
-        _persist_artifacts(session)
+        persist_artifacts(session)
 
         assert (_digest(prior), _digest(current)) == before
 

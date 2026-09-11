@@ -1,3 +1,4 @@
+import copy
 import json
 import pathlib
 from typing import Any
@@ -22,7 +23,7 @@ from spec4.session import (
     default_session,
     _get_agent_gen,
     load_working_dir,
-    _persist_artifacts,
+    persist_artifacts,
     reset_for_new_project,
     run_agent_blocking,
 )
@@ -176,7 +177,7 @@ class TestPersistArtifacts:
     def test_no_working_dir_is_noop(self) -> None:
         session = self._base_session(working_dir=None)
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_vision.assert_not_called()
         mock_pm.save_stack.assert_not_called()
         mock_pm.save_phases.assert_not_called()
@@ -188,7 +189,7 @@ class TestPersistArtifacts:
             brainstormer_state=STATE_VISION_COMPLETE, vision_statement=vision
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_vision.assert_called_once_with("/some/dir", vision, 0)
 
     def test_does_not_save_vision_when_state_in_progress(self) -> None:
@@ -196,7 +197,7 @@ class TestPersistArtifacts:
             brainstormer_state=STATE_IN_PROGRESS, vision_statement={"name": "App"}
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_vision.assert_not_called()
 
     def test_saves_stack_when_complete(self) -> None:
@@ -205,7 +206,7 @@ class TestPersistArtifacts:
             stack_advisor_state=STATE_STACK_COMPLETE, stack_statement=stack
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_stack.assert_called_once_with("/some/dir", stack, 0)
 
     def test_saves_phases_when_complete(self) -> None:
@@ -214,7 +215,7 @@ class TestPersistArtifacts:
             phaser_state=STATE_PHASES_COMPLETE, phases=phases, phase_version=2
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_phases.assert_called_once_with(
             "/some/dir",
             phases,
@@ -233,7 +234,7 @@ class TestPersistArtifacts:
             phaser_state=STATE_PHASES_COMPLETE, phases=phases, phase_version=0
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_phases.assert_called_once_with(
             "/some/dir",
             phases,
@@ -257,7 +258,7 @@ class TestPersistArtifacts:
         )
         with patch("spec4.session.project_manager") as mock_pm:
             mock_pm.resolve_phase_version.return_value = (0, True)
-            _persist_artifacts(session)
+            persist_artifacts(session)
         assert session["phase_version"] == 0
         mock_pm.save_vision.assert_called_once_with("/some/dir", vision, 0)
 
@@ -271,7 +272,7 @@ class TestPersistArtifacts:
         )
         with patch("spec4.session.project_manager") as mock_pm:
             mock_pm.resolve_phase_version.return_value = (1, False)
-            _persist_artifacts(session)
+            persist_artifacts(session)
         assert session["phase_version"] == 1
         mock_pm.save_code_review.assert_called_once_with("/some/dir", review, 1)
 
@@ -281,13 +282,13 @@ class TestPersistArtifacts:
             code_scanner_state=STATE_REVIEW_COMPLETE, code_review=review
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_code_review.assert_called_once_with("/some/dir", review, 0)
 
     def test_does_not_save_deployment_plan_without_markdown(self) -> None:
         """A returning user lands in Deployer with deployer_state=COMPLETE
         (lifted by load_working_dir from disk presence) but no
-        _deployer_plan_markdown. After any chat turn, _persist_artifacts must
+        _deployer_plan_markdown. After any chat turn, persist_artifacts must
         NOT overwrite the on-disk plan with a stray assistant message."""
         session = self._base_session(
             deployer_state=STATE_DEPLOYER_COMPLETE,
@@ -298,7 +299,7 @@ class TestPersistArtifacts:
             ],
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_deployment_plan.assert_not_called()
 
     def test_does_not_save_when_markdown_lacks_deployment_steps(self) -> None:
@@ -309,7 +310,7 @@ class TestPersistArtifacts:
             _deployer_plan_markdown="No, keep the existing plan.",
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_deployment_plan.assert_not_called()
 
     def test_saves_deployment_plan_when_markdown_set(self) -> None:
@@ -319,7 +320,7 @@ class TestPersistArtifacts:
             _deployer_plan_markdown=plan,
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_deployment_plan.assert_called_once_with("/some/dir", plan, 0)
 
     def test_clears_markdown_and_marks_existed_after_save(self) -> None:
@@ -330,7 +331,7 @@ class TestPersistArtifacts:
             _deployer_plan_existed=False,
         )
         with patch("spec4.session.project_manager"):
-            _persist_artifacts(session)
+            persist_artifacts(session)
         # Subsequent generations must trigger the confirmation flow.
         assert session["_deployer_plan_existed"] is True
         # Don't re-save the same content on the next persist tick.
@@ -344,7 +345,7 @@ class TestPersistArtifacts:
             _deployer_readme_markdown=readme,
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_readme.assert_called_once_with("/some/dir", readme)
         # Cleared so it is not re-written on the next persist tick.
         assert session["_deployer_readme_markdown"] is None
@@ -355,7 +356,7 @@ class TestPersistArtifacts:
             _deployer_readme_markdown="   \n  ",
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_readme.assert_not_called()
 
     def test_does_not_save_readme_when_unstaged(self) -> None:
@@ -364,8 +365,59 @@ class TestPersistArtifacts:
             _deployer_plan_markdown=None,
         )
         with patch("spec4.session.project_manager") as mock_pm:
-            _persist_artifacts(session)
+            persist_artifacts(session)
         mock_pm.save_readme.assert_not_called()
+
+    def test_writes_only_its_contract_keys(self) -> None:
+        """The docstring's contract: at most five session keys, and no others.
+
+        Set up so that all five are written -- an unpinned round, a staged plan
+        and a staged README -- then compare the whole session before and after.
+        """
+        session = self._base_session(
+            phase_version=None,
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_plan_markdown="# Plan\n\n## Deployment Steps\n\n1. Ship\n",
+            _deployer_plan_existed=False,
+            _deployer_readme_markdown="# App\n",
+        )
+        before = copy.deepcopy(session)
+        with (
+            patch("spec4.session.project_manager") as mock_pm,
+            patch("spec4.session.llm.drain_usage_records", return_value=[]),
+        ):
+            mock_pm.resolve_phase_version.return_value = (3, True)
+            persist_artifacts(session)
+        assert set(before) <= set(session)
+        changed = {k for k in session if k not in before or session[k] != before[k]}
+        assert changed == {
+            "phase_version",
+            "_turn_usage",
+            "_deployer_plan_existed",
+            "_deployer_plan_markdown",
+            "_deployer_readme_markdown",
+        }
+
+    def test_no_working_dir_writes_and_drains_nothing(self) -> None:
+        """The contract's other half: with no project it is a no-op. The session
+        is untouched and the usage sink is not drained, so the records wait for
+        the next turn that has a project."""
+        session = self._base_session(
+            working_dir=None,
+            phase_version=None,
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_plan_markdown="# Plan\n\n## Deployment Steps\n\n1. Ship\n",
+            _deployer_readme_markdown="# App\n",
+        )
+        before = copy.deepcopy(session)
+        with (
+            patch("spec4.session.project_manager") as mock_pm,
+            patch("spec4.session.llm.drain_usage_records", return_value=[]) as drain,
+        ):
+            persist_artifacts(session)
+        assert session == before
+        drain.assert_not_called()
+        mock_pm.save_usage.assert_not_called()
 
 
 class TestLoadWorkingDir:

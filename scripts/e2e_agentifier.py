@@ -522,7 +522,7 @@ def run_e2e(project_dir: str) -> int:  # noqa: PLR0912, PLR0915
         f"FAIL (d): agentifier_state={state!r}; expected STATE_AGENTIFIER_COMPLETE"
     )
 
-    # Write catalog to disk (as _persist_artifacts would)
+    # Write catalog to disk (as persist_artifacts would)
     from spec4 import project_manager  # noqa: PLC0415
     project_manager.save_ai_catalog(str(project_path), catalog)
 

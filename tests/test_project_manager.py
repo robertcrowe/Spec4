@@ -337,7 +337,7 @@ class TestIdempotentWrites:
             STATE_REVIEW_COMPLETE,
             STATE_VISION_COMPLETE,
         )
-        from spec4.session import _persist_artifacts
+        from spec4.session import persist_artifacts
 
         session: dict[str, Any] = {
             "working_dir": str(tmp_path),
@@ -350,7 +350,7 @@ class TestIdempotentWrites:
             "agentifier_catalog_done": True,
             "ai_catalog": {"catalog": []},
         }
-        _persist_artifacts(session)
+        persist_artifacts(session)
         version = session["phase_version"]
         base = tmp_path / ".spec4" / f"v{version}"
 
@@ -363,7 +363,7 @@ class TestIdempotentWrites:
         os.utime(design / "mock.html", (2000, 2000))
 
         # A later agent turn re-runs the funnel; vision is unchanged.
-        _persist_artifacts(session)
+        persist_artifacts(session)
 
         assert os.stat(base / "vision.json").st_mtime == 1000  # not bumped
         assert (
@@ -1209,7 +1209,7 @@ class TestGreenfieldScanStaysAtV0:
 
     def _scanned(self, tmp_path: Path, mode: str | None) -> dict[str, Any]:
         from spec4.app_constants import STATE_REVIEW_COMPLETE
-        from spec4.session import default_session, _persist_artifacts
+        from spec4.session import default_session, persist_artifacts
 
         session = {
             **default_session(),
@@ -1219,7 +1219,7 @@ class TestGreenfieldScanStaysAtV0:
             "code_scanner_state": STATE_REVIEW_COMPLETE,
             "code_review": {"summary": "x"},
         }
-        _persist_artifacts(session)
+        persist_artifacts(session)
         return session
 
     def _version_dirs(self, tmp_path: Path) -> list[str]:

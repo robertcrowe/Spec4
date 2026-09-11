@@ -516,7 +516,28 @@ def summarize_turn_usage(agent: Any, records: list[dict[str, Any]]) -> dict[str,
     return summary
 
 
-def _persist_artifacts(session: dict[str, Any]) -> None:
+def persist_artifacts(session: dict[str, Any]) -> None:
+    """Flush the finished turn to disk: the round's artifacts and its LLM usage.
+
+    Called once per turn, when the stream finalises. It writes at most these
+    five session keys, and no others:
+
+    * ``phase_version`` -- only when it is ``None``: the round is resolved and
+      pinned by the first persist, and every artifact is then written under
+      ``.spec4/v{phase_version}/``.
+    * ``_turn_usage`` -- on every call with a working directory: the finished
+      turn's token readout.
+    * ``_deployer_plan_existed`` and ``_deployer_plan_markdown`` -- only when a
+      staged deployment plan is saved.
+    * ``_deployer_readme_markdown`` -- only when a staged README is saved.
+
+    It also drains ``llm``'s process-global usage sink into the round's
+    ``usage.json``, and writes each completed agent's artifact.
+
+    With no ``working_dir`` it is a no-op: nothing is written, to the session or
+    to disk, and the usage sink is not drained -- the records wait for the next
+    turn that has a project.
+    """
     working_dir = session.get("working_dir")
     if not working_dir:
         return

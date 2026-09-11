@@ -343,9 +343,9 @@ class TestAnswerIsSessionScoped:
         (tmp_path / "main.py").write_text("x")
         session = load_working_dir(str(tmp_path), default_session())
         session["project_mode"] = PROJECT_MODE_NEW
-        from spec4.session import _persist_artifacts
+        from spec4.session import persist_artifacts
 
-        _persist_artifacts(session)
+        persist_artifacts(session)
         for path in (tmp_path / ".spec4").rglob("*"):
             if path.is_file():
                 assert "project_mode" not in path.read_text(errors="replace")

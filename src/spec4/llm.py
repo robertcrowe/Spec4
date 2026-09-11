@@ -263,7 +263,7 @@ def _build_completion_kwargs(
 # asyncio bridge runs in a separate thread that does not inherit contextvars,
 # so the only context reliably present at the hook is what the caller already
 # passes — ``agent_name`` and the kwargs about to be sent. The turn owner
-# (``session._persist_artifacts`` for chat turns, the Designer generation
+# (``session.persist_artifacts`` for chat turns, the Designer generation
 # thread for mocks) drains the sink once the active round's version is known
 # and writes ``.spec4/v{N}/usage.json`` via ``project_manager.save_usage``.
 #

@@ -2523,7 +2523,7 @@ class TestDeployerExistingPlanGuard:
         # No LLM call — the agent short-circuits with the keep_msg.
         mock_llm.assert_not_called()
         assert "kept" in output.lower() or "existing" in output.lower()
-        # Critical: the staged markdown is cleared so _persist_artifacts
+        # Critical: the staged markdown is cleared so persist_artifacts
         # cannot save it on a subsequent turn.
         assert session["_deployer_plan_markdown"] is None
         assert session["_deployer_pending_plan"] is False
@@ -2544,7 +2544,7 @@ class TestDeployerExistingPlanGuard:
         with patch("spec4.llm.litellm.completion") as mock_llm:
             collect(deployer.run("yes", session, session["llm_config"]))
         mock_llm.assert_not_called()
-        # Markdown is still set so _persist_artifacts can write it.
+        # Markdown is still set so persist_artifacts can write it.
         assert session["_deployer_plan_markdown"] == plan
         assert session["deployer_state"] == STATE_DEPLOYER_COMPLETE
         assert session["_deployer_pending_plan"] is False
