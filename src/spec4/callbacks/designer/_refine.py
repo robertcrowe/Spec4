@@ -115,12 +115,12 @@ def on_designer_refine_image_delete(
     prevent_initial_call=True,
 )
 def on_designer_regenerate(  # noqa: PLR0913  # parameters are the callback's Input/State list
-    n: Any,
-    refine_text: Any,
-    annotations: Any,
+    n: int | None,
+    refine_text: str | None,
+    annotations: list[str | None],
     store: Any,
     session: Any,
-    image_support: Any,
+    image_support: bool | None,
 ) -> Any:
     if not n or not store:
         return no_update, no_update, no_update

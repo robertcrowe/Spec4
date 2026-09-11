@@ -234,11 +234,11 @@ def on_designer_screenshot_delete(n_clicks_list: Any, store: Any) -> Any:
     prevent_initial_call=True,
 )
 def on_designer_generate_mock(
-    n: Any,
-    annotations: Any,
+    n: int | None,
+    annotations: list[str | None],
     store: Any,
     session: Any,
-    image_support: Any,
+    image_support: bool | None,
 ) -> Any:
     if not n or not store:
         return no_update, no_update, no_update

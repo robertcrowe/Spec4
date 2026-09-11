@@ -68,7 +68,7 @@ _MAX_DELIVERY_TICKS = 480
 
 
 def _llm_params(
-    session: dict[str, Any], image_support: Any
+    session: dict[str, Any], image_support: bool | None
 ) -> tuple[
     str,
     str,
@@ -231,7 +231,7 @@ def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbati
     working_dir: str | None,
     model: str,
     api_key: str,
-    search_cfg: Any,
+    search_cfg: websearch.SearchConfig | None,
     image_support: bool,
     planning_context: dict[str, Any] | None = None,
     existing_html: str | None = None,
@@ -365,7 +365,7 @@ def _mock_stop_previous(store: dict[str, Any]) -> None:
 
 
 def _mock_design_dir(
-    working_dir: Any, session: dict[str, Any] | None
+    working_dir: str | None, session: dict[str, Any] | None
 ) -> pathlib.Path | None:
     """Resolve the version's design directory; None when it cannot be resolved."""
     design_dir_path: pathlib.Path | None = None
@@ -383,7 +383,9 @@ def _mock_design_dir(
     return design_dir_path
 
 
-def _mock_collect_snippets(existing_html: str | None, working_dir: Any) -> list[str]:
+def _mock_collect_snippets(
+    existing_html: str | None, working_dir: str | None
+) -> list[str]:
     """UI source snippets for a first draw; none on a refine."""
     snippets: list[str] = []
     if not existing_html and working_dir:
@@ -396,8 +398,8 @@ def _mock_collect_snippets(existing_html: str | None, working_dir: Any) -> list[
 def _mock_finalise_draw(
     accumulated: str,
     buf_entry: dict[str, Any],
-    ds: Any,
-    design_dir_path: Any,
+    ds: DesignerSession,
+    design_dir_path: pathlib.Path | None,
     planning_context: dict[str, Any] | None,
 ) -> None:
     """Extract the HTML from a finished draw, save it and its manifest."""
@@ -452,7 +454,9 @@ def _mock_report_failure(exc: Exception, buf_entry: dict[str, Any]) -> None:
     buf_entry["text"] += f"__GENERATION_ERROR__: {type(exc).__name__}: {msg}"
 
 
-def _mock_persist_session(working_dir: Any, session: dict[str, Any] | None) -> None:
+def _mock_persist_session(
+    working_dir: str | None, session: dict[str, Any] | None
+) -> None:
     """Persist the designer session after a draw, however it ended."""
     if working_dir:
         try:

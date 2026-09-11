@@ -15190,3 +15190,54 @@ covered it before any commit, and it is now checked again in the real tree.
 | Tests | `4210 passed, 1 skipped` (exit 0) |
 | Coverage | `TOTAL 12425 stmts, 891 miss, 93%`, **unchanged** |
 | Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
+
+### 77.6 Commit 7o3: area 3, `callbacks/designer/` and `layouts/` (16 rows, 4 files)
+
+| # | Line (§60's base → HEAD) | Target | `Any` becomes | Type-only import |
+|---:|---|---|---|---|
+| 1 | `callbacks/designer/_mock_gen.py:71` | `image_support` | `bool \| None` |  |
+| 2 | `callbacks/designer/_mock_gen.py:234` | `search_cfg` | `websearch.SearchConfig \| None` |  |
+| 3 | `callbacks/designer/_mock_gen.py:368` | `working_dir` | `str \| None` |  |
+| 4 | `callbacks/designer/_mock_gen.py:386` | `working_dir` | `str \| None` |  |
+| 5 | `callbacks/designer/_mock_gen.py:399` | `ds` | `DesignerSession` |  |
+| 6 | `callbacks/designer/_mock_gen.py:400` | `design_dir_path` | `pathlib.Path \| None` |  |
+| 7 | `callbacks/designer/_mock_gen.py:455` | `working_dir` | `str \| None` |  |
+| 8 | `callbacks/designer/_refine.py:118` | `n` | `int \| None` |  |
+| 9 | `callbacks/designer/_refine.py:119` | `refine_text` | `str \| None` |  |
+| 10 | `callbacks/designer/_refine.py:120` | `annotations` | `list[str \| None]` |  |
+| 11 | `callbacks/designer/_refine.py:123` | `image_support` | `bool \| None` |  |
+| 12 | `callbacks/designer/_wizard.py:237` | `n` | `int \| None` |  |
+| 13 | `callbacks/designer/_wizard.py:238` | `annotations` | `list[str \| None]` |  |
+| 14 | `callbacks/designer/_wizard.py:241` | `image_support` | `bool \| None` |  |
+| 15 | `layouts/_shared.py:113` | `id` | `str \| dict[str, str] \| None` |  |
+| 16 | `layouts/_shared.py:195` | `value` | `float \| None` |  |
+
+- **5p's grep: 260 → 244 (−16).** `callbacks/designer/` 44 → 30 (−14); `layouts/` 14 → 12
+  (−2); every other area unchanged.
+- **Strip check against `2ebb73d`:** `files changed: 4; files with residue: 0`.
+- **Strict mypy:** `Success: no issues found in 92 source files`.
+- **Footprint:** 4 files, 20 insertions and 16 deletions. No `TYPE_CHECKING` import is
+  needed: `websearch`, `pathlib` and `DesignerSession` are already bound in `_mock_gen.py`.
+  `ruff format` wrapped two signatures there, `_mock_collect_snippets` and
+  `_mock_persist_session`, whose lines grew past 88 characters.
+
+**Two rows carry notes:**
+- **`layouts/_shared.py:113`, `StepEntry.id`.** This is a field of a frozen dataclass. Only
+  its annotation string changes (`Any` → `str | dict[str, str] | None`); the default
+  `= None` stays, and the strip check keeps the statement. Nothing in `src/` or `tests/`
+  reads `dataclasses.fields()` types or `__annotations__` (§77.1).
+- **`layouts/_shared.py:195`, `_fmt_usd(value: float | None)`.** §60.5's verifier noted
+  that `tests/test_cost_summary.py:160` calls `_fmt_usd("0.5")`, which would not
+  type-check against the new annotation. `_fmt_usd(0)` and `_fmt_usd(True)` still do,
+  through mypy's int→float promotion. Tests sit outside mypy's gate (`uv run mypy src/`),
+  and the function's defensive handling of anything else is unchanged, as the strip check
+  shows. So the test still passes, and still pins that a stale store value reads "not
+  available". This is §60.5's `warn_unreachable` caveat in another form: the type now says
+  less than the function accepts, and the test is what keeps the wider behaviour.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12425 stmts, 891 miss, 93%`, **unchanged** |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
