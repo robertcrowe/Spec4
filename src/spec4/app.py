@@ -388,7 +388,7 @@ def render_page(
     prefs = prefs or {}
 
     new_session = no_update
-    content: Any
+    content: html.Div | list[Any]
     phase = session.get("phase", PHASE_ROOT)
     if phase == "working_dir":
         # If a directory was previously saved, start the browser there — but
@@ -424,7 +424,7 @@ def render_page(
     State("version-notice-shown", "data"),
     prevent_initial_call=True,
 )
-def on_version_check(_n: Any, already_shown: Any) -> Any:
+def on_version_check(_n: int | None, already_shown: bool | None) -> Any:
     """Open the upgrade dialog when PyPI has a newer release than this one.
 
     Shown at most once per browser session (the version-notice-shown session

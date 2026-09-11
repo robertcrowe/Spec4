@@ -493,7 +493,9 @@ def _turn_was_fast_forward(session: dict[str, Any]) -> bool:
     return False
 
 
-def summarize_turn_usage(agent: Any, records: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize_turn_usage(
+    agent: str | None, records: list[dict[str, Any]]
+) -> dict[str, Any]:
     """Token readout for one finished turn, from its per-call usage records.
 
     ``{"agent", "input", "output", "calls", "missing"}`` for the chat row's
@@ -657,8 +659,8 @@ def _load_deployment_state(
 
 def _persist_spec_artifacts(
     session: dict[str, Any],
-    working_dir: Any,
-    version: Any,
+    working_dir: str,
+    version: int,
 ) -> None:
     """Persist the review, vision, feature specs and AI catalog artifacts."""
     if session.get("code_scanner_state") == STATE_REVIEW_COMPLETE and session.get(
@@ -689,8 +691,8 @@ def _persist_spec_artifacts(
 
 def _persist_plan_artifacts(
     session: dict[str, Any],
-    working_dir: Any,
-    version: Any,
+    working_dir: str,
+    version: int,
 ) -> None:
     """Persist the stack, phases and deployment-plan artifacts."""
     if session.get("phaser_state") == STATE_PHASES_COMPLETE and session.get("phases"):

@@ -80,7 +80,7 @@ def _usage_float(value: Any) -> float | None:
     return float(value)
 
 
-def usage_rollup_name(agent: Any) -> str:
+def usage_rollup_name(agent: str | None) -> str:
     raw = agent if isinstance(agent, str) and agent else "unknown"
     return _USAGE_ROLLUP_PARENT.get(raw, raw)
 

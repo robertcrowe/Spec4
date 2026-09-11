@@ -15241,3 +15241,115 @@ covered it before any commit, and it is now checked again in the real tree.
 | Tests | `4210 passed, 1 skipped` (exit 0) |
 | Coverage | `TOTAL 12425 stmts, 891 miss, 93%`, **unchanged** |
 | Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
+
+### 77.7 Commit 7o4: area 4, the root modules (12 rows, 4 files)
+
+This is the second of the two areas §60.5's verifiers never ran through mypy. §77.2's dry run
+covered it before any commit, and it is now checked again in the real tree.
+
+| # | Line (§60's base → HEAD) | Target | `Any` becomes | Type-only import |
+|---:|---|---|---|---|
+| 1 | `_usage.py:72` → `:83` | `agent` | `str \| None` |  |
+| 2 | `app.py:391` | `content` | `html.Div \| list[Any]` |  |
+| 3 | `app.py:427` | `_n`, `already_shown` | `int \| None` · `bool \| None` |  |
+| 4 | `llm.py:356` | `model`, `api_base` | `str \| None` · `str \| None` | `AsyncIterable`, `Iterable` |
+| 5 | `llm.py:499` | `response` | `Iterable[Any]` |  |
+| 6 | `llm.py:548` | `response` | `AsyncIterable[Any]` |  |
+| 7 | `llm.py:989` | `search_config` | `SearchConfig \| str \| None` |  |
+| 8 | `session.py:485` → `:496` | `agent` | `str \| None` |  |
+| 9 | `session.py:628` → `:660` | `working_dir` | `str` |  |
+| 10 | `session.py:629` → `:661` | `version` | `int` |  |
+| 11 | `session.py:660` → `:692` | `working_dir` | `str` |  |
+| 12 | `session.py:661` → `:693` | `version` | `int` |  |
+
+- **5p's grep: 244 → 232 (−12).** The root modules go from 70 to 58; every other area is
+  unchanged.
+- **Strip check against `5dcf6c4`:** `files changed: 4; files with residue: 0`.
+- **Strict mypy:** `Success: no issues found in 92 source files`.
+- **Footprint:** 4 files, 18 insertions and 13 deletions. `ruff format` wrapped
+  `summarize_turn_usage`'s signature.
+
+**Notes on three files:**
+- **`llm.py` gains the batch's sixth and last `TYPE_CHECKING` block.** It imports
+  `AsyncIterable` and `Iterable` and sits after the module's last leading import
+  (`from spec4.websearch import (…)`), before `__all__`. It adds no runtime import, so the
+  module's import order is unaffected.
+- **`app.py`'s two rows are annotations only:** a local, `content`, and `on_version_check`'s
+  two callback inputs. Its E402 imports and Rule 5's load-bearing order (D-LR1) are not
+  touched. §60.5's verifier moved `content` here from "load-bearing", because dash 4.1.0
+  ships `py.typed`.
+- **`session.py`'s four persist rows** are `_persist_spec_artifacts` and
+  `_persist_plan_artifacts`, whose `working_dir` becomes `str` and whose `version` becomes
+  `int`. Their only caller is `persist_artifacts`, after two guards that §73 wrote into its
+  contract: the early return with no working dir, and the pin of `phase_version` to an
+  int. §60.5 called them "borderline: a scalar session read". The type rests on that
+  caller, not on the value's maker.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12425 stmts, 891 miss, 93%`, **unchanged**. Per file: `app.py` 72/8, `llm.py` 348/17, `session.py` 196/34, `_usage.py` 160/2 |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
+
+### 77.8 7o closed: the count, the split, and the two conditions
+
+**5p's grep of `: Any` lines: 290 → 232,** as §60.5 expected. It was measured at every
+commit, and it is a grep, not a mypy figure (§60.7(a)). The per-area split:
+
+| Area | Before (`4acdffd`) | After (this commit) | Change | Commit |
+|---|---:|---:|---:|---|
+| `agents/` | 78 | 64 | −14 | 7o1 `b0dbcd5` |
+| `agentifier/` | 16 | 6 | −10 | 7o1 `b0dbcd5` |
+| top-level `callbacks/` | 68 | 62 | −6 | 7o2 `2ebb73d` |
+| `callbacks/designer/` | 44 | 30 | −14 | 7o3 `5dcf6c4` |
+| `layouts/` | 14 | 12 | −2 | 7o3 `5dcf6c4` |
+| root modules | 70 | 58 | −12 | 7o4 (this commit) |
+| **Total** | **290** | **232** | **−58** | |
+
+By §60.5's four areas that is 24 + 6 + 16 + 12 = 58. Every row came from `any_verified.json`
+and was placed at its HEAD line by the mapping in §77.2.
+
+**Condition (i) is met twice.**
+- **Before the first commit,** all four areas went through strict mypy together, in the
+  dry-run copy (§77.2).
+- **At each of the four commits,** `mypy src/` ran strict over the whole tree, with that
+  area and every earlier one applied: four times `Success: no issues found in 92 source
+  files`.
+
+Top-level `callbacks/` and the root modules, the two areas no verifier had run, type-check
+both ways.
+
+**Condition (ii) is met (§77.3).** Nine of the 35 load-bearing reasons mentioned stubs, the
+override, or "untyped", and all nine stay:
+- two were already corrected by §60.5's verifier;
+- one is a false match;
+- four rest on `dash_mantine_components`, which ships no types;
+- two get reasons rewritten on grounds that hold with dash and litellm typed.
+
+No row moved, so 290 → 232 stands exactly.
+
+**The rule held on all 58 rows.**
+- The strip check found no residue at any of the four commits, and a probe showed it
+  catches the rule's own examples.
+- No row needed an `isinstance` guard, a `cast()`, a default, or a narrowed branch, so the
+  exclusion list is empty.
+- The one departure from a proposal is `run_with_timeout`, which takes the minimal
+  `Awaitable[Any]` rather than a TypeVar, because the TypeVar would be a runtime statement
+  (§77.1).
+- The one interpretation, type-only imports under `TYPE_CHECKING` counted as annotation
+  material, is stated in §77.1 for review.
+
+**What 7o did not do:**
+- **The 107 prop-bound callback inputs on mixed lines,** which §60.5 left optional. Those
+  lines keep their `Any` for the store, so they would not move the 290.
+- **The session-dict edge (90 lines) and the JSON-artifact edge (107):** Phase 8, as
+  `TypedDict` design.
+- **The 35 load-bearing rows,** which stay, and the 148 `-> Any` return lines outside the
+  grep.
+- **Tighter forms** for Phase 8 to weigh: the generic `run_with_timeout`, and `object` for
+  `_as_int` and `round_number_from_value`.
+- **No test is edited,** no file is written under `.spec4/`, and no runtime figure is
+  claimed.
+
+7p follows in default mode, and 7q comes last with everything on.

@@ -21,7 +21,7 @@ import threading
 import time
 from collections.abc import AsyncIterator, Generator
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import litellm
@@ -33,6 +33,9 @@ from spec4.websearch import (
     SearchConfig,
     search,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterable, Iterable
 
 __all__ = [
     "LLM_STREAM_TIMEOUT",
@@ -353,7 +356,7 @@ def _usage_fields(usage: Any) -> dict[str, int | None] | None:
     }
 
 
-def _resolve_provider(model: Any, api_base: Any) -> str | None:
+def _resolve_provider(model: str | None, api_base: str | None) -> str | None:
     """Provider name as LiteLLM resolves it from the model string (and api_base)."""
     if not isinstance(model, str) or not model:
         return None
@@ -496,7 +499,7 @@ def _hidden_usage(chunk: Any) -> Any:
 
 
 def _iter_with_usage(  # noqa: PLR0913  # the usage-wrapper contract
-    response: Any,
+    response: Iterable[Any],
     kwargs: dict[str, Any],
     agent_name: str | None,
     started_at: str,
@@ -545,7 +548,7 @@ def _iter_with_usage(  # noqa: PLR0913  # the usage-wrapper contract
 
 
 async def _aiter_with_usage(  # noqa: PLR0913  # the async usage-wrapper contract
-    response: Any,
+    response: AsyncIterable[Any],
     kwargs: dict[str, Any],
     agent_name: str | None,
     started_at: str,
@@ -986,7 +989,7 @@ def stream_turn(  # noqa: C901, PLR0912, PLR0915, PLR0913  # entry guards plus t
 
 def _stream_turn_tools(
     messages: list[dict[str, Any]],
-    search_config: Any,
+    search_config: SearchConfig | str | None,
     response_format: dict[str, Any] | None,
 ) -> list[dict[str, Any]] | None:
     """The web-search tool, unless a JSON-format turn has to suppress it."""
