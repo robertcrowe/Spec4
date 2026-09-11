@@ -1492,3 +1492,129 @@ never seen changing, in all: 32; contracts failing: 0
 | Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
 
 **Footprint:** 3 files, 170 insertions and 2 deletions: the tool, one docstring line in `trace_identity.py`, and the README entry, plus this section.
+
+### 11.3 Commit 8g2: the contract tests, written from the re-derived set
+
+**The set they are written from** is the report on 8f's first traced run (§11.2): the same
+31 keys as §79.3, generator by generator. The tests name those keys literally, so a
+mutation that removes a key from the collection that writes it cannot also remove it from
+what the test expects.
+
+**What landed:** `tests/agentifier/test_generator_contracts.py`, one class per generator,
+five tests.
+
+| Class | Path, driven from the generator's own entry | The keys it pins | The key it must not write |
+|---|---|---|---|
+| `TestHandleReentryContract` | the stale path: the reset, then a stubbed rediscovery | the 13, every `_RESTART_POP` key the traced re-entries never had set | `ai_features`, left for the redraw to replace |
+| `TestFinalizeSpecsContract` | a re-selection whose feature warrants topics; the analyst's stream replaced | the 6: the counter, the stored analysis and cursor, and the popped `agentifier_preserved_features` | `agentifier_cross_cutting_done` |
+| `TestCrossCuttingPhaseContract` | a reply with no stored analysis: the reload re-run | the 1: `agentifier_cross_cutting_topics` | `agentifier_cross_cutting_done` |
+| `TestCatalogPhaseContract` ×2 | a fresh start; then a re-selection that adds nothing and hands off to `finalize_specs` | the 11: the six breadth keys, and the selection's and the reply's five | `ai_catalog` on the fresh start; `agentifier_breadth_intro` on the re-selection |
+
+- **How a write is seen.** `_written` diffs the session at every yield, and at the end,
+  against the session the generator was given. So a key written and then popped inside
+  the turn counts, as it does in the report.
+- **Why the start values differ from the defaults.** Three of the 31 went unseen because
+  their writes left the value the session already held: `agentifier_breadth_chosen`,
+  `agentifier_cross_cutting_index` and `agentifier_cross_cutting_decisions`. Each test
+  starts from the state a real turn inherits: a panel an earlier draw left chosen, or the
+  topic cursor and the spec walk a previous round left part-way. So each write shows.
+- **The converse is the report's job.** The tests pin that each documented write happens.
+  The report pins that nothing undocumented is written, over the whole suite.
+- **Floor:** a new file; it holds no entry.
+- **Before the commit:** the five passed in a `git archive` export of 8f's tree, with the
+  export's own `src/` first on the path.
+- **Footprint:** `git show --stat e7ef31e` gives one file, `tests/agentifier/test_generator_contracts.py`, 292
+  insertions. Nothing under `src/` changed, and no existing test did.
+
+### 11.4 The proofs
+
+**One mutation per test,** each dropping the one write its test pins:
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8g_reentry (the restart no longer pops agentifier_revision_delta (8g, handle_reentry)): predicted 1, failed 1; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/agentifier/test_generator_contracts.py::TestHandleReentryContract::test_the_stale_path_resets_every_restart_key
+   FAILED (other, to explain) tests/agentifier/test_try_again.py::TestResetCompleteness::test_every_session_key_is_accounted_for
+   FAILED (other, to explain) tests/agentifier/test_try_again.py::TestResetCompleteness::test_revision_block_is_cleared
+   FAILED (other, to explain) tests/agentifier/test_try_again.py::TestRevisionRound::test_revision_block_is_re_derived_from_disk
+   other failures: 3
+   summary: 4 failed, 4218 passed, 1 skipped in 94.48s (0:01:34)
+
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8g_finalize (the stored analysis no longer resets the topic cursor (8g, finalize_specs)): predicted 1, failed 1; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/agentifier/test_generator_contracts.py::TestFinalizeSpecsContract::test_a_warranted_topic_draws_and_stores_the_analysis
+   other failures: 0
+   summary: 1 failed, 4221 passed, 1 skipped in 93.36s (0:01:33)
+
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8g_crosscut (the reload re-run no longer derives the warranted topics (8g, run_cross_cutting_phase)): predicted 1, failed 1; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/agentifier/test_generator_contracts.py::TestCrossCuttingPhaseContract::test_the_reload_rerun_stores_the_warranted_topics
+   other failures: 0
+   summary: 1 failed, 4221 passed, 1 skipped in 95.88s (0:01:35)
+
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8g_catalog_fresh (the breadth question no longer writes a fresh nonce (8g, run_catalog_phase)): predicted 1, failed 1; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/agentifier/test_generator_contracts.py::TestCatalogPhaseContract::test_a_fresh_start_writes_the_breadth_question
+   other failures: 0
+   summary: 1 failed, 4221 passed, 1 skipped in 92.61s (0:01:32)
+
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8g_catalog_reselect (a re-selection that adds nothing no longer resets the spec index (8g, run_catalog_phase)): predicted 1, failed 1; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/agentifier/test_generator_contracts.py::TestCatalogPhaseContract::test_a_reselection_that_adds_nothing_writes_the_catalog
+   other failures: 0
+   summary: 1 failed, 4221 passed, 1 skipped in 92.00s (0:01:31)
+```
+
+- **`8g_reentry`: as predicted, and three older tests fail with it.** They are
+  `TestResetCompleteness::test_every_session_key_is_accounted_for`,
+  `::test_revision_block_is_cleared` and
+  `TestRevisionRound::test_revision_block_is_re_derived_from_disk`, in
+  `tests/agentifier/test_try_again.py`. The first reads `_RESTART_POP` itself (`:100`). The
+  other two call `reset_agentifier_flow` directly (`:145`, `:812`), the helper
+  `handle_reentry`'s stale path shares with Try Again (`agentifier.py:2641–2655`).
+  - So the pop was already pinned, but never through `handle_reentry`'s own entry, and the
+    report reads that entry. This is 7q3's "reached only through another entry", met in the
+    mutation.
+  - The new test is the one that fails on `handle_reentry`'s path.
+- **`8g_finalize`: as predicted, the new test alone.** Nothing else in the suite noticed the
+  topic cursor left where a previous round put it.
+- **`8g_crosscut`, `8g_catalog_fresh` and `8g_catalog_reselect`: as predicted, each its
+  new test alone.** These are the reload re-run's topics, the breadth question's fresh
+  nonce, and the reset of a spec walk an earlier round left part-way.
+- **Every restore was byte-identical by sha256, and the tree was clean after each.**
+
+**The closure: the report, on a traced run of 8g2's tree:**
+
+```
+run_catalog_phase: documented 27 own (+10 via complete_agentifier, finalize_specs); observed 33; UNDOCUMENTED none
+    documented, never seen changing: none
+run_spec_phase: documented 8 own (+20 via finalize_specs); observed 8; UNDOCUMENTED none
+    documented, never seen changing: none
+run_cross_cutting_phase: documented 11 own (+11 via begin_priority_phase); observed 11; UNDOCUMENTED none
+    documented, never seen changing: none
+run_priority_phase: documented 3 own (+10 via complete_agentifier); observed 7; UNDOCUMENTED none
+    documented, never seen changing: none
+handle_reentry: documented 40 own (+3 via run_catalog_phase); observed 40; UNDOCUMENTED none
+    documented, never seen changing: none
+finalize_specs: documented 14 own (+10 via begin_priority_phase); observed 17; UNDOCUMENTED none
+    documented, never seen changing: none
+begin_priority_phase: documented 5 own (+10 via complete_agentifier); observed 9; UNDOCUMENTED none
+    documented, never seen changing: none
+complete_agentifier: documented 13 own (+0 via no hand-off); observed 13; UNDOCUMENTED none
+    documented, never seen changing: none
+never seen changing, in all: 0; contracts failing: 0
+```
+
+- **Every documented key is now seen changing under its generator's own entry: 31 → 0.**
+  No generator writes a key its contract leaves out, so the converse holds too.
+- **Four generators' observed counts moved against the report on 8f's first trace
+  (§11.2):** `run_catalog_phase` 20 → 33; `run_cross_cutting_phase` 10 → 11; `handle_reentry` 27 → 40; `finalize_specs` 11 → 17. The others are unchanged: `run_spec_phase`, `run_priority_phase`, `begin_priority_phase`, `complete_agentifier`.
+  The counts include hand-off keys, which is why some exceed the documented own count.
+- **The traced run passed:** `4222 passed, 1 skipped`, the same as the gate.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!`; `240 files already formatted`; `Success: no issues found in 93 source files` |
+| Tests | `4222 passed, 1 skipped`: 8g1's 4,217 + 5, exit 0 |
+| Coverage | `TOTAL 12439 834 93%`: misses 852 → 834, all in `agentifier/agentifier.py` |
+| Floor / off-limits | `456 (expect 456)`, `0` failures; the one file is new and holds no entry |
