@@ -147,7 +147,7 @@ def _planning_ctx(
     }
 
 
-def _extract_html(text: str) -> str | None:
+def extract_html(text: str) -> str | None:
     """Extract an HTML document from model output, returning None if not found.
 
     The **last** complete document wins, not the first. Some models write a
@@ -172,7 +172,7 @@ def _extract_html(text: str) -> str | None:
     return None
 
 
-def _persist_manifest(
+def persist_manifest(
     accumulated: str,
     planning_context: dict[str, Any] | None,
     design_dir: pathlib.Path,
@@ -197,7 +197,7 @@ def _persist_manifest(
     save_manifest(manifest, design_dir)
 
 
-def _expected_stream_chars(working_dir: str | None) -> int:
+def expected_stream_chars(working_dir: str | None) -> int:
     """Progress-bar denominator for a mock generation.
 
     Brownfield revision rounds are sized from what the previous implemented
@@ -256,7 +256,7 @@ def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbati
         "done": False,
         "stop": stop_ev,
         "text": "",
-        "expected_chars": _expected_stream_chars(working_dir),
+        "expected_chars": expected_stream_chars(working_dir),
     }
     MOCK_BUFFERS[gen_id] = buf_entry
 
@@ -402,7 +402,7 @@ def _mock_finalise_draw(
 ) -> None:
     """Extract the HTML from a finished draw, save it and its manifest."""
     html_text = accumulated.replace("__DONE__", "").strip()
-    extracted = _extract_html(html_text)
+    extracted = extract_html(html_text)
     if extracted is None:
         buf_entry["text"] += (
             "__GENERATION_ERROR__: The model did not return a valid "
@@ -433,7 +433,7 @@ def _mock_finalise_draw(
                 # the prior manifest.json untouched, so a missed
                 # manifest is never worse than the pre-D-DM9
                 # behaviour.
-                _persist_manifest(accumulated, planning_context, design_dir_path)
+                persist_manifest(accumulated, planning_context, design_dir_path)
             except Exception as exc:
                 logger.warning(
                     "Designer: could not persist session to disk: %s",

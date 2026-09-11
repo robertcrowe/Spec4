@@ -118,7 +118,7 @@ def on_designer_step2_choice(
     # D-DM7: this generation carries the manifest instruction (it is the only
     # non-refine draw in the brownfield path, so it is the sole chance to
     # produce manifest.json — every later refinement passes existing_html,
-    # which skips both the instruction and _persist_manifest). It therefore
+    # which skips both the instruction and persist_manifest). It therefore
     # needs the same planning context as every other manifest-bearing draw.
     new_store, buf, disabled = _start_gen(
         store or {},

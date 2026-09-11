@@ -1016,7 +1016,7 @@ class TestRefinePersistsManifest:
             lambda *a, **k: iter(["<html><body>hi</body></html>", "__DONE__"]),
         )
         monkeypatch.setattr(
-            dmod._mock_gen, "_persist_manifest", lambda *a, **k: calls.append(a)
+            dmod._mock_gen, "persist_manifest", lambda *a, **k: calls.append(a)
         )
         dmod._start_gen(
             {},
@@ -1037,7 +1037,7 @@ class TestRefinePersistsManifest:
         design_dir.mkdir()
         prior = design_dir / "manifest.json"
         prior.write_text('{"screens": ["kept"]}')
-        dmod._persist_manifest("<html>no manifest here</html>", None, design_dir)
+        dmod.persist_manifest("<html>no manifest here</html>", None, design_dir)
         assert prior.read_text() == '{"screens": ["kept"]}'
 
 
@@ -1752,11 +1752,11 @@ class TestProgressBarSizing:
 
     def test_default_without_working_dir(self) -> None:
         dmod = _dmod()
-        assert dmod._expected_stream_chars(None) == dmod._DEFAULT_EXPECTED_CHARS
+        assert dmod.expected_stream_chars(None) == dmod._DEFAULT_EXPECTED_CHARS
 
     def test_default_when_no_prior_mock(self, tmp_path: Path) -> None:
         dmod = _dmod()
-        expected = dmod._expected_stream_chars(str(tmp_path))
+        expected = dmod.expected_stream_chars(str(tmp_path))
         assert expected == dmod._DEFAULT_EXPECTED_CHARS
 
     def test_sized_from_prior_mock_and_manifest_plus_ten_percent(
@@ -1764,13 +1764,13 @@ class TestProgressBarSizing:
     ) -> None:
         dmod = _dmod()
         self._implement_prior(tmp_path)
-        expected = dmod._expected_stream_chars(str(tmp_path))
+        expected = dmod.expected_stream_chars(str(tmp_path))
         assert expected == int((len(self._MOCK) + len(self._MANIFEST)) * 1.1)
 
     def test_sized_from_mock_alone_when_manifest_missing(self, tmp_path: Path) -> None:
         dmod = _dmod()
         self._implement_prior(tmp_path, with_manifest=False)
-        expected = dmod._expected_stream_chars(str(tmp_path))
+        expected = dmod.expected_stream_chars(str(tmp_path))
         assert expected == int(len(self._MOCK) * 1.1)
 
     def test_start_gen_stashes_expected_chars_in_buffer(
@@ -1902,7 +1902,7 @@ class TestGenerationThreadResilience:
             dmod._MOCK_BUFFERS.pop(gen_id, None)
 
 
-from spec4.callbacks.designer import _extract_html  # noqa: E402
+from spec4.callbacks.designer import extract_html  # noqa: E402
 
 
 class TestExtractHtmlPrefersTheFinalDocument:
@@ -1920,16 +1920,16 @@ class TestExtractHtmlPrefersTheFinalDocument:
 
     def test_the_last_complete_document_wins(self) -> None:
         text = f"{self._DRAFT}\n\nWait — let me redo that.\n\n{self._FINAL}"
-        assert "FINAL" in (_extract_html(text) or "")
-        assert "DRAFT" not in (_extract_html(text) or "")
+        assert "FINAL" in (extract_html(text) or "")
+        assert "DRAFT" not in (extract_html(text) or "")
 
     def test_a_single_document_is_unaffected(self) -> None:
-        assert "FINAL" in (_extract_html(self._FINAL) or "")
+        assert "FINAL" in (extract_html(self._FINAL) or "")
 
     def test_an_unterminated_tail_does_not_beat_a_complete_document(self) -> None:
         """A cut-off retry must not displace the document that did finish."""
         text = f"{self._FINAL}\n\nActually...\n\n<!DOCTYPE html><html><body>trunc"
-        assert "FINAL" in (_extract_html(text) or "")
+        assert "FINAL" in (extract_html(text) or "")
 
     def test_the_fenced_fallback_also_takes_the_last(self) -> None:
         text = (
@@ -1937,16 +1937,16 @@ class TestExtractHtmlPrefersTheFinalDocument:
             "no, again\n"
             "```html\n<html><body>FINAL</body></html>\n```"
         )
-        assert "FINAL" in (_extract_html(text) or "")
+        assert "FINAL" in (extract_html(text) or "")
 
     def test_a_fence_without_html_is_skipped(self) -> None:
         text = (
             "```html\n<html><body>FINAL</body></html>\n```\n```\njust some notes\n```"
         )
-        assert "FINAL" in (_extract_html(text) or "")
+        assert "FINAL" in (extract_html(text) or "")
 
     def test_no_document_still_returns_none(self) -> None:
-        assert _extract_html("I could not build that.") is None
+        assert extract_html("I could not build that.") is None
 
 
 class TestProgressNeverClaimsCompleteMidStream:

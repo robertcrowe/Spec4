@@ -10449,8 +10449,13 @@ not already govern:
 >    or tier-A node that holds none of the batch's old names at the parent commit has a
 >    hunk.
 > 4. **Every rewritten patch target lands where the code under test looks.** This covers
->    each `patch("…")` path string and each `patch.object(X, "…")` attribute string in the
->    net entry that the batch rewrites. At C, two conditions hold:
+>    each patch-target string in the net entry that the batch rewrites, in three forms:
+>    - `patch("…")` path strings;
+>    - `patch.object(X, "…")` attribute strings;
+>    - setattr-style attribute strings, `monkeypatch.setattr(X, "…", …)` or bare
+>      `setattr(X, "…", …)`.
+>
+>    At C, two conditions hold:
 >    - the target resolves to the renamed function itself (the object its owner defines
 >      under the new name), not to a module;
 >    - the module the target names is one that calls it, reading the name as a global
@@ -10470,9 +10475,18 @@ object, but the code under test resolves the name through a different module. Ch
 cannot see that. A shadow flip (§63.1) can produce it, and so can a re-export the caller
 does not read.
 
+*The third form was added at 7i (§69), per the ruling at review of 7h.*
+`monkeypatch.setattr(X, "…", …)` and bare `setattr(X, "…", …)` replace an attribute exactly
+as `patch.object` does, so the mechanism and the two conditions are the same. A fourth form
+that turns up later is added to check 4 the same way, not treated as a new check. Candidates
+are `mocker.patch.object`, `getattr` with a string, and `__dict__` access. `patch_resolve.py`
+already counts `mocker.patch.object` as `patch.object`. It reports `getattr`, `hasattr` and
+`delattr` with a batch name, and `__dict__[…]` access, as candidates to review, not as
+passes.
+
 **Check 4 is also a standing check outside the petition.** Every patch string a batch
-rewrites must meet check 4's two conditions, whether it is a path or a `patch.object`
-attribute and whether or not it sits in a net entry. 7f's one unprotected string
+rewrites must meet check 4's two conditions, whatever its form and whether or not it sits in
+a net entry. 7f's one unprotected string
 (`test_agents.py:992`) is exactly the kind that would otherwise go unchecked. A string that
 fails is a stop for that string, not for the batch. The check is implemented by
 `patch_resolve.py`, which reports for each target:
@@ -12781,5 +12795,188 @@ Each of the 20 hunks is a one-line name substitution.
 - It leaves the module name `_seam_check` as it is.
 - It dedupes nothing (§67.11).
 - It runs nothing over `evals/` beyond the compile and import check.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.
+
+### 68.10 Recorded at review, by 7i's commit
+
+- **7h's conditions held at its commit.** The approval was conditional: on the gate
+  returning green, and on the close-out row being in. Both held before `03ede1b` was
+  committed:
+  - `4199 passed, 1 skipped`, 891 miss, exit 0;
+  - the guard showed that the only line deleted was the old close-out row, and the chain
+    would have stopped on any other deletion.
+- **Check 4 gains its third form.** Setattr-style attribute strings join the other two:
+  `monkeypatch.setattr(X, "…", …)` and bare `setattr(X, "…", …)`. The mechanism is the
+  same, and so are the two conditions. §60.3's definition now names three forms: `patch("…")`
+  paths, `patch.object`, and setattr-style attribute strings. A fourth form is added the
+  same way, not as a new check. `patch_resolve.py` reports `getattr`, `hasattr` and
+  `delattr` with a batch name, and `__dict__[…]` access, as candidates to review.
+- **The fixed and extended check, re-run over batches 5–8.** 7h fixed the line keying,
+  so that a wrapped `patch.object(` call is keyed to its string's line, not the call's. The
+  earlier batches' results were said to stand. That was an assertion, and the re-run is the
+  proof. Each batch ran at `03ede1b` against its own parent (`--base`). Every landing is the
+  one recorded, and no batch has a fourth-form candidate:
+
+| Batch | Base | Strings | Module named | The patch lands on | As recorded |
+|---|---|---|---|---|---|
+| 5 | `95c504c` | `test_code_scanner_progress.py:88`, `:117` (`patch.object`) | `agents/code_scanner/__init__.py`, re-exporting from `_scan` | `run@243` | yes (§65.10, §60.3) |
+| 6 | `ddc85c1` | `test_agents.py:992` (path) | `agents/brainstormer.py`, which defines it | `_brainstormer_review_text@867`, `_brainstormer_commit@914` | yes (§66.3) |
+| 7 | `ffb821c` | the alias's `patch.object` at `test_chars_counter_seed.py:156`, and the twelve path strings | as §67.5 | as §67.5 | yes: the same thirteen, the same landings |
+| 8 | `f31e221` | `test_seam_check.py:148`, `:153`, `:162` (`patch.object`) | `agents/_seam_check.py`, which defines it | `run_seam_check@482` | yes (§68.3) |
+
+  One thing the re-run makes visible. Batch 5 has two strings, and `:88` is a wrapped call
+  in `TestCollectFiles::test_context_accepts_a_precomputed_walk`. 7g's retroactive run
+  counted it (`targets … 2`), but the output kept then showed only `:117`. It is now listed
+  by its string's line, with the same landing. None of batches 5–8 has a setattr-form string
+  among its names.
+
+## 69. Phase 7i — rename batch 9: `callbacks.designer`, three names; `_start_gen` stays private
+
+§60.7(j) 7i: one commit, default mode, under the rename check and the token check. Three
+of the batch's four names take their underscore-free spelling. The fourth, `_start_gen`,
+stays private under §60.7(c) (§69.2). The batch has no documented exception. It is also
+the first batch with a setattr-style string under check 4's third form (§69.4).
+
+### 69.1 What landed
+
+| Private | Public | Owner | Tests / `src/` | Net |
+|---|---|---|---:|---|
+| `_extract_html` | `extract_html` | `callbacks/designer/_mock_gen.py` | 8 / 4 | |
+| `_expected_stream_chars` | `expected_stream_chars` | `callbacks/designer/_mock_gen.py` | 4 / 4 | |
+| `_persist_manifest` | `persist_manifest` | `callbacks/designer/_mock_gen.py` | 2 / 5 | tier-B `TestRefinePersistsManifest`; one setattr string (§69.4) |
+| | | | **14 / 13** | §60.2's 36 / 29, less `_start_gen`'s 22 / 16 |
+
+- **Footprint: 4 files, all under `src/` and `tests/`.** All 27 occurrences at `03ede1b`
+  were rewritten, giving 27 insertions and 27 deletions. `ruff format` changed nothing, and
+  the longest added line is 80 characters. Nothing in `scripts/`, `evals/`, the docs or
+  `.spec4/` names any of the three.
+- **String references: 3 `__all__` entries and 1 setattr string, rewritten.** The three
+  entries are at `callbacks/designer/__init__.py:87–89`. RUF022 is not selected, so no
+  entry moves, and `"_start_gen"` keeps its place at `:90`. The setattr string is covered
+  in §69.4.
+- **The tests reach the names through the package.** For example,
+  `dmod.expected_stream_chars(…)` and `dmod.persist_manifest(…)`, where `dmod` is
+  `spec4.callbacks.designer`, which re-exports each name from `_mock_gen`.
+- **No module-path occurrences, and no shadow flip.** The package's modules are
+  `_mock_gen`, `_refine` and `_wizard`. None of them shares a name with the three.
+- **D-number comments: one, updated in this commit by the substitution.** The D-DM7
+  comment at `_wizard.py:118–122` names ``persist_manifest`` at `:121`: "every later
+  refinement passes existing_html, which skips both the instruction and persist_manifest".
+  It stays true.
+- **`app.py` (D-LR1): untouched.**
+- **Node ids unchanged.** `TestExtractHtmlPrefersTheFinalDocument` holds its name inside a
+  longer identifier. 4,200 collected.
+
+### 69.2 `_start_gen` stays private — *rename blocked by net attribute access*
+
+This is the same shape as §60.7(c)'s other two names, `_record_usage` and
+`_with_readme_attribution`:
+
+| Name | Owner | Net entry, where it is reached by attribute | Would become |
+|---|---|---|---|
+| `_start_gen` | `callbacks/designer/_mock_gen.py` | `tests/test_streaming_characterization.py:402` — `dmod._start_gen(` | `start_gen` |
+
+`test_streaming_characterization.py` is a whole-file entry. It reaches the function by
+attribute on the package, not by an import binding, so §54.7's `new as old` re-binding
+cannot keep that line unchanged. The block is still where §60.7(c) recorded it.
+
+Its other references all stay as they are, and the diff touches none of them: no changed
+line mentions `_start_gen`. They are:
+- the `__all__` entry;
+- four setattr and five `patch.object` strings in `test_designer.py`
+  (`:820`, `:918`, `:1146`, `:1200`, `:2140`, `:2269`, `:2283`, `:2297` and `:2307`);
+- the D-DM8 and D-DM7 mentions.
+
+As §60.7(c) says, the rename comes with that net file when it is next legitimately opened.
+
+### 69.3 The collision check, in the standing form
+
+The check ran on all three new names, before the substitution, at `03ede1b`:
+
+- **None occurs as a token.** No Dash id spells any of them, and no other definition
+  matches the pattern.
+- **One cased hit, not a collision:** the class `TestExtractHtmlPrefersTheFinalDocument`
+  (`test_designer.py:1908`).
+
+### 69.4 Check 4, third form: the first setattr string
+
+| String | Form | Module named | Defines or re-exports | The patch lands on |
+|---|---|---|---|---|
+| `tests/test_designer.py:1019` | `monkeypatch.setattr` | `spec4.callbacks.designer._mock_gen` | defines it | `_mock_finalise_draw@436` |
+
+- **The patched object is the defining submodule.** The call is
+  `monkeypatch.setattr(dmod._mock_gen, "_persist_manifest", …)`. In both of the file's
+  bindings `dmod` is `spec4.callbacks.designer`: the `_dmod()` helper at `:890`, and the
+  local `from spec4.callbacks import designer as dmod`. So `dmod._mock_gen` is the
+  submodule that defines `persist_manifest`, and calls it at `_mock_finalise_draw@436`. No
+  other spec4 module calls the function. The patch does not go through the package's
+  re-export.
+- **Both runs passed.** Check 4 ran before the substitution on the old name, and after it
+  on the changed lines, and the string passed both times.
+- **This is the wrapped case 7h's fix covers.** `monkeypatch.setattr(` is on `:1018` and
+  the string on `:1019`. The check keys the target to the string's line, so the changed-lines
+  filter keeps it.
+- **The string sits in a net entry:** tier-B
+  `TestRefinePersistsManifest::test_persist_is_not_gated_on_the_draw_kind`. So check 4
+  counts here as part of the petition (§69.6).
+
+### 69.5 The rename check and the token check — both clean
+
+- **Rename check:** the §60.2 shell function, run with `P=HEAD` over the working tree,
+  printed `rename check: EMPTY`, and the scratch implementation printed the same.
+- **Token check:** `hunks 22; old->new token substitutions 27; layout 0; §54.7 aliases 0;
+  OTHER 0`.
+
+The batch has no documented exception and no forced correction.
+
+### 69.6 Petitions, by kind
+
+| Kind | Where | Result |
+|---|---|---|
+| §60.3, tier-B | `test_designer.py::TestRefinePersistsManifest` (1003–1041), two one-line hunks: `:1019`, the setattr string; and `:1040`, `dmod.persist_manifest(…)` | reverse diff empty inside the class · assertions token-identical · off-limits clean · check 4 passes (§69.4) — **passes** |
+
+The batch's other two tier-B classes, `TestCapturePassesPlanningContext` and
+`TestRetryReproducesTheDraw`, are in the net only through `_start_gen`. They have no hunks.
+
+### 69.7 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | none in the diff. `test_streaming_characterization.py` is untouched, because `_start_gen` stays |
+| 456 node ids | **456 / 456 collect**; 4,200 collected |
+| 19 tier-B files / 33 classes | **1 file with hunks.** Its 2 hunks inside a listed class are §69.6's. The other 11 lie outside any listed class and are reported below in §51.6's template |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_designer.py` | `TestCapturePassesPlanningContext` **794–879**; `TestRetryReproducesTheDraw` **896–979**; `TestRefinePersistsManifest` **1003–1041** | 13 — 1019, 1040, 1755, 1759, 1767, 1773, 1905, 1923–1924, 1927, 1932, 1940, 1946, 1949 | **INSIDE: 1019→TestRefinePersistsManifest, 1040→TestRefinePersistsManifest** |
+
+### 69.8 Record changes carried in this commit
+
+- **§60.3: check 4's third form.** The definition now names three forms: `patch("…")`
+  paths, `patch.object`, and setattr-style attribute strings. A dated note sits under it,
+  with the rule for a fourth form.
+- **§68.10, recorded at review of 7h.** It covers three things:
+  - 7h's conditions;
+  - the third form;
+  - the re-run over batches 5–8, with every landing as recorded.
+- **Both sections went in through the add-only step.** The guard finds no deleted blank
+  line. The only deleted lines are the old wording of check 4, both its definition and its
+  standing paragraph.
+
+### 69.9 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped` (exit 0); 4,200 collected |
+| Coverage | same run | `TOTAL 12421 stmts, 891 miss, 93%` — identical to §60.1, at the ≤ 891 ceiling |
+
+### 69.10 What this sub-phase did not do
+
+- It leaves `_start_gen` private, with every one of its references unchanged.
+- It changes no test beyond the substitution, and it has no exception.
 - It writes nothing under `.spec4/`.
 - It claims no runtime figure.
