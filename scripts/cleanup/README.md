@@ -6,7 +6,9 @@ so that a claim like "this commit only renamed" or "this refactor changed nothin
 observable" rests on an empty diff or a matching trace, not on reading.
 
 A twelfth tool, `remeasure.py`, proves nothing about a change. It re-runs Phase 0's
-measurements on two revisions, and it is described after the eleven.
+measurements on two revisions, and it is described after the eleven. A thirteenth,
+`contract_check.py`, came with Phase 8 (`PHASE8_RECORD.md` §11); it is described
+last.
 
 **They sit outside the gate.** `uv run ruff check .` and `ruff format` cover them. mypy
 (`uv run mypy src/`), pytest (`testpaths = ["tests"]`), coverage and vulture do not.
@@ -279,6 +281,28 @@ uv run python scripts/cleanup/remeasure.py 1d1dcbd 6956aca \
 **First used:** the Phase 7 close-out, for `CLEANUP_REPORT.md` §7. There it ran from
 the scratchpad as `phase0_measure.py`, and the tool calls were run by hand.
 
+## The thirteenth tool: the contract report
+
+**Proves:** every session key an agentifier generator writes is documented in its
+contract, and lists the documented keys no traced invocation changed. It reads
+each family function's "Its contract on ``session``" paragraph (7q3, §79.3):
+- the ``double-backticked`` names in it are the documented keys;
+- a named collection (`_RESTART_DEFAULTS`, `_RESTART_POP`) is expanded;
+- a named hand-off adds its own documented keys.
+
+Against a `trace_identity.py` run of the default family, it diffs every later
+snapshot of each invocation with that invocation's `start` snapshot, so a key
+written and then popped inside a turn still counts. Any observed key that nothing
+documents exits 1. The two keys test stand-ins write, `_finalized` and
+`_priority_begun`, are set aside by name.
+
+```sh
+uv run python scripts/cleanup/contract_check.py /outside/run.json
+```
+
+**First used:** Phase 8's 8g (`PHASE8_RECORD.md` §11). On §1.1's trace of `2214ce9`
+it reproduces §79.3's report line for line: 31 documented keys never seen changing.
+
 ## Data
 
 | File | What it is |
@@ -310,6 +334,7 @@ Every check was run against a recorded result before this commit:
 | Petition | 7q3 | PASS |
 | Add-only append and guard | the record | 0 deleting hunks; a blank-line run refused |
 | Phase 0, re-measured | `1d1dcbd` against `6956aca` | every table in `CLEANUP_REPORT.md` §7 |
+| Contract report | §1.1's trace of `2214ce9` (Phase 8) | §79.3's report, line for line |
 
 The two writers were run for real in a scratch clone:
 - refusal on a dirty tree, on a stale anchor, and on an output inside the repo;

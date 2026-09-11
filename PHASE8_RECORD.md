@@ -1390,3 +1390,105 @@ worker-thread invocations: tests 9; differing 3: advisory (timing) 2, escalated 
 | Tests | `4217 passed, 1 skipped` (exit 0); the nine are the same nine, now waiting |
 | Coverage | `TOTAL 12439 852 93%`; every per-module row identical to 8e2's, at the new ceiling of 852 |
 | Floor / off-limits | **456 / 456** (`FAILURES: 0`); every hunk in `test_try_again.py` sits outside its two tier-A nodes |
+
+## 11. 8g: the 31 contract keys (P21) — the report, then the tests
+
+§2.1(g) approved the tool extension that re-derives the write sets, and ruled that the
+tests be written from the re-derived set, not from §79.3's quote. 8g lands in two
+commits: 8g1, the report, and 8g2, the tests. This section is appended in two parts,
+one per commit.
+
+### 11.1 A correction to §1: the trace already records the entry snapshot
+
+§1.2's P21 row and §1.4's closure paragraph said the committed trace records no session
+snapshot at a generator's entry, so the unseen set could not be re-derived with the
+twelve tools. **That is wrong.**
+- **`trace_identity.py` stores `"start"` on every invocation:** the session as the
+  invocation found it (`trace_identity.py:153–156`). Its comment says 7q3 used it to
+  measure the keys each generator writes.
+- **What misled the pre-work:** the module docstring, which lists the start event as "the
+  entry's name and its arguments (session and llm_config excluded)". That is true of the
+  arguments, and it says nothing of the snapshot kept beside them.
+- **So the approved extension is smaller than §1.4 proposed.** No entry snapshot has to be
+  added. The extension is the report alone, and 8g1 corrects the docstring. §1 stays as
+  written, and the record stays add-only.
+
+### 11.2 Commit 8g1: `contract_check.py`, the thirteenth tool
+
+**What it reports.** For each of the eight agentifier generators:
+- its documented keys, read from the "Its contract on ``session``" paragraph. Named
+  collections (`_RESTART_DEFAULTS`, `_RESTART_POP`) are expanded, and named hand-offs
+  add their own documented keys;
+- the keys observed changing under its own traced entry: every later snapshot of each
+  invocation, diffed against its start snapshot, so a key written and then popped
+  within a turn still counts;
+- any observed key that nothing documents, which exits 1;
+- the documented own keys never seen changing: the contract-test list.
+
+The two stand-in keys, `_finalized` and `_priority_begun`, are set aside by name, as 7q3
+did.
+
+**Shown to reproduce 7q3's report exactly.** It was run on §1.1's trace of `2214ce9`, and
+again on 8f's first traced run. Both print the same report as §79.3, line for line:
+
+```
+run_catalog_phase: documented 27 own (+10 via complete_agentifier, finalize_specs); observed 20; UNDOCUMENTED none
+    documented, never seen changing: agentifier_breadth_chosen, agentifier_breadth_groups, agentifier_breadth_intro, agentifier_breadth_nonce, agentifier_compositions, agentifier_explicitly_rejected, agentifier_preserved_selected, agentifier_scout_pool, agentifier_spec_index, agentifier_spec_results, ai_catalog
+run_spec_phase: documented 8 own (+20 via finalize_specs); observed 8; UNDOCUMENTED none
+    documented, never seen changing: none
+run_cross_cutting_phase: documented 11 own (+11 via begin_priority_phase); observed 10; UNDOCUMENTED none
+    documented, never seen changing: agentifier_cross_cutting_topics
+run_priority_phase: documented 3 own (+10 via complete_agentifier); observed 7; UNDOCUMENTED none
+    documented, never seen changing: none
+handle_reentry: documented 40 own (+3 via run_catalog_phase); observed 27; UNDOCUMENTED none
+    documented, never seen changing: agentifier_artifact_msg_count, agentifier_carried_forward, agentifier_cc_ff_locked, agentifier_compositions, agentifier_cross_cutting_ff_review, agentifier_preserved_selected, agentifier_revision, agentifier_revision_cross_cutting, agentifier_revision_delta, agentifier_revision_prior_version, agentifier_revision_version, agentifier_spec_ff_locked, agentifier_spec_ff_review
+finalize_specs: documented 14 own (+10 via begin_priority_phase); observed 11; UNDOCUMENTED none
+    documented, never seen changing: _stream_received_chars, agentifier_cross_cutting_analysis, agentifier_cross_cutting_decisions, agentifier_cross_cutting_index, agentifier_cross_cutting_topics, agentifier_preserved_features
+begin_priority_phase: documented 5 own (+10 via complete_agentifier); observed 9; UNDOCUMENTED none
+    documented, never seen changing: none
+complete_agentifier: documented 13 own (+0 via no hand-off); observed 13; UNDOCUMENTED none
+    documented, never seen changing: none
+never seen changing, in all: 31; contracts failing: 0
+```
+
+- **The documented counts match:** 27, 8, 11, 3, 40, 14, 5 and 13 own, and the hand-off
+  additions.
+- **The observed counts match:** 20, 8, 10, 7, 27, 11, 9 and 13.
+- **No key is undocumented.**
+- **The 31 never seen changing are §79.3's 31,** generator by generator.
+
+**Shown to bite.** The case `8g_tool_bite` drops `finalize_specs`' write of `agentifier_spec_done`. `mutate.py` then runs the traced suite under it, against 8f's five traces as baselines, with their `--basetemp`:
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+probe 8g_tool_bite (finalize_specs no longer writes agentifier_spec_done: the contract report must list it (8g, the tool's bite)): as predicted
+  suite under the probe: 6 failed, 4211 passed, 1 skipped in 95.95s (0:01:35)
+  traces diverging: 10; predicted 1, of which diverged 1; predicted but NOT diverging: none
+  tests traced: base 143, new 143; identical 133; diverging 10 (key order only: 0); identical to a recorded variant other than the first: 0
+```
+
+The report on that run's trace lists the dropped key:
+
+```
+finalize_specs: documented 14 own (+10 via begin_priority_phase); observed 10; UNDOCUMENTED none
+    documented, never seen changing: _stream_received_chars, agentifier_cross_cutting_analysis, agentifier_cross_cutting_decisions, agentifier_cross_cutting_index, agentifier_cross_cutting_topics, agentifier_preserved_features, agentifier_spec_done
+never seen changing, in all: 32; contracts failing: 0
+```
+
+- **`finalize_specs` is observed changing 10 keys, not 11,** and `agentifier_spec_done` joins the keys never seen changing. The total goes from 31 to 32.
+- **The six tests that failed under the mutation** are ones that assert the key. They are the mutation's harm, not the check's.
+- **The restore was verified by sha256,** and the tree was clean after.
+
+**Also carried in this commit:**
+- the `start` line of `trace_identity.py`'s docstring now names the snapshot, as §11.1
+  found;
+- `scripts/cleanup/README.md` gains the thirteenth tool.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `239 files already formatted` (`src/`, `tests/` and `scripts/cleanup/`) · mypy unchanged: no `src/` file changed |
+| Tests | `4217 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12439 852 93%`; every per-module row identical to 8f's |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
+
+**Footprint:** 3 files, 170 insertions and 2 deletions: the tool, one docstring line in `trace_identity.py`, and the README entry, plus this section.

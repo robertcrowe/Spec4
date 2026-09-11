@@ -22,7 +22,9 @@ PY_YIELD and PY_RETURN, plus a global PY_UNWIND filtered to them.
 Only the OUTERMOST family frame is recorded: a frame with no family frame anywhere in
 its f_back chain. A split's new nesting is therefore invisible, and what is recorded is
 what the consumer receives:
-  start   -- the entry's name and its arguments (session and llm_config excluded);
+  start   -- the entry's name and its arguments (session and llm_config excluded).
+             The session as the invocation found it is kept beside them as
+             "start", a snapshot that contract_check.py reads;
   yield   -- the chunk delivered, and a snapshot of the session at that moment;
   return  -- the return value and a final snapshot;
   unwind  -- the exception and a final snapshot. GeneratorExit is not recorded: a
