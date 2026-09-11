@@ -15507,3 +15507,48 @@ Both runs: `4210 passed, 1 skipped`.
 - It changes no other row and edits no test.
 
 7p follows in default mode.
+
+## 78. Phase 7p — §59.6 items 9–10: PLR2004 in `src/`, and the 13 E501 in `scripts/e2e_agentifier.py`
+
+§60.7(j) 7p; §59.6 items 9 and 10; §60.6's row: "each rule's own count, to zero or a justified
+`noqa`". It ran in default mode, as ruled at review of 7n, after 7o5, as ruled at review of 7o.
+- **There are two commits, one per rule.** 7p1 takes the E501s, which were ready first and
+  touch no `src/` file. 7p2 takes PLR2004.
+- **One check proves both.** `inline_check.py BASE ROOT` collects every module-level
+  `NAME = <literal>` a file adds. It inlines each such name's loads back to the literal,
+  drops the assignments, and requires the AST to equal the base's. Comments are not in the
+  AST, so a `# noqa` is invisible to it by construction, and so is layout: a wrapped line,
+  added parentheses, an implicitly concatenated string. For 7p1, which adds no constant, it
+  reduces to plain AST identity.
+
+### 78.1 Commit 7p1: the 13 E501 in `scripts/e2e_agentifier.py`
+
+**Background (§49.7).** The 13 predate Phase 5: `E` was always selected, and `scripts/`
+never carried an ignore. They sit outside the Rule 6 gate, which checks `src/` and `tests/`
+only, but `uv run ruff check .` reported all 13.
+
+**The fix is 13 lines wrapped by hand.**
+- **Seven split a string by implicit concatenation.** Two of those, at `:438` and `:459`,
+  sit inside a newly parenthesised `print(`.
+- **Six wrap code in parentheses:** an annotated assignment (`:415`), two `_drain(…)` calls
+  (`:468`, `:492`), and three `assert` messages (`:505`, `:506`, `:533`).
+
+The wraps follow ruff format's own style, such as a parenthesised `assert` message like the
+file's `:441–443`. The formatter itself was not run: `ruff format --check` already reported
+`Would reformat: scripts/e2e_agentifier.py` before 7p1, because the file has never been
+format-clean, and formatting it would rewrite far more than the 13 lines. `scripts/` is
+outside the format gate.
+
+| Check | Result |
+|---|---|
+| E501 in the file | **13 → 0** |
+| `inline_check.py HEAD . scripts/e2e_agentifier.py` | `identical after inlining: scripts/e2e_agentifier.py  [no constants added; 0 load(s) inlined]`. The AST is unchanged |
+| `uv run ruff check .`, the whole repo, `evals/` and `scripts/` included | `All checks passed!` |
+| Footprint | 1 file, 36 insertions and 13 deletions |
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12425 stmts, 891 miss, 93%`, **unchanged**. `scripts/` is not measured |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |

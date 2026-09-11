@@ -89,7 +89,8 @@ _TIER_ANALYSES: dict[str, dict[str, Any]] = {
             "Latency spikes under load.",
         ],
         "risks_of_going_lower": [
-            "Keyword matching misses 'cozy Italian' → 'warm, rustic trattoria' synonymy.",
+            "Keyword matching misses 'cozy Italian' → 'warm, rustic trattoria' "
+            "synonymy.",
         ],
         "borderline": False,
         "borderline_seams": [],
@@ -114,7 +115,8 @@ _TIER_ANALYSES: dict[str, dict[str, Any]] = {
         "borderline_seams": [],
         "compared_to_next_tier_down": (
             "An embeddings approach could rank results but cannot extract structured "
-            "filter parameters from free text — single_call is needed for the parse step."
+            "filter parameters from free text — single_call is needed for the "
+            "parse step."
         ),
     },
     "review_summarisation": {
@@ -221,7 +223,8 @@ _CATALOG_PAYLOAD = {
             "name": "natural_language_search",
             "scope": "feature",
             "rough_description": (
-                "Parse free-text search queries into structured filters via one LLM call."
+                "Parse free-text search queries into structured filters via one "
+                "LLM call."
             ),
             "tier_recommendation": "single_call",
             "tier_decision": "single_call",
@@ -244,7 +247,8 @@ _CATALOG_PAYLOAD = {
             "name": "conversational_booking",
             "scope": "feature",
             "rough_description": (
-                "Multi-turn booking chat with check_availability and hold_reservation tools."
+                "Multi-turn booking chat with check_availability and "
+                "hold_reservation tools."
             ),
             "tier_recommendation": "tool_agent",
             "tier_decision": "tool_agent",
@@ -412,7 +416,9 @@ def run_e2e(project_dir: str) -> int:  # noqa: PLR0912, PLR0915
 
         turn1_text = _drain(agentifier_run(None, session, session["llm_config"]))
 
-        candidates_raw: list[dict[str, Any]] = session.get("agentifier_candidates") or []
+        candidates_raw: list[dict[str, Any]] = (
+            session.get("agentifier_candidates") or []
+        )
         analyses_raw: dict[str, Any] | list[dict[str, Any]] = (
             session.get("agentifier_analyses") or []
         )
@@ -435,11 +441,15 @@ def run_e2e(project_dir: str) -> int:  # noqa: PLR0912, PLR0915
             for seam in analysis.get("borderline_seams", []):
                 print(f"      ⚠ {seam[:80]}")
 
-        print(f"\n[Orchestrator → UI]\n{turn1_text[:600]}{'…' if len(turn1_text) > 600 else ''}")
+        print(
+            f"\n[Orchestrator → UI]\n{turn1_text[:600]}"
+            f"{'…' if len(turn1_text) > 600 else ''}"
+        )
 
         # ── Verify (a) ───────────────────────────────────────────────────────
         assert len(candidates_raw) >= 3, (
-            f"FAIL (a): Scout surfaced only {len(candidates_raw)} candidates; expected ≥ 3"
+            f"FAIL (a): Scout surfaced only {len(candidates_raw)} candidates; "
+            "expected ≥ 3"
         )
         print("\n✓ (a) Scout surfaced ≥ 3 AI opportunities")
 
@@ -456,7 +466,10 @@ def run_e2e(project_dir: str) -> int:  # noqa: PLR0912, PLR0915
             assert len(rationale) > 20, (
                 f"FAIL (b): '{name}' rationale is too short: {rationale!r}"
             )
-        print("✓ (b) TierAnalyst recommended valid tiers with rationale for all candidates")
+        print(
+            "✓ (b) TierAnalyst recommended valid tiers with rationale for all "
+            "candidates"
+        )
 
         # ── Turn 2: user overrides review_summarisation ──────────────────────
         _sep("TURN 2 — User overrides review_summarisation to tool_agent")
@@ -465,7 +478,9 @@ def run_e2e(project_dir: str) -> int:  # noqa: PLR0912, PLR0915
             "I want review_summarisation at tool_agent — we expect mixed sentiment "
             "on most popular restaurants so the borderline seam is really the norm."
         )
-        turn2_text = _drain(agentifier_run(user_override, session, session["llm_config"]))
+        turn2_text = _drain(
+            agentifier_run(user_override, session, session["llm_config"])
+        )
 
         print(f"\n[User] {user_override}")
         print(
@@ -489,7 +504,9 @@ def run_e2e(project_dir: str) -> int:  # noqa: PLR0912, PLR0915
         _sep("TURN 3 — User confirms; catalog emitted and validated")
 
         user_confirm = "Yes, confirm tool_agent for review_summarisation."
-        turn3_text = _drain(agentifier_run(user_confirm, session, session["llm_config"]))
+        turn3_text = _drain(
+            agentifier_run(user_confirm, session, session["llm_config"])
+        )
 
         print(f"\n[User] {user_confirm}")
         print(
@@ -502,8 +519,12 @@ def run_e2e(project_dir: str) -> int:  # noqa: PLR0912, PLR0915
     state = session.get("agentifier_state")
 
     # ── Verify (d) ───────────────────────────────────────────────────────────
-    assert catalog is not None, "FAIL (d): session['ai_catalog'] is None after completion"
-    assert isinstance(catalog, dict), f"FAIL (d): ai_catalog is not a dict: {type(catalog)}"
+    assert catalog is not None, (
+        "FAIL (d): session['ai_catalog'] is None after completion"
+    )
+    assert isinstance(catalog, dict), (
+        f"FAIL (d): ai_catalog is not a dict: {type(catalog)}"
+    )
     assert "ai_catalog" in catalog, (
         f"FAIL (d): ai_catalog missing 'ai_catalog' key — keys: {list(catalog.keys())}"
     )
@@ -530,7 +551,9 @@ def run_e2e(project_dir: str) -> int:  # noqa: PLR0912, PLR0915
     assert catalog_path.exists(), f"FAIL (d): {catalog_path} was not written"
 
     reloaded = json.loads(catalog_path.read_text())
-    assert reloaded == catalog, "FAIL (d): round-trip through disk did not preserve catalog"
+    assert reloaded == catalog, (
+        "FAIL (d): round-trip through disk did not preserve catalog"
+    )
 
     print(f"\n✓ (d) ai_catalog.json written and verified: {catalog_path}")
     print(f"      {len(entries)} entries:")
