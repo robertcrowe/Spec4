@@ -19,9 +19,12 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Generator, Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from spec4.agents._turn_flow import AGENT_DELIVERABLE
+
+if TYPE_CHECKING:
+    from spec4.websearch import SearchConfig
 
 
 DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
@@ -77,7 +80,7 @@ def reask_for_artifact(  # noqa: PLR0913  # the reask contract: agent, artifact,
     system: str,
     msgs: list[dict[str, Any]],
     llm_config: dict[str, Any],
-    search_config: Any,
+    search_config: SearchConfig | None,
     agent_name: str,
     correction: str,
     status_line: str,

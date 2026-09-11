@@ -97,7 +97,7 @@ def render_coding_style(style: dict[str, Any], lines: list[str]) -> None:
     lines.append("")
 
 
-def phases_for_deployer(phases: list[dict[str, Any]], version: Any) -> str:
+def phases_for_deployer(phases: list[dict[str, Any]], version: int | None) -> str:
     """Deployment-shaped projection of the phase plan for Deployer (D-DE4).
 
     Deployer previously received phase numbers and titles only, discarding the

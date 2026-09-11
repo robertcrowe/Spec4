@@ -5,7 +5,7 @@ import logging
 import threading
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from spec4.app_constants import (
     ARTIFACT_MANIFEST,
@@ -13,6 +13,9 @@ from spec4.app_constants import (
 from spec4 import llm
 from spec4.agents._manifest import MANIFEST_END, MANIFEST_START
 from spec4.websearch import WEB_SEARCH_TOOL, search as web_search
+
+if TYPE_CHECKING:
+    from spec4.websearch import SearchConfig
 
 logger = logging.getLogger(__name__)
 
@@ -542,7 +545,7 @@ def _designer_tool_call_followup(
     messages: list[dict[str, Any]],
     tool_call_acc: dict[int, dict[str, str]],
     full_text: str,
-    search_config: Any,
+    search_config: SearchConfig | None,
 ) -> None:
     """Append the assistant tool_calls turn and each tool result."""
     messages.append(
@@ -598,7 +601,11 @@ def _designer_accumulate_tool_calls(
 
 
 def _designer_llm_config(
-    model: str, effort: Any, api_key: Any, api_base: Any, extra_kwargs: Any
+    model: str,
+    effort: str,
+    api_key: str,
+    api_base: str | None,
+    extra_kwargs: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """The per-attempt LiteLLM config for a mock draw."""
     llm_config: dict[str, Any] = {"model": model, "effort": effort}
@@ -661,7 +668,7 @@ def generate_mock_streaming(  # noqa: PLR0913  # the mock-generation contract, s
     api_key: str,
     ui_source_snippets: list[str],
     image_support: bool,
-    search_config: Any = None,
+    search_config: SearchConfig | None = None,
     stop_event: threading.Event | None = None,
     planning_context: dict[str, Any] | None = None,
     existing_html: str | None = None,

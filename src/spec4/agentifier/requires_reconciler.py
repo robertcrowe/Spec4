@@ -526,7 +526,7 @@ def _s2_signals(
 
 
 def _reconcile_inputs(
-    features: list[dict[str, Any]], feature_specs: Any
+    features: list[dict[str, Any]], feature_specs: dict[str, Any] | None
 ) -> tuple[
     list[dict[str, Any]],
     dict[str, Any],

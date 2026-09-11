@@ -40,7 +40,7 @@ def _name_label(item: Any) -> str:
     return str(item)
 
 
-def _style_value(field: Any) -> str:
+def _style_value(field: dict[str, Any]) -> str:
     """Render a coding_style field as 'value' or 'value (source: X)' / 'value (from: X)'.
 
     Accepts either a raw scalar (legacy) or a dict with value+source/inferred_from.

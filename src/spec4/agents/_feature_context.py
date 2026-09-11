@@ -662,7 +662,7 @@ def _deployer_provider_entry(name: str, prov: Any, lines: list[str]) -> None:
         lines.append(f"  - fallback: {fallback}")
 
 
-def _provider_roles_and_tiers(prov: Any) -> tuple[list[str], list[str]]:
+def _provider_roles_and_tiers(prov: dict[str, Any]) -> tuple[list[str], list[str]]:
     """The sorted role and tier sets a provider's capabilities declare."""
     caps = [c for c in (prov.get("capabilities") or []) if isinstance(c, dict)]
     roles = sorted({str(c.get("role")) for c in caps if c.get("role")})

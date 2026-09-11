@@ -230,7 +230,7 @@ def _phaser_round_flags(session: dict[str, Any]) -> tuple[int, bool, bool]:
 def _phaser_artifact_blocks(
     ai_features: Any,
     feature_specs: Any,
-    working_dir: Any,
+    working_dir: str | None,
     target_version: int,
     is_revision: bool,
 ) -> tuple[str, str, str, str]:
@@ -364,7 +364,9 @@ def _phaser_review_instruction(code_review: Any) -> tuple[str, str]:
     return extra_block, instruction
 
 
-def _phaser_revision_instruction(extra_block: str, delta: Any) -> tuple[str, str]:
+def _phaser_revision_instruction(
+    extra_block: str, delta: dict[str, Any] | None
+) -> tuple[str, str]:
     """The revision-round override of the block and instruction pair."""
     # Augment the brownfield path: keep the rich code-review guidance
     # built above (the new surface must integrate with the existing,

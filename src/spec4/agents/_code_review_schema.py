@@ -513,7 +513,7 @@ CODE_REVIEW_SCHEMA: dict[str, Any] = {
 }
 
 
-def validate_code_review(data: Any) -> list[str]:
+def validate_code_review(data: dict[str, Any]) -> list[str]:
     """Validate an extracted code review against CODE_REVIEW_SCHEMA.
 
     Returns a list of human-readable error messages (each formatted as

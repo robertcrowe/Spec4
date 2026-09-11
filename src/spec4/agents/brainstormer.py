@@ -815,7 +815,7 @@ def _brainstormer_seed_from_vision(
 
 
 def _brainstormer_seed_from_prior(
-    msgs: list[dict[str, Any]], prior_vision: Any, code_review_block: str
+    msgs: list[dict[str, Any]], prior_vision: dict[str, Any], code_review_block: str
 ) -> None:
     """Seed from the prior round's vision (revision entry)."""
     prior_text = json.dumps(prior_vision, indent=2)

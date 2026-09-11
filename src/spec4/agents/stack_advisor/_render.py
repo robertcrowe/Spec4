@@ -61,7 +61,7 @@ def _scalar_text(value: Any) -> str:
     return str(value)
 
 
-def _label(key: Any) -> str:
+def _label(key: str) -> str:
     return str(key).replace("_", " ").strip().title()
 
 

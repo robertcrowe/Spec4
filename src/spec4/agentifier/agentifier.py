@@ -2189,7 +2189,7 @@ def _catalog_scout_prep(
 
 def _catalog_breadth_intro(
     session: dict[str, Any],
-    composed: Any,
+    composed: ComposerOutput,
     _input_candidates: list[Any],
     _project_name: str,
     candidates: list[Any],
@@ -2601,7 +2601,10 @@ def _cc_revise_input(
 
 
 def _cc_apply_revision(
-    session: dict[str, Any], revised: Any, current_topic: str, analysis: dict[str, Any]
+    session: dict[str, Any],
+    revised: dict[str, Any] | None,
+    current_topic: str,
+    analysis: dict[str, Any],
 ) -> dict[str, Any]:
     """Fold a revised topic back into the stored analysis."""
     if revised and current_topic in revised:

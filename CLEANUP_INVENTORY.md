@@ -11301,12 +11301,24 @@ Replaces §60.6's table where they differ; its per-commit inheritance stands, as
 | 7q | **the agentifier eight with the `yield from` backlog — last** | (e) | plan mode, `ultrathink`, high effort: everything on (ruled at review of 7n) |
 | close-out | the plan's audit | `CLEANUP_REPORT.md`, docs, the inventory fold; root-siblings, batch 11's three names, (c)'s three, and the five-way `revision_delta` dedupe, a straight lift to `_utils` (§67.11), recorded for Phase 8 | — |
 
+**For the close-out report: invariants the suite assumed rather than pinned, ruled at review
+of 7m.** `CLEANUP_REPORT.md` carries the two findings below under this one heading. Each is a
+property the design depends on that nothing in the suite would have noticed losing.
+
 **For the close-out report: a finding in its own right, ruled at review of 7n.** 7n promoted
 three seams. The one mutation that nothing in the suite could catch was about which dict an
 agent is handed (§74.4): `get_agent_gen` passing a copy to an agent's `run`, so that every
 write the turn makes is lost at finalise. That is the two-store session model's most basic
 invariant, and nothing pinned it until 7n2's identity test, not even the browser walk.
 `CLEANUP_REPORT.md` carries it as a finding, not as a line in 7n's list.
+
+**The second, ruled at review of 7m: a key written from a sibling module on the driven path
+was invisible to the whole suite** (§76.5, run A). 7m's mutation added a helper in `_seed.py`
+that writes a key named in neither restart collection, called from `agentifier.py:1915` on
+the draw path. Against the old tests every one of 4,209 passed, not only the two text scans.
+That is the exact shape 7q creates when it moves writers out of `agentifier.py`, and the
+restart's completeness (D-TA1) is what it breaks. Nothing pinned that until 7m's
+package-wide scan and its reset-seam test.
 
 **A Phase 7 candidate beside 7k's `module_seam`, not for now (ruled at 7d, §64).** 7c's
 shadow flip (§63.1) retired the reason for the `sys.modules` idiom in `test_cost_summary.py`:
@@ -14933,3 +14945,213 @@ caught (§76.5, run B).
 - It claims no runtime figure.
 
 7o and 7p follow in default mode, then 7q last with everything on.
+
+## 77. Phase 7o — type hygiene: the 58, annotations only
+
+§60.7(j) 7o; §60.5's "genuinely typeable" class; §60.7(i)1's two conditions. It ran in
+default mode at medium effort with auto mode, as ruled at review of 7n. Review of 7m set the
+scope: the two conditions and one rule.
+- **Condition (i):** all four areas go through strict mypy before the commit, not only the
+  two a verifier ran on a scratch copy.
+- **Condition (ii):** the 35 load-bearing rows are re-read for any whose reason was "no
+  stubs". Each such row is either moved into the batch or given a reason that still holds
+  now that dash and litellm ship types.
+- **The rule: annotations only.** If satisfying mypy on a row needs a runtime change (an
+  `isinstance` guard, a `cast()` over a real `None`, a default value, a narrowed branch),
+  the row comes out of the batch, onto a list with its reason. The check is the
+  substitution diff's cousin: strip the annotations from the diff, and what remains must be
+  empty.
+
+Counts are 5p's grep, lines containing `: Any` (§60.7(a)), never a type-checker figure.
+There is one commit per area, because the areas proved separable (§77.2). This section is
+appended in parts, one per commit.
+
+### 77.1 The rule's check, defined, and shown to bite
+
+`strip_check.py BASE ROOT` parses every changed `.py` file on both sides. It erases
+annotation material from both, then compares the ASTs, so layout is ignored. Annotation
+material is:
+- every argument annotation and every return annotation;
+- every `AnnAssign`'s annotation. The statement is kept, so a dataclass field stays a field;
+- PEP 695 type parameters;
+- `if TYPE_CHECKING:` blocks, which never execute;
+- the `TYPE_CHECKING` name in a `from typing import` line.
+
+Anything else that differs is residue: a runtime change, printed as unparsed code. The
+check exits 1 on any residue.
+
+**The one interpretation in that definition, for review: the `TYPE_CHECKING` block.** Nine
+rows need a name their module does not bind at runtime:
+- `SearchConfig`, in `_reask.py`, `designer.py` and `reference_verifier.py`;
+- `AsyncIterable`, `Iterable` and `Awaitable`, in `_seed.py`, `subagents.py` and
+  `llm.py`.
+
+A runtime import would be residue. It is not behaviour, but it is a runtime binding, and
+for `SearchConfig` it is a new module-level import edge in modules that deliberately
+import `spec4.llm` lazily (`reference_verifier.py:47`). So every such name is imported
+under `if TYPE_CHECKING:` only.
+
+That is safe because all 27 edited modules already carry `from __future__ import
+annotations` (88 modules in `src/` do), so annotations are never evaluated. Nothing reads
+them at runtime either: there is no `get_type_hints`, no `__annotations__` and no pydantic
+in `src/`, no test reads a signature, and Dash reads none. `test_import_layering.py` walks
+the AST, so it sees these imports as edges. `spec4.websearch` is a root module, which the
+agent side may import. `TYPE_CHECKING` is new to `src/`: nothing used it before.
+
+**The one row not applied as proposed.** `subagents.py:236`'s proposal was
+`Awaitable[_T] -> _T`, which needs a module-level `_T = TypeVar("_T")`, a runtime
+statement. The proposal's own minimal alternative is taken instead: `coro: Awaitable[Any]`,
+keeping `-> Any`. The generic form is left for Phase 8.
+
+**Shown to bite, in the dry-run copy.** The probe added a default value and an `isinstance`
+guard to `on_ff_info`, the two runtime changes the rule names. The check reported the
+residue and exited 1. Restored, it reported no residue:
+
+```
+RESIDUE: src/spec4/callbacks/_chat.py
+    --- base (stripped)
+    +++ new (stripped)
+    @@ -109,4 +109,5 @@
+     @callback(Output('ff-info-modal', 'opened'), Input('btn-ff-info', 'n_clicks'), prevent_initial_call=True)
+    -def on_ff_info(n_clicks):
+    -    """Open the Fast Forward info dialog; the modal closes itself client-side."""
+    +def on_ff_info(n_clicks=0):
+    +    assert isinstance(n_clicks, int | None)
+    +    'Open the Fast Forward info dialog; the modal closes itself client-side.'
+         if not n_clicks:
+probe strip-exit=1
+```
+
+### 77.2 Condition (i): all four areas through strict mypy, before any commit
+
+The dry run happened before the first commit. HEAD's `src/` and `pyproject.toml` were copied
+to a scratch directory with `git archive`. **All 58 rows** were applied there by
+`apply_7o.py`, which places each row at its HEAD line, mapped from §60's base `7f969a9` by
+difflib. Every mapped line still held `: Any`, so none had drifted. `ruff format` was run,
+then the strip check, then strict mypy with no cache (`--cache-dir=/dev/null`):
+
+| Step | Result |
+|---|---|
+| Apply | `rows applied: 58; files: 27`. Every target matched `<target>: Any` exactly once, and no row line kept a `: Any` |
+| Format | `6 files reformatted, 21 files left unchanged` |
+| Strip check | `files changed: 27; files with residue: 0` |
+| Strict mypy, all of `src/` | `Success: no issues found in 92 source files` |
+| 5p's grep | **290 → 232** |
+
+- **No row needed a runtime change, so no row comes out.** The rule's list is empty.
+- **Top-level `callbacks/` and the root modules, the two areas no verifier had run,**
+  type-check with the other two applied beside them.
+- **The areas are separable.** Each area's rows annotate their own module's functions, and
+  a narrower parameter only ever receives what it received before. So a later area cannot
+  force a change to an earlier one. Each area also passes strict mypy on its own commit.
+
+The rows' proposed types are §60.5's, verified line by line against their producers then.
+Mypy passing is a floor, not the evidence (§60.5): "a narrower type is only as good as the
+producer evidence behind it". The caveats §60.5 kept still apply:
+- `received`, `status` and `working_dir` rest on today's writer set;
+- the two schema validators narrow a check that accepts any JSON;
+- a narrowed `isinstance` branch can go dead silently, because `warn_unreachable` is off
+  (`_review_render.py:57`).
+
+### 77.3 Condition (ii): the 35 load-bearing rows, re-read
+
+**How the rows were selected:** every one of the 35 reasons in `any_verified.json` was
+searched for `stub|untyped|ignore_missing|override`. The nine it returns are exactly
+§60.7(i)1's nine. The other 26 reasons rest on `**kwargs` passthroughs, the `SubAgent`
+protocol's heterogeneous members, or duck-typed litellm reads (`_get`, `getattr`), none of
+which mentions types shipping or not.
+
+**Verified today, in `.venv`:**
+- **Who ships types:** dash 4.1.0 and litellm 1.82.0 ship `py.typed`;
+  `dash_mantine_components`, `boto3` and `jsonschema` do not.
+- **dash:** `triggered_id` is declared without an annotation
+  (`dash/_callback_context.py:121`, `def triggered_id(self):`), so mypy reads it as `Any`
+  from dash's own signature.
+- **litellm:** annotates `_hidden_params` as a bare `dict` (`litellm/types/utils.py:1674`,
+  `:1914`, `:2217`, `:2321`), whose values are `Any` in litellm's own types.
+
+Lines below are at `4acdffd`, 7m's HEAD:
+
+| Row | What its reason leaned on | Verdict |
+|---|---|---|
+| `agents/designer.py:584` `tc_deltas` | already corrected by §60.5's verifier | **Stays.** The corrected reason holds without stubs: `stream_completion` yields `Any` chunks (`Generator[Any, None, None]`); litellm's own `Delta.tool_calls` is `Optional[List[Union[ChatCompletionDeltaToolCall, Any]]]`; the tests feed `MagicMock` chunks |
+| `llm.py:296` `_as_int(value)` | already corrected by §60.5's verifier | **Stays.** Every argument is a `_get()` result, `Any` by construction (`getattr` / `dict.get`, `:308–314`). The `isinstance` narrowing is the function's job. The only other spelling is `object` |
+| `agentifier/subagents.py:144` `input` | a false match: "stub" is the method's stub body | **Stays.** Protocol member with heterogeneous inputs. The latent protocol mismatch §60.5 recorded is unchanged |
+| `callbacks/designer/__init__.py:147` `content` | dmc ships no types | **Stays. The reason holds:** `dash_mantine_components` has no `py.typed` |
+| `layouts/designer.py:75` `**kwargs` | dmc untyped | **Stays**, as above |
+| `layouts/designer.py:147` `*buttons`, `**kwargs` | dmc untyped | **Stays**, as above |
+| `layouts/designer.py:209` `first` | dmc untyped | **Stays**, as above |
+| `layouts/_artifact_view.py:764` `value` | "Dash ctx is untyped under the override" | **Stays, reason rewritten** (below) |
+| `llm.py:489` `_hidden_usage(chunk)` | "returns the untyped `_hidden_params['usage']` value" | **Stays, reason rewritten** (below) |
+
+**The two rewritten reasons, which hold now that dash and litellm ship types:**
+- **`layouts/_artifact_view.py:764`, `round_number_from_value(value: Any)`.** The input is
+  heterogeneous by contract, and the function's own `isinstance` checks narrow it. Its two
+  producers are a browser value and a session value:
+  - `ctx.triggered_id.get("index")` (`callbacks/_artifacts.py:217`). dash leaves
+    `triggered_id` unannotated, so the value is `Any` by dash's own signature, not by a
+    missing stub.
+  - `session.get("selected_round")` (`:237`), from a `sessionStorage` store. The docstring
+    says a store written by an older build "could hold anything at all".
+
+  The only tighter honest spelling is `object`, the same as `_as_int`'s.
+- **`llm.py:489`, `_hidden_usage(chunk: Any) -> Any`.** The chunk is read duck-typed:
+  `getattr` with a default, guarded by `isinstance`, inside a `try`. It may be a litellm
+  stream chunk, a test's `SimpleNamespace` or `MagicMock` stand-in (`tests/_chunks.py`), or
+  `None`. It arrives from `last` (`:514`, load-bearing). litellm's own annotation for what
+  it returns is a bare `dict`, so the usage value is `Any` at its source. It feeds
+  `_usage_fields(usage: Any)` (`:317`), which is load-bearing on the same reading.
+
+**No row moves into the batch,** so the expected 290 → 232 stands. Every reason that leaned
+on dash or litellm lacking types now rests on something that is true.
+
+### 77.4 Commit 7o1: area 1, `agents/` and `agentifier/` (24 rows, 16 files)
+
+| # | Line (§60's base → HEAD) | Target | `Any` becomes | Type-only import |
+|---:|---|---|---|---|
+| 1 | `agentifier/_seed.py:109` | `async_gen` | `AsyncIterable[str]` | `AsyncIterable` |
+| 2 | `agentifier/_seed.py:461` | `revision_goal` | `str` |  |
+| 3 | `agentifier/_seed.py:489` | `cand` | `Candidate` |  |
+| 4 | `agentifier/_seed.py:514` | `analysis` | `TierAnalystOutput` |  |
+| 5 | `agentifier/agentifier.py:2192` | `composed` | `ComposerOutput` |  |
+| 6 | `agentifier/agentifier.py:2604` | `revised` | `dict[str, Any] \| None` |  |
+| 7 | `agentifier/reference_verifier.py:34` | `search_config` | `SearchConfig \| str \| None` | `SearchConfig` |
+| 8 | `agentifier/reference_verifier.py:73` | `search_config` | `SearchConfig \| str \| None` |  |
+| 9 | `agentifier/requires_reconciler.py:529` | `feature_specs` | `dict[str, Any] \| None` |  |
+| 10 | `agentifier/subagents.py:236` | `coro` | `Awaitable[Any]` (the proposal's minimal alternative; `-> Any` kept) | `Awaitable` |
+| 11 | `agents/_code_review_schema.py:516` | `data` | `dict[str, Any]` |  |
+| 12 | `agents/_feature_context.py:665` | `prov` | `dict[str, Any]` |  |
+| 13 | `agents/_phase_schema.py:131` | `data` | `dict[str, Any]` |  |
+| 14 | `agents/_reask.py:80` | `search_config` | `SearchConfig \| None` | `SearchConfig` |
+| 15 | `agents/_stack_context.py:100` | `version` | `int \| None` |  |
+| 16 | `agents/brainstormer.py:814` → `:818` | `prior_vision` | `dict[str, Any]` |  |
+| 17 | `agents/code_scanner/__init__.py:339` | `working_dir` | `str` |  |
+| 18 | `agents/code_scanner/_review_render.py:43` | `field` | `dict[str, Any]` |  |
+| 19 | `agents/designer.py:545` | `search_config` | `SearchConfig \| None` | `SearchConfig` |
+| 20 | `agents/designer.py:601` | `effort`, `api_key`, `api_base`, `extra_kwargs` | `str` · `str` · `str \| None` · `dict[str, Any] \| None` |  |
+| 21 | `agents/designer.py:664` | `search_config` | `SearchConfig \| None` |  |
+| 22 | `agents/phaser/__init__.py:233` | `working_dir` | `str \| None` |  |
+| 23 | `agents/phaser/__init__.py:367` | `delta` | `dict[str, Any] \| None` |  |
+| 24 | `agents/stack_advisor/_render.py:64` | `key` | `str` |  |
+
+- **5p's grep: 290 → 266 (−24).** Per area:
+  - `agents/` 78 → 64 (−14);
+  - `agentifier/` 16 → 6 (−10);
+  - top-level `callbacks/` 68, `callbacks/designer/` 44, `layouts/` 14 and the root 70 are
+    unchanged.
+- **Strip check against HEAD:** `files changed: 16; files with residue: 0`.
+- **Strict mypy:** `Success: no issues found in 92 source files`.
+- **Footprint:** 16 files, 55 insertions and 29 deletions, including five `TYPE_CHECKING`
+  blocks. `ruff format` reflowed four files whose lines grew past 88 characters.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12425 stmts, 891 miss, 93%`, **unchanged**. An annotation adds no statement. The five `TYPE_CHECKING` blocks add none either, measured rather than assumed: `_seed.py` stands at 161 statements, 13 missed, exactly as at 7m. `pyproject.toml` has no coverage configuration, so coverage 7.13.5's defaults exclude the blocks |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched, so no petition |
+
+**Also carried in this commit, as ruled at review of 7m:** the close-out heading beside
+§60.7(j), "invariants the suite assumed rather than pinned". Under it, 7m's run A sits
+beside 7n2's identity finding: a key written from a sibling module on the driven path was
+invisible to the whole suite.

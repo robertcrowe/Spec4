@@ -21,7 +21,10 @@ Usage::
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from spec4.websearch import SearchConfig
 
 _URL_PATTERN = re.compile(r"https?://[^\s\)\"\']+")
 
@@ -31,7 +34,9 @@ def is_url_present(text: str) -> bool:
     return bool(_URL_PATTERN.search(text))
 
 
-def lookup_reference_url(reference_text: str, search_config: Any) -> str | None:
+def lookup_reference_url(
+    reference_text: str, search_config: SearchConfig | str | None
+) -> str | None:
     """Search for the canonical URL of a reference string.
 
     Returns the first HTTPS URL found in the search result, or None if the
@@ -70,7 +75,7 @@ def lookup_reference_url(reference_text: str, search_config: Any) -> str | None:
 
 def enrich_references(
     references: list[str],
-    search_config: Any,
+    search_config: SearchConfig | str | None,
 ) -> list[str]:
     """Add canonical URLs to references that don't already contain one.
 

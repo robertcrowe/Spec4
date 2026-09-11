@@ -128,7 +128,7 @@ PHASE_SCHEMA: dict[str, Any] = {
 }
 
 
-def validate_phase(data: Any) -> list[str]:
+def validate_phase(data: dict[str, Any]) -> list[str]:
     """Validate a single phase object against PHASE_SCHEMA.
 
     Returns a list of human-readable error messages (each formatted as

@@ -24,7 +24,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable
 
 __all__ = [
     # Protocols
@@ -233,7 +236,7 @@ class SubAgentRegistry:
 # ---------------------------------------------------------------------------
 
 
-async def run_with_timeout(coro: Any, *, timeout: float, name: str) -> Any:
+async def run_with_timeout(coro: Awaitable[Any], *, timeout: float, name: str) -> Any:
     """Await *coro*, cancelling it if it exceeds *timeout* seconds.
 
     Args:

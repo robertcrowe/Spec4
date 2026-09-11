@@ -18,7 +18,7 @@ import asyncio
 import queue
 import threading
 from collections.abc import Callable, Generator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from spec4.agentifier.composer import (
     ComposerAgent,
@@ -50,6 +50,9 @@ from spec4.agentifier.tier_analyst import (
     TierAnalystInput,
     TierAnalystOutput,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterable
 
 __all__ = [
     "_analyses_from_session",
@@ -106,7 +109,7 @@ _registry = _build_registry()
 # ---------------------------------------------------------------------------
 
 
-def _iter_async_gen(async_gen: Any) -> Generator[str, None, None]:
+def _iter_async_gen(async_gen: AsyncIterable[str]) -> Generator[str, None, None]:
     """Bridge an async generator to a synchronous generator.
 
     Runs the async generator in a dedicated daemon thread and drains it
@@ -458,7 +461,7 @@ def candidates_from_dicts(data: list[dict[str, Any]]) -> list[Candidate]:
     ]
 
 
-def _seed_mode_note(revision_goal: Any, brownfield: bool) -> str:
+def _seed_mode_note(revision_goal: str, brownfield: bool) -> str:
     """The revision / brownfield / greenfield framing note for the seed intro."""
     if revision_goal:
         mode_note = (
@@ -486,7 +489,7 @@ def _seed_mode_note(revision_goal: Any, brownfield: bool) -> str:
 
 def _candidate_head_lines(
     i: int,
-    cand: Any,
+    cand: Candidate,
     present: set[str],
     members_by_coordinator: dict[str, list[str]],
     required_by: dict[str, list[str]],
@@ -511,7 +514,7 @@ def _candidate_head_lines(
     return lines
 
 
-def _candidate_analysis_lines(analysis: Any, lines: list[str]) -> None:
+def _candidate_analysis_lines(analysis: TierAnalystOutput, lines: list[str]) -> None:
     """The Tier Analyst recommendation, rationale and risk lines for one candidate."""
     lines.append(f"Recommended tier: **{analysis.recommended_tier}**")
     lines.append(f"Rationale: {analysis.rationale}")

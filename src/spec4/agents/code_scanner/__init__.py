@@ -336,7 +336,7 @@ def run(  # noqa: C901, PLR0912, PLR0915  # nine-yield generator; the surviving 
 
 def _scanner_seed(
     msgs: list[dict[str, Any]],
-    working_dir: Any,
+    working_dir: str,
     existing_review: Any,
     all_files: list[Any],
 ) -> str:
