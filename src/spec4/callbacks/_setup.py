@@ -36,7 +36,7 @@ def _prefs_keep_working_dir(prefs: Any) -> dict[str, Any]:
     Input("setup-provider", "value"),
     prevent_initial_call=False,
 )
-def on_provider_hint(provider_label: Any) -> Any:
+def on_provider_hint(provider_label: str | None) -> Any:
     """Fill the wizard's hint slot — from the shared builder, not a copy.
 
     The gate's own hint callback already went through
@@ -263,7 +263,7 @@ def on_setup_back_model(n: Any, session: Any) -> Any:
     Input("setup-search-provider", "value"),
     prevent_initial_call=False,
 )
-def on_search_provider_hint(provider_label: Any) -> Any:
+def on_search_provider_hint(provider_label: str | None) -> Any:
     """Retitle the key field and describe whichever provider is selected."""
     key = websearch.provider_key_for_label(provider_label or "")
     spec = websearch.PROVIDERS[key]

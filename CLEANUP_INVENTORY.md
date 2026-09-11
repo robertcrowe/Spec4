@@ -15155,3 +15155,38 @@ on dash or litellm lacking types now rests on something that is true.
 §60.7(j), "invariants the suite assumed rather than pinned". Under it, 7m's run A sits
 beside 7n2's identity finding: a key written from a sibling module on the driven path was
 invisible to the whole suite.
+
+### 77.5 Commit 7o2: area 2, top-level `callbacks/` (6 rows, 3 files)
+
+This is one of the two areas §60.5's verifiers never ran through mypy. §77.2's dry run
+covered it before any commit, and it is now checked again in the real tree.
+
+| # | Line (§60's base → HEAD) | Target | `Any` becomes | Type-only import |
+|---:|---|---|---|---|
+| 1 | `callbacks/_artifacts.py:459` | `working_dir` | `str \| None` |  |
+| 2 | `callbacks/_chat.py:241` | `n_clicks` | `int \| None` |  |
+| 3 | `callbacks/_chat.py:548` | `received` | `int \| None` |  |
+| 4 | `callbacks/_chat.py:549` | `status` | `str \| None` |  |
+| 5 | `callbacks/_setup.py:39` | `provider_label` | `str \| None` |  |
+| 6 | `callbacks/_setup.py:266` | `provider_label` | `str \| None` |  |
+
+- **5p's grep: 266 → 260 (−6).** Top-level `callbacks/` goes from 68 to 62. Every other
+  area is unchanged.
+- **Strip check against `b0dbcd5`:** `files changed: 3; files with residue: 0`.
+- **The diff is six lines out and six in, each an annotation.** No `TYPE_CHECKING` import is
+  needed, and `ruff format` left all three files unchanged.
+- **Strict mypy:** `Success: no issues found in 92 source files`.
+- **Three rows are Dash callback inputs bound to a fixed-type prop:**
+  - `on_ff_info`'s `n_clicks` is `int | None` from a `dmc.Button`;
+  - the two `provider_label`s are `str | None` from a `dmc.Select`.
+
+  Dash passes `None` before the first interaction, and each body already tests truthiness
+  or uses `provider_label or ""`. `received` and `status` carry §60.5's caveat: they rest on
+  today's writer set.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12425 stmts, 891 miss, 93%`, **unchanged** |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |

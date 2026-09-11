@@ -456,7 +456,7 @@ def dl_deployment(n: Any, session: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _open_target(working_dir: Any, round_number: int | None, path: str) -> str:
+def _open_target(working_dir: str | None, round_number: int | None, path: str) -> str:
     """The path an Open button actually selects, resolved for this round.
 
     One artifact needs the indirection: ``phases/`` is a directory standing

@@ -238,7 +238,7 @@ def on_chat_retry(n_clicks: Any, session: Any) -> Any:
     Input("btn-ff-info", "n_clicks"),
     prevent_initial_call=True,
 )
-def on_ff_info(n_clicks: Any) -> Any:
+def on_ff_info(n_clicks: int | None) -> Any:
     """Open the Fast Forward info dialog; the modal closes itself client-side."""
     if not n_clicks:
         return no_update
@@ -545,8 +545,8 @@ def _poll_running(
     session: dict[str, Any],
     messages: list[dict[str, Any]],
     text: str,
-    received: Any,
-    status: Any,
+    received: int | None,
+    status: str | None,
 ) -> Any:
     """The poll tick while the stream is still producing."""
     prev = (session.get("messages") or [{}])[-1].get("content", "")
