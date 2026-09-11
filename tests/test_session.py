@@ -21,7 +21,7 @@ from spec4.app_constants import (
 from spec4.session import (
     NoModelConnectedError,
     default_session,
-    _get_agent_gen,
+    get_agent_gen,
     load_working_dir,
     persist_artifacts,
     reset_for_new_project,
@@ -736,12 +736,12 @@ class TestNoModelConnected:
 
     def test_a_turn_with_no_config_raises_a_named_error(self) -> None:
         with pytest.raises(NoModelConnectedError):
-            _get_agent_gen(None, self._session())
+            get_agent_gen(None, self._session())
 
     def test_the_message_says_what_to_do(self) -> None:
         """It reaches the transcript verbatim, so it has to be actionable."""
         with pytest.raises(NoModelConnectedError) as caught:
-            _get_agent_gen(None, self._session())
+            get_agent_gen(None, self._session())
         message = str(caught.value)
         assert "No model is connected" in message
         assert "Settings" in message
@@ -754,7 +754,7 @@ class TestNoModelConnected:
         the whole explanation.
         """
         with pytest.raises(NoModelConnectedError) as caught:
-            _get_agent_gen(None, self._session())
+            get_agent_gen(None, self._session())
         assert not isinstance(caught.value, TypeError)
 
     def test_it_raises_before_the_generator_is_built(self) -> None:
@@ -765,14 +765,14 @@ class TestNoModelConnected:
         that bookkeeping runs.
         """
         with pytest.raises(NoModelConnectedError):
-            _get_agent_gen("hello", self._session())
+            get_agent_gen("hello", self._session())
 
     @pytest.mark.parametrize("agent", list(AGENT_KEYS))
     def test_every_agent_is_covered(self, agent: str) -> None:
         if agent == "designer":
             pytest.skip("Designer has no chat turn; it draws from its wizard")
         with pytest.raises(NoModelConnectedError):
-            _get_agent_gen(None, self._session(active_agent=agent))
+            get_agent_gen(None, self._session(active_agent=agent))
 
     def test_a_connected_session_is_not_refused(self) -> None:
         """The guard must not stand in front of a working turn."""
@@ -780,7 +780,7 @@ class TestNoModelConnected:
             llm_config={"model": "claude-sonnet-4-6", "api_key": "k"}
         )
         with patch.object(brainstormer, "run", return_value=iter(["hi"])):
-            assert list(_get_agent_gen(None, session)) == ["hi"]
+            assert list(get_agent_gen(None, session)) == ["hi"]
 
     def test_a_per_agent_override_is_enough(self) -> None:
         """No session default, but this agent has its own model."""
@@ -793,12 +793,12 @@ class TestNoModelConnected:
             }
         )
         with patch.object(brainstormer, "run", return_value=iter(["hi"])):
-            assert list(_get_agent_gen(None, session)) == ["hi"]
+            assert list(get_agent_gen(None, session)) == ["hi"]
 
     def test_a_config_without_a_model_is_not_connected(self) -> None:
         """`model` is the field the request cannot be built without."""
         with pytest.raises(NoModelConnectedError):
-            _get_agent_gen(None, self._session(llm_config={"api_key": "k"}))
+            get_agent_gen(None, self._session(llm_config={"api_key": "k"}))
 
     @pytest.mark.parametrize(
         "extra",
@@ -817,7 +817,37 @@ class TestNoModelConnected:
         connected = llm_selection.is_connected(session, "brainstormer")
         with patch.object(brainstormer, "run", return_value=iter(["hi"])):
             if connected:
-                assert list(_get_agent_gen(None, session)) == ["hi"]
+                assert list(get_agent_gen(None, session)) == ["hi"]
             else:
                 with pytest.raises(NoModelConnectedError):
-                    _get_agent_gen(None, session)
+                    get_agent_gen(None, session)
+
+
+class TestGetAgentGenHandsOverTheLiveSession:
+    """get_agent_gen's contract: every agent's ``run()`` receives this very dict.
+
+    The agent writes to the session as it streams, and the poll reads those
+    writes from the same dict when the turn finalises. An arm that handed over
+    a copy would run the whole turn and lose every write in it.
+    """
+
+    @pytest.mark.parametrize(
+        ("agent", "target"),
+        [
+            ("code_scanner", "spec4.session.code_scanner.run"),
+            ("brainstormer", "spec4.session.brainstormer.run"),
+            ("agentifier", "spec4.agentifier.agentifier.run"),
+            ("stack_advisor", "spec4.session.stack_advisor.run"),
+            ("phaser", "spec4.session.phaser.run"),
+            ("deployer", "spec4.session.deployer.run"),
+        ],
+    )
+    def test_run_receives_the_same_session(self, agent: str, target: str) -> None:
+        session = default_session()
+        session.update(
+            {"active_agent": agent, "llm_config": {"model": "m", "api_key": "k"}}
+        )
+        with patch(target, return_value=iter(["x"])) as run:
+            get_agent_gen("hi", session)
+        assert run.call_args[0][1] is session
+        assert session["_stream_status"] is not None

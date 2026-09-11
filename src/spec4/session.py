@@ -360,7 +360,7 @@ _AGENT_STATUS_SEED: dict[str, str] = {
 }
 
 
-def _get_agent_gen(
+def get_agent_gen(
     user_input: str | None, session: dict[str, Any]
 ) -> Generator[str, None, None]:
     """Return the generator for one agent turn without starting it.
@@ -371,6 +371,17 @@ def _get_agent_gen(
     That is why a per-agent choice needs no sub-agent to know about it, and why
     the Agentifier's Fast Forward sweeps can run N sub-agent calls back to back
     without an interactive step landing inside one.
+
+    Its contract on ``session``:
+
+    * It raises ``NoModelConnectedError`` before writing anything.
+    * It then makes one eager write, ``_stream_status``, which seeds the turn's
+      status line before the generator runs.
+    * Each agent's ``run()`` receives this same dict, not a copy, and the
+      returned generator mutates it as the turn streams. The poll reads those
+      writes from it when the turn finalises.
+    * An unknown ``active_agent`` raises ``ValueError`` -- after the seed is
+      written. That order is documented here, not changed: it is behaviour.
     """
     active = session["active_agent"]
     llm_config = llm_selection.resolve(session, active)
@@ -465,7 +476,7 @@ def _trace_gen(
 
 def run_agent_blocking(user_input: str | None, session: dict[str, Any]) -> str:
     """Run one agent turn synchronously, returning the full response text."""
-    return "".join(_get_agent_gen(user_input, session))
+    return "".join(get_agent_gen(user_input, session))
 
 
 def _turn_was_fast_forward(session: dict[str, Any]) -> bool:

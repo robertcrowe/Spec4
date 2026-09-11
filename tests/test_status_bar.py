@@ -585,7 +585,7 @@ class TestStatusBarCallback:
     def test_it_agrees_with_what_a_turn_would_do(self, tmp_path: pathlib.Path) -> None:
         """The bar and the dispatch answer one question, through one route.
 
-        A bar saying "connected" while `_get_agent_gen` refuses to start is
+        A bar saying "connected" while `get_agent_gen` refuses to start is
         the whole failure this closes, so the two are pinned together rather
         than asserted separately.
         """

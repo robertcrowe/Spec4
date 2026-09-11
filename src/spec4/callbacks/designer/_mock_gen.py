@@ -82,7 +82,7 @@ def _llm_params(
     """Extract LLM connection parameters from the main session dict.
 
     Designer has no chat turn, so this is its equivalent of the resolution in
-    ``session._get_agent_gen``: the six generation callbacks all come through
+    ``session.get_agent_gen``: the six generation callbacks all come through
     here, and resolving once covers them all. The model is taken from the
     resolved config rather than ``session["model"]`` — the latter names the
     default, which is the wrong answer whenever Designer has an override.

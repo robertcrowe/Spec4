@@ -1937,7 +1937,7 @@ def _run_catalog_phase(  # noqa: C901, PLR0912, PLR0915  # 24-yield generator; t
     ):
         # --- Breadth selection turn ---------------------------------------------
         # agentifier_breadth_selection is set by the checkbox callback before
-        # calling _get_agent_gen; user_input is a human-readable summary only.
+        # calling get_agent_gen; user_input is a human-readable summary only.
         pool, survivors, rejected, to_analyze, reselection = _catalog_apply_selection(
             session
         )

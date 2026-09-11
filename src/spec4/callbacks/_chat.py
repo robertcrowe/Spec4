@@ -12,7 +12,7 @@ re-runs a failed step once the developer picks a model. The direction is one-way
 -- nothing here imports ``_gate`` or ``_nav``, and nothing here imports the
 ``spec4.callbacks`` package, which rule 4 of the layering contract forbids
 (CLEANUP_INVENTORY.md 15.2). It is also why the ``_chat`` module remains the
-patch surface for ``_get_agent_gen``, ``persist_artifacts`` and ``streaming``:
+patch surface for ``get_agent_gen``, ``persist_artifacts`` and ``streaming``:
 every path that reaches them, gate answers included, runs through this module.
 """
 
@@ -28,7 +28,7 @@ from spec4 import streaming
 from spec4.agentifier.panel_closure import close_selection, pool_from_dicts
 from spec4.layouts._llm_gate import is_open as _gate_is_open
 from spec4.session import (
-    _get_agent_gen,
+    get_agent_gen,
     persist_artifacts,
 )
 
@@ -74,7 +74,7 @@ def on_init_turn(n: Any, session: Any) -> Any:
     # the developer has not agreed to.
     if _gate_is_open(session, session.get("active_agent") or ""):
         return no_update, no_update
-    gen = _get_agent_gen(None, session)
+    gen = get_agent_gen(None, session)
     stream_id = streaming.start(gen, session)
     return (
         {
@@ -113,7 +113,7 @@ def on_chat_submit(
     messages = list(session.get("messages", []))
     messages.append({"role": "user", "content": user_input.strip()})
     messages.append({"role": "assistant", "content": ""})
-    gen = _get_agent_gen(user_input.strip(), session)
+    gen = get_agent_gen(user_input.strip(), session)
     stream_id = streaming.start(gen, session)
     return (
         {
@@ -158,7 +158,7 @@ def on_fast_forward(n_clicks: Any, session: Any) -> Any:
     messages = list(session.get("messages", []))
     messages.append({"role": "user", "content": FF_PROMPT})
     messages.append({"role": "assistant", "content": ""})
-    gen = _get_agent_gen(FF_PROMPT, session)
+    gen = get_agent_gen(FF_PROMPT, session)
     stream_id = streaming.start(gen, session)
     return (
         {
@@ -197,7 +197,7 @@ def _start_retry_turn(session: dict[str, Any]) -> tuple[dict[str, Any], int]:
     if messages and messages[-1].get("role") == "user":
         retry_input = messages[-1].get("content")
     messages.append({"role": "assistant", "content": ""})
-    gen = _get_agent_gen(retry_input, session)
+    gen = get_agent_gen(retry_input, session)
     stream_id = streaming.start(gen, session)
     return (
         {
@@ -280,7 +280,7 @@ def on_breadth_submit(n_clicks: Any, selected: Any, session: Any) -> Any:
     messages = list(session.get("messages", []))
     messages.append({"role": "user", "content": summary})
     messages.append({"role": "assistant", "content": ""})
-    gen = _get_agent_gen(summary, session)
+    gen = get_agent_gen(summary, session)
     stream_id = streaming.start(gen, session)
     return (
         {
@@ -371,7 +371,7 @@ def on_breadth_try_again(n_clicks: Any, session: Any, note: Any = None) -> Any:
         user_text = f"{user_text}\n\n{quoted}"
     messages.append({"role": "user", "content": user_text})
     messages.append({"role": "assistant", "content": ""})
-    gen = _get_agent_gen(None, session)
+    gen = get_agent_gen(None, session)
     stream_id = streaming.start(gen, session)
     return (
         {

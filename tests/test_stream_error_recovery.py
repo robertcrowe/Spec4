@@ -259,7 +259,7 @@ class TestTurnStartsClearTheFlag:
     def test_init_turn_clears(self) -> None:
         session = _session(_stream_error=True)
         with (
-            patch("spec4.callbacks._chat._get_agent_gen", return_value=iter(["x"])),
+            patch("spec4.callbacks._chat.get_agent_gen", return_value=iter(["x"])),
             patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
             updated, _ = on_init_turn(1, session)
@@ -271,7 +271,7 @@ class TestTurnStartsClearTheFlag:
             messages=[{"role": "assistant", "content": "**Error: X**"}],
         )
         with (
-            patch("spec4.callbacks._chat._get_agent_gen", return_value=iter(["x"])),
+            patch("spec4.callbacks._chat.get_agent_gen", return_value=iter(["x"])),
             patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
             updated, cleared_input, max_intervals = on_chat_submit(
@@ -288,7 +288,7 @@ class TestTurnStartsClearTheFlag:
             messages=[{"role": "assistant", "content": "Topic 1?"}],
         )
         with (
-            patch("spec4.callbacks._chat._get_agent_gen", return_value=iter(["x"])),
+            patch("spec4.callbacks._chat.get_agent_gen", return_value=iter(["x"])),
             patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
             updated, _ = on_fast_forward(1, session)
@@ -379,7 +379,7 @@ class TestRetryReplaysTheTurn:
         )
         with (
             patch(
-                "spec4.callbacks._chat._get_agent_gen", return_value=iter(["x"])
+                "spec4.callbacks._chat.get_agent_gen", return_value=iter(["x"])
             ) as mock_gen,
             patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
@@ -401,7 +401,7 @@ class TestRetryReplaysTheTurn:
         )
         with (
             patch(
-                "spec4.callbacks._chat._get_agent_gen", return_value=iter(["x"])
+                "spec4.callbacks._chat.get_agent_gen", return_value=iter(["x"])
             ) as mock_gen,
             patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
@@ -420,7 +420,7 @@ class TestRetryReplaysTheTurn:
             messages=[{"role": "assistant", "content": "**Error: Overloaded**"}],
         )
         with (
-            patch("spec4.callbacks._chat._get_agent_gen", return_value=iter(["x"])),
+            patch("spec4.callbacks._chat.get_agent_gen", return_value=iter(["x"])),
             patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
             updated, _ = on_chat_retry(1, session)
@@ -428,7 +428,7 @@ class TestRetryReplaysTheTurn:
 
     def test_noop_without_click(self) -> None:
         session = _session(_stream_error=True)
-        with patch("spec4.callbacks._chat._get_agent_gen") as mock_gen:
+        with patch("spec4.callbacks._chat.get_agent_gen") as mock_gen:
             result = on_chat_retry(None, session)
         mock_gen.assert_not_called()
         assert result == (no_update, no_update)
@@ -436,7 +436,7 @@ class TestRetryReplaysTheTurn:
     def test_noop_while_a_stream_is_in_flight(self) -> None:
         """Turn-integrity guard, matching every other turn starter."""
         session = _session(_stream_error=True, _stream_id="live")
-        with patch("spec4.callbacks._chat._get_agent_gen") as mock_gen:
+        with patch("spec4.callbacks._chat.get_agent_gen") as mock_gen:
             result = on_chat_retry(1, session)
         mock_gen.assert_not_called()
         assert result == (no_update, no_update)
@@ -447,7 +447,7 @@ class TestRetryReplaysTheTurn:
         session = _session(_stream_error=True, messages=[])
         with (
             patch(
-                "spec4.callbacks._chat._get_agent_gen", return_value=iter(["x"])
+                "spec4.callbacks._chat.get_agent_gen", return_value=iter(["x"])
             ) as mock_gen,
             patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
@@ -570,7 +570,7 @@ class TestRetryWithADifferentModel:
             patch("spec4.llm_selection.probe_image_support", return_value=True),
             patch("spec4.llm_selection.probe_tool_support", return_value=tool_support),
             patch(
-                "spec4.callbacks._chat._get_agent_gen", return_value=iter(["x"])
+                "spec4.callbacks._chat.get_agent_gen", return_value=iter(["x"])
             ) as gen,
             patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
@@ -654,7 +654,7 @@ class TestRetryWithADifferentModel:
         )
         with (
             patch(
-                "spec4.callbacks._chat._get_agent_gen", return_value=iter(["x"])
+                "spec4.callbacks._chat.get_agent_gen", return_value=iter(["x"])
             ) as gen,
             patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):

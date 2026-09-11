@@ -178,7 +178,7 @@ def on_gate_chip(n: Any, session: Any) -> Any:
     Refused while a turn is streaming: that turn is already committed to a
     config, and changing the label under it would misreport what produced the
     answer on screen. A change made here applies from the next turn, which the
-    per-turn resolution in `_get_agent_gen` gives for free.
+    per-turn resolution in `get_agent_gen` gives for free.
     """
     if not n or session.get("_stream_id"):
         return no_update

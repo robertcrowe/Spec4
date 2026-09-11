@@ -704,19 +704,19 @@ class TestChatStatusLine:
 
 
 class TestAgentStatusSeed:
-    """_get_agent_gen seeds a per-agent status before the generator runs."""
+    """get_agent_gen seeds a per-agent status before the generator runs."""
 
     def test_seeds_status_on_session(self) -> None:
-        from spec4.session import _get_agent_gen
+        from spec4.session import get_agent_gen
 
         session = default_session()
         session["active_agent"] = "brainstormer"
         session["llm_config"] = {"model": "test-model"}
-        _get_agent_gen("hi", session)
+        get_agent_gen("hi", session)
         assert session["_stream_status"] == "Brainstormer is thinking…"
 
     def test_every_agent_has_a_seed(self) -> None:
-        from spec4.session import _AGENT_STATUS_SEED, _get_agent_gen
+        from spec4.session import _AGENT_STATUS_SEED, get_agent_gen
 
         for agent in (
             "code_scanner",
@@ -730,7 +730,7 @@ class TestAgentStatusSeed:
             session = default_session()
             session["active_agent"] = agent
             session["llm_config"] = {"model": "test-model"}
-            _get_agent_gen(None, session)
+            get_agent_gen(None, session)
             assert session["_stream_status"] == _AGENT_STATUS_SEED[agent]
 
 

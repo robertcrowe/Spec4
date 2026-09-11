@@ -14043,3 +14043,280 @@ records the amended one. Two fixes go with it:
 - **The add-only step's blank-run check now skips fenced blocks,** where verbatim output
   lives. It still refuses a run of blank lines in the prose. "Add only, stop on anything it
   did not write, verify the old record intact at the front" is unchanged.
+
+## 74. Phase 7n2 — `get_agent_gen`: the second non-agentifier seam
+
+§60.7(j) 7n, the second of three commits. It ran back to back with 7n3, as ruled at review
+of 7n1, under the same procedure and under §60.6's amended mutation rule. `_get_agent_gen`
+is promoted as-is on its §60.4 proposal. It gets a public name, a documented session
+contract, and one parametrized test that pins the contract's untested half: the session
+identity.
+
+### 74.0 Recorded first, as §73.10 promised: the amended 7n1
+
+**The amended 7n1 commit is `b7cf7bb34deb4a642e4422325c9cc03e48aab07a` (`b7cf7bb`).** It
+replaces `b069414cc1294fa7886f26c20902554a9b17baac` (`b069414`).
+- Its parent is unchanged, `3f73b8a`.
+- Its `src/`, `tests/`, `scripts/` and `evals/` trees are identical to `b069414`'s.
+- Against `b069414` it adds 436 lines to this record, §73 and its §73.10 note, and changes
+  nothing else.
+- The guard finds no deleted line against either commit.
+
+### 74.1 What landed
+
+| File | Change |
+|---|---|
+| `src/spec4/session.py` | `_get_agent_gen` → `get_agent_gen`, with its docstring extended by the contract (§74.2); `run_agent_blocking`'s call renamed |
+| `tests/test_session.py` | the new class `TestGetAgentGenHandsOverTheLiveSession` (§74.3); the import and ten calls renamed |
+| 8 more files | by substitution alone (below) |
+
+The 8 files changed by substitution alone:
+- `src/spec4/callbacks/_chat.py`: the docstring (`:15`), the import (`:31`), and the six
+  turn-starters' calls;
+- `src/spec4/callbacks/_gate.py:181` and `src/spec4/callbacks/designer/_mock_gen.py:85`,
+  both docstrings;
+- `src/spec4/agentifier/agentifier.py:1940`, a comment;
+- `tests/test_agent_llm_selection.py` ×8, `tests/test_stream_error_recovery.py` ×11 and
+  `tests/test_callbacks_stream_poll.py` ×5 (`TestAgentStatusSeed`'s docstring, imports and
+  calls);
+- `tests/test_status_bar.py:588`, a docstring.
+
+- **Footprint: 10 files, 90 insertions and 49 deletions.** The substitution rewrote 49
+  occurrences: 36 in tests, of which 14 are patch strings, and 13 in `src/`. The only other
+  lines are the docstring extension and the new class. Every mention only names the
+  function, so each stays true.
+- **The old name is gone.** A grep of `src/`, `tests/`, `scripts/` and `evals/` for
+  `_get_agent_gen` returns nothing. `.spec4/` is not searched, under Rule 2.
+- **This closes `_get_agent_gen`'s §55 `promote` row.**
+
+### 74.2 The contract, in full
+
+The existing docstring's two paragraphs are kept, and this is added after them:
+
+```
+    Its contract on ``session``:
+
+    * It raises ``NoModelConnectedError`` before writing anything.
+    * It then makes one eager write, ``_stream_status``, which seeds the turn's
+      status line before the generator runs.
+    * Each agent's ``run()`` receives this same dict, not a copy, and the
+      returned generator mutates it as the turn streams. The poll reads those
+      writes from it when the turn finalises.
+    * An unknown ``active_agent`` raises ``ValueError`` -- after the seed is
+      written. That order is documented here, not changed: it is behaviour.
+```
+
+The last point is §60.4's "wrinkle". It is documented, not reordered, as the plan approved.
+Moving the `ValueError` above the seed would change what a failed turn leaves in the
+session.
+
+### 74.3 The test: the session identity, over all six arms
+
+```python
+class TestGetAgentGenHandsOverTheLiveSession:
+    """get_agent_gen's contract: every agent's ``run()`` receives this very dict.
+
+    The agent writes to the session as it streams, and the poll reads those
+    writes from the same dict when the turn finalises. An arm that handed over
+    a copy would run the whole turn and lose every write in it.
+    """
+
+    @pytest.mark.parametrize(
+        ("agent", "target"),
+        [
+            ("code_scanner", "spec4.session.code_scanner.run"),
+            ("brainstormer", "spec4.session.brainstormer.run"),
+            ("agentifier", "spec4.agentifier.agentifier.run"),
+            ("stack_advisor", "spec4.session.stack_advisor.run"),
+            ("phaser", "spec4.session.phaser.run"),
+            ("deployer", "spec4.session.deployer.run"),
+        ],
+    )
+    def test_run_receives_the_same_session(self, agent: str, target: str) -> None:
+        session = default_session()
+        session.update(
+            {"active_agent": agent, "llm_config": {"model": "m", "api_key": "k"}}
+        )
+        with patch(target, return_value=iter(["x"])) as run:
+            get_agent_gen("hi", session)
+        assert run.call_args[0][1] is session
+        assert session["_stream_status"] is not None
+```
+
+- **The identity is what no test pinned before** (§60.4). The dispatch and seed tests all
+  passed under a copying arm.
+- **The two assertions work as a pair.** `is session` is the contract. The seed assertion
+  shows the eager write landed on that same dict.
+- **Placement.** The class sits after `TestNoModelConnected` in `test_session.py`, outside
+  the net.
+
+### 74.4 The proofs: §71 adapted for a promotion (§73.5)
+
+**1. The rename and token checks.** Their only non-substitution changes are the contract
+and its test. The §60.2 shell function ran with `P=HEAD` over the working tree, and the
+scratch implementation agreed line for line. The output is the reverse-substituted view,
+so `get_agent_gen` prints as `_get_agent_gen`. Verbatim, with the temp-dir prefixes
+shortened:
+
+```
+diff -ru '--exclude=CLEANUP_INVENTORY.md' p/src/spec4/session.py c/src/spec4/session.py
+--- p/src/spec4/session.py
++++ c/src/spec4/session.py
+@@ -371,6 +371,17 @@
+     That is why a per-agent choice needs no sub-agent to know about it, and why
+     the Agentifier's Fast Forward sweeps can run N sub-agent calls back to back
+     without an interactive step landing inside one.
++
++    Its contract on ``session``:
++
++    * It raises ``NoModelConnectedError`` before writing anything.
++    * It then makes one eager write, ``_stream_status``, which seeds the turn's
++      status line before the generator runs.
++    * Each agent's ``run()`` receives this same dict, not a copy, and the
++      returned generator mutates it as the turn streams. The poll reads those
++      writes from it when the turn finalises.
++    * An unknown ``active_agent`` raises ``ValueError`` -- after the seed is
++      written. That order is documented here, not changed: it is behaviour.
+     """
+     active = session["active_agent"]
+     llm_config = llm_selection.resolve(session, active)
+diff -ru '--exclude=CLEANUP_INVENTORY.md' p/tests/test_session.py c/tests/test_session.py
+--- p/tests/test_session.py
++++ c/tests/test_session.py
+@@ -818,3 +818,33 @@
+             else:
+                 with pytest.raises(NoModelConnectedError):
+                     _get_agent_gen(None, session)
++
++
++class TestGetAgentGenHandsOverTheLiveSession:
++    """_get_agent_gen's contract: every agent's ``run()`` receives this very dict.
++
++    The agent writes to the session as it streams, and the poll reads those
++    writes from the same dict when the turn finalises. An arm that handed over
++    a copy would run the whole turn and lose every write in it.
++    """
++
++    @pytest.mark.parametrize(
++        ("agent", "target"),
++        [
++            ("code_scanner", "spec4.session.code_scanner.run"),
++            ("brainstormer", "spec4.session.brainstormer.run"),
++            ("agentifier", "spec4.agentifier.agentifier.run"),
++            ("stack_advisor", "spec4.session.stack_advisor.run"),
++            ("phaser", "spec4.session.phaser.run"),
++            ("deployer", "spec4.session.deployer.run"),
++        ],
++    )
++    def test_run_receives_the_same_session(self, agent: str, target: str) -> None:
++        session = default_session()
++        session.update(
++            {"active_agent": agent, "llm_config": {"model": "m", "api_key": "k"}}
++        )
++        with patch(target, return_value=iter(["x"])) as run:
++            _get_agent_gen("hi", session)
++        assert run.call_args[0][1] is session
++        assert session["_stream_status"] is not None
+```
+
+The token check reports `hunks 50; old->new token substitutions 49; layout 0; §54.7
+aliases 0; OTHER 2`. The two OTHER lines are the docstring insert and the class insert.
+
+**2. The mutation, under the amended rule.**
+
+The mutation is §60.4's: the brainstormer arm hands its agent a copy.
+
+```python
+        gen = brainstormer.run(user_input, dict(session), llm_config)
+```
+
+It was anchored exactly once, run on the full suite, then restored from the saved bytes,
+with its sha256 checked:
+
+| Test | Under the mutation | Why |
+|---|---|---|
+| `test_session.py::TestGetAgentGenHandsOverTheLiveSession::test_run_receives_the_same_session[brainstormer-spec4.session.brainstormer.run]` (new) | **FAIL** | `run.call_args[0][1]` is a copy, not `session` |
+| the new test's other five cases | pass | the mutation touches only the brainstormer arm |
+| everything else | pass | `1 failed, 4207 passed, 1 skipped` |
+
+**Under §60.6's amended rule this is a pass.** The new test fails, and there is no other
+failure to explain. The absence is itself a finding: it confirms §60.4's reading by
+measurement. Until this commit nothing in the suite noticed an arm that hands its agent a
+copy of the session, including the browser walk that starts Brainstormer.
+
+The harness output, verbatim:
+
+```
+M 7n2 (dict(session) in the brainstormer arm): the new test FAILS, as it must; restored byte-identical: True
+   FAILED (new)   tests/test_session.py::TestGetAgentGenHandsOverTheLiveSession::test_run_receives_the_same_session[brainstormer-spec4.session.brainstormer.run]
+   other failures: 0
+   summary: 1 failed, 4207 passed, 1 skipped in 88.90s (0:01:28)
+exit=0
+```
+
+**3. Check 4's landings: 14 rewritten strings and 6 new ones.**
+
+| String | Form | Module named | How the caller reaches it | The patch lands on |
+|---|---|---|---|---|
+| `test_agent_llm_selection.py:765`, `:775`, `:785` | `patch("…")` path | `spec4.callbacks._chat` | re-exports it from `spec4.session`, and calls it | `on_init_turn@77`, `on_chat_submit@116`, `on_fast_forward@161`, `_start_retry_turn@200`, `on_breadth_submit@283`, `on_breadth_try_again@374` |
+| `test_stream_error_recovery.py:262`, `:274`, `:291`, `:382`, `:404`, `:423`, `:431`, `:439`, `:450`, `:573`, `:657` | path | `spec4.callbacks._chat` | the same | the same six |
+| `test_session.py:837` (new) | path, a module attribute | `spec4.session.code_scanner`, which is `spec4.agents.code_scanner` | `get_agent_gen` reads `code_scanner.run` | `get_agent_gen@434` |
+| `test_session.py:838` (new) | path, a module attribute | `spec4.session.brainstormer`, which is `spec4.agents.brainstormer` | reads `brainstormer.run` | `get_agent_gen@438` |
+| `test_session.py:839` (new) | path, the lazy import | `spec4.agentifier.agentifier` | does `from spec4.agentifier.agentifier import run` in its body | `get_agent_gen@440` |
+| `test_session.py:840` (new) | path, a module attribute | `spec4.session.stack_advisor`, which is `spec4.agents.stack_advisor` | reads `stack_advisor.run` | `get_agent_gen@444` |
+| `test_session.py:841` (new) | path, a module attribute | `spec4.session.phaser`, which is `spec4.agents.phaser` | reads `phaser.run` | `get_agent_gen@446` |
+| `test_session.py:842` (new) | path, a module attribute | `spec4.session.deployer`, which is `spec4.agents.deployer` | reads `deployer.run` | `get_agent_gen@448` |
+
+All 20 pass.
+- **The six new strings were checked in amendment 2's form:** the target is the function
+  `run`, and the module patched is the one `get_agent_gen` resolves it through. The five
+  module-attribute arms name `session`'s own binding of each agent module. Agentifier's
+  string names the module of the in-function import, which is read when the call runs, so
+  the patch is in place by then.
+- **Each string's other occurrences stay as they are.** The run also located the older uses
+  of the same strings, for example `spec4.session.brainstormer.run` at
+  `test_agent_llm_selection.py:258` and `test_session.py:110`. Those are unchanged by this
+  commit.
+- These rows join §68.10's landing reference.
+
+**4. The old name is gone,** by the grep in §74.1.
+
+### 74.5 Off-limits, in §60.3's adapted form
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | none in the diff |
+| 456 node ids | **456 / 456 collect**; 4,209 collected (six new parametrized cases) |
+| 19 tier-B files / 33 classes | **4 files with hunks, 25 hunks, none inside a listed class** (below) |
+| tier-A nodes | none touched |
+
+| Tier-B file | Listed class — current range | Hunks — post-image lines | Verdict |
+|---|---|---|---|
+| `test_agent_llm_selection.py` | `TestOfferedEfforts` **273–360** | 8 — 41, 260, 269, 501, 509, 765, 775, 785 | **none inside a listed class** |
+| `test_callbacks_stream_poll.py` | `TestStreamedTokenCounter` **737–757** | 5 — 707, 710, 715, 719, 733 | **none inside a listed class** |
+| `test_status_bar.py` | `TestOnlyThePathEverGivesUpSpace` **232–330**; `TestTheStylesheetPinsWhatTheLayoutMarks` **333–404** | 1 — 588 | **none inside a listed class** |
+| `test_stream_error_recovery.py` | `TestEmptyTurnBackstop` **194–250** | 11 — 262, 274, 291, 382, 404, 423, 431, 439, 450, 573, 657 | **none inside a listed class** |
+
+No petition is needed.
+
+### 74.6 Gate results (verbatim), and coverage per file
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4208 passed, 1 skipped` (exit 0): six more than 7n1, the six parametrized cases; 4,209 collected |
+| Coverage | same run | `TOTAL 12425 stmts, 891 miss, 93%`, unchanged. A docstring adds no statement |
+
+| File | Before (`b7cf7bb`) | After | The missed lines |
+|---|---|---|---|
+| `src/spec4/session.py` | 196 stmts, 34 miss | 196 stmts, 34 miss | the same lines, moved down 11 by the docstring extension (for example `407–410` → `418–421`) |
+
+### 74.7 What this sub-phase did not do
+
+- It does not reorder the `ValueError`. §74.2 documents it.
+- It adds no parameter or return value. The contract describes what the function already
+  does.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.

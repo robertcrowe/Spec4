@@ -38,7 +38,7 @@ from spec4.layouts._chat import chat_action_buttons, chat_layout
 from spec4.layouts._llm_gate import gate_card, is_open, model_chip
 from spec4.layouts.designer import designer_layout
 from spec4.project_manager import _USAGE_ROLLUP_PARENT
-from spec4.session import default_session, _get_agent_gen, reset_for_new_project
+from spec4.session import default_session, get_agent_gen, reset_for_new_project
 
 _SRC = pathlib.Path(__file__).resolve().parents[1] / "src" / "spec4"
 
@@ -257,7 +257,7 @@ class TestSubAgentsInheritTheParentsEffort:
         session["active_agent"] = "brainstormer"
         with patch("spec4.session.brainstormer.run") as run:
             run.return_value = iter(())
-            _get_agent_gen(None, session)
+            get_agent_gen(None, session)
         assert run.call_args[0][2] == {"model": "gpt-5-mini", "effort": "high"}
 
     def test_an_agent_without_an_override_receives_the_default_effort(self) -> None:
@@ -266,7 +266,7 @@ class TestSubAgentsInheritTheParentsEffort:
         session["active_agent"] = "phaser"
         with patch("spec4.session.phaser.run") as run:
             run.return_value = iter(())
-            _get_agent_gen(None, session)
+            get_agent_gen(None, session)
         assert run.call_args[0][2]["effort"] == "medium"
 
 
@@ -498,7 +498,7 @@ class TestDispatchResolvesPerAgent:
         session["active_agent"] = "brainstormer"
         with patch("spec4.session.brainstormer.run") as run:
             run.return_value = iter(())
-            _get_agent_gen(None, session)
+            get_agent_gen(None, session)
         assert run.call_args[0][2] == {"model": "gpt-5-mini"}
 
     def test_an_agent_without_an_override_receives_the_default(self) -> None:
@@ -506,7 +506,7 @@ class TestDispatchResolvesPerAgent:
         session["active_agent"] = "phaser"
         with patch("spec4.session.phaser.run") as run:
             run.return_value = iter(())
-            _get_agent_gen(None, session)
+            get_agent_gen(None, session)
         assert run.call_args[0][2] == _DEFAULT_CONFIG
 
 
@@ -762,7 +762,7 @@ class TestGateFailureParity:
 class TestGateBlocksTheTurn:
     def test_init_turn_refuses_while_the_gate_is_open(self) -> None:
         session = _session(active_agent="phaser")
-        with patch("spec4.callbacks._chat._get_agent_gen") as gen:
+        with patch("spec4.callbacks._chat.get_agent_gen") as gen:
             result = on_init_turn(1, session)
         gen.assert_not_called()
         assert result == (no_update, no_update)
@@ -772,7 +772,7 @@ class TestGateBlocksTheTurn:
             active_agent="stack_advisor",
             messages=[{"role": "assistant", "content": "Topic 1?"}],
         )
-        with patch("spec4.callbacks._chat._get_agent_gen") as gen:
+        with patch("spec4.callbacks._chat.get_agent_gen") as gen:
             result = on_fast_forward(1, session)
         gen.assert_not_called()
         assert result == (no_update, no_update)
@@ -782,7 +782,7 @@ class TestGateBlocksTheTurn:
         answered = on_gate_use_default(1, session)
         with (
             patch(
-                "spec4.callbacks._chat._get_agent_gen", return_value=iter(["x"])
+                "spec4.callbacks._chat.get_agent_gen", return_value=iter(["x"])
             ) as gen,
             patch("spec4.callbacks._chat.streaming.start", return_value="sid"),
         ):
