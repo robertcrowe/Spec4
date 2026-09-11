@@ -1039,3 +1039,85 @@ So every caller of the five former copies, the module's own tests and the real f
 | Tests | `4211 passed, 1 skipped` (exit 0) |
 | Coverage | `TOTAL 12439 876 93%`. Statements fall by 20, since four of the five copies are gone, and misses stay at 876. The rows that moved: `agentifier/_render.py` 253 → 247 statements, misses 11 → 11; `agents/_revision.py` new, 10 statements, 0 missed; `agents/deployer.py` 213 → 207 statements, misses 3 → 3; `agents/designer.py` 273 → 267 statements, misses 33 → 33; `agents/phaser/_revision.py` 35 → 29 statements, misses 0 → 0; `agents/stack_advisor/_stack_shape.py` 87 → 81 statements, misses 2 → 2 |
 | Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
+
+## 8. 8e: the five annotated targets no test reached (P22)
+
+Inventory §77.9's gap, closed. The coverage percentage hid it, because a percentage names
+no function. There is one test class per function, each driving the function's
+annotated inputs with its props' own values, and each pairing a positive case with a
+negative one. Nothing under `src/` changes.
+
+### 8.1 What landed
+
+| Function | Targets | Tests | File |
+|---|---|---|---|
+| `callbacks/_setup.py:on_provider_hint` | `provider_label` | `TestProviderHintCallback`: Bedrock gets the shared credential hint; no provider yet gets the empty slot | `tests/test_setup_search_provider.py`, which holds no floor entry |
+| `callbacks/designer/_wizard.py:on_designer_generate_mock` | `n`, `annotations`, `image_support` | `TestGenerateMockCallback`: each annotation lands on its screenshot, and the flag and planning context reach `_start_gen`; no click starts nothing | `tests/test_designer.py`, a new class |
+| `agents/designer.py:_designer_tool_call_followup` | `search_config` | `TestToolCallFollowup`: a web search is answered with the configured search; another tool gets the turn but no search | `tests/test_designer.py`, a new class |
+
+- **Floor.** `test_designer.py` holds floor entries, three tier-B classes and three tier-A
+  nodes. The two new classes are appended after every one of them, with their imports
+  inside the tests, so the one hunk is outside every entry: allowed and reported (§51.6).
+- **Footprint:** 2 files, 123 insertions, plus this section. One assertion was corrected before the commit: an empty `html.Div()` serialises as `{"children": None}`, not as no props.
+
+### 8.2 The proofs
+
+**The width sweep reaches every target:** `targets 63; reached 63; never reached 0; rejected by a real value 0 []`. 7o5 left 5 never reached (§1.1). Each newly reached target saw a value of its annotated type, and `None` or the other bool too, and every value was accepted:
+
+```
+agents/designer.py:545:search_config        SearchConfig | None     SearchConfig x1, None x1
+callbacks/_setup.py:39:provider_label        str | None              str x1, None x1
+callbacks/designer/_wizard.py:237:n          int | None              int x1, None x1
+callbacks/designer/_wizard.py:238:annotations list[str | None]       list x2
+callbacks/designer/_wizard.py:241:image_support bool | None          bool x2
+```
+
+Each value's caller is one of the new tests, as the sweep's caller record shows (§4.4).
+
+**Check 4 on the two new patch targets** (`patch_resolve.py`, with the map `[["web_search", "web_search"], ["_start_gen", "_start_gen"]]`; the other ten `_start_gen` targets it lists are existing ones, and all pass):
+
+```
+PASS tests/test_designer.py:2434 [setattr] spec4.callbacks.designer._wizard._start_gen
+     (1) function _start_gen  (2) src/spec4/callbacks/designer/_wizard.py re-exports it from spec4.callbacks.designer._mock_gen; calls it at on_designer_step2_choice@123, on_designer_generate_mock@268
+     other callers: {'src/spec4/callbacks/designer/_refine.py': ['on_designer_regenerate@168', 'on_designer_revise_stale@244', '_rerun_failed_draw@324']}
+FAIL tests/test_designer.py:2495 [path] spec4.agents.designer.web_search
+     (1) NOT the function: function  (2) src/spec4/agents/designer.py re-exports it from spec4.websearch; calls it at _designer_tool_call_followup@559
+FAIL tests/test_designer.py:2509 [path] spec4.agents.designer.web_search
+     (1) NOT the function: function  (2) src/spec4/agents/designer.py re-exports it from spec4.websearch; calls it at _designer_tool_call_followup@559
+targets ending in a batch name (new side): 12; FAIL: 2; fourth-form candidates: 0
+```
+
+- **The `_start_gen` setattr passes.**
+- **The two `web_search` strings fail condition (1) by construction, not by landing in the wrong place.** `agents/designer.py` binds `from spec4.websearch import search as web_search`, so the patched object is the function `search`, whose `__name__` is not the target's name. The tool's condition (1) was written for a rename, where the two names agree.
+- **Condition (2) holds.** The module the string names is the one that calls it, at `_designer_tool_call_followup@559`.
+- **The patch lands where the caller looks.** The positive test asserts `ws.assert_called_once_with("pricing pages", cfg)` and the `RESULTS` tool message, and neither could hold if the real `search` ran. The `8e_followup` mutation fails exactly that test.
+- **For ruling, since a check-4 failure is a stop for its string (inventory §60.3):** accept the alias as explained, or teach check 4 to read an import alias (P26's tools question).
+
+**One mutation per function:**
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8e_generate (on_designer_generate_mock drops the annotations (8e, P22)): predicted 1, failed 1; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/test_designer.py::TestGenerateMockCallback::test_each_annotation_lands_on_its_screenshot
+   other failures: 0
+   summary: 1 failed, 4216 passed, 1 skipped in 95.46s (0:01:35)
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8e_hint (on_provider_hint ignores the chosen provider (8e, P22)): predicted 1, failed 1; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/test_setup_search_provider.py::TestProviderHintCallback::test_bedrock_gets_the_shared_credential_hint
+   other failures: 0
+   summary: 1 failed, 4216 passed, 1 skipped in 94.69s (0:01:34)
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8e_followup (the designer's tool follow-up searches without the configured search (8e, P22)): predicted 1, failed 1; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/test_designer.py::TestToolCallFollowup::test_a_web_search_is_answered_with_the_configured_search
+   other failures: 0
+   summary: 1 failed, 4216 passed, 1 skipped in 96.21s (0:01:36)
+```
+
+**As predicted: each mutation fails its function's positive test, and nothing else fails.** Each function is now pinned by a test that bites, where before no test named any of the three. The commit was made before the mutations ran, because the harness refuses a dirty tree. This section was then amended in, under the standing rule for unpushed commits.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` twice · `222 files already formatted`; `ruff format` reflowed two long lines in the new blocks before the commit · mypy unchanged: no `src/` file changed |
+| Tests | `4217 passed, 1 skipped` (exit 0): six more, the new tests |
+| Coverage | `TOTAL 12439 852 93%`: **misses fall from 876 to 852.** The three functions' bodies are now run as well as reached. The rows that moved: `agents/designer.py` 33 → 24 missed (88% → 91%); `callbacks/_setup.py` 16 → 15 missed (82% → 83%); `callbacks/designer/_wizard.py` 63 → 50 missed (50% → 60%); `providers.py` 15 → 14 missed (84% → 85%) |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`). `test_setup_search_provider.py`'s hunk (`@@ -206,0 +207,24 @@`) follows `TestSkip`, and the file holds no entry. `test_designer.py`'s (`@@ -2413,0 +2414,99 @@`) follows its last class, after all 15 of its entries |

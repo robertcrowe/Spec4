@@ -2411,3 +2411,102 @@ class TestStepFiveImageNotice:
 
     def test_silent_with_no_override(self) -> None:
         assert self._NOTICE not in self._render({})
+
+
+class TestGenerateMockCallback:
+    """``on_designer_generate_mock``: its click, the screenshot annotations and the
+    image-support flag, driven with their props' values.
+
+    No test reached it before (PHASE8_RECORD.md 1.2, P22).
+    """
+
+    def _start(self, monkeypatch: Any) -> dict[str, Any]:
+        from spec4.callbacks.designer import _wizard
+
+        captured: dict[str, Any] = {}
+
+        def fake_start_gen(
+            store_arg, wd, model, api_key, search_cfg, support, planning, **kwargs
+        ):
+            captured.update(store=store_arg, support=support, planning=planning)
+            return {"step": 5}, {"tokens": 0}, False
+
+        monkeypatch.setattr(_wizard, "_start_gen", fake_start_gen)
+        return captured
+
+    def test_each_annotation_lands_on_its_screenshot(self, monkeypatch: Any) -> None:
+        from spec4.callbacks.designer._wizard import on_designer_generate_mock
+
+        captured = self._start(monkeypatch)
+        store = {"step": 4, "screenshots": [{"data": "a"}, {"data": "b"}]}
+        out = on_designer_generate_mock(1, ["the header", None], store, {}, False)
+        assert out == ({"step": 5}, {"tokens": 0}, False)
+        assert captured["store"]["screenshots"] == [
+            {"data": "a", "annotation": "the header"},
+            {"data": "b", "annotation": ""},
+        ]
+        assert captured["support"] is False
+        assert captured["planning"] is None
+
+    def test_no_click_starts_nothing(self, monkeypatch: Any) -> None:
+        from spec4.callbacks.designer._wizard import on_designer_generate_mock
+
+        captured = self._start(monkeypatch)
+        store = {"step": 4, "screenshots": [{"data": "a"}]}
+        out = on_designer_generate_mock(None, ["x"], store, {}, True)
+        assert out == (no_update, no_update, no_update)
+        assert captured == {}
+
+
+class TestToolCallFollowup:
+    """``_designer_tool_call_followup``, whose one caller no test drives: the tool
+    turn is appended, and a web search runs with the configured search.
+
+    No test reached it before (PHASE8_RECORD.md 1.2, P22).
+    """
+
+    def _acc(self, name: str) -> dict[int, dict[str, str]]:
+        return {
+            0: {"id": "call-1", "name": name, "arguments": '{"query": "pricing pages"}'}
+        }
+
+    def _assistant_turn(self, name: str) -> dict[str, Any]:
+        return {
+            "role": "assistant",
+            "content": "thinking",
+            "tool_calls": [
+                {
+                    "id": "call-1",
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": '{"query": "pricing pages"}',
+                    },
+                }
+            ],
+        }
+
+    def test_a_web_search_is_answered_with_the_configured_search(self) -> None:
+        from spec4.agents.designer import _designer_tool_call_followup
+        from spec4.websearch import SearchConfig
+
+        cfg = SearchConfig(provider="tavily", api_key="k")
+        messages: list[dict[str, Any]] = []
+        with patch("spec4.agents.designer.web_search", return_value="RESULTS") as ws:
+            _designer_tool_call_followup(
+                messages, self._acc("web_search"), "thinking", cfg
+            )
+        ws.assert_called_once_with("pricing pages", cfg)
+        assert messages == [
+            self._assistant_turn("web_search"),
+            {"role": "tool", "tool_call_id": "call-1", "content": "RESULTS"},
+        ]
+
+    def test_another_tool_gets_the_turn_but_no_search(self) -> None:
+        from spec4.agents.designer import _designer_tool_call_followup
+
+        messages: list[dict[str, Any]] = []
+        with patch("spec4.agents.designer.web_search") as ws:
+            _designer_tool_call_followup(messages, self._acc("other"), "thinking", None)
+        ws.assert_not_called()
+        assert messages == [self._assistant_turn("other")]

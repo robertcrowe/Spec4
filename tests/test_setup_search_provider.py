@@ -204,3 +204,27 @@ class TestSkip:
 
     def test_no_clicks_is_a_no_op(self) -> None:
         assert on_setup_search_skip(0, _session()) == (no_update, no_update)
+
+
+class TestProviderHintCallback:
+    """``on_provider_hint``, the wizard's hint slot, driven with its prop's values.
+
+    No test reached it before (PHASE8_RECORD.md 1.2, P22).
+    """
+
+    def test_bedrock_gets_the_shared_credential_hint(self) -> None:
+        from spec4.callbacks._setup import on_provider_hint
+        from spec4.layouts._setup import provider_key_hint
+
+        hint = on_provider_hint("AWS Bedrock")
+        assert "KEY:REGION" in str(hint.to_plotly_json())
+        assert (
+            hint.to_plotly_json() == provider_key_hint("AWS Bedrock").to_plotly_json()
+        )
+
+    def test_no_provider_yet_gets_the_empty_slot(self) -> None:
+        from spec4.callbacks._setup import on_provider_hint
+
+        hint = on_provider_hint(None)
+        assert "KEY:REGION" not in str(hint.to_plotly_json())
+        assert hint.to_plotly_json()["props"] == {"children": None}
