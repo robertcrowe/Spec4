@@ -24,6 +24,7 @@ __all__ = [
     "TierPattern",
     "MechanismPattern",
     "load_patterns",
+    "trimmed_description",
 ]
 
 # Number of tiers on the ladder (deterministic = 1 … multi_agent_collaboration = 9).
@@ -115,6 +116,19 @@ class TierPattern(PatternBase):
 @dataclass
 class MechanismPattern(PatternBase):
     """A mechanism pattern: *how* an AI feature is built."""
+
+
+def trimmed_description(pattern: MechanismPattern, limit: int) -> str:
+    """The mechanism's description on one line, cut to ``limit`` characters.
+
+    Whitespace is collapsed first. A longer description is cut at ``limit``, its
+    trailing space stripped and ``…`` appended. The Tier Analyst's prompt and the
+    rendered spec's mechanism glossary share it, each with its own limit.
+    """
+    summary = " ".join(pattern.description.split())
+    if len(summary) > limit:
+        summary = summary[:limit].rstrip() + "…"
+    return summary
 
 
 def _patterns_root() -> Path:

@@ -864,3 +864,78 @@ M 8c_banner (one banner character: the Prioritizer banner (7q0's probe A, as a s
 The commit was made before the mutation ran, because the harness refuses a dirty tree.
 This section was then appended and amended in, under the standing rule for unpushed
 commits (inventory §64.10, §73.10).
+
+## 6. 8d: the mechanism-summary trim, one helper in `pattern_loader.py` (P11)
+
+The dedupe inventory §78.2 found, placed as §2.1(f) ruled: beside `MechanismPattern`, since
+both callers already import from `pattern_loader`. No new import edge.
+
+### 6.1 What landed
+
+| File | Change |
+|---|---|
+| `src/spec4/agentifier/pattern_loader.py` | `trimmed_description(pattern: MechanismPattern, limit: int) -> str`, right after `MechanismPattern`, and in `__all__`. It collapses the whitespace, and if the result is over `limit` it cuts it, strips the trailing space and appends "…" |
+| `src/spec4/agentifier/tier_analyst.py` | `_build_mechanism_absorption_list`'s three lines become `trimmed_description(m, _PROMPT_DESCRIPTION_CHARS)`, and the import gains the name |
+| `src/spec4/feature_specs.py` | `_mechanism_definitions`'s three lines become `trimmed_description(m, _MECHANISM_SUMMARY_CHARS)`, and the import gains the name |
+
+- **Both constants stay.** Each caller passes its own limit, and each limit is its own
+  tunable quantity (inventory §78.2's criterion). They share a value, not a meaning.
+- **The near-copy stays too.** `_build_tier_descriptions` at `tier_analyst.py:312–314`
+  strips rather than collapsing whitespace, so it is not an exact match and is not
+  lifted.
+- **Footprint:** 3 files, 18 insertions and 8 deletions, plus this section.
+
+### 6.2 The proofs
+
+**Token identity.** `trim_tokens.py`, a scratch script, reads each caller's three lines from the parent commit, substitutes the caller's names (`m` → `pattern`, the caller's constant → `limit`), and compares `tokenize` tokens, with comments and layout dropped, against the helper's first three statements. This is §67.11's method.
+
+```
+src/spec4/agentifier/tier_analyst.py: 35 tokens; identical to the helper's first three statements: True
+src/spec4/feature_specs.py: 35 tokens; identical to the helper's first three statements: True
+helper's first three statements: 35 tokens
+```
+
+**No new edge.** `tier_analyst.py` and `feature_specs.py` already imported from `pattern_loader`, and each import line only gains the name. `tests/test_import_layering.py` passes, with the two callers' own test files: `69 passed`.
+
+**Frozen strings (Rule 4).** Only the two literals of the trim move, and `__all__` gains a name. No prompt text changes.
+
+```
+src/spec4/agentifier/pattern_loader.py: string constants 134 -> 137; distinct 77 -> 79
+  gone: 0; added: 2; count changes: 1
+  ADDED 'trimmed_description'
+  ADDED '…'
+  COUNT 2 -> 3  ' '
+src/spec4/agentifier/tier_analyst.py: string constants 132 -> 130; distinct 100 -> 99
+  gone: 1; added: 0; count changes: 1
+  GONE  ' '
+  COUNT 2 -> 1  '…'
+src/spec4/feature_specs.py: string constants 262 -> 260; distinct 145 -> 144
+  gone: 1; added: 0; count changes: 1
+  GONE  '…'
+  COUNT 2 -> 1  ' '
+```
+
+- **Across the three files, `' '` and `'…'` each fall by one.** Two copies of the trim became one.
+- **`tier_analyst.py` keeps one `'…'`,** in `_build_tier_descriptions`, the near-copy that stays.
+- **`feature_specs.py` keeps one `' '`,** in an unrelated join.
+
+**The mutation: the trim removed from the helper.** The prediction is that the two tests
+that pin each side fail.
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8d_trim (the one trim removed from the shared helper (8d, P11)): predicted 2, failed 2; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/agentifier/test_tier_analyst.py::TestBuildMechanismAbsorptionList::test_descriptions_are_trimmed
+   FAILED (predicted)       tests/test_feature_specs.py::TestMechanismGlossary::test_all_library_mechanisms_have_definitions
+   other failures: 0
+   summary: 2 failed, 4209 passed, 1 skipped in 95.05s (0:01:35)
+```
+
+**As predicted: both sides fail, and nothing else does.** Both callers now reach the one helper, and each side's own test pins the trim. The untrimmed absorption lines run 459–531 characters, against `< 260`, and the untrimmed definitions fail `<= 201` (§1.3). The commit was made before the mutation ran, because the harness refuses a dirty tree. This section was then amended in, under the standing rule for unpushed commits.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` twice (`src/ tests/`, `.`) · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4211 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12459 876 93%`, unchanged in total. Three rows moved, as a lift moves them: `pattern_loader.py` 159 → 164 statements, `tier_analyst.py` 132 → 130 and `feature_specs.py` 344 → 341, each with its misses unchanged (18, 3, 80) |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |

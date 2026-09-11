@@ -31,7 +31,7 @@ from functools import lru_cache
 from typing import Any
 
 from spec4.agentifier.infra_expander import INFRA_KIND
-from spec4.agentifier.pattern_loader import load_patterns
+from spec4.agentifier.pattern_loader import load_patterns, trimmed_description
 
 __all__ = [
     "ALL_SPEC_FIELDS",
@@ -329,10 +329,7 @@ def _mechanism_definitions() -> dict[str, str]:
         return {}
     definitions: dict[str, str] = {}
     for m in mechanisms:
-        summary = " ".join(m.description.split())
-        if len(summary) > _MECHANISM_SUMMARY_CHARS:
-            summary = summary[:_MECHANISM_SUMMARY_CHARS].rstrip() + "…"
-        definitions[m.name] = summary
+        definitions[m.name] = trimmed_description(m, _MECHANISM_SUMMARY_CHARS)
     return definitions
 
 

@@ -18,6 +18,7 @@ from spec4.agentifier.pattern_loader import (
     MechanismPattern,
     TierPattern,
     load_patterns,
+    trimmed_description,
 )
 from spec4.agentifier.scout import Candidate
 from spec4.agentifier.subagents import validate_dataclass_input
@@ -329,9 +330,7 @@ def _build_mechanism_absorption_list(mechanisms: list[MechanismPattern]) -> str:
     """
     lines: list[str] = []
     for m in mechanisms:
-        summary = " ".join(m.description.split())
-        if len(summary) > _PROMPT_DESCRIPTION_CHARS:
-            summary = summary[:_PROMPT_DESCRIPTION_CHARS].rstrip() + "…"
+        summary = trimmed_description(m, _PROMPT_DESCRIPTION_CHARS)
         lines.append(f"- **{m.name}**: {summary}")
     return "\n".join(lines)
 
