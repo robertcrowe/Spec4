@@ -11447,6 +11447,33 @@ decide these, and each is recorded with its evidence, so it is known rather than
   7q0's probe changed one character of `_begin_priority_phase`'s banner. That diverged 13
   traces, and all 4,210 tests still passed. The work is one assertion on the text the
   developer reads at every priority turn.
+- **A test item: 31 documented contract keys the suite never saw change** (§79.3). Entered
+  before the close-out, as ruled at review of 7q. 7q3's contract check found every observed
+  write documented. It also lists, per generator, the documented keys the suite never saw
+  change under that generator's own traced entry:
+  - **`run_catalog_phase`, 11 keys:**
+    - the breadth question's: `agentifier_breadth_chosen`, `agentifier_breadth_groups`,
+      `agentifier_breadth_intro`, `agentifier_breadth_nonce`, `agentifier_compositions`,
+      `agentifier_scout_pool`;
+    - the selection's: `agentifier_explicitly_rejected`, `agentifier_preserved_selected`;
+    - the reply's: `agentifier_spec_index`, `agentifier_spec_results`, `ai_catalog`.
+  - **`run_cross_cutting_phase`, 1 key:** `agentifier_cross_cutting_topics`.
+  - **`handle_reentry`, 13 keys** of the reset that its traced re-entries never changed:
+    - the revision block's five, and `agentifier_carried_forward`;
+    - `agentifier_compositions`, `agentifier_preserved_selected`,
+      `agentifier_artifact_msg_count`;
+    - the Fast Forward keys: `agentifier_spec_ff_locked`, `agentifier_spec_ff_review`,
+      `agentifier_cc_ff_locked`, `agentifier_cross_cutting_ff_review`.
+  - **`finalize_specs`, 6 keys:** `_stream_received_chars`, the four stored-analysis keys
+    (`agentifier_cross_cutting_topics`, `agentifier_cross_cutting_analysis`,
+    `agentifier_cross_cutting_index`, `agentifier_cross_cutting_decisions`), and
+    `agentifier_preserved_features`.
+
+  **The list cannot tell two things apart:** a write whose value equals the old one, and a
+  path the suite reaches only through `run` rather than through the generator directly. The
+  breadth keys, for one, are written in flows that enter through `run`. The work is one
+  contract test per generator, of 7n1's key-set shape, that drives each documented path from
+  the generator's own entry and asserts the keys it writes.
 
 **A Phase 7 candidate beside 7k's `module_seam`, not for now (ruled at 7d, §64).** 7c's
 shadow flip (§63.1) retired the reason for the `sys.modules` idiom in `test_cost_summary.py`:
