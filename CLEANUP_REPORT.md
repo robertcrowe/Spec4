@@ -275,7 +275,8 @@ Whether to bring §4's checks inside: into the gate, and under mypy. They are co
 ## 6. Still to do, after review: the fold and the final audit
 
 This is the plan's last phase (`SPEC4_CLEANUP_PLAN.md`, Phase 7 "Final audit and
-documentation"). Its first item is done, and §7 holds the results. The other three are not.
+documentation"). Its first two items are done: §7 holds the re-measurement and §8 the
+checklist. The other two are not.
 - **Re-run Phase 0's measurements:** `uvx vulture`, `uv run --with deptry deptry .`, the ruff
   rule-set statistics and the layering contract. Add them here as before/after: the
   file-size table, coverage per module, and dead-code candidates, which should be zero or
@@ -582,3 +583,141 @@ what the gate accepts still counts:
   `agentifier.agentifier`.
 - **Phase 3 classified §8's eight module-state items** and fixed item 1's unlocked writes
   (§14).
+
+## 8. The seven symptoms, as a checklist
+
+The plan turned the original list of symptoms into acceptance criteria for this audit
+(`SPEC4_CLEANUP_PLAN.md`, "Reframing"). Each is taken in turn:
+- what Phase 0 found;
+- what was done;
+- where it stands now, in §7's figures;
+- where anything left has gone.
+
+### 8.1 Spaghetti
+
+- **Found:** 151 complexity findings in `src/`. 61 were over C901's threshold; the worst
+  was 61 (`_format_stack_as_text`), and `_run_catalog_phase` was 38 over 659 lines (§5).
+- **Done:**
+  - Phase 5 decomposed the functions over threshold, 5a to 5p (§27–§49), with goldens
+    pinning every renderer it touched.
+  - Where a long generator's branches each guard a `yield`, extraction cannot reduce
+    them. Rule 12 granted a reasoned `noqa` there (§38, §40).
+  - 5p promoted `C90`, `PLR0912`, `PLR0913` and `PLR0915` into the gate (§49).
+  - 7q turned the agentifier's eight generators into drivers over steps, and removed its
+    two rule-12 `noqa`s (§79).
+- **Now:** 30 findings, each with a reasoned `noqa`. The worst is 24 (§7.7). `SIM` and
+  `B` are at zero.
+- **Left:**
+  - §27.4's three backlog turns, `deployer.run`, `brainstormer.run` and
+    `code_scanner.run`, are on the Phase 8 list.
+  - A params object for the 13- and 10-argument signatures is a design change (§27,
+    §39). It goes to `BACKLOG.md`.
+
+### 8.2 Large files
+
+- **Found:** eight source files over 1,300 lines, the largest `agentifier/agentifier.py`
+  at 3,501 (§2). `tests/test_agents.py` was 5,284 lines.
+- **Done:**
+  - Phase 4 split all eight, in 4a–4i and 4g2, and retired the split's compatibility
+    layer in 4j (§15–§26).
+  - `session.py` was kept whole: its issue is layering, not size (§15.3).
+- **Now:** two files over 1,300 lines (§7.7):
+  - `agentifier/agentifier.py`, at 2,874. 4i kept the generator flow there, and 7q kept
+    its code.
+  - `agents/_feature_context.py`, at 1,329.
+- **Left:**
+  - `tests/test_agents.py`, 5,268 lines and 293 tests, is on the Phase 8 list as a
+    test-structure item (record §80.1).
+  - §50 also listed four more test files over 150 tests: `test_stack_render_totality.py`,
+    `test_artifact_view.py`, `test_designer.py` and `test_agent_llm_selection.py`. None
+    of them was ruled on. They go to the fold's list of items named but never ruled.
+
+### 8.3 Dead code
+
+- **Found:**
+  - 32 vulture candidates after the callback whitelist: 10 in `src/`, 22 in `tests/`.
+  - 9 `ARG` findings in `src/`.
+  - 18 public names with no reference outside their own file (§3, §7).
+- **Done:**
+  - Phase 2 removed six names, one parameter and one dependency (§13.2), and justified
+    every other candidate one by one (§13.3).
+  - 4j removed the split's compatibility aliases. None of them was a dead definition
+    (§25.7).
+- **Now:** 26 vulture lines and 24 review-list names, each justified in the record.
+  `ARG` in `src/` is at zero (§7.5).
+- **Left:** nothing.
+
+### 8.4 Unused files
+
+- **Found:** one unused dependency, `dash-iconify` (§4). There was no orphan module and no
+  orphan test file (§13.1).
+- **Done:**
+  - Phase 2 removed `dash-iconify`, and suppressed `gunicorn` and `pyyaml` in
+    `pyproject.toml`, each with its reason (§13.2, §13.4).
+  - A bare `pytest` collected `evals/`, so 6a set `testpaths` (§51).
+  - 7k deleted the test-only `module_seam` scaffolding once the production seam existed
+    (§71).
+- **Now:** deptry reports no real finding (§7.6).
+- **Left:** nothing.
+
+### 8.5 Globals
+
+- **Found:** no `global` statement, and eight module-level state items. One had a real
+  concurrency gap: the worker thread wrote to `_STREAMS` without the lock (§8).
+- **Done:**
+  - Phase 1 pinned three of the items, transition by transition (§12.2).
+  - Phase 3 classified all eight as module-scoped by design and commented each one with
+    why, and with what guards it (§14).
+  - It fixed the unlocked writes, and moved `version_check._reset_cache` to a fixture.
+- **Now:** no `global` statement (§7.8), and the classification stands.
+- **Left:** nothing.
+
+### 8.6 Smells
+
+- **Found:**
+  - 13 `SIM` and `B` findings (§5.2);
+  - private names reached across module boundaries;
+  - 290 `: Any` lines (§49.5);
+  - 49 magic values in `src/` (§49.4).
+- **Done:**
+  - Phase 5 cleared `SIM` and `B` (§49).
+  - 7a–7j renamed 76 cross-module private names to public ones, each proven to be a pure
+    substitution (§61–§70).
+  - 7k and 7n1–7n3 replaced test reach-ins with production seams (§71, §73–§75).
+  - 7o cut the `: Any` lines from 290 to 232, changing annotations only (§77).
+  - 7p named nine magic values, justified 39, and promoted `PLR2004` into the gate
+    (§78).
+- **Now:** the gate enforces `SIM`, `B`, `ARG` and `PLR2004` in `src/`.
+- **Left:**
+  - On the Phase 8 list (§5): five held-back renames; the dedupes (`revision_delta`'s
+    five copies, and the mechanism-summary trim); §77.8's type work; and the
+    `project_manager` root-siblings inconsistency.
+  - In `BACKLOG.md`: §12.4's renderer cosmetics. They change artifact output, so they are
+    product fixes, not cleanup.
+
+### 8.7 Stale tests
+
+- **Found:**
+  - one failing test (§1.1);
+  - a stale `tests/README.md` (§9.1);
+  - in Phase 6, three patch strings aimed at the wrong seam, a `streaming.pop`
+    assertion that could not fail, tests reading source text, and assertions that lived
+    only in an eval (§50).
+- **Done:**
+  - 0.5c replaced the failing test with one that asserts the intended look (§10).
+  - Phase 1 added the regression net: the component-id snapshot, the goldens and the
+    streaming characterization (§12).
+  - Phase 6 re-aimed the three patch strings (6b, §52), gave `streaming.pop` an assertion
+    that can fail (6c, §53), replaced the per-character mock chunk factory (6g, §57), and
+    ported the eval-only assertions (6z, §58).
+  - Phase 7 replaced the source-text reader with a package scan (7m, §76), and replaced
+    the process-wide stdlib patches with production seams (7k, §71).
+- **Now:** 4,210 passed and 1 skipped, and the floor's 456 protected node ids all collect
+  (§7.3).
+- **Left:**
+  - `tests/README.md` is updated by the next close-out item.
+  - On the Phase 8 list (§5.3): the nine racing tests, a defect; the Prioritizer banner;
+    the 31 contract keys the suite never saw change; the five unreached annotated
+    targets; and `PLR2004` in `tests/`.
+  - The four invariants the suite assumed rather than pinned are the report's findings
+    (§2.1–§2.4).
