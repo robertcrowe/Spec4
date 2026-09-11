@@ -10171,6 +10171,26 @@ The run shows:
 §67.4 gives the run on the committed tree, where the four forced corrections add OTHER
 lines of their own.
 
+**The strip check: the standing check for annotation work, ruled at review of 7o.** Renames
+have the substitution and token checks; any future annotation-only change has
+`strip_check.py BASE ROOT` (§77.1).
+- **What it does:** it parses both sides, erases annotation material, and requires the two
+  ASTs to be identical. Annotation material is argument and return annotations, `AnnAssign`
+  annotations (the statement itself is kept), PEP 695 type parameters, `if TYPE_CHECKING:`
+  blocks, and the `TYPE_CHECKING` name in a `from typing import` line. Anything left is a
+  runtime change, which the rule excludes.
+- **Its first proof is 7o.** A probe added a default value and an `isinstance` guard, the
+  rule's own examples, and was flagged. All 27 of the batch's files came out empty after the
+  strip (§77.1, §77.8).
+
+**With it goes one rule, ruled at the same review: an annotation must not be narrower than
+what a test in the suite exercises.** A passing test that feeds a value the annotation
+excludes is a claim the suite disproves. Either the annotation widens to what the test pins,
+or the test is wrong, and a cleanup sub-phase cannot decide the second: that goes to Phase 8
+as a question. Its check is the width sweep (§77.9). The sweep observes every value that
+reaches an annotated target while the whole suite runs, and checks each value the way mypy
+would accept it.
+
 #### The proof — `_default_session`, uncommitted, in a scratch clone at `f862f65`
 
 Batch 1's first and largest name: 248 sites, three whole-file entries, two tier-A nodes,
@@ -11319,6 +11339,25 @@ the draw path. Against the old tests every one of 4,209 passed, not only the two
 That is the exact shape 7q creates when it moves writers out of `agentifier.py`, and the
 restart's completeness (D-TA1) is what it breaks. Nothing pinned that until 7m's
 package-wide scan and its reset-seam test.
+
+**The Phase 8 list: questions and known narrowings, opened at review of 7o.** Phase 7 cannot
+decide these, and each is recorded with its evidence, so it is known rather than forgotten.
+- **Should `_fmt_usd` accept `str`?** The evidence is `tests/test_cost_summary.py:160`,
+  `assert _fmt_usd("0.5") == "not available"`. That test pins string input as supported
+  behaviour. 7o5 widened the annotation to `float | str | None` to match it, under the rule
+  that an annotation must not be narrower than what a test exercises (§60.2, §77.9).
+  Whether a string is a value the function should accept at all, which would make the
+  test's case a real contract, or a stale-store case it should never see, which would make
+  the test wrong, is a design question.
+- **`run_with_timeout`'s generic form, a known narrowing not taken.** The form is
+  `coro: Awaitable[T] -> T`. 7o1 took the minimal `Awaitable[Any]` and kept `-> Any`,
+  because the TypeVar needs a module-level `_T = TypeVar("_T")`, a runtime statement, and
+  7o's rule was annotations only (§77.1). The generic form would let callers keep their
+  results' types.
+- **§77.8 lists the rest of 7o's tighter forms and its deferrals:**
+  - `object` for `_as_int` and `round_number_from_value`;
+  - the 107 prop-bound inputs;
+  - the session-dict and JSON-artifact edges.
 
 **A Phase 7 candidate beside 7k's `module_seam`, not for now (ruled at 7d, §64).** 7c's
 shadow flip (§63.1) retired the reason for the `sys.modules` idiom in `test_cost_summary.py`:
@@ -14998,6 +15037,19 @@ in `src/`, no test reads a signature, and Dash reads none. `test_import_layering
 the AST, so it sees these imports as edges. `spec4.websearch` is a root module, which the
 agent side may import. `TYPE_CHECKING` is new to `src/`: nothing used it before.
 
+**Checked per module, at review of 7o, because the pattern is new to `src/`.** Six modules
+use the block: `agentifier/_seed.py`, `agentifier/reference_verifier.py`,
+`agentifier/subagents.py`, `agents/_reask.py`, `agents/designer.py` and `llm.py`. Each carries
+`from __future__ import annotations`, so no annotation that names a guarded import is ever
+evaluated.
+- **`app.py` is not among the six.** 7o4 changed two of its lines, `:391` and `:427`, both
+  annotations. Its runtime import sequence, read from the AST, is identical before and after
+  (`5dcf6c4` → `1a2b860`), so D-LR1's litellm ordering is untouched.
+- **`llm.py` is the one root module that has a block.** Its runtime import sequence differs
+  only by the `TYPE_CHECKING` name on the `typing` line. The guarded block sits after the
+  last leading import, `spec4.websearch`, so every runtime import, `litellm`'s included,
+  keeps its place and its order.
+
 **The one row not applied as proposed.** `subagents.py:236`'s proposal was
 `Awaitable[_T] -> _T`, which needs a module-level `_T = TypeVar("_T")`, a runtime
 statement. The proposal's own minimal alternative is taken instead: `coro: Awaitable[Any]`,
@@ -15353,3 +15405,105 @@ No row moved, so 290 → 232 stands exactly.
   claimed.
 
 7p follows in default mode, and 7q comes last with everything on.
+
+### 77.9 Commit 7o5: `_fmt_usd` widened to what its test pins, and the width sweep over all 58 rows
+
+**Ruled at review of 7o.** An annotation that a passing test contradicts is a claim the suite
+disproves. `tests/test_cost_summary.py:160` pins `_fmt_usd("0.5") == "not available"`: the
+function accepts a string. 7o3 annotated it `float | None` (§77.6), which says it does not.
+Either the annotation matches the pinned behaviour or the test is wrong, and 7o cannot decide
+the second.
+- The annotation widens to what the test pins: **`float | str | None`**.
+- "Should `_fmt_usd` accept `str`" goes on the Phase 8 list with the test line as its
+  evidence (after §60.7(j)'s table).
+- The rule is recorded in §60.2 beside the strip check: **an annotation must not be narrower
+  than what a test in the suite exercises.**
+
+**The fix is one line,** `layouts/_shared.py:195`: `def _fmt_usd(value: float | None)` →
+`def _fmt_usd(value: float | str | None)`.
+- **Strip check against `1a2b860`:** `files changed: 1; files with residue: 0`.
+- **Strict mypy is clean.** The body already narrows with `isinstance(value, (int, float))
+  and not isinstance(value, bool)` before it formats, so the wider parameter needs no
+  runtime change.
+- **5p's grep stays at 232.** The line held no `: Any` before the fix either.
+
+#### The sweep: every row checked against the rule before the fix commits
+
+**Method.** `sweep_7o.py` is a scratch pytest plugin, loaded with `-p sweep_7o`, that
+observes the whole suite:
+- **Scope:** it hooks exactly the 49 code objects behind the 58 rows, using `sys.monitoring`
+  local events (`PY_START`), so nothing else is slowed. That is **63 targets**, because
+  `designer.py:601` carries four and `app.py:427` and `llm.py:356` carry two each. `app.py`'s
+  annotated local `content` is read at `PY_RETURN`. `StepEntry.id` is read on the dataclass's
+  generated `__init__`.
+- **Checking:** every arriving value is checked against the annotation now at HEAD, as mypy
+  would accept it: `int` for `float`, `bool` for `int`, a `TypedDict` as a `dict`, element
+  and key types for `list` and `dict`. `unittest.mock` objects and `SimpleNamespace` are
+  marked as stand-ins.
+- **Recording:** a rejected value is recorded with the test that was running.
+
+| Run | Targets reached | Never reached | Rejected |
+|---|---:|---:|---|
+| At `1a2b860`, before the fix | 58 | 5 | **1**: `_fmt_usd(value)`, a `str` (`'0.5'`), from `test_cost_summary.py::TestFormat::test_none_and_non_numbers_read_as_not_available` |
+| After the fix | 58 | 5 | **0** |
+
+Both runs: `4210 passed, 1 skipped`.
+
+- **`_fmt_usd` is the only row the rule catches.** Before the fix it saw `float` ×62, and
+  `int`, `bool`, `None` and `str` once each. Only the `str` was outside `float | None`.
+- **The persist-helper rows hold.** These were typed on `persist_artifacts`' guards rather
+  than on their sources, so they were the likeliest to trip. `_persist_spec_artifacts` and
+  `_persist_plan_artifacts` each received `working_dir` as a `str` on all 35 calls and
+  `version` as an `int` on all 35. No `None` reached either.
+- **The other rows §60.5 caveated also hold:** `received`, `status` and the six
+  `working_dir` rows. Each saw only its annotated types, `None` included where the
+  annotation allows it.
+- **No stand-in reached any of the 58 targets.** No `MagicMock`, no `SimpleNamespace`. Every
+  observed value was a real instance: `dict`, `str`, `int`, `bool`, `None`, `list`,
+  `PosixPath`, `ComposerOutput`, `Candidate`, `TierAnalystOutput`, `SearchConfig`,
+  `html.Div`, generators, async generators, a coroutine, and a list iterator.
+- **Five targets are reached by no test,** so the rule holds for them only vacuously:
+  - `_designer_tool_call_followup`'s `search_config` (`agents/designer.py:545`). Its one
+    caller, `:757`, is on a path the suite does not run.
+  - `on_provider_hint`'s `provider_label` (`callbacks/_setup.py:39`).
+  - `on_designer_generate_mock`'s `n`, `annotations` and `image_support`
+    (`callbacks/designer/_wizard.py:237–241`).
+
+  A grep of `tests/` finds no call to, and no reference to, any of the three functions.
+  Their types rest on §60.5's prop and producer evidence alone.
+- **What the sweep cannot see:** a value that reaches a target outside the pytest process,
+  in a subprocess, is not observed. Paths the suite does not run are covered by the five
+  above.
+
+#### The confirmations, recorded
+
+- **The `TYPE_CHECKING` blocks are confirmed as annotation material.** §77.1 now states, per
+  module, that each of the six modules using the block defers annotations. `app.py` is not
+  among them: its runtime import sequence is identical across 7o4. In `llm.py` the only
+  change is the `TYPE_CHECKING` name on its `typing` line, and litellm's import keeps its
+  place.
+- **`Awaitable[Any]` is confirmed.** The generic form is on the Phase 8 list, with its
+  reason.
+- **The strip check is now the standing check for annotation work.** It is recorded in
+  §60.2 beside the substitution and token checks, with 7o as its first proof. The width
+  rule goes with it.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12425 stmts, 891 miss, 93%`, **unchanged**; `layouts/_shared.py` 83/0 |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
+
+**Record changes carried in this commit, all ruled at review of 7o:**
+- **§60.2:** the strip check made standing, and the width rule.
+- **§77.1:** the per-module `TYPE_CHECKING` statement.
+- **After §60.7(j)'s table:** the Phase 8 list, with `_fmt_usd`'s question and
+  `run_with_timeout`'s generic form.
+- **This section,** appended through the add-only step.
+
+**What 7o5 did not do:**
+- It does not decide whether `_fmt_usd` should accept `str`.
+- It changes no other row and edits no test.
+
+7p follows in default mode.

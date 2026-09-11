@@ -192,7 +192,7 @@ def price_source_note(source: Any) -> str:
 _COST_NOT_AVAILABLE = "not available"
 
 
-def _fmt_usd(value: float | None) -> str:
+def _fmt_usd(value: float | str | None) -> str:
     """``$0.0123`` — four decimals, thousands separated; a marker for None.
 
     Four decimals because a single agent turn on a small model is fractions
