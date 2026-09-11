@@ -347,6 +347,17 @@ def directory_has_content(working_dir: str | Path | None) -> bool:
         return False
 
 
+def _is_dir(path: Path) -> bool:
+    """``Path.is_dir``, behind a seam.
+
+    A test that must make the directory check fail patches this name, which reaches
+    `directory_opens` alone; patching ``Path.is_dir`` itself would reach every path
+    check in the process while the test runs (CLEANUP_INVENTORY.md §60.7(i)2, §71).
+    A designed patch point, private on purpose.
+    """
+    return path.is_dir()
+
+
 def directory_opens(working_dir: str | Path | None) -> bool:
     """True when ``working_dir`` is a directory this process can still list.
 
@@ -361,7 +372,7 @@ def directory_opens(working_dir: str | Path | None) -> bool:
     if not working_dir or not isinstance(working_dir, (str, Path)):
         return False
     try:
-        return Path(working_dir).is_dir() and os.access(working_dir, os.R_OK)
+        return _is_dir(Path(working_dir)) and os.access(working_dir, os.R_OK)
     except OSError:
         return False
 

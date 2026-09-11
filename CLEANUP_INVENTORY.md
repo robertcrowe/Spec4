@@ -13219,3 +13219,238 @@ continue PE, per §27's cross-reference. 7l, 7m, 7o and 7p run in the order §60
 
 The commit touches nothing outside this record. Its `src/` and `tests/` trees are those
 of `b7d36c8`, and it passes the full gate, identical to §60.1.
+
+## 71. Phase 7k — the `_usage.py` seam, with `directory_opens`; `module_seam` deleted
+
+§60.7(j) 7k: one commit, planned in plan mode with `ultrathink`, and approved with three
+amendments. It is the first seam sub-phase, and it continues PE (§27's cross-reference).
+It builds the production seams that §52.5 called the honest fix:
+- two stdlib calls in `_write_atomic` are now reached through names spec4 owns;
+- `Path.is_dir` in `directory_opens` is too;
+- the tests patch those names.
+
+The `module_seam` scaffolding goes. This closes §52.5's Phase 7 candidate, §60.4's last row
+and §60.7(i)2.
+
+### 71.1 What landed
+
+| File | Change |
+|---|---|
+| `src/spec4/_usage.py` | Adds module-level `_replace = os.replace` and `_fdopen = os.fdopen`, under a comment that carries the rule (below). `_write_atomic` calls them at `:366` and `:370`. The module docstring is corrected (§71.3) |
+| `src/spec4/project_manager.py` | Adds `_is_dir(path)` at `:350`, a function-wrapper seam modelled on `layouts/_artifact_view.py`'s `_resolve` and `_stat`. `directory_opens` calls it at `:375` |
+| `tests/test_usage_capture.py` | In `TestSaveUsageAtomicity`, `module_seam` becomes `patch("spec4._usage._replace", side_effect=OSError("boom"))` and `patch("spec4._usage._fdopen", side_effect=_broken_fdopen)`. `_failing_replace` goes. The assertions are unchanged. Ruff joined one signature onto a line of exactly 88 columns |
+| `tests/test_root_routing.py` | `TestDirectoryOpens::test_an_oserror_is_not_raised` is re-pointed to `monkeypatch.setattr("spec4.project_manager._is_dir", boom)`, runs on `tmp_path`, and gains a positive half (§71.4) |
+| `tests/conftest.py` | The "Module seams" block goes: `_ModuleSeam`, `module_seam`, and the two imports only it used, `importlib` and `Callable` |
+
+- **Footprint: 5 files, 39 insertions and 78 deletions.** No §50.3 entry is touched: none
+  of the three test files is a whole-file entry or a tier-B file, and none holds a tier-A
+  node.
+- **`fsync` and `unlink` stay `os.*`,** because no test fails them today. The seam comment
+  writes down the rule for the next such test (amendment 3): "a test that needs to fail any
+  other call in `_write_atomic` (`fsync`, `unlink`) adds that call's name to this block — it
+  never patches `os`." Without that rule, the next `fsync` test would recreate §52.1's
+  hazard with a clean conscience.
+- **The deletion was gated on the grep.** After the test edits, every `module_seam`,
+  `_ModuleSeam` and `spec4._usage.os` reference was inside the block itself. After the
+  deletion the grep returns nothing.
+
+### 71.2 The three seams are designed patch points: `keep: subject is the private object`
+
+This is amendment 1. `_replace`, `_fdopen` and `_is_dir` are private names that tests reach
+by string, which is the shape the rename half spent ten batches removing. The difference is
+intent: they exist to be patched, as `_artifact_view.py`'s `_resolve` and `_stat` do
+(`test_artifact_view.py:622–623`, `:934`). **They are recorded under §55.4's category,
+"keep: subject is the private object", where Phase 7 must not promote.** The next
+private-name inventory should see three designed patch points, not three new promote rows.
+
+The category's rule in §55.2 reads "the object is data and no site calls it". These three
+are callables, and production code calls them. So they enter the category on a reason of
+their own, beside §55.4's data reason:
+
+> **A designed patch point:** private, so that only a test ever patches it; patched by
+> name, so the patch reaches the one module that calls it.
+
+The ruling at 7k's approval placed the category in §54. It is defined in §55.2 and listed
+in §55.4, and §54.1 is its worked case.
+
+| Name | Kind | Owner | Tests that patch it | Disposition | Reason |
+|---|---|---|---|---|---|
+| `_replace` | alias of `os.replace` | `_usage.py` | `test_usage_capture.py:851` | `keep: subject is the private object` | designed patch point |
+| `_fdopen` | alias of `os.fdopen` | `_usage.py` | `test_usage_capture.py:873` | `keep: subject is the private object` | designed patch point |
+| `_is_dir` | function wrapper of `Path.is_dir` | `project_manager.py` | `test_root_routing.py:387` | `keep: subject is the private object` | designed patch point |
+
+### 71.3 The docstring correction the commit forced
+
+This is amendment 2. `_usage.py:3–5` said `project_manager` "re-exports every name defined
+here". That has been false since 4j (§60.4), and this commit adds two more names it would
+misdescribe, so §62.2 requires the correction here. The new text is concrete: a list that
+can be checked, with no count and no promise.
+
+Before:
+
+```
+Split out of :mod:`spec4.project_manager` in cleanup Phase 4b; that module
+re-exports every name defined here, so both import paths resolve to the same
+object.
+```
+
+After:
+
+```
+Split out of :mod:`spec4.project_manager` in cleanup Phase 4b. That module
+re-exports ``cost_summary``, ``load_usage``, ``round_cost``, ``save_usage``,
+``summarize_usage``, ``unpriced_calls``, ``usage_totals``, ``USAGE_FILENAME`` and
+``_USAGE_ROLLUP_PARENT``, so both import paths resolve to the same object for those.
+``_write_atomic``, ``_replace`` and ``_fdopen`` are not re-exported.
+```
+
+The list is `project_manager.py`'s `from spec4._usage import (…)` block, verbatim.
+
+### 71.4 The vacuous assertion at `:384`, and the pairing
+
+Before, the test replaced `pathlib.Path.is_dir` for the whole process, then asserted
+`not directory_opens("/mnt/gone")`. **That assertion held with no patch at all.**
+`/mnt/gone` does not exist, and run unpatched `directory_opens("/mnt/gone")` returns
+`False`. So the test passed whether or not its `OSError` branch was ever reached, and a
+mutation of that branch (M3, §71.6) would not have been caught.
+
+After:
+
+```python
+    def test_an_oserror_is_not_raised(
+        self, monkeypatch: Any, tmp_path: pathlib.Path
+    ) -> None:
+        """A permissions or mount error falls back; it does not crash the root."""
+
+        def boom(_self: Any) -> bool:
+            raise OSError("stale NFS file handle")
+
+        assert directory_opens(str(tmp_path))
+        monkeypatch.setattr("spec4.project_manager._is_dir", boom)
+        assert not directory_opens(str(tmp_path))
+```
+
+- **The positive half:** unpatched, a real directory opens.
+- **The negative half:** the same directory, with the seam raising, does not. The only way
+  to that answer is the `except OSError` branch.
+
+This is §60.6's rule, negative assertions paired with positive. It is the one test change
+beyond re-pointing. The test's name and docstring stay, and so does `boom`.
+
+### 71.5 §52.1's four-way verification: three seams, four checks each
+
+A scratch harness ran on the committed tree, and its output is verbatim:
+
+```
+PASS  _replace  1 transparent, unpatched           _usage._replace is os.replace: True; save_usage wrote usage.json
+PASS  _replace  2 patched seam reached             raised OSError('boom'); calls 1; file intact True; dir ['usage.json']
+PASS  _replace  3 stdlib real during the patch     os.replace/os.fdopen real inside: True; an unrelated os.replace worked: True
+PASS  _replace  4 clean restore                    _usage._replace is os.replace again: True
+PASS  _fdopen   1 transparent, unpatched           _usage._fdopen is os.fdopen: True; save_usage wrote usage.json
+PASS  _fdopen   2 patched seam reached             raised OSError('disk full'); calls 1; file intact True; dir ['usage.json']
+PASS  _fdopen   3 stdlib real during the patch     os.replace/os.fdopen real inside: True; an unrelated os.fdopen worked: True
+PASS  _fdopen   4 clean restore                    _usage._fdopen is os.fdopen again: True
+PASS  _is_dir   1 transparent, unpatched           _is_dir(tmp) True; directory_opens(tmp) True
+PASS  _is_dir   2 patched seam reached             directory_opens(tmp) False; calls 1
+PASS  _is_dir   3 stdlib real during the patch     pathlib.Path.is_dir real inside: True; Path(tmp).is_dir() inside: True
+PASS  _is_dir   4 clean restore                    project_manager._is_dir is the wrapper again: True
+four-way: 12/12 PASS
+```
+
+Check 3 is the point of the sub-phase. While a test's seam is patched, the stdlib function
+is the real one, and an unrelated `os.replace` or `os.fdopen` in the same process still
+works. The blast radius §52.1 measured is gone by construction, not by the test's care.
+
+### 71.6 One mutation per seam, on the full suite
+
+| Mutation | File: anchor → replacement | Full suite | The one test that failed | Restored |
+|---|---|---|---|---|
+| M1 `_replace` | `_usage.py`: `_replace(tmp_name, path)` → `os.replace(tmp_name, path)` | `1 failed, 4198 passed, 1 skipped` | `test_usage_capture.py::TestSaveUsageAtomicity::test_failed_write_leaves_original_intact_and_no_temp_file` | byte-identical (sha256) |
+| M2 `_fdopen` | `_usage.py`: `with _fdopen(fd, "w", encoding="utf-8") as fh:` → `with os.fdopen(…)` | `1 failed, 4198 passed, 1 skipped` | `test_usage_capture.py::TestSaveUsageAtomicity::test_partial_content_write_never_reaches_the_file` | byte-identical (sha256) |
+| M3 `_is_dir` | `project_manager.py`: `return _is_dir(Path(working_dir)) and` → `return Path(working_dir).is_dir() and` | `1 failed, 4198 passed, 1 skipped` | `test_root_routing.py::TestDirectoryOpens::test_an_oserror_is_not_raised` | byte-identical (sha256) |
+
+- **Each mutation bypasses its seam and fails exactly its own test.** Nothing else in the
+  suite moves.
+- **Each anchor matched exactly once.** Under the harness rule (§60.5), anything else is an
+  error that stops the run, not a skip.
+- **Each file was restored from its saved bytes,** and its sha256 checked, after its run.
+  The unmutated control is §71.9's gate, `4199 passed`.
+- **M3 is the mutation the old assertion could not catch.** With `/mnt/gone`, bypassing the
+  seam still returned `False`, so the test would have passed (§71.4).
+
+The harness output, verbatim:
+
+```
+M1 _replace: src/spec4/_usage.py -- only the expected test fails; restored byte-identical: True
+   failed: ['tests/test_usage_capture.py::TestSaveUsageAtomicity::test_failed_write_leaves_original_intact_and_no_temp_file']
+   summary: 1 failed, 4198 passed, 1 skipped in 94.73s (0:01:34)
+M2 _fdopen: src/spec4/_usage.py -- only the expected test fails; restored byte-identical: True
+   failed: ['tests/test_usage_capture.py::TestSaveUsageAtomicity::test_partial_content_write_never_reaches_the_file']
+   summary: 1 failed, 4198 passed, 1 skipped in 91.33s (0:01:31)
+M3 _is_dir: src/spec4/project_manager.py -- only the expected test fails; restored byte-identical: True
+   failed: ['tests/test_root_routing.py::TestDirectoryOpens::test_an_oserror_is_not_raised']
+   summary: 1 failed, 4198 passed, 1 skipped in 92.60s (0:01:32)
+exit=0
+```
+
+**§60.4's old-form check.** On the unmutated new code, the deleted `module_seam` form was
+re-created in a scratch script. It no longer reaches the write, so the new test form is the
+one that pins the binding:
+
+```
+old form module_seam('spec4._usage.os', replace=...): save_usage did not raise -- the old form no longer reaches the write
+old form module_seam('spec4._usage.os', fdopen=...): save_usage did not raise -- the old form no longer reaches the write
+```
+
+### 71.7 Check 4 on the three new patch strings, in §67.5's form
+
+Condition (1) is adapted for seams. An alias must be the stdlib callable it binds, and the
+wrapper must be the function `_is_dir` defined in its owner; neither may be a module.
+
+| String | Form | Module named | Kind | The patch lands on |
+|---|---|---|---|---|
+| `tests/test_usage_capture.py:851` | `patch("…")` path | `spec4._usage` | alias, `is os.replace` | `_write_atomic@370` |
+| `tests/test_usage_capture.py:873` | `patch("…")` path | `spec4._usage` | alias, `is os.fdopen` | `_write_atomic@366` |
+| `tests/test_root_routing.py:387` | `monkeypatch.setattr("…")` string | `spec4.project_manager` | function `_is_dir`, defined there | `directory_opens@375` |
+
+No other spec4 module calls any of the three. These rows join §68.10's table as the landing
+reference.
+
+### 71.8 Off-limits, and coverage per file
+
+| Kind | Result |
+|---|---|
+| 7 whole-file entries | none in the diff |
+| 456 node ids | **456 / 456 collect**; 4,200 collected |
+| 19 tier-B files / 33 classes | no tier-B file has a hunk, and no tier-A node is touched |
+
+| File | Before (`246b266`) | After | The missed lines |
+|---|---|---|---|
+| `src/spec4/_usage.py` | 158 stmts, 2 miss (`:81–82`) | 160 stmts, 2 miss (`:92–93`) | the same two lines, moved down 11 by the docstring and the seam block; both new statements execute at import |
+| `src/spec4/project_manager.py` | 108 stmts, 1 miss (`:463`) | 110 stmts, 1 miss (`:474`) | the same line, moved down 11 by `_is_dir`; `directory_opens`'s `except OSError` branch (`:376–377`) stays covered, now by the re-pointed test's negative half |
+| **Total** | 12421 stmts, 891 miss | **12425 stmts, 891 miss** | the four new statements are all executed |
+
+This is not a rename commit, so the rename check and the token check do not apply. The
+diff is the five files of §71.1, and every hunk in it is shown in §71.3–§71.4 or described
+there.
+
+### 71.9 Gate results (verbatim)
+
+| Gate | Command | Result |
+|---|---|---|
+| Ruff | `uv run ruff check src/ tests/` | `All checks passed!` (exit 0) |
+| Ruff format | `uv run ruff format --check src/ tests/` | `221 files already formatted` (exit 0) |
+| Mypy | `uv run mypy src/` | `Success: no issues found in 92 source files` (exit 0) |
+| Tests | `uv run pytest --cov=spec4 --cov-report=term-missing -q` | `4199 passed, 1 skipped` (exit 0); 4,200 collected, since no test was added or removed |
+| Coverage | same run | `TOTAL 12425 stmts, 891 miss, 93%`: four more statements than §60.1, all executed, and the misses at the ≤ 891 ceiling |
+
+### 71.10 What this sub-phase did not do
+
+- It leaves the `threading.Thread` sites at `test_designer.py:967` and `:1012` alone
+  (§60.4). They were sized, not scheduled, and they suppress a worker rather than fail a
+  call.
+- It audits no stdlib call beyond §60.4's answer.
+- It gives `fsync` and `unlink` no seam. No test fails them, and the rule for when one
+  does is in the seam comment.
+- It writes nothing under `.spec4/`.
+- It claims no runtime figure.

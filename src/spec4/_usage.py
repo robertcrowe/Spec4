@@ -1,8 +1,10 @@
 """The per-round LLM usage log and the cost rollup built from it.
 
-Split out of :mod:`spec4.project_manager` in cleanup Phase 4b; that module
-re-exports every name defined here, so both import paths resolve to the same
-object.
+Split out of :mod:`spec4.project_manager` in cleanup Phase 4b. That module
+re-exports ``cost_summary``, ``load_usage``, ``round_cost``, ``save_usage``,
+``summarize_usage``, ``unpriced_calls``, ``usage_totals``, ``USAGE_FILENAME`` and
+``_USAGE_ROLLUP_PARENT``, so both import paths resolve to the same object for those.
+``_write_atomic``, ``_replace`` and ``_fdopen`` are not re-exported.
 """
 
 from __future__ import annotations
@@ -22,6 +24,15 @@ from spec4.app_constants import (
 )
 from spec4 import __version__
 from spec4._paths import ensure_version_dir, get_version_dir
+
+# Test seams for ``_write_atomic``'s stdlib calls (CLEANUP_INVENTORY.md §52.5, §71).
+# A test that must make one of them fail patches the name here, which reaches
+# ``_write_atomic`` alone; patching ``os.replace`` itself would reach every write in
+# the process while the test runs. The rule: a test that needs to fail any other call
+# in ``_write_atomic`` (``fsync``, ``unlink``) adds that call's name to this block --
+# it never patches ``os``. Designed patch points, private on purpose.
+_replace = os.replace
+_fdopen = os.fdopen
 
 
 # ---------------------------------------------------------------------------
@@ -352,11 +363,11 @@ def _write_atomic(path: Path, text: str) -> None:
         prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        with _fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(text)
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp_name, path)
+        _replace(tmp_name, path)
     except BaseException:
         with contextlib.suppress(OSError):
             os.unlink(tmp_name)

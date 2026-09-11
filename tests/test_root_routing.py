@@ -375,14 +375,17 @@ class TestDirectoryOpens:
         finally:
             locked.chmod(0o755)
 
-    def test_an_oserror_is_not_raised(self, monkeypatch: Any) -> None:
+    def test_an_oserror_is_not_raised(
+        self, monkeypatch: Any, tmp_path: pathlib.Path
+    ) -> None:
         """A permissions or mount error falls back; it does not crash the root."""
 
         def boom(_self: Any) -> bool:
             raise OSError("stale NFS file handle")
 
-        monkeypatch.setattr(pathlib.Path, "is_dir", boom)
-        assert not directory_opens("/mnt/gone")
+        assert directory_opens(str(tmp_path))
+        monkeypatch.setattr("spec4.project_manager._is_dir", boom)
+        assert not directory_opens(str(tmp_path))
 
 
 class TestTheGoneDirectoryLeavesNothingBehind:
