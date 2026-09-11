@@ -212,40 +212,69 @@ src/spec4/
 ├── streaming.py            # Background-thread streaming + provider error formatting
 ├── providers.py            # Provider/model registry, live model fetching
 ├── llm.py                  # LLM conversation turns + web search tool loop
+├── llm_selection.py        # Which model each agent runs on: default + per-agent overrides
 ├── websearch.py            # Web search providers (Tavily, Exa) — MCP async bridge
-├── project_manager.py      # .spec4/ artifact persistence + phase-file assembly
+├── project_manager.py      # Project directory management, over the four modules below
+├── _paths.py               # Where an artifact lives: the .spec4/ directory helpers
+├── _artifacts.py           # Reading and writing .spec4/ artifacts, plus README assembly
+├── _phase_markdown.py      # Phase files: Markdown with JSON frontmatter, assembled and parsed
+├── _usage.py               # The per-round LLM usage log and its cost rollup
 ├── usage_report.py         # spec4-usage CLI: per-agent table from usage.json
+├── version_check.py        # Startup version check against PyPI
 ├── feature_specs.py        # Shared spec renderer (Phaser context + phase files)
 ├── design_manifest.py      # Design-mock manifest joins for Phaser
 ├── stack_routing.py        # Deterministic stack→phase and NFR→phase joins
 ├── agents/
-│   ├── code_scanner.py     # Code review agent
 │   ├── brainstormer.py     # Vision development agent
 │   ├── feature_speccer.py  # Post-vision behavioral feature specs (feature_specs.json)
-│   ├── stack_advisor.py    # Technology stack recommendation agent
-│   ├── phaser.py           # Incremental phase planning agent
+│   ├── code_scanner/       # Code review agent: prompt, repo scan, review renderer
+│   ├── stack_advisor/      # Technology stack recommendation agent: prompt, shape, renderer
+│   ├── phaser/             # Incremental phase planning agent: prompt, extraction, revision seed
 │   ├── deployer.py         # Deployment planning agent (terminal pipeline stage)
-│   └── designer.py         # UI mock generation agent (parallel, optional)
+│   ├── designer.py         # UI mock generation agent (parallel, optional)
+│   ├── _turn_flow.py       # The shared turn loop's conversation-history surgery
+│   ├── _reask.py           # The artifact re-ask protocol and the stream wrappers
+│   ├── _feature_context.py # Feature and AI-feature seed blocks, one per consumer
+│   ├── _stack_context.py   # Stack, phase, NFR and design-manifest digests
+│   └── _*.py               # Artifact schemas, the design manifest, Phaser's coverage and seam
+│                           #   checks, model capability probes, and _utils.py (a retired facade)
 ├── agentifier/             # AI feature identification and specification pipeline
 │   ├── agentifier.py       # Orchestrator: catalog → spec → cross-cutting → priority
+│   ├── _seed.py            # Its sub-agent dispatch, seed message, (de)serialisation
+│   ├── _render.py          # Its renderers, priority parsing, revision snapshot
+│   ├── _ff_review.py       # Its Fast Forward review
 │   ├── scout.py            # Sub-agent: surface AI opportunity candidates
+│   ├── linker.py           # Sub-agent: the Linker
+│   ├── composer.py         # Sub-agent: the Composer (replaced the Consolidator)
 │   ├── tier_analyst.py     # Sub-agent: recommend complexity tier per candidate
 │   ├── spec_drafter.py     # StreamingSubAgent: draft per-feature implementation spec
 │   ├── cross_cutting_analyst.py  # StreamingSubAgent: system-level recommendations
+│   ├── prioritizer.py      # Sub-agent: the priority overlay on the closed feature set
 │   ├── reference_verifier.py     # Web-search-backed reference URL enrichment
+│   ├── grounding.py        # Joins AI-feature nodes to the Brainstormer vision
+│   ├── infra_expander.py   # Deterministic tier-required infrastructure expansion
+│   ├── panel_closure.py    # Selection-time closure for the breadth panel
+│   ├── requires_reconciler.py    # Assembly-time `requires`-direction reconciliation
 │   ├── pattern_loader.py   # Load and validate the tier/mechanism pattern library
 │   ├── subagents.py        # Sub-agent protocol, registry, and error types
 │   └── patterns/           # Markdown pattern library (tiers/ and mechanisms/)
-├── callbacks/              # Dash server-side callbacks (main pipeline + designer)
-└── layouts/                # Page layout functions (chat, setup, designer, shared)
-tests/
+├── callbacks/              # Dash callbacks: chat frame, model gate, navigation, setup, artifacts
+│   └── designer/           # Designer's callbacks: wizard, mock generation, refine
+├── layouts/                # Every screen: chat frame, setup, agent rows, artifact view, designer
+└── assets/                 # Stylesheet, chat-input script, favicon, landing image
+tests/                      # See tests/README.md
 ├── agentifier/             # Agentifier unit tests
-├── integration/            # End-to-end pipeline tests (mocked LLMs)
-└── test_*.py               # Agent and utility unit tests
+├── integration/            # End-to-end pipeline runs (mocked LLMs) and browser tests
+├── golden/, snapshots/     # Pinned renderer output and component ids
+└── test_*.py               # Agent, layout, callback and utility tests
 evals/                      # On-demand measurement harnesses (real LLM calls;
 ├── agentifier/             #   not part of make test) — mechanism probe,
 ├── tier_calibration/       #   tier calibration, Scout/Phaser/Deployer/
 └── ...                     #   StackAdvisor/Designer probes
+scripts/
+├── e2e_agentifier.py       # End-to-end driver for the Agentifier pipeline stage
+├── screenshot_ui.py        # UI screenshots (Playwright)
+└── cleanup/                # The cleanup's mechanical checks (see its README)
 Makefile                    # Common commands
 ```
 
