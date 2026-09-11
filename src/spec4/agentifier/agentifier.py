@@ -72,6 +72,7 @@ from spec4.agentifier.prioritizer import apply_overlay as apply_priority_overlay
 from spec4.agentifier.scout import (
     Candidate,
     ScoutOutcome,
+    ScoutOutput,
 )
 from spec4.agentifier.spec_drafter import SpecDrafterInput
 from spec4.agentifier.tier_analyst import (
@@ -1687,7 +1688,531 @@ def reselection_pool_from_features(ai_features: dict[str, Any]) -> list[Candidat
 # ---------------------------------------------------------------------------
 
 
-def _run_catalog_phase(  # noqa: C901, PLR0912, PLR0915  # 24-yield generator; the surviving branches are yield/return guards on the sub-agent turns and entry guards with no extractable body (rule 12, CLEANUP_INVENTORY.md 27.4)
+def _catalog_scout(
+    session: dict[str, Any],
+    vision: dict[str, Any],
+    code_review: dict[str, Any] | None,
+    llm_config: dict[str, Any],
+) -> Generator[str, None, tuple[ScoutOutput, str, int] | None]:
+    """Scout's turn: the banner, the draw and its drain; ``None`` ends the turn.
+
+    Returns Scout's output, the project name the breadth question names, and the
+    turn's received-character total after the drain (D-AT3).
+    """
+    # --- Revision mode detection ---------------------------------------
+    # A revision round's vision carries a non-empty revision_history (its
+    # last entry is this round's delta) AND an implemented predecessor
+    # exists. When both hold, scope discovery to the delta: carry any
+    # already-built features forward silently and inform Scout so it
+    # surfaces only the new/changed surface. The trigger is the implemented
+    # predecessor (mirroring Brainstormer/Designer/Phaser), NOT whether
+    # that predecessor itself had AI features — a revision that introduces
+    # the first AI features onto a previously AI-free project is still a
+    # revision, and its new features still need the introduced_in_version
+    # stamp. In that case carried-forward is simply empty. Greenfield
+    # discovery is untouched (delta is None, or no implemented predecessor
+    # → not a revision).
+    _scout_revision, _project_name, _scout_banner, _guidance = _catalog_scout_prep(
+        session, vision
+    )
+    chars = len(_scout_banner)
+    yield _scout_banner
+    set_status(session, "Scout is scanning your vision for AI opportunities…")
+
+    if _DEV_MODE:
+        print("[agentifier] calling Scout…", flush=True)
+    # D-AT3: seed turn-locally from the text this turn has yielded
+    # (plus prior drains' write-backs) — the live session key is never
+    # cleared between turns, so seeding from it would carry the
+    # previous turn's total into this turn's accounting.
+    _on_chunk, _drained_total = _session_counter(session, seed=chars)
+    try:
+        scout_output = _call_scout(
+            vision,
+            code_review,
+            llm_config,
+            revision=_scout_revision,
+            on_chunk=_on_chunk,
+            brownfield=project_manager.session_is_brownfield(session),
+            guidance=_guidance,
+        )
+    except Exception as exc:
+        yield f"\n\nScout failed to analyse the vision: {exc}. Please try again."
+        return None
+    # D-AT3: fold the drained total back into the turn's running count
+    # so every later seed in this turn stays monotonic.
+    return scout_output, _project_name, _drained_total()
+
+
+def _catalog_complete_without_candidates(
+    session: dict[str, Any], outcome: ScoutOutcome
+) -> Generator[str, None, None]:
+    """Scout surfaced no candidate: say why, and end the turn.
+
+    An unreadable response is reported as such. A revision round with no new AI
+    surface, and a greenfield vision with none, both complete the stage.
+    """
+    if outcome is ScoutOutcome.UNREADABLE:
+        # Soft parse failure — the model's response carried no
+        # readable candidate array. Mirror the hard-failure path
+        # rather than reporting this as a deterministic-core vision
+        # (greenfield) or a presentation-only tweak (revision).
+        yield ("Scout's analysis couldn't be read this time. Please try again.")
+        return
+    if session.get("agentifier_revision"):
+        # A revision whose changes introduce no NEW AI surface (e.g. a
+        # presentation-only tweak to an already-built feature). Don't
+        # bail as if greenfield — carry the established AI surface
+        # forward unchanged and finalise. _complete_agentifier folds in
+        # agentifier_carried_forward under its revision block; there is
+        # no new feature to spec-draft, so go straight there (mirroring
+        # the zero-selection completion path).
+        session["agentifier_candidates"] = []
+        session["agentifier_analyses"] = []
+        session["ai_features"] = {
+            "ai_features": [],
+            "cross_cutting": {},
+            "explicitly_rejected": [],
+            "references": [],
+            "consolidation": [],
+            "reconciliation": [],
+        }
+        session["agentifier_catalog_done"] = True
+        session["agentifier_spec_done"] = True
+        session["agentifier_cross_cutting_done"] = True
+        _n_carried = len(session.get("agentifier_carried_forward") or [])
+        if _n_carried:
+            _noun = "feature" if _n_carried == 1 else "features"
+            _verb = "is" if _n_carried == 1 else "are"
+            yield (
+                "This revision's changes don't introduce any new AI "
+                f"integration. Your **{_n_carried} already-built AI "
+                f"{_noun}** {_verb} carried forward unchanged — continue "
+                "to Designer or StackAdvisor when you're ready.\n\n"
+            )
+        else:
+            yield (
+                "This revision's changes don't introduce any new AI "
+                "integration, and there are no existing AI features to "
+                "carry forward. You can continue to Designer or "
+                "StackAdvisor.\n\n"
+            )
+        yield from _complete_agentifier(session)
+        return
+    # Greenfield vision with no AI surface (e.g. a purely
+    # deterministic system). Finalise the agentifier stage with an
+    # empty catalog so the developer reaches STATE_AGENTIFIER_COMPLETE
+    # — and gets the Continue button plus the pipeline pills — instead
+    # of being stranded with no way forward. Mirrors the revision
+    # no-new-AI path above, but shows a plain message rather than an
+    # empty catalog table.
+    session["agentifier_candidates"] = []
+    session["agentifier_analyses"] = []
+    session["ai_features"] = {
+        "ai_features": [],
+        "cross_cutting": {},
+        "explicitly_rejected": [],
+        "references": [],
+        "consolidation": [],
+        "reconciliation": [],
+    }
+    session["agentifier_catalog_done"] = True
+    session["agentifier_spec_done"] = True
+    session["agentifier_cross_cutting_done"] = True
+    yield from _complete_agentifier(
+        session,
+        display=(
+            "Scout did not find any AI-integration opportunities in "
+            "your vision. This usually means the system is purely "
+            "deterministic, or the vision is still early-stage — so "
+            "there's no AI feature catalog to build here. You can "
+            "still continue to **Designer** or **StackAdvisor** using "
+            "the button below or the pipeline pills."
+        ),
+    )
+
+
+def _catalog_link(
+    session: dict[str, Any],
+    candidates: list[Candidate],
+    vision: dict[str, Any],
+    llm_config: dict[str, Any],
+    chars: int,
+) -> Generator[str, None, tuple[list[Candidate], int]]:
+    """The Linker's turn: wire the dependency edges over Scout's candidates.
+
+    Never ends the turn: a failed or unreadable draw proceeds edgeless, with a
+    note. Returns the candidates with the edges applied, and the running total.
+    """
+    _linker_banner = (
+        "### Linker\n\n"
+        "Mapping how these features depend on each other…\n\n"
+        "_This usually takes a few seconds._\n\n"
+    )
+    chars += len(_linker_banner)
+    yield _linker_banner
+    set_status(session, "Linker is mapping dependencies between features…")
+    if _DEV_MODE:
+        print("[agentifier] calling Linker…", flush=True)
+    # D-AT3: seed turn-locally from the text this turn has yielded
+    # (plus prior drains' write-backs) — the live session key is never
+    # cleared between turns, so seeding from it would carry the
+    # previous turn's total into this turn's accounting.
+    _on_chunk, _drained_total = _session_counter(session, seed=chars)
+    try:
+        linker_out = _call_linker(candidates, vision, llm_config, on_chunk=_on_chunk)
+        overlay, linker_outcome = linker_out.overlay, linker_out.outcome
+    except Exception as exc:
+        if _DEV_MODE:
+            print(
+                f"[agentifier] Linker failed ({exc}); proceeding edgeless",
+                flush=True,
+            )
+        overlay, linker_outcome = {}, LinkerOutcome.UNREADABLE
+    # D-AT3: fold the drained total back into the turn's running
+    # count so every later seed in this turn stays monotonic.
+    chars = _drained_total()
+    candidates = apply_overlay(candidates, overlay)
+    if linker_outcome is LinkerOutcome.UNREADABLE:
+        # Genuine failure (unreadable even after one reparse) — an
+        # alarm is warranted, in the log and in the chat.
+        _log.warning(
+            "Linker edge: dependency analysis unreadable over %d "
+            "candidates; proceeding edgeless",
+            len(candidates),
+        )
+        yield (
+            "### Dependency analysis unavailable\n\n"
+            "I couldn't read the dependency analysis this time, so the "
+            "panel below won't auto-include related features. Select "
+            "interdependent features together, or re-run to try again."
+            "\n\n"
+        )
+    elif not any(c.composed_under or c.requires for c in candidates):
+        # No surviving edges — legitimate for a flat feature set, so
+        # the chat note is informational, not an alarm; the log stays
+        # a WARN so a silent under-emission is still visible in
+        # telemetry (the failure mode this whole pass exists to end).
+        _log.warning(
+            "Linker edge: no edges inferred over %d candidates",
+            len(candidates),
+        )
+        yield (
+            "These features were assessed as independent — nothing "
+            "will be auto-selected for you below. If some of them feed "
+            "each other, select them together.\n\n"
+        )
+    return candidates, chars
+
+
+def _catalog_compose(
+    session: dict[str, Any],
+    candidates: list[Candidate],
+    vision: dict[str, Any],
+    llm_config: dict[str, Any],
+    chars: int,
+) -> Generator[str, None, tuple[ComposerOutput, list[Candidate], int]]:
+    """The Composer's turn: group coordinated candidates under their coordinators.
+
+    Never ends the turn: a failed draw keeps Scout's output unchanged. Returns the
+    composition, the input snapshot it was drawn over, and the running total.
+    """
+    _composer_banner = (
+        "### Composer\n\n"
+        "Grouping coordinated candidates under their coordinators…\n\n"
+        "_This usually takes a few seconds._\n\n"
+    )
+    chars += len(_composer_banner)
+    yield _composer_banner
+    set_status(session, "Composer is grouping coordinated candidates…")
+    _input_candidates = list(candidates)  # snapshot for diagnostics
+    if _DEV_MODE:
+        print("[agentifier] calling Composer…", flush=True)
+        print(
+            f"[agentifier] composer: --- input ({len(_input_candidates)}) ---",
+            flush=True,
+        )
+        for _i, _c in enumerate(_input_candidates, 1):
+            _desc = (_c.rough_description or "")[:80]
+            print(
+                f"[agentifier] composer:   {_i}. {_c.name} [{_c.scope}] — {_desc}",
+                flush=True,
+            )
+    # D-AT3: seed turn-locally from the text this turn has yielded
+    # (plus prior drains' write-backs) — the live session key is never
+    # cleared between turns, so seeding from it would carry the
+    # previous turn's total into this turn's accounting.
+    _on_chunk, _drained_total = _session_counter(session, seed=chars)
+    try:
+        composed = _call_composer(candidates, vision, llm_config, on_chunk=_on_chunk)
+    except Exception as exc:
+        if _DEV_MODE:
+            print(
+                f"[agentifier] Composer failed ({exc}); using Scout output unchanged",
+                flush=True,
+            )
+        composed = ComposerOutput(candidates=candidates)
+    # D-AT3: fold the drained total back into the turn's running count.
+    return composed, _input_candidates, _drained_total()
+
+
+def _catalog_fresh_start(
+    session: dict[str, Any], llm_config: dict[str, Any]
+) -> Generator[str, None, None]:
+    """The true fresh start: Scout, the Linker, the Composer, then the breadth
+    question. Always ends the turn: the developer's selection comes next."""
+    vision = session.get("vision_statement")
+    code_review = session.get("code_review")
+    if not vision:
+        yield ("Agentifier requires a vision statement. Please run Brainstormer first.")
+        return
+
+    scouted = yield from _catalog_scout(session, vision, code_review, llm_config)
+    if scouted is None:
+        return
+    scout_output, _project_name, chars = scouted
+    candidates = scout_output.candidates
+    if not candidates:
+        yield from _catalog_complete_without_candidates(session, scout_output.outcome)
+        return
+
+    # Dependency pass — the Linker wires the graph contract
+    # (composed_under / requires) over Scout's candidate set before the
+    # Composer groups by it. Scout surfaces nodes; the Linker owns edges;
+    # the Composer materialises coordinators from the labels. Skipped
+    # below two candidates — no edge is possible, so no draw.
+    if len(candidates) >= 2:  # noqa: PLR2004  # an edge needs two endpoints
+        candidates, chars = yield from _catalog_link(
+            session, candidates, vision, llm_config, chars
+        )
+
+    # Composition pass — group coordinated candidates under their
+    # coordinators (synthesizing a head only when Scout emitted none) —
+    # runs ONCE before breadth selection and before any Tier Analyst call.
+    composed, _input_candidates, _ = yield from _catalog_compose(
+        session, candidates, vision, llm_config, chars
+    )
+
+    intro = _catalog_breadth_intro(
+        session, composed, _input_candidates, _project_name, candidates
+    )
+    yield intro
+
+
+def _catalog_seed_from_cache(
+    session: dict[str, Any], msgs: list[dict[str, Any]]
+) -> None:
+    """Candidates already cached: rebuild the orchestrator's seed message."""
+    candidates = _candidates_from_session(session)
+    analyses = _analyses_from_session(session)
+    # The developer's answer, never the presence of a scan: CodeScanner run
+    # over a greenfield skeleton must not make the orchestrator open with
+    # "this is a BROWNFIELD project".
+    brownfield = project_manager.session_is_brownfield(session)
+    _rev_goal = (
+        (session.get("agentifier_revision_delta") or {}).get("goal", "")
+        if session.get("agentifier_revision")
+        else ""
+    )
+    seed = build_seed_message(
+        candidates, analyses, brownfield=brownfield, revision_goal=_rev_goal
+    )
+    msgs.append({"role": "user", "content": seed})
+
+
+def _catalog_breadth_turn(
+    session: dict[str, Any],
+    msgs: list[dict[str, Any]],
+    llm_config: dict[str, Any],
+) -> Generator[str, None, int | None]:
+    """The breadth-selection turn: the developer's picks, then the Tier Analyst.
+
+    ``None`` ends the turn: nothing was selected (the stage completes), a
+    re-selection added nothing new (assembly re-runs over the kept set), or the
+    Tier Analyst failed. Otherwise returns the turn's received-character total,
+    which seeds the briefing stream (D-AT3).
+    """
+    # agentifier_breadth_selection is set by the checkbox callback before
+    # calling get_agent_gen; user_input is a human-readable summary only.
+    pool, survivors, rejected, to_analyze, reselection = _catalog_apply_selection(
+        session
+    )
+
+    if not survivors:
+        # Zero-selection path: persist empty artifact and complete.
+        session["agentifier_candidates"] = []
+        session["agentifier_analyses"] = []
+        session["ai_features"] = {
+            "ai_features": [],
+            "cross_cutting": {},
+            "explicitly_rejected": list(session["agentifier_explicitly_rejected"]),
+            "references": [],
+            "consolidation": [],
+            "reconciliation": [],
+        }
+        session["agentifier_spec_done"] = True
+        session["agentifier_cross_cutting_done"] = True
+        yield from _complete_agentifier(session)
+        return None
+
+    if reselection and not to_analyze:
+        # No new features — keep the preserved set verbatim, skip tier review
+        # and spec drafting, and go straight to assembly + cross-cutting +
+        # priority (which re-run over the preserved union via _finalize_specs).
+        session["ai_catalog"] = {"ai_catalog": []}
+        session["agentifier_catalog_done"] = True
+        session["agentifier_spec_index"] = 0
+        session["agentifier_spec_results"] = []
+        session["agentifier_candidates"] = []
+        session["agentifier_analyses"] = []
+        n_p = len(session.get("agentifier_preserved_selected") or [])
+        yield (
+            f"\n\nKeeping **{n_p} feature{'s' if n_p != 1 else ''}** — "
+            "re-checking cross-cutting concerns…\n\n"
+        )
+        yield from _finalize_specs(session, llm_config)
+        return None
+
+    n_s = len(to_analyze)
+    _intro_line = (
+        f"\n\nContinuing with **{n_s} selected feature{'s' if n_s != 1 else ''}** "
+        f"— running Tier Analyst…\n\n"
+    )
+    chars = len(_intro_line)
+    yield _intro_line
+
+    if _DEV_MODE:
+        print(
+            f"[agentifier] breadth selection: survivors={len(survivors)}/{len(pool)}; "
+            f"analyzing={n_s}; calling TierAnalyst…",
+            flush=True,
+        )
+
+    code_review = session.get("code_review")
+    # D-TA7: the redraw notes reach the Tier Analyst too, so "keep it
+    # simple" weighs on the tier of every survivor, not just on which
+    # candidates Scout surfaced.
+    _ta_guidance = list(
+        (session.get("agentifier_retry_guidance") or {}).get("notes") or []
+    )
+    breadth_analyses: list[TierAnalystOutput] = []
+    try:
+        for _i, _cand in enumerate(to_analyze, 1):
+            _progress_line = f"- Analysing **`{_cand.name}`** ({_i}/{n_s})…\n"
+            chars += len(_progress_line)
+            yield _progress_line
+            set_status(
+                session,
+                f"Tier Analyst is sizing {_cand.name} ({_i}/{n_s})…",
+            )
+            # D-AT3: each per-candidate drain continues from the turn's
+            # running count (progress lines + prior drains) and folds its
+            # total back, so the counter interleaves line jumps with live
+            # drain growth and never dips.
+            # D-AT3: seed turn-locally from the text this turn has yielded
+            # (plus prior drains' write-backs) — the live session key is never
+            # cleared between turns, so seeding from it would carry the
+            # previous turn's total into this turn's accounting.
+            _on_chunk, _drained_total = _session_counter(session, seed=chars)
+            breadth_analyses.append(
+                _call_tier_analyst(
+                    _cand,
+                    llm_config,
+                    code_review,
+                    on_chunk=_on_chunk,
+                    guidance=_ta_guidance,
+                )
+            )
+            chars = _drained_total()
+    except Exception as exc:
+        yield f"\nTier Analyst failed: {exc}. Please try again."
+        return None
+
+    _done_line = "\nTier analysis complete.\n\n---\n\n_Preparing your briefing…_\n\n"
+    chars += len(_done_line)
+    yield _done_line
+    set_status(session, "Preparing your feature briefing…")
+
+    _catalog_finalize_breadth(session, to_analyze, breadth_analyses, msgs)
+    return chars
+
+
+def _catalog_reply(
+    session: dict[str, Any],
+    msgs: list[dict[str, Any]],
+    llm_config: dict[str, Any],
+    chars: int,
+) -> Generator[str, None, None]:
+    """The orchestrator's reply: the LLM stream, and the catalog it may carry.
+
+    The stream is seeded from ``chars``, the progress text this turn yielded
+    before it (D-AT3). An unreadable catalog is re-asked once. This is always
+    the end of the turn.
+    """
+    search_cfg = websearch.from_session(session)
+    system = llm.build_system_prompt(ORCHESTRATOR_SYSTEM_PROMPT, search_cfg)
+
+    yield from stream_suppressing_json(
+        llm.stream_turn(
+            system,
+            msgs,
+            llm_config,
+            search_cfg,
+            agent_name="agentifier",
+            session=session,
+        ),
+        session,
+        seed=chars,
+        reply_status="Agentifier is replying…",
+        artifact_status=(
+            "Drafting the AI feature catalog — this can take a few minutes…"
+        ),
+    )
+
+    raw_reply = last_assistant_text(msgs)
+    catalog = _extract_catalog_json(raw_reply)
+    if catalog is None and suppressed_as_artifact(raw_reply):
+        # D-AT-P3 (the D-SC-P3 fix, applied here). The symptom differs from the
+        # other agents': the catch-all override below would set the display to
+        # the raw assistant text, so an unreadable catalog block lands in the
+        # chat as a wall of broken JSON rather than a blank bubble — with
+        # agentifier_catalog_done still False and no way forward. Re-ask once,
+        # and if that fails say so instead of showing the developer the wreckage.
+        correction = artifact_reask_prompt("AI feature catalog")
+        yield from reask_for_artifact(
+            system=system,
+            msgs=msgs,
+            llm_config=llm_config,
+            search_config=search_cfg,
+            agent_name="agentifier",
+            correction=correction,
+            status_line=artifact_reask_status("catalog"),
+            session=session,
+            seed=chars + len(raw_reply),
+        )
+        catalog = _extract_catalog_json(last_assistant_text(msgs))
+        if catalog is None:
+            abandon_reask(
+                msgs, correction, artifact_fallback("AI feature catalog"), session
+            )
+    if catalog:
+        session["ai_catalog"] = catalog
+        session["agentifier_catalog_done"] = True
+        session["agentifier_spec_index"] = 0
+        session["agentifier_spec_results"] = []
+        catalog_display = format_catalog_as_text(catalog)
+        msgs[-1]["content"] = catalog_display
+        session["_display_override"] = catalog_display
+
+    # Always clear progress messages from the window — show only the LLM's response.
+    # (The catalog case above already sets _display_override; this covers greeting turns.)
+    if not session.get("_display_override"):
+        _assistant_text = last_assistant_text(msgs)
+        if _assistant_text:
+            session["_display_override"] = _assistant_text
+
+
+def _run_catalog_phase(
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
@@ -1727,452 +2252,24 @@ def _run_catalog_phase(  # noqa: C901, PLR0912, PLR0915  # 24-yield generator; t
         # True fresh start — no prior conversation, no pending breadth question
         candidates_data = session.get("agentifier_candidates")
         if candidates_data is None:
-            vision = session.get("vision_statement")
-            code_review = session.get("code_review")
-            if not vision:
-                yield (
-                    "Agentifier requires a vision statement. "
-                    "Please run Brainstormer first."
-                )
-                return
-
-            # --- Revision mode detection ---------------------------------------
-            # A revision round's vision carries a non-empty revision_history (its
-            # last entry is this round's delta) AND an implemented predecessor
-            # exists. When both hold, scope discovery to the delta: carry any
-            # already-built features forward silently and inform Scout so it
-            # surfaces only the new/changed surface. The trigger is the implemented
-            # predecessor (mirroring Brainstormer/Designer/Phaser), NOT whether
-            # that predecessor itself had AI features — a revision that introduces
-            # the first AI features onto a previously AI-free project is still a
-            # revision, and its new features still need the introduced_in_version
-            # stamp. In that case carried-forward is simply empty. Greenfield
-            # discovery is untouched (delta is None, or no implemented predecessor
-            # → not a revision).
-            _scout_revision, _project_name, _scout_banner, _guidance = (
-                _catalog_scout_prep(session, vision)
-            )
-            pre_stream_chars += len(_scout_banner)
-            yield _scout_banner
-            set_status(session, "Scout is scanning your vision for AI opportunities…")
-
-            if _DEV_MODE:
-                print("[agentifier] calling Scout…", flush=True)
-            # D-AT3: seed turn-locally from the text this turn has yielded
-            # (plus prior drains' write-backs) — the live session key is never
-            # cleared between turns, so seeding from it would carry the
-            # previous turn's total into this turn's accounting.
-            _on_chunk, _drained_total = _session_counter(session, seed=pre_stream_chars)
-            try:
-                scout_output = _call_scout(
-                    vision,
-                    code_review,
-                    llm_config,
-                    revision=_scout_revision,
-                    on_chunk=_on_chunk,
-                    brownfield=project_manager.session_is_brownfield(session),
-                    guidance=_guidance,
-                )
-            except Exception as exc:
-                yield f"\n\nScout failed to analyse the vision: {exc}. Please try again."
-                return
-            # D-AT3: fold the drained total back into the turn's running count
-            # so every later seed in this turn stays monotonic.
-            pre_stream_chars = _drained_total()
-            candidates = scout_output.candidates
-            if not candidates:
-                if scout_output.outcome is ScoutOutcome.UNREADABLE:
-                    # Soft parse failure — the model's response carried no
-                    # readable candidate array. Mirror the hard-failure path
-                    # rather than reporting this as a deterministic-core vision
-                    # (greenfield) or a presentation-only tweak (revision).
-                    yield (
-                        "Scout's analysis couldn't be read this time. Please try again."
-                    )
-                    return
-                if session.get("agentifier_revision"):
-                    # A revision whose changes introduce no NEW AI surface (e.g. a
-                    # presentation-only tweak to an already-built feature). Don't
-                    # bail as if greenfield — carry the established AI surface
-                    # forward unchanged and finalise. _complete_agentifier folds in
-                    # agentifier_carried_forward under its revision block; there is
-                    # no new feature to spec-draft, so go straight there (mirroring
-                    # the zero-selection completion path).
-                    session["agentifier_candidates"] = []
-                    session["agentifier_analyses"] = []
-                    session["ai_features"] = {
-                        "ai_features": [],
-                        "cross_cutting": {},
-                        "explicitly_rejected": [],
-                        "references": [],
-                        "consolidation": [],
-                        "reconciliation": [],
-                    }
-                    session["agentifier_catalog_done"] = True
-                    session["agentifier_spec_done"] = True
-                    session["agentifier_cross_cutting_done"] = True
-                    _n_carried = len(session.get("agentifier_carried_forward") or [])
-                    if _n_carried:
-                        _noun = "feature" if _n_carried == 1 else "features"
-                        _verb = "is" if _n_carried == 1 else "are"
-                        yield (
-                            "This revision's changes don't introduce any new AI "
-                            f"integration. Your **{_n_carried} already-built AI "
-                            f"{_noun}** {_verb} carried forward unchanged — continue "
-                            "to Designer or StackAdvisor when you're ready.\n\n"
-                        )
-                    else:
-                        yield (
-                            "This revision's changes don't introduce any new AI "
-                            "integration, and there are no existing AI features to "
-                            "carry forward. You can continue to Designer or "
-                            "StackAdvisor.\n\n"
-                        )
-                    yield from _complete_agentifier(session)
-                    return
-                # Greenfield vision with no AI surface (e.g. a purely
-                # deterministic system). Finalise the agentifier stage with an
-                # empty catalog so the developer reaches STATE_AGENTIFIER_COMPLETE
-                # — and gets the Continue button plus the pipeline pills — instead
-                # of being stranded with no way forward. Mirrors the revision
-                # no-new-AI path above, but shows a plain message rather than an
-                # empty catalog table.
-                session["agentifier_candidates"] = []
-                session["agentifier_analyses"] = []
-                session["ai_features"] = {
-                    "ai_features": [],
-                    "cross_cutting": {},
-                    "explicitly_rejected": [],
-                    "references": [],
-                    "consolidation": [],
-                    "reconciliation": [],
-                }
-                session["agentifier_catalog_done"] = True
-                session["agentifier_spec_done"] = True
-                session["agentifier_cross_cutting_done"] = True
-                yield from _complete_agentifier(
-                    session,
-                    display=(
-                        "Scout did not find any AI-integration opportunities in "
-                        "your vision. This usually means the system is purely "
-                        "deterministic, or the vision is still early-stage — so "
-                        "there's no AI feature catalog to build here. You can "
-                        "still continue to **Designer** or **StackAdvisor** using "
-                        "the button below or the pipeline pills."
-                    ),
-                )
-                return
-
-            # Dependency pass — the Linker wires the graph contract
-            # (composed_under / requires) over Scout's candidate set before the
-            # Composer groups by it. Scout surfaces nodes; the Linker owns edges;
-            # the Composer materialises coordinators from the labels. Skipped
-            # below two candidates — no edge is possible, so no draw.
-            if len(candidates) >= 2:  # noqa: PLR2004  # an edge needs two endpoints
-                _linker_banner = (
-                    "### Linker\n\n"
-                    "Mapping how these features depend on each other…\n\n"
-                    "_This usually takes a few seconds._\n\n"
-                )
-                pre_stream_chars += len(_linker_banner)
-                yield _linker_banner
-                set_status(session, "Linker is mapping dependencies between features…")
-                if _DEV_MODE:
-                    print("[agentifier] calling Linker…", flush=True)
-                # D-AT3: seed turn-locally from the text this turn has yielded
-                # (plus prior drains' write-backs) — the live session key is never
-                # cleared between turns, so seeding from it would carry the
-                # previous turn's total into this turn's accounting.
-                _on_chunk, _drained_total = _session_counter(
-                    session, seed=pre_stream_chars
-                )
-                try:
-                    linker_out = _call_linker(
-                        candidates, vision, llm_config, on_chunk=_on_chunk
-                    )
-                    overlay, linker_outcome = linker_out.overlay, linker_out.outcome
-                except Exception as exc:
-                    if _DEV_MODE:
-                        print(
-                            f"[agentifier] Linker failed ({exc}); proceeding edgeless",
-                            flush=True,
-                        )
-                    overlay, linker_outcome = {}, LinkerOutcome.UNREADABLE
-                # D-AT3: fold the drained total back into the turn's running
-                # count so every later seed in this turn stays monotonic.
-                pre_stream_chars = _drained_total()
-                candidates = apply_overlay(candidates, overlay)
-                if linker_outcome is LinkerOutcome.UNREADABLE:
-                    # Genuine failure (unreadable even after one reparse) — an
-                    # alarm is warranted, in the log and in the chat.
-                    _log.warning(
-                        "Linker edge: dependency analysis unreadable over %d "
-                        "candidates; proceeding edgeless",
-                        len(candidates),
-                    )
-                    yield (
-                        "### Dependency analysis unavailable\n\n"
-                        "I couldn't read the dependency analysis this time, so the "
-                        "panel below won't auto-include related features. Select "
-                        "interdependent features together, or re-run to try again."
-                        "\n\n"
-                    )
-                elif not any(c.composed_under or c.requires for c in candidates):
-                    # No surviving edges — legitimate for a flat feature set, so
-                    # the chat note is informational, not an alarm; the log stays
-                    # a WARN so a silent under-emission is still visible in
-                    # telemetry (the failure mode this whole pass exists to end).
-                    _log.warning(
-                        "Linker edge: no edges inferred over %d candidates",
-                        len(candidates),
-                    )
-                    yield (
-                        "These features were assessed as independent — nothing "
-                        "will be auto-selected for you below. If some of them feed "
-                        "each other, select them together.\n\n"
-                    )
-
-            # Composition pass — group coordinated candidates under their
-            # coordinators (synthesizing a head only when Scout emitted none) —
-            # runs ONCE before breadth selection and before any Tier Analyst call.
-            _composer_banner = (
-                "### Composer\n\n"
-                "Grouping coordinated candidates under their coordinators…\n\n"
-                "_This usually takes a few seconds._\n\n"
-            )
-            pre_stream_chars += len(_composer_banner)
-            yield _composer_banner
-            set_status(session, "Composer is grouping coordinated candidates…")
-            _input_candidates = list(candidates)  # snapshot for diagnostics
-            if _DEV_MODE:
-                print("[agentifier] calling Composer…", flush=True)
-                print(
-                    f"[agentifier] composer: --- input ({len(_input_candidates)}) ---",
-                    flush=True,
-                )
-                for _i, _c in enumerate(_input_candidates, 1):
-                    _desc = (_c.rough_description or "")[:80]
-                    print(
-                        f"[agentifier] composer:   {_i}. {_c.name} [{_c.scope}] — {_desc}",
-                        flush=True,
-                    )
-            # D-AT3: seed turn-locally from the text this turn has yielded
-            # (plus prior drains' write-backs) — the live session key is never
-            # cleared between turns, so seeding from it would carry the
-            # previous turn's total into this turn's accounting.
-            _on_chunk, _drained_total = _session_counter(session, seed=pre_stream_chars)
-            try:
-                composed = _call_composer(
-                    candidates, vision, llm_config, on_chunk=_on_chunk
-                )
-            except Exception as exc:
-                if _DEV_MODE:
-                    print(
-                        f"[agentifier] Composer failed ({exc}); using Scout output unchanged",
-                        flush=True,
-                    )
-                composed = ComposerOutput(candidates=candidates)
-            # D-AT3: fold the drained total back into the turn's running count.
-            pre_stream_chars = _drained_total()
-
-            intro = _catalog_breadth_intro(
-                session, composed, _input_candidates, _project_name, candidates
-            )
-            yield intro
+            yield from _catalog_fresh_start(session, llm_config)
             return  # wait for developer's breadth selection
-        else:
-            candidates = _candidates_from_session(session)
-            analyses = _analyses_from_session(session)
-        # The developer's answer, never the presence of a scan: CodeScanner run
-        # over a greenfield skeleton must not make the orchestrator open with
-        # "this is a BROWNFIELD project".
-        brownfield = project_manager.session_is_brownfield(session)
-        _rev_goal = (
-            (session.get("agentifier_revision_delta") or {}).get("goal", "")
-            if session.get("agentifier_revision")
-            else ""
-        )
-        seed = build_seed_message(
-            candidates, analyses, brownfield=brownfield, revision_goal=_rev_goal
-        )
-        msgs.append({"role": "user", "content": seed})
+        _catalog_seed_from_cache(session, msgs)
 
     elif (
         not session.get("agentifier_breadth_chosen")
         and session.get("agentifier_scout_pool") is not None
     ):
         # --- Breadth selection turn ---------------------------------------------
-        # agentifier_breadth_selection is set by the checkbox callback before
-        # calling get_agent_gen; user_input is a human-readable summary only.
-        pool, survivors, rejected, to_analyze, reselection = _catalog_apply_selection(
-            session
-        )
-
-        if not survivors:
-            # Zero-selection path: persist empty artifact and complete.
-            session["agentifier_candidates"] = []
-            session["agentifier_analyses"] = []
-            session["ai_features"] = {
-                "ai_features": [],
-                "cross_cutting": {},
-                "explicitly_rejected": list(session["agentifier_explicitly_rejected"]),
-                "references": [],
-                "consolidation": [],
-                "reconciliation": [],
-            }
-            session["agentifier_spec_done"] = True
-            session["agentifier_cross_cutting_done"] = True
-            yield from _complete_agentifier(session)
+        breadth_chars = yield from _catalog_breadth_turn(session, msgs, llm_config)
+        if breadth_chars is None:
             return
-
-        if reselection and not to_analyze:
-            # No new features — keep the preserved set verbatim, skip tier review
-            # and spec drafting, and go straight to assembly + cross-cutting +
-            # priority (which re-run over the preserved union via _finalize_specs).
-            session["ai_catalog"] = {"ai_catalog": []}
-            session["agentifier_catalog_done"] = True
-            session["agentifier_spec_index"] = 0
-            session["agentifier_spec_results"] = []
-            session["agentifier_candidates"] = []
-            session["agentifier_analyses"] = []
-            n_p = len(session.get("agentifier_preserved_selected") or [])
-            yield (
-                f"\n\nKeeping **{n_p} feature{'s' if n_p != 1 else ''}** — "
-                "re-checking cross-cutting concerns…\n\n"
-            )
-            yield from _finalize_specs(session, llm_config)
-            return
-
-        n_s = len(to_analyze)
-        _intro_line = (
-            f"\n\nContinuing with **{n_s} selected feature{'s' if n_s != 1 else ''}** "
-            f"— running Tier Analyst…\n\n"
-        )
-        pre_stream_chars += len(_intro_line)
-        yield _intro_line
-
-        if _DEV_MODE:
-            print(
-                f"[agentifier] breadth selection: survivors={len(survivors)}/{len(pool)}; "
-                f"analyzing={n_s}; calling TierAnalyst…",
-                flush=True,
-            )
-
-        code_review = session.get("code_review")
-        # D-TA7: the redraw notes reach the Tier Analyst too, so "keep it
-        # simple" weighs on the tier of every survivor, not just on which
-        # candidates Scout surfaced.
-        _ta_guidance = list(
-            (session.get("agentifier_retry_guidance") or {}).get("notes") or []
-        )
-        breadth_analyses: list[TierAnalystOutput] = []
-        try:
-            for _i, _cand in enumerate(to_analyze, 1):
-                _progress_line = f"- Analysing **`{_cand.name}`** ({_i}/{n_s})…\n"
-                pre_stream_chars += len(_progress_line)
-                yield _progress_line
-                set_status(
-                    session,
-                    f"Tier Analyst is sizing {_cand.name} ({_i}/{n_s})…",
-                )
-                # D-AT3: each per-candidate drain continues from the turn's
-                # running count (progress lines + prior drains) and folds its
-                # total back, so the counter interleaves line jumps with live
-                # drain growth and never dips.
-                # D-AT3: seed turn-locally from the text this turn has yielded
-                # (plus prior drains' write-backs) — the live session key is never
-                # cleared between turns, so seeding from it would carry the
-                # previous turn's total into this turn's accounting.
-                _on_chunk, _drained_total = _session_counter(
-                    session, seed=pre_stream_chars
-                )
-                breadth_analyses.append(
-                    _call_tier_analyst(
-                        _cand,
-                        llm_config,
-                        code_review,
-                        on_chunk=_on_chunk,
-                        guidance=_ta_guidance,
-                    )
-                )
-                pre_stream_chars = _drained_total()
-        except Exception as exc:
-            yield f"\nTier Analyst failed: {exc}. Please try again."
-            return
-
-        _done_line = (
-            "\nTier analysis complete.\n\n---\n\n_Preparing your briefing…_\n\n"
-        )
-        pre_stream_chars += len(_done_line)
-        yield _done_line
-        set_status(session, "Preparing your feature briefing…")
-
-        _catalog_finalize_breadth(session, to_analyze, breadth_analyses, msgs)
+        pre_stream_chars = breadth_chars
 
     else:
         msgs.append({"role": "user", "content": user_input})
 
-    search_cfg = websearch.from_session(session)
-    system = llm.build_system_prompt(ORCHESTRATOR_SYSTEM_PROMPT, search_cfg)
-
-    yield from stream_suppressing_json(
-        llm.stream_turn(
-            system,
-            msgs,
-            llm_config,
-            search_cfg,
-            agent_name="agentifier",
-            session=session,
-        ),
-        session,
-        seed=pre_stream_chars,
-        reply_status="Agentifier is replying…",
-        artifact_status=(
-            "Drafting the AI feature catalog — this can take a few minutes…"
-        ),
-    )
-
-    raw_reply = last_assistant_text(msgs)
-    catalog = _extract_catalog_json(raw_reply)
-    if catalog is None and suppressed_as_artifact(raw_reply):
-        # D-AT-P3 (the D-SC-P3 fix, applied here). The symptom differs from the
-        # other agents': the catch-all override below would set the display to
-        # the raw assistant text, so an unreadable catalog block lands in the
-        # chat as a wall of broken JSON rather than a blank bubble — with
-        # agentifier_catalog_done still False and no way forward. Re-ask once,
-        # and if that fails say so instead of showing the developer the wreckage.
-        correction = artifact_reask_prompt("AI feature catalog")
-        yield from reask_for_artifact(
-            system=system,
-            msgs=msgs,
-            llm_config=llm_config,
-            search_config=search_cfg,
-            agent_name="agentifier",
-            correction=correction,
-            status_line=artifact_reask_status("catalog"),
-            session=session,
-            seed=pre_stream_chars + len(raw_reply),
-        )
-        catalog = _extract_catalog_json(last_assistant_text(msgs))
-        if catalog is None:
-            abandon_reask(
-                msgs, correction, artifact_fallback("AI feature catalog"), session
-            )
-    if catalog:
-        session["ai_catalog"] = catalog
-        session["agentifier_catalog_done"] = True
-        session["agentifier_spec_index"] = 0
-        session["agentifier_spec_results"] = []
-        catalog_display = format_catalog_as_text(catalog)
-        msgs[-1]["content"] = catalog_display
-        session["_display_override"] = catalog_display
-
-    # Always clear progress messages from the window — show only the LLM's response.
-    # (The catalog case above already sets _display_override; this covers greeting turns.)
-    if not session.get("_display_override"):
-        _assistant_text = last_assistant_text(msgs)
-        if _assistant_text:
-            session["_display_override"] = _assistant_text
+    yield from _catalog_reply(session, msgs, llm_config, pre_stream_chars)
 
 
 def _catalog_scout_prep(

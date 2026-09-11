@@ -11095,6 +11095,12 @@ assertions paired with positive; one mutation per seam. It also assumes Rule 1 a
 for Phases 5 and 6 (§50.5(e)) — one commit and one report per sub-phase — which needs
 confirming for Phase 7.
 
+**Coverage's working figure, ruled at review of 7q1: 876 misses.** 7q1's dedupe (§79.1)
+collapsed four drain blocks into three, and took their duplicated, never-taken error lines
+with them: misses fell from 891 to 876. The frozen-strings set stayed identical, which is
+the proof that no error text was lost with them. The rule stays "misses ≤ baseline", and
+from 7q1 on the baseline is **876**.
+
 *The mutation rule, as amended at review of 7n1 (§73.5), which §60.7 carries.* It is one
 mutation per seam, read forward:
 - **The new test must fail under it.**
@@ -11340,6 +11346,19 @@ That is the exact shape 7q creates when it moves writers out of `agentifier.py`,
 restart's completeness (D-TA1) is what it breaks. Nothing pinned that until 7m's
 package-wide scan and its reset-seam test.
 
+**The third and fourth, ruled at review of 7q1. Both were found by 7q0's trace check
+(§79.0).**
+- **No test asserts the Prioritizer banner.** One changed character in
+  `_begin_priority_phase`'s banner diverged the six predicted traces, and 13 in all, while all
+  4,210 tests still passed. The developer reads that banner at every priority turn, and
+  nothing pinned it. It is a Phase 8 test item.
+- **Nine `test_try_again.py` tests race their own streaming worker.** They call
+  `on_breadth_try_again` without patching `streaming.start`, so the draw runs in a worker
+  thread the test never waits for, and that worker can outlive the test's patches. In one
+  baseline run, and again in 7q1's trace run (§79.2), the second redraw reached the real
+  Scout: a test with a network dependency on a bad day. It is on the Phase 8 list as the
+  defect it is.
+
 **The Phase 8 list: questions and known narrowings, opened at review of 7o.** Phase 7 cannot
 decide these, and each is recorded with its evidence, so it is known rather than forgotten.
 - **Should `_fmt_usd` accept `str`?** The evidence is `tests/test_cost_summary.py:160`,
@@ -11412,6 +11431,14 @@ decide these, and each is recorded with its evidence, so it is known rather than
     redraw's session, or does not. In one run the second redraw reached the real Scout.
   - **Why they still pass:** they assert only on the store returned synchronously.
   - **The fix:** patch `streaming.start` in those tests, or wait for the stream to finish.
+  - **Ruled at review of 7q1: this is a defect, not a quirk.** A test that does not patch
+    `streaming.start`, and can therefore reach the real Scout, is a test with a network
+    dependency on a bad day. It happened in one baseline run, and again in 7q1's trace run
+    (§79.2).
+- **A test item: no test asserts the Prioritizer banner** (§79.0, ruled at review of 7q1).
+  7q0's probe changed one character of `_begin_priority_phase`'s banner. That diverged 13
+  traces, and all 4,210 tests still passed. The work is one assertion on the text the
+  developer reads at every priority turn.
 
 **A Phase 7 candidate beside 7k's `module_seam`, not for now (ruled at 7d, §64).** 7c's
 shadow flip (§63.1) retired the reason for the `sys.modules` idiom in `test_cost_summary.py`:
@@ -16078,3 +16105,129 @@ retiring entries nine and ten lands with 7q3, as planned.
 **Stop for review.** Two rulings are requested:
 - the worker-thread verdict rule (§79.0);
 - the mispredicted mutation entry above.
+
+### 79.2 Commit 7q2: the catalog split, and the rulings from review of 7q1
+
+**The rulings from review of 7q1, as applied in this commit:**
+- **Worker threads.** The verdict stays main-thread only, and each worker divergence is
+  classified per test by its kind:
+  - **timing, which stays advisory:** a recorded chunk that did not arrive, or recorded
+    states at different points between worker and main;
+  - **content, which is escalated to a verdict failure:** a chunk text or a session
+    (key, value) pair that no baseline run recorded.
+
+  The reference is the union of the three baseline runs. Checked against one run alone, the
+  race's own states read as content: baseline 2 against baseline 1 escalated both
+  `TestGuidedRedraw` tests. Against the union, 7q1's run classifies as timing.
+- **Network reach.** A chunk showing a real sub-agent call (`sub-agent '…' raised`) is never
+  timing, even though a baseline run recorded one. It is left out of the reference and
+  escalated.
+
+  **Ruled at this commit's stop ("record it, don't block"):** a network reach confined to
+  the nine known racing tests is recorded as the Phase 8 defect firing, and does not fail the
+  verdict. It fired in three of five traced runs at the unchanged baseline tree (baseline
+  runs 1 and 2, and probe B), and in both runs at the split tree. So it carries no signal
+  about the split. Any other content escalation still fails the verdict, and so does a
+  network reach in any other test.
+- **A harness bug found on the way.** `trace_diff.py` printed escalations but did not count
+  them in its exit status. It is fixed, and was verified to exit 1 on 7q1's and 7q2's traces
+  before the known-defect ruling applied.
+- **7q1's run, re-read under the rule,** carries one network reach, in
+  `test_every_click_is_one_history_event`. It is recorded here: the same event the baseline
+  tree produced.
+- **The mispredicted mutation (§79.1)** is accepted as a wrong prediction.
+  `finalize_specs`' ordering (`ai_features` stored, then the analyst's draw) goes into its
+  7q3 contract docstring.
+- **Coverage's working baseline is 876 misses.** The note is added under §60.6.
+- **The close-out gains findings three and four** under "invariants the suite assumed rather
+  than pinned": the Prioritizer banner and the nine racing tests. On the Phase 8 list, the
+  banner becomes a test item, and the race entry is marked a defect with a network
+  dependency.
+
+**What landed** (`src/spec4/agentifier/agentifier.py` only): 494 insertions and 397
+deletions. `_run_catalog_phase` is now a driver over these steps:
+- `_catalog_fresh_start`, which always ends the turn. Inside it:
+  - `_catalog_scout` → `(output, project name, chars) | None`;
+  - `_catalog_complete_without_candidates`, which ends the turn;
+  - `_catalog_link` → `(candidates, chars)`;
+  - `_catalog_compose` → `(composition, input snapshot, chars)`.
+- `_catalog_breadth_turn` → `chars | None`.
+- `_catalog_seed_from_cache`, a plain function with no yield.
+- `_catalog_reply(session, msgs, llm_config, chars)`.
+
+The driver passes its own `msgs` object, and `ScoutOutput` is imported for the scout step's
+type. **The rule-12 `noqa` is deleted.** With `--ignore-noqa`, `ruff` now flags nothing in
+`agentifier.py`.
+
+**One departure from the plan, measured.** `_catalog_tier_review` was planned, and at first
+extracted. Its caller then needed `if tiered is None: return None` on the Tier Analyst
+failure path, which no test reaches, and misses rose from 876 to 877, over the baseline.
+Comparing the missed lines' source text at HEAD and in the tree found exactly that one
+line. The loop was folded back into `_catalog_breadth_turn` by a mechanical move of the same
+39 lines, and misses returned to 876. The function stays under the thresholds.
+
+```
+  _catalog_scout                         C901   3  branches   2  statements  12
+  _catalog_complete_without_candidates   C901   4  branches   4  statements  25
+  _catalog_link                          C901   6  branches   5  statements  23
+  _catalog_compose                       C901   5  branches   4  statements  18
+  _catalog_fresh_start                   C901   5  branches   4  statements  16
+  _catalog_seed_from_cache               C901   1  branches   0  statements   7
+  _catalog_breadth_turn                  C901   6  branches   5  statements  43
+  _catalog_reply                         C901   6  branches   5  statements  24
+  _run_catalog_phase                     C901   7  branches   7  statements  20
+```
+
+**Frozen strings.** The set is identical, and so is every count: pure code motion.
+
+```
+src/spec4/agentifier/agentifier.py: string constants 852 -> 852; distinct 318 -> 318
+  gone: 0; added: 0; count changes: 0
+strings-exit=0
+```
+
+**Trace identity, and every new step reached by a traced test:**
+
+```
+base: {"tests_traced": 151, "invocations": 199, "events": 1081, "distinct_snapshots": 536, "exitstatus": 0, "entries": {"run": 140, "run_spec_phase": 15, "run_cross_cutting_phase": 7, "begin_priority_phase": 7, "run_priority_phase": 10, "handle_reentry": 3, "finalize_specs": 3, "complete_agentifier": 9, "run_catalog_phase": 5}}
+new:  {"tests_traced": 151, "invocations": 199, "events": 1080, "distinct_snapshots": 534, "exitstatus": 0, "entries": {"run": 140, "run_spec_phase": 15, "run_cross_cutting_phase": 7, "begin_priority_phase": 7, "run_priority_phase": 10, "handle_reentry": 3, "finalize_specs": 3, "complete_agentifier": 9, "run_catalog_phase": 5}}
+tests traced: base 142, new 142; identical 142; diverging 0 (key order only: 0); identical to a recorded variant other than the first: 0
+worker-thread invocations: tests 9; differing 3: advisory (timing) 3, escalated (content) 0
+  RECORDED  tests/agentifier/test_try_again.py::TestGuidedRedraw::test_blank_note_is_the_plain_redraw: KNOWN DEFECT (network reach in a known racing test): chunk "\n\nScout failed to analyse the vision: sub-agent 'scout' raised: litell"
+  ADVISORY  tests/agentifier/test_try_again.py::TestGuidedRedraw::test_every_click_is_one_history_event: timing: ordering -- the recorded states, at different points between worker and main; nothing novel
+  ADVISORY  tests/agentifier/test_try_again.py::TestGuidedRedraw::test_notes_accumulate_across_retries: timing: ordering -- the recorded states, at different points between worker and main; nothing novel
+step _catalog_scout: entered under a traced entry by 47 test(s)
+step _catalog_complete_without_candidates: entered under a traced entry by 4 test(s)
+step _catalog_link: entered under a traced entry by 11 test(s)
+step _catalog_compose: entered under a traced entry by 40 test(s)
+step _catalog_fresh_start: entered under a traced entry by 48 test(s)
+step _catalog_seed_from_cache: entered under a traced entry by 2 test(s)
+step _catalog_breadth_turn: entered under a traced entry by 21 test(s)
+step _catalog_reply: entered under a traced entry by 36 test(s)
+```
+
+**The mutation.** The briefing stream loses the turn's running total, the one value the
+split threads from step to step:
+
+```
+M 7q2 (_catalog_reply seeds the briefing stream with 0, not the turn's total): predicted 5, failed 5; every predicted test FAILS, as it must; restored byte-identical: True
+   FAILED (predicted) tests/agentifier/test_chars_counter_seed.py::TestBreadthTurnSeedsTheCounter::test_published_total_covers_the_whole_turn
+   FAILED (predicted) tests/agentifier/test_chars_counter_seed.py::TestBreadthTurnSeedsTheCounter::test_progress_text_is_counted_not_discarded
+   FAILED (predicted) tests/agentifier/test_chars_counter_seed.py::TestBreadthTurnSeedsTheCounter::test_total_reflects_every_analysed_candidate
+   FAILED (predicted) tests/agentifier/test_chars_counter_seed.py::TestBreadthTurnSeedsTheCounter::test_counter_does_not_dip_below_the_progress_text
+   FAILED (predicted) tests/agentifier/test_chars_counter_seed.py::TestTierAnalystDrainContinuity::test_counter_climbs_across_candidate_drains_without_dipping
+   other failures: 0
+   summary: 5 failed, 4205 passed, 1 skipped in 94.08s (0:01:34)
+```
+
+All five predicted tests fail, and no other test does.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12459 stmts, 876 miss, 93%`, **at the baseline of 876**. In `agentifier.py`, 978 statements with 114 missed became `1002 statements with 114 missed` |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
+
+**§27.4's entry nine** (`_run_catalog_phase`) has lost its `noqa`. The note retiring entries
+nine and ten lands with 7q3.
