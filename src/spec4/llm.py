@@ -296,7 +296,7 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _as_int(value: Any) -> int | None:
+def _as_int(value: object) -> int | None:
     """Return ``value`` as an int, or None for anything that is not a real int.
 
     Test doubles are ``MagicMock`` objects whose every attribute is another

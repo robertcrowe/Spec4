@@ -157,7 +157,6 @@ class TestFormat:
     def test_none_and_non_numbers_read_as_not_available(self) -> None:
         assert _fmt_usd(None) == "not available"
         assert _fmt_usd(True) == "not available"
-        assert _fmt_usd("0.5") == "not available"
 
 
 # ---------------------------------------------------------------------------

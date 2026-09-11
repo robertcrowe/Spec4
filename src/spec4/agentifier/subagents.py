@@ -236,7 +236,7 @@ class SubAgentRegistry:
 # ---------------------------------------------------------------------------
 
 
-async def run_with_timeout(coro: Awaitable[Any], *, timeout: float, name: str) -> Any:
+async def run_with_timeout[T](coro: Awaitable[T], *, timeout: float, name: str) -> T:
     """Await *coro*, cancelling it if it exceeds *timeout* seconds.
 
     Args:

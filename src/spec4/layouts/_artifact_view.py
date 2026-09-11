@@ -761,7 +761,7 @@ def round_value(round_number: int) -> str:
     return f"v{round_number}"
 
 
-def round_number_from_value(value: Any) -> int | None:
+def round_number_from_value(value: object) -> int | None:
     """A selector label back to a round number, or ``None`` if it is not one.
 
     Defensive on purpose: the value arrives from the browser, and a store

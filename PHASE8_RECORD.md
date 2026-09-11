@@ -723,3 +723,94 @@ M 8a_flip (the candidate fix: the three section guards > 2 -> > 3 (8a, P23a)): p
 | Tests | not re-run, and the reason is checkable: against `578cf22` the diff is this file alone, so 8a0's `4210 passed, 1 skipped` stands. The flip's run above is the suite under the mutation |
 | Coverage | 8a0's `TOTAL 12459 876 93%` stands, for the same reason |
 | Floor / off-limits | re-run: **456 / 456** (`FAILURES: 0`); no test file touched |
+
+## 4. 8b: the type rows (P16, P17, P18), and the width sweep's callers
+
+§2.1(c) and (d). `src/` changes in annotations alone. There is one test line, as ruled, and
+one tool extension.
+
+### 4.1 What landed
+
+| File | Change |
+|---|---|
+| `src/spec4/llm.py:299` | `_as_int(value: Any)` → `value: object` (P16) |
+| `src/spec4/layouts/_artifact_view.py:764` | `round_number_from_value(value: Any)` → `value: object` (P16) |
+| `src/spec4/agentifier/subagents.py:239` | `run_with_timeout(coro: Awaitable[Any], …) -> Any` → `run_with_timeout[T](coro: Awaitable[T], …) -> T`, the PEP 695 form (P17) |
+| `src/spec4/layouts/_shared.py:195` | `_fmt_usd(value: float \| str \| None)` → `value: float \| None` (P18, decided by measurement) |
+| `tests/test_cost_summary.py:160` | `assert _fmt_usd("0.5") == "not available"` removed (P18's test line) |
+| `scripts/cleanup/width_sweep.py` | each observed value's caller is recorded, per target (§4.4) |
+
+Footprint: 6 files, 28 insertions and 8 deletions, plus this section.
+
+### 4.2 P18: no production caller passes a string
+
+**The measurement.** The extended sweep, run before P18's edit, saw `_fmt_usd`'s argument
+66 times, from these callers:
+
+```
+spec4.layouts._shared:_cost_figure builtins.float ok=True x60
+tests.test_cost_summary:TestFormat.test_four_decimals_with_thousands builtins.float ok=True x2
+tests.test_cost_summary:TestFormat.test_four_decimals_with_thousands builtins.int ok=True x1
+tests.test_cost_summary:TestFormat.test_none_and_non_numbers_read_as_not_available builtins.NoneType ok=True x1
+tests.test_cost_summary:TestFormat.test_none_and_non_numbers_read_as_not_available builtins.bool ok=True x1
+tests.test_cost_summary:TestFormat.test_none_and_non_numbers_read_as_not_available builtins.str ok=True x1
+```
+
+- **The one caller in `src/`, `_cost_figure`, passed a float on all 60 calls.** The one
+  string is the test's own direct call.
+- **So, by §2.1(c), the string case is dead behaviour.** The annotation narrows to
+  `float | None`, and the test line goes.
+- **The body is unchanged,** so a stray value still reads "not available" at runtime. The
+  strip check below shows it.
+- **Not a floor node.** The hunk is in
+  `TestFormat::test_none_and_non_numbers_read_as_not_available`. The file's three tier-A
+  nodes (`TestChatPlacement::test_sits_between_the_transcript_and_the_action_row`,
+  `TestDesignerPlacement::test_preview_step_shows_the_strip`,
+  `TestStripNumbers::test_it_mounts_all_three_lines`) are untouched, so the hunk is allowed
+  and reported (§51.6), and no petition applies.
+- **The pairing holds.** `TestFormat` still pairs the positive cases (`$0.0123`,
+  `$1,234.5000`, `$0.0000`) with the negative ones (`None` and `True`).
+- **The width rule, on the narrowed annotation:** the sweep re-run at 8b's final tree
+  reads `targets 63; reached 58; never reached 5; rejected by a real value 0 []`.
+  `_fmt_usd` saw 65 values, `float` ×62 and `int`, `bool` and `None` once each, and
+  `float | None` accepted every one.
+- **BACKLOG 1.2's question closes: `_fmt_usd` does not accept `str`.**
+
+### 4.3 P16 and P17: annotation-only
+
+- **The strip check against HEAD:** `files changed: 4; files with residue: 0`. Each of
+  `llm.py`, `_artifact_view.py`, `subagents.py` and `_shared.py` is empty after the strip.
+  The check erases PEP 695 type parameters, so P17's `[T]` is annotation material.
+- **Strict mypy:** `Success: no issues found in 92 source files`.
+- **5p's grep: 232 → 230.** The two `object` rows take the load-bearing rows from 35 to 33.
+  P17's line held no `: Any`.
+- **The `-> Any` return lines outside the grep: 148 → 147,** P17's return (P15's count).
+- **P17's callers are the two tests** in `tests/agentifier/test_subagents.py` (§2.1(d)). The
+  sweep's target for its `coro` now reads `Awaitable[T]`, and it accepted every value it
+  saw.
+- **P16's two rows are not sweep targets,** because they are load-bearing rows. `object`
+  admits every value, so the width rule holds for them trivially.
+
+### 4.4 The sweep's extension: callers, per target
+
+- **What it adds:** for each observed value, the calling frame's module and qualified name
+  (`_caller`), counted per target and written as a `callers` field. The summary line is
+  unchanged.
+- **Shown to change nothing else.** Run on 8b's tree before P18's edit and compared with
+  §1.1's run:
+  - the same 63 targets;
+  - the observed types and call counts identical for every target;
+  - the only annotation that differs is P17's own edit, `Awaitable[Any]` → `Awaitable[T]`;
+  - the same summary line: `targets 63; reached 58; never reached 5; rejected by a real
+    value 0 []; by stand-ins only 0; checker errors 0 []`.
+- **What it shows beyond P18:** 45 of the 58 reached targets have at least one caller in
+  `src/`, and 13 are reached only from tests.
+- **The tools stay outside mypy (D13).** ruff and ruff format are clean on
+  `scripts/cleanup/`.
+
+| Gate | Result |
+|---|---|
+| Ruff, `src/ tests/` and `.` / format / mypy | `All checks passed!` twice · `237 files already formatted` (`src/`, `tests/` and `scripts/cleanup/`) · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0); 4,211 collected, since a removed assertion removes no test |
+| Coverage | `TOTAL 12459 876 93%`: every per-module row identical to 8a0's, since annotations add no statement |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); the one test hunk sits outside every entry |

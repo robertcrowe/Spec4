@@ -19,6 +19,9 @@ SimpleNamespace are marked as stand-ins, so a stand-in for the annotated type ca
 told apart from a value of a different real type.
 
 The results go to WIDTH_SWEEP_OUT, and a summary line is printed at the end.
+Each value's caller is recorded too, per target, so a value a production caller
+passes can be told apart from one a test passes directly (Phase 8,
+PHASE8_RECORD.md 2.1(c)). The summary line is unchanged.
 """
 
 from __future__ import annotations
@@ -159,7 +162,20 @@ def _standin(v) -> bool:
     return isinstance(v, (unittest.mock.NonCallableMock, types.SimpleNamespace))
 
 
-def _record(t: dict, value) -> None:
+# Each value's caller, so a value a production caller passes can be told apart from
+# one a test passes directly (Phase 8's `_fmt_usd` rule, PHASE8_RECORD.md 2.1(c)).
+_callers: dict = collections.defaultdict(lambda: collections.Counter())
+
+
+def _caller(frame) -> str:
+    """The calling frame's module and qualified name: ``spec4.layouts._shared:f``."""
+    back = frame.f_back
+    if back is None:
+        return "<none>"
+    return f"{back.f_globals.get('__name__', '?')}:{back.f_code.co_qualname}"
+
+
+def _record(t: dict, value, caller: str) -> None:
     key = t["key"]
     try:
         ok = accepts(value, t["ann_ast"], t["ns"])
@@ -170,6 +186,7 @@ def _record(t: dict, value) -> None:
         _bad[key].append({"test": _current["node"], "type": f"checker error: {exc}"})
     tname = type(value).__module__ + "." + type(value).__qualname__
     _obs[key][(tname, ok, _standin(value))] += 1
+    _callers[key][(caller, tname, ok)] += 1
     if ok is False and len(_bad[key]) < 12:
         _bad[key].append(
             {
@@ -185,14 +202,14 @@ def _on_start(code, offset):
     frame = sys._getframe(1)
     for t in _by_code.get(code, ()):
         if t["param"] in frame.f_locals:
-            _record(t, frame.f_locals[t["param"]])
+            _record(t, frame.f_locals[t["param"]], _caller(frame))
 
 
 def _on_return(code, offset, retval):
     frame = sys._getframe(1)
     for t in _ret_by_code.get(code, ()):
         if t["param"] in frame.f_locals:
-            _record(t, frame.f_locals[t["param"]])
+            _record(t, frame.f_locals[t["param"]], _caller(frame))
 
 
 def pytest_collection_finish(session) -> None:
@@ -301,6 +318,10 @@ def pytest_sessionfinish(session, exitstatus) -> None:
                 "calls": sum(obs.values()),
                 "types": sorted(
                     f"{n} ok={ok} standin={s} x{c}" for (n, ok, s), c in obs.items()
+                ),
+                "callers": sorted(
+                    f"{who} {n} ok={ok} x{c}"
+                    for (who, n, ok), c in _callers.get(k, {}).items()
                 ),
                 "rejected": _bad.get(k, []),
             }
