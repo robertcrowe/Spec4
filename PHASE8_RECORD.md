@@ -1202,3 +1202,191 @@ M 8e2_deployer (the deployer staleness test: the edited feature specs set older 
 | Tests | `4217 passed, 1 skipped` (exit 0) |
 | Coverage | `TOTAL 12439 852 93%`; every per-module row identical to 8e's |
 | Floor / off-limits | **456 / 456** (`FAILURES: 0`). Every hunk sits in an import line, a module-level helper, or the Deployer test, and none is inside a floor entry. The floor nodes that call the helpers are listed in §9.1 |
+
+## 10. 8f: the racing nine wait for their worker (P19), and the rulings from review of 8a–8e2
+
+### 10.1 The rulings from review of 8a–8e2
+
+8a–8e2 were approved. The rulings below bind the rest of Phase 8.
+
+**(a) Misses: 852 is the new working ceiling.** 8e's reason is recorded in §8's gate
+table: the three functions' bodies are now run as well as reached. The rule stays "misses
+≤ the ceiling", from 8f on at 852.
+
+**(b) 8e2's wrong prediction is the right kind.** A fixture turned out to be pinned, and
+that is the finding.
+
+**(c) The racing nine: §1.4's option (a), with a bounded join.**
+- **The join is bounded:** join the worker with a long timeout, 60 s, then `assert not
+  worker.is_alive()` before any terminal-state assertion. A join that times out then fails
+  the assertion, loudly and with the thread named, rather than letting the test pass or
+  hanging the suite.
+- **Condition 1:** the thread discovery asserts exactly one new daemon thread, so a second
+  spawn is a failure, not a wrong join.
+- **Condition 2:** the terminal assertions after the join are `done`, the text, the error
+  flag, and `claim_finalise` returning True and then False.
+- **Option (b), a production seam** (an Event in the stream entry, or `streaming.wait()`),
+  may be the right long-term answer. It is a `src/` change for a test's convenience, so it
+  goes to the decisions half as an option beside D13, not into 8f.
+
+**(d) Check 4 and the alias: accepted as explained.**
+- **Why:** the two `web_search` strings land where the designer calls the function. The
+  test's own assertions would fail on a real search, and the follow-up mutation fails
+  exactly that test. That is the proof check 4 exists to stand in for, supplied directly.
+- **Recorded in check 4's definition,** in this commit: the alias case is written into
+  `scripts/cleanup/README.md` as a known limit, with the mutation as the substitute proof.
+- **"Check 4 learns `import … as`"** goes with D13, so the tools decision sizes it.
+- **The stop-for-that-string rule** (inventory §60.3) is satisfied by the ruling, not
+  bypassed.
+
+**(e) Modes.**
+- 8g and 8h run in default mode.
+- At 8i1 the session switches to plan mode, with `ultrathink`, high effort and auto on:
+  7q's reasoning. The plan and the trace harness are the review, and the plan is read
+  before any edit lands.
+
+**The decisions half gains two entries:** option (b), the streaming seam, beside D13;
+and "check 4 learns `import … as`", with D13.
+
+### 10.2 Why "exactly one new daemon thread" needed a hold
+
+The ruling's discovery lists the threads alive after the click, and asserts exactly one
+new daemon thread. But nothing stops the worker from finishing first: a thread that has
+exited is not listed, so the discovery would find none. That is a spurious failure, and it
+turns on timing.
+
+**Measured before any edit,** with a scratch probe that imported the test module's own
+helpers. Without a hold, over 200 clicks under `_mocked_draw()`, the worker had already
+exited when the threads were listed in **6 of 200**. The ruled check would have failed on
+timing about 3% of the time.
+
+**So the worker is held at the start of its generator until it has been identified.**
+- **How:** the hold wraps `get_agent_gen` in `callbacks/_chat.py`. The real function
+  builds the real generator, and the worker runs it; the wrapper only waits on a
+  `threading.Event` before its first `next()`.
+- **It is not the option not taken:** `streaming.start` still runs the draw in a real
+  daemon thread.
+- **The test releases the hold** as soon as the discovery has run, or has failed. On the
+  failure path it still joins every new thread while the patches are in place, so no
+  worker can outlive them.
+- **It makes the discovery deterministic.** Across 20 held clicks: 1 new daemon thread
+  every time, one final text, one pool (`smart_search`, the mocked Scout's), and one
+  returned store key set.
+- **It removes 7q0's leak between chained redraws (§1.4).** The callback snapshots the
+  session into the returned store after `streaming.start`. With the worker held, the
+  snapshot always precedes the worker's first write. So a chained redraw no longer starts
+  from a store that may or may not carry the first worker's `_display_override` or
+  `_stream_status`.
+
+### 10.3 What landed
+
+| File | Change |
+|---|---|
+| `tests/agentifier/test_try_again.py` | `_click_and_wait(session, note)`: the hold, the discovery (exactly one new daemon thread), the bounded join, and the terminal assertions. The nine call it: `TestDiskIsUntouched`'s test, `TestCallback`'s two, and `TestGuidedRedraw._run`, which serves six. Three imports (`threading`, `streaming`, `_chat`) |
+| `scripts/cleanup/README.md` | check 4's known limit, the import alias, as §10.1(d) ruled |
+
+**The terminal assertions, after `assert not worker.is_alive()`:**
+- `done` is True;
+- the error flag is False;
+- the text opens with the draw's own `### Scout` banner, and carries no `raised:` (the
+  signature of a real sub-agent call);
+- the pool holds only the mocked Scout's candidate;
+- `claim_finalise` returns True, and then False.
+
+This turn streams no model text, so there is no `"Hello!"` to assert: the text the turn
+produces is what is pinned.
+
+- **Nothing else in the file started a worker it left running.** The one remaining
+  `_mocked_draw()` block drives `agentifier.run` on the main thread. The other
+  `on_breadth_try_again` calls are either the no-op and refused cases, which start no
+  stream, or tests that patch `streaming.start`.
+- **Floor:** the file's two tier-A nodes, both in `TestPanelButton`, are untouched. Every
+  hunk sits outside every entry: allowed and reported (§51.6).
+- **Determinism before the commit:** `test_try_again.py` ran five times in a row, `44
+  passed` each time.
+- **Footprint:** 2 files, 69 insertions and 9 deletions, plus this section.
+
+### 10.4 The proofs
+
+**Check 4 on the hold's target**, `patch.object(_chat, "get_agent_gen", …)`:
+
+```
+PASS tests/agentifier/test_try_again.py:334 [object] spec4.callbacks._chat.get_agent_gen
+     (1) function get_agent_gen  (2) src/spec4/callbacks/_chat.py re-exports it from spec4.session; calls it at on_init_turn@77, on_chat_submit@116, on_fast_forward@161, _start_retry_turn@200, on_breadth_submit@286, on_breadth_try_again@377
+targets ending in a batch name (new side): 15; FAIL: 0; fourth-form candidates: 0
+```
+
+**The two mutations, as §1.4 designed them:**
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+M 8f_late (M-late: the worker waits 0.5 s before it starts (8f, P19)): predicted 0, failed 0; must-pass 9, failed 0; A WRONG PREDICTION
+   PASSED (must pass)       tests/agentifier/test_try_again.py::TestDiskIsUntouched::test_implemented_round_survives_a_full_try_again
+   PASSED (must pass)       tests/agentifier/test_try_again.py::TestCallback::test_starts_a_stream_and_records_the_action
+   PASSED (must pass)       tests/agentifier/test_try_again.py::TestCallback::test_prior_transcript_is_preserved
+   PASSED (must pass)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_note_survives_the_reset_with_the_rejected_set
+   PASSED (must pass)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_user_bubble_quotes_the_note
+   PASSED (must pass)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_blank_note_is_the_plain_redraw
+   PASSED (must pass)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_every_click_is_one_history_event
+   PASSED (must pass)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_notes_accumulate_across_retries
+   PASSED (must pass)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_blank_note_keeps_prior_notes_and_refreshes_the_set
+   other failures: 0
+   summary: 4217 passed, 1 skipped in 111.59s (0:01:51)
+restore: 2 file(s) byte-identical by sha256; tree clean
+M 8f_escape (M-escape: M-late, and the helper's join removed (8f, P19)): predicted 9, failed 9; must-pass 0, failed 0; as predicted
+   FAILED (predicted)       tests/agentifier/test_try_again.py::TestDiskIsUntouched::test_implemented_round_survives_a_full_try_again
+   FAILED (predicted)       tests/agentifier/test_try_again.py::TestCallback::test_starts_a_stream_and_records_the_action
+   FAILED (predicted)       tests/agentifier/test_try_again.py::TestCallback::test_prior_transcript_is_preserved
+   FAILED (predicted)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_note_survives_the_reset_with_the_rejected_set
+   FAILED (predicted)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_user_bubble_quotes_the_note
+   FAILED (predicted)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_blank_note_is_the_plain_redraw
+   FAILED (predicted)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_every_click_is_one_history_event
+   FAILED (predicted)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_notes_accumulate_across_retries
+   FAILED (predicted)       tests/agentifier/test_try_again.py::TestGuidedRedraw::test_blank_note_keeps_prior_notes_and_refreshes_the_set
+   other failures: 0
+   summary: 9 failed, 4208 passed, 1 skipped in 104.63s (0:01:44)
+```
+
+- **M-late: the worker waits half a second before it starts,** and all nine pass with nothing else failing. The join carries them, not the timing. The harness prints "A WRONG PREDICTION" because the case predicts no failure, which it can never call "as predicted" (§3.3). The verdict is in its must-pass lines: 9 of 9 passed.
+- **M-escape: the same delay, with the helper's join removed.** Exactly the nine fail, as predicted, and nothing else does. The new assertions bite when the worker runs outside the patches, which is what the old tests could not see.
+- **Both restores were verified by sha256, and the tree was clean after each.** The commit was made before the mutations ran, because the harness refuses a dirty tree. This section was then amended in, under the standing rule for unpushed commits.
+
+**The timing evidence: five traced runs of the fixed tree,** with the default family and
+§1.1's `--basetemp`, each compared with the first, and §1.1's pre-fix run compared with the
+first:
+
+```
+-- t8f_1 vs t8f_2
+tests traced: base 143, new 143; identical 143; diverging 0 (key order only: 0)
+worker-thread invocations: tests 9; differing 0: advisory (timing) 0, escalated (content) 0
+-- t8f_1 vs t8f_3
+tests traced: base 143, new 143; identical 143; diverging 0 (key order only: 0)
+worker-thread invocations: tests 9; differing 0: advisory (timing) 0, escalated (content) 0
+-- t8f_1 vs t8f_4
+tests traced: base 143, new 143; identical 143; diverging 0 (key order only: 0)
+worker-thread invocations: tests 9; differing 0: advisory (timing) 0, escalated (content) 0
+-- t8f_1 vs t8f_5
+tests traced: base 143, new 143; identical 143; diverging 0 (key order only: 0)
+worker-thread invocations: tests 9; differing 0: advisory (timing) 0, escalated (content) 0
+-- §1.1's pre-fix run vs t8f_1
+tests traced: base 142, new 143; identical 142; diverging 1 (key order only: 0)
+worker-thread invocations: tests 9; differing 3: advisory (timing) 2, escalated (content) 1
+  ADVISORY  tests/agentifier/test_try_again.py::TestGuidedRedraw::test_blank_note_keeps_prior_notes_and_refreshes_the_set: timing: ordering -- the recorded states, at different points between worker and main; nothing novel
+  ADVISORY  tests/agentifier/test_try_again.py::TestGuidedRedraw::test_every_click_is_one_history_event: timing: ordering -- the recorded states, at different points between worker and main; nothing novel
+  ESCALATED tests/agentifier/test_try_again.py::TestGuidedRedraw::test_notes_accumulate_across_retries: CONTENT (a state no baseline run recorded): _stream_received_chars = 660
+  DIVERGES tests/agentifier/test_prioritizer.py::TestBeginPriorityPhase::test_the_turn_opens_with_the_prioritizer_banner: traced in only one run: new
+```
+
+- **The nine are deterministic now.** Across five runs of the fixed tree, every main-thread trace is identical, 143 of 143 each time. The nine's worker traces differ in none of the four comparisons, not even by timing. Before the fix, the same comparisons always showed worker divergences (§79.0, §79.2).
+- **No network reach in any of the five runs.** `trace_diff.py`'s known-race rule never fired. The unchanged tree fired it in three of five traced runs at 7q2, and once in §1.1's run. The rule is now dead for the nine; retiring it is a change to the tools, and it goes with D13.
+- **Against §1.1's pre-fix run,** every one of the 142 shared main-thread traces is identical. So nothing from 8b to 8f changed what the agentifier family's consumer sees. Three differences remain, each explained:
+  - **The one "diverging" test** is 8c's banner test, which exists only in the new run.
+  - **Two worker traces are timing,** the pre-fix race's own states in a different order.
+  - **One is content:** `_stream_received_chars = 660` in `TestGuidedRedraw::test_notes_accumulate_across_retries`. In §1.1's run, that test's worker reached the real Scout and failed (§1.1), so the pre-fix reference never saw the completed draw's counter. With the fix, the second redraw completes under the mocks every time. This is the fix's state, not a regression.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `238 files already formatted` (`src/`, `tests/` and `scripts/cleanup/`) · mypy unchanged: no `src/` file changed |
+| Tests | `4217 passed, 1 skipped` (exit 0); the nine are the same nine, now waiting |
+| Coverage | `TOTAL 12439 852 93%`; every per-module row identical to 8e2's, at the new ceiling of 852 |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); every hunk in `test_try_again.py` sits outside its two tier-A nodes |

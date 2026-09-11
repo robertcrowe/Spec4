@@ -104,6 +104,14 @@ uv run python scripts/cleanup/check4_attr.py . spec4.session:get_agent_gen run \
 **First used:** 7g. The third form was added at 7i, and the attribute form at 7n2
 (§70.11, §74).
 
+**A known limit: an import alias.** When the module binds the function under another
+name (`from spec4.websearch import search as web_search`), the patched object is the
+function, but its `__name__` is not the target's name. So condition (1) fails by
+construction, even when the patch lands where the caller looks. Ruled at review of 8e
+(`PHASE8_RECORD.md` §10): such a string is accepted when condition (2) holds and a
+mutation of the call fails the test that patches it. That mutation is the substitute
+proof. Teaching check 4 to read `import … as` goes with the tools decision (D13).
+
 ### 4. Strip-and-compare
 
 **Proves:** an annotation-only change is annotation-only. Annotations, PEP 695 type

@@ -17,6 +17,7 @@ import hashlib
 import json
 import pathlib
 import re
+import threading
 from typing import Any
 from unittest.mock import patch
 
@@ -30,8 +31,9 @@ from spec4.agentifier.agentifier import (
 )
 from spec4.agentifier.scout import Candidate, ScoutOutput
 from spec4.agentifier.tier_analyst import TierAnalystOutput
+from spec4 import streaming
 from spec4.app_constants import STATE_AGENTIFIER_COMPLETE, STATE_IN_PROGRESS
-from spec4.callbacks import on_breadth_try_again
+from spec4.callbacks import _chat, on_breadth_try_again
 from spec4.session import default_session, persist_artifacts
 
 from .test_agentifier_orchestrator import (
@@ -251,8 +253,7 @@ class TestDiskIsUntouched:
 
         session = _session(working_dir=wd)
         session["agentifier_scout_pool"] = [{"name": "old"}]
-        with _mocked_draw():
-            on_breadth_try_again(1, session)
+        _click_and_wait(session)
 
         assert _digest(prior) == before
 
@@ -301,6 +302,60 @@ def _mocked_draw() -> Any:
     return _Ctx()
 
 
+def _click_and_wait(session: dict[str, Any], note: Any = None) -> tuple[Any, Any]:
+    """Click Try Again under the mocked draw, and wait for the draw's worker.
+
+    The callback hands the draw to ``streaming.start``, which runs it in a daemon
+    thread. Left alone, that thread could outlive ``_mocked_draw()`` and reach the
+    real Scout (PHASE8_RECORD.md 10). So the worker is identified, released and
+    joined while the patches are still in place, and then its terminal state is
+    asserted:
+
+    * the worker is held at the start of its generator until it has been
+      identified; the hold wraps ``get_agent_gen``, and the real generator runs.
+      Without it a fast worker can exit before the threads are listed (6 of 200
+      clicks did);
+    * the worker is exactly one new daemon thread, so a second spawn fails;
+    * the join is bounded, and a worker still alive after it fails the test.
+    """
+    release = threading.Event()
+    real_gen = _chat.get_agent_gen
+
+    def held_gen(user_input: Any, sess: dict[str, Any]) -> Any:
+        inner = real_gen(user_input, sess)
+
+        def gen() -> Any:
+            release.wait(60)
+            yield from inner
+
+        return gen()
+
+    before = set(threading.enumerate())
+    with _mocked_draw(), patch.object(_chat, "get_agent_gen", held_gen):
+        try:
+            store, max_intervals = on_breadth_try_again(1, session, note)
+            workers = [t for t in threading.enumerate() if t not in before and t.daemon]
+            assert len(workers) == 1, [t.name for t in workers]
+        finally:
+            release.set()
+            for t in threading.enumerate():
+                if t not in before:
+                    t.join(timeout=60)
+        (worker,) = workers
+        assert not worker.is_alive(), f"{worker.name} still running after 60 s"
+    entry = streaming.get(store["_stream_id"])
+    assert entry is not None
+    assert entry["done"] is True
+    assert entry["error"] is False
+    assert entry["text"].startswith("### Scout\n\n")
+    assert "raised:" not in entry["text"]
+    pool = entry["session"]["agentifier_scout_pool"]
+    assert [c["name"] for c in pool] == [_CANDIDATE.name]
+    assert streaming.claim_finalise(store["_stream_id"]) is True
+    assert streaming.claim_finalise(store["_stream_id"]) is False
+    return store, max_intervals
+
+
 class TestCallback:
     def test_no_click_is_a_no_op(self) -> None:
         assert on_breadth_try_again(0, _session()) == (no_update, no_update)
@@ -312,8 +367,7 @@ class TestCallback:
     def test_starts_a_stream_and_records_the_action(self) -> None:
         session = _session()
         session["agentifier_scout_pool"] = [{"name": "old"}]
-        with _mocked_draw():
-            store, max_intervals = on_breadth_try_again(1, session)
+        store, max_intervals = _click_and_wait(session)
 
         assert store["_stream_id"]
         assert max_intervals == -1
@@ -323,8 +377,7 @@ class TestCallback:
 
     def test_prior_transcript_is_preserved(self) -> None:
         session = _session()
-        with _mocked_draw():
-            store, _ = on_breadth_try_again(1, session)
+        store, _ = _click_and_wait(session)
         assert store["messages"][0] == {"role": "assistant", "content": "panel"}
 
     def test_pool_is_discarded_before_the_redraw(self) -> None:
@@ -368,8 +421,7 @@ _OLD_POOL = [
 
 class TestGuidedRedraw:
     def _run(self, session: dict[str, Any], note: Any) -> dict[str, Any]:
-        with _mocked_draw():
-            store, _ = on_breadth_try_again(1, session, note)
+        store, _ = _click_and_wait(session, note)
         return store
 
     def test_note_survives_the_reset_with_the_rejected_set(self) -> None:
