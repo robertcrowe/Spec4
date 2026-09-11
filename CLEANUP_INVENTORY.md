@@ -11349,6 +11349,20 @@ decide these, and each is recorded with its evidence, so it is known rather than
   Whether a string is a value the function should accept at all, which would make the
   test's case a real contract, or a stale-store case it should never see, which would make
   the test wrong, is a design question.
+- **A test item: five annotated targets that no test reaches, a coverage gap the percentage
+  hides.** Ruled at review of 7p, from 7o5's width sweep (§77.9). The sweep recorded every
+  value that reached each of the 58 rows' 63 targets during a full run, and five received
+  none:
+  - `on_designer_generate_mock`'s three inputs: `n`, `annotations` and `image_support`
+    (`callbacks/designer/_wizard.py:237–241`);
+  - `on_provider_hint`'s `provider_label` (`callbacks/_setup.py:39`);
+  - `_designer_tool_call_followup`'s `search_config` (`agents/designer.py:545`), whose one
+    caller, `:757`, is on a path the suite never runs.
+
+  No test calls or names any of the three functions. A coverage total does not show this,
+  because a percentage names no function. The work is one test per function that drives its
+  inputs, so the annotations rest on observed values and not on §60.5's producer evidence
+  alone.
 - **`run_with_timeout`'s generic form, a known narrowing not taken.** The form is
   `coro: Awaitable[T] -> T`. 7o1 took the minimal `Awaitable[Any]` and kept `-> Any`,
   because the TypeVar needs a module-level `_T = TypeVar("_T")`, a runtime statement, and
@@ -11370,6 +11384,10 @@ decide these, and each is recorded with its evidence, so it is known rather than
   One guard is one short of the other. 7p names numbers only and changed neither, and each
   line now carries its `noqa` with the reason. Whether real output reaches that case is not
   measured.
+
+  **Ruled at review of 7p: Phase 8 checks reachability before it decides.** The difference is
+  either a latent rendering bug or an intentional one that nobody wrote down. The fix is one
+  character, and the only risk is whether it is a fix, so the evidence comes first.
 - **The mechanism-summary trim is written twice.** `tier_analyst.py` and `feature_specs.py`
   carry the same four lines: collapse the whitespace, compare to 200 characters, trim, and
   add "…". Since 7p2 they sit under two constants of the same value,
@@ -15679,3 +15697,64 @@ the duplicated trim. **Left for a ruling:** PLR2004's promotion into the gate.
 
 7q is last, in plan mode with `ultrathink` at high effort: the agentifier eight with the
 `yield from` backlog.
+
+### 78.4 Commit 7p3: PLR2004 promoted into the gate
+
+**Ruled at review of 7p.** 5p's pattern (§49.4) is to clear a rule, then promote it. A rule
+cleared to zero but left out of `select` would have to be cleared again in a later phase.
+§27.4 set the precedent that a `noqa` with a reason is a recorded decision, so the 39
+reasoned `noqa`s from 7p2 are the rule's cost, and 39 decisions beat a rule nobody enforces.
+
+**The change is in `pyproject.toml` only.**
+- **`[tool.ruff.lint] select` gains `"PLR2004"`,** with a comment line recording the
+  promotion beside 5p's.
+- **Three per-file-ignore entries gain `"PLR2004"`: `tests/**`, `evals/**` and
+  `scripts/**`.** Their comment records the counts, so each ignore reads as a deferral with
+  a size, not an exemption:
+
+  | Directory | PLR2004 findings when promoted | Status |
+  |---|---:|---|
+  | `src/` | **0** (49 before 7p2) | enforced by the gate |
+  | `tests/` | 230 | deferred, sized |
+  | `evals/` | 25 | deferred, sized |
+  | `scripts/` | 6 | deferred, sized |
+
+**Shown to bite, with a probe that writes nothing.** `ruff check --stdin-filename` fed the
+same two-line function, `def f(x): return x > 7`, under the project's configuration:
+- as `src/spec4/_probe.py` it reports **PLR2004**;
+- as `tests/test_probe.py` it is ignored.
+
+Both runs appear verbatim below.
+
+```
+$ printf 'def f(x):\n    return x > 7\n' | uv run ruff check --output-format concise --stdin-filename src/spec4/_probe.py -
+   Building spec4 @ file:///home/rcrowe/Projects/spec4/Spec4
+      Built spec4 @ file:///home/rcrowe/Projects/spec4/Spec4
+Uninstalled 1 package in 2ms
+Installed 1 package in 5ms
+src/spec4/_probe.py:2:16: PLR2004 Magic value used in comparison, consider replacing `7` with a constant variable
+Found 1 error.
+exit=1
+$ printf 'def f(x):\n    return x > 7\n' | uv run ruff check --output-format concise --stdin-filename tests/test_probe.py -
+All checks passed!
+exit=0
+```
+
+| Gate | Result |
+|---|---|
+| Ruff, the Rule 6 gate: `uv run ruff check src/ tests/` | `All checks passed!`, now with PLR2004 selected |
+| Ruff, repo-wide: `uv run ruff check .` | `All checks passed!` |
+| Format / mypy | `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12434 stmts, 891 miss, 93%`, unchanged from 7p2 |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`) |
+
+**Also carried in this commit, both ruled at review of 7p, on the Phase 8 list:**
+- **A test item:** the five annotated targets no test reaches, `on_designer_generate_mock`'s
+  three inputs, `on_provider_hint` and `_designer_tool_call_followup`. It is recorded as a
+  coverage gap the percentage hides, not as a type note.
+- **The `> 2` / `> 3` guard:** Phase 8 checks whether real output reaches it before it
+  decides whether this is a fix.
+
+7p is closed with three commits: 7p1 (E501), 7p2 (PLR2004 cleared) and 7p3 (PLR2004
+enforced). 7q follows in plan mode, and its plan comes to review before any edit lands.

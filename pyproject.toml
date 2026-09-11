@@ -48,7 +48,9 @@ target-version = "py312"
 # measured and cleared -- PLR0912/0913/0915 -- not wholesale: bare "PLR" also
 # carries PLR2004 (49 in src/), PLR0911 (7) and PLR1714 (1), which Phase 0 never
 # counted and Phase 5 never touched. See CLEANUP_INVENTORY.md 42.6 and 49.4.
-select = ["E", "F", "C90", "PLR0912", "PLR0913", "PLR0915", "SIM", "B", "ARG"]
+# PLR2004 promoted at cleanup Phase 7p on the same pattern, clear then promote:
+# its 49 in src/ became nine named constants and 39 reasoned noqas (78.2, 78.4).
+select = ["E", "F", "C90", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "SIM", "B", "ARG"]
 
 [tool.ruff.lint.per-file-ignores]
 # Long system-prompt strings in multi-line literals cannot use inline noqa
@@ -62,12 +64,15 @@ select = ["E", "F", "C90", "PLR0912", "PLR0913", "PLR0915", "SIM", "B", "ARG"]
 # deliberate and reads better than a merged `with`. PLR0913: fixture-heavy
 # signatures. Fixing these would be churn with no reader benefit; the mechanical
 # ones (SIM300, B905, SIM105) were fixed rather than ignored.
-"tests/**/*.py" = ["ARG", "SIM117", "PLR0913"]
+# PLR2004 is deferred in the next three entries, not exempted. When it was promoted
+# (cleanup Phase 7p, CLEANUP_INVENTORY.md 78.4) it had 230 findings in tests/,
+# 25 in evals/ and 6 in scripts/. Those counts are the size of the later work.
+"tests/**/*.py" = ["ARG", "SIM117", "PLR0913", "PLR2004"]
 # evals/ and scripts/ are outside the Rule 6 gate (`ruff check src/ tests/`) and
 # were never measured by Phase 5; the same test-shaped exemptions apply, plus the
 # long-function rules a one-shot script legitimately trips.
-"evals/**/*.py" = ["ARG", "SIM", "PLR0913", "PLR0915", "C90", "PLR0912", "B905"]
-"scripts/**/*.py" = ["ARG", "SIM", "PLR0913", "PLR0915", "C90", "PLR0912", "B905"]
+"evals/**/*.py" = ["ARG", "SIM", "PLR0913", "PLR0915", "C90", "PLR0912", "B905", "PLR2004"]
+"scripts/**/*.py" = ["ARG", "SIM", "PLR0913", "PLR0915", "C90", "PLR0912", "B905", "PLR2004"]
 # Clientside-callback JavaScript strings contain long single lines; imports
 # are intentionally placed after the litellm log-level/env setup that must run
 # before litellm is first imported by any downstream module.
