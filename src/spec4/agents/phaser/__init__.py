@@ -544,6 +544,9 @@ def _phaser_retry_prompt(
     return retry_user_msg, response_format, status_line
 
 
+_FALLBACK_BULLETS_SHOWN = 10
+
+
 def _phaser_retry_exhausted(
     session: dict[str, Any],
     messages: list[dict[str, Any]],
@@ -579,7 +582,7 @@ def _phaser_retry_exhausted(
         flush=True,
     )
     if (
-        len(messages) >= 2
+        len(messages) >= 2  # noqa: PLR2004  # guards messages[-2]
         and messages[-2].get("role") == "user"
         and messages[-2].get("content") == retry_user_msg
     ):
@@ -589,8 +592,12 @@ def _phaser_retry_exhausted(
         for n, errs in failures
         for err in errs
     ]
-    _shown = "\n".join(_bullets[:10])
-    _more = f"\n(plus {len(_bullets) - 10} more)" if len(_bullets) > 10 else ""
+    _shown = "\n".join(_bullets[:_FALLBACK_BULLETS_SHOWN])
+    _more = (
+        f"\n(plus {len(_bullets) - _FALLBACK_BULLETS_SHOWN} more)"
+        if len(_bullets) > _FALLBACK_BULLETS_SHOWN
+        else ""
+    )
     fallback = (
         "I tried to emit the structured phases but they didn't pass "
         "validation. The specific failures were:\n\n"

@@ -143,7 +143,7 @@ def abandon_reask(
     empty bubble, which is the failure this whole path exists to prevent.
     """
     if (
-        len(msgs) >= 2
+        len(msgs) >= 2  # noqa: PLR2004  # guards msgs[-2]
         and msgs[-2].get("role") == "user"
         and msgs[-2].get("content") == correction
     ):

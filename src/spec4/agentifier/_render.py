@@ -75,6 +75,9 @@ _CATALOG_SPEC_PROMPT = (
 )
 
 
+_RATIONALE_NOTE_CHARS = 60
+
+
 def format_catalog_as_text(catalog: dict[str, Any]) -> str:
     """Render ai_catalog to a readable Markdown display with spec-phase prompt."""
     entries: list[dict[str, Any]] = catalog.get("ai_catalog") or []
@@ -86,7 +89,11 @@ def format_catalog_as_text(catalog: dict[str, Any]) -> str:
         rec = entry.get("tier_recommendation", "")
         dec = entry.get("tier_decision", "")
         rationale = entry.get("tier_decision_rationale", "") or ""
-        note = rationale[:60] + "…" if len(rationale) > 60 else rationale
+        note = (
+            rationale[:_RATIONALE_NOTE_CHARS] + "…"
+            if len(rationale) > _RATIONALE_NOTE_CHARS
+            else rationale
+        )
         match_marker = "" if dec == rec else " (mismatch)"
         lines.append(f"| {i} | {name} | {rec} | {dec}{match_marker} | {note} |")
     lines.append("")

@@ -86,7 +86,7 @@ def close_selection(
     coordinators = {
         label
         for label, members in members_by_coord.items()
-        if label in by_name and len(members) >= 2
+        if label in by_name and len(members) >= 2  # noqa: PLR2004  # a coordinator needs two members
     }
 
     # Seed: developer intent, restricted to real, non-coordinator candidates.
@@ -168,7 +168,7 @@ def _apply_coordinator_toggle(
     changed = False
     for coord in coordinators:
         present = sum(1 for m in members_by_coord[coord] if m in selected)
-        should_be_on = present >= 2 or coord in required
+        should_be_on = present >= 2 or coord in required  # noqa: PLR2004  # a coordinator needs two members
         if should_be_on and coord not in selected:
             selected.add(coord)
             changed = True

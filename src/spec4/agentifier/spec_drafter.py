@@ -158,11 +158,11 @@ _TOPOLOGY_FIELD = """\
 def _tier_extra_fields(tier_order: int) -> str:
     """Return the tier-conditional field block for the JSON schema."""
     parts: list[str] = []
-    if tier_order >= 4:
+    if tier_order >= 4:  # noqa: PLR2004  # rag and up (_TIER_ORDER)
         parts.append(_KNOWLEDGE_SOURCES_FIELD)
-    if tier_order >= 5:
+    if tier_order >= 5:  # noqa: PLR2004  # tool_agent and up (_TIER_ORDER)
         parts.append(_TOOL_ACCESS_FIELD)
-    if tier_order >= 8:
+    if tier_order >= 8:  # noqa: PLR2004  # orchestrated_subagents and up (_TIER_ORDER)
         parts.append(_TOPOLOGY_FIELD)
     return "\n".join(parts)
 
@@ -208,7 +208,7 @@ def _build_system_prompt(
     # that carry tool_access (>= tool_agent) may mention it — lower-tier
     # prompts must stay free of the literal (schema discipline, test-guarded).
     mcp_agreement = ""
-    if tier_order >= 5:
+    if tier_order >= 5:  # noqa: PLR2004  # tool_agent and up (_TIER_ORDER)
         mcp_agreement = """
 6. "mechanisms" and "tool_access" must agree: when any capability in
    tool_access.capabilities_needed has source "existing_third_party_mcp" or

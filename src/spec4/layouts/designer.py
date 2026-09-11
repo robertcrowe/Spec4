@@ -336,7 +336,7 @@ def step4_content(
             )
         )
 
-    if len(screenshots) > 5:
+    if len(screenshots) > 5:  # noqa: PLR2004  # the message below states the 5
         children.append(
             _dim(
                 "More than 5 screenshots — too many examples can produce "

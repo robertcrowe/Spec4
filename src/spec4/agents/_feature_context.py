@@ -676,7 +676,8 @@ def _deployer_tier_lines(features: list[dict[str, Any]], lines: list[str]) -> No
     if tiers_in_use:
         lines.append(f"- AI feature tiers in use: {', '.join(tiers_in_use)}")
     if any(
-        TIER_ORDER_FOR_SUMMARY.get(str(f.get("tier") or ""), 0) >= 5 for f in features
+        TIER_ORDER_FOR_SUMMARY.get(str(f.get("tier") or ""), 0) >= 5  # noqa: PLR2004  # tool_agent and up (TIER_ORDER_FOR_SUMMARY)
+        for f in features
     ):
         lines.append(
             "- Tool-calling features require LLM API keys in environment configuration"
@@ -741,7 +742,7 @@ def designer_affordance_hints(mode: str, authority: str, tier_order: int) -> lis
         hints.append("require explicit confirmation before the action commits")
     elif authority == "suggest":
         hints.append("present as a suggestion the user can accept or dismiss")
-    if tier_order >= 6:  # chained_calls and up are inherently multi-step
+    if tier_order >= 6:  # noqa: PLR2004  # chained_calls and up are inherently multi-step
         hints.append("show multi-step progress/status while it runs")
     return hints
 

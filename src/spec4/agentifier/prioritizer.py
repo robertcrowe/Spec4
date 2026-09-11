@@ -264,7 +264,7 @@ def _coordinator_pass(
             continue  # frozen, or a label the Composer never materialised
         member_ranks = (_member_rank(m, by_name, carried_names) for m in members)
         ranks = sorted(r for r in member_ranks if r is not None)
-        if len(ranks) < 2:
+        if len(ranks) < 2:  # noqa: PLR2004  # a second-earliest member needs two
             continue
         # Clamp: a member already built ranks below steel_thread, but a
         # coordinator can be scheduled no earlier than the first phase.

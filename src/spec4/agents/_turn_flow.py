@@ -66,7 +66,7 @@ def stale_phrase(stale: list[str]) -> str:
         return ""
     if len(stale) == 1:
         return stale[0]
-    if len(stale) == 2:
+    if len(stale) == 2:  # noqa: PLR2004  # "a and b" phrasing
         return f"{stale[0]} and {stale[1]}"
     return ", ".join(stale[:-1]) + f", and {stale[-1]}"
 

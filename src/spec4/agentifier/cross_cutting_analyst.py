@@ -33,13 +33,13 @@ SKIPPABLE_TOPICS = frozenset({"prompt_versioning"})
 def _needs_provider(features: list[dict[str, Any]]) -> bool:
     """Any feature above ``deterministic`` calls a model — generative or an
     embedding model — and therefore needs a provider capability decision."""
-    return any(_TIER_ORDER.get(f.get("tier") or "", 3) >= 2 for f in features)
+    return any(_TIER_ORDER.get(f.get("tier") or "", 3) >= 2 for f in features)  # noqa: PLR2004  # embeddings and up (_TIER_ORDER)
 
 
 def _has_prompts(features: list[dict[str, Any]]) -> bool:
     """Generative tiers (``single_call`` and up) have a prompt to version;
     ``deterministic`` and ``embeddings`` features do not."""
-    return any(_TIER_ORDER.get(f.get("tier") or "", 3) >= 3 for f in features)
+    return any(_TIER_ORDER.get(f.get("tier") or "", 3) >= 3 for f in features)  # noqa: PLR2004  # single_call and up (_TIER_ORDER)
 
 
 def _has_tool_access(features: list[dict[str, Any]]) -> bool:

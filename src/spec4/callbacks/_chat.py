@@ -250,13 +250,16 @@ def on_ff_info(n_clicks: int | None) -> Any:
 # ---------------------------------------------------------------------------
 
 
+_SELECTED_NAMES_SHOWN = 5
+
+
 def _breadth_summary(selected: list[str]) -> str:
     """Human-readable summary of the checkbox selection for the chat bubble."""
     if not selected:
         return "Selected no features."
-    names = ", ".join(selected[:5])
-    if len(selected) > 5:
-        names += f" … and {len(selected) - 5} more"
+    names = ", ".join(selected[:_SELECTED_NAMES_SHOWN])
+    if len(selected) > _SELECTED_NAMES_SHOWN:
+        names += f" … and {len(selected) - _SELECTED_NAMES_SHOWN} more"
     plural = "s" if len(selected) != 1 else ""
     return f"Selected {len(selected)} feature{plural}: {names}"
 

@@ -361,7 +361,7 @@ def _clear_self_and_dangling_labels(
     member_counts = Counter(c.composed_under for c in candidates if c.composed_under)
     for c in candidates:
         label = c.composed_under
-        if label and label not in names and member_counts[label] < 2:
+        if label and label not in names and member_counts[label] < 2:  # noqa: PLR2004  # a composition needs two members
             _log.warning(
                 "Linker edge: degrading dangling composed_under %r on %r to flat",
                 label,
@@ -376,7 +376,7 @@ def _valid_requires_targets(candidates: list[Candidate], names: set[str]) -> set
     # head-absent coordinator, or a cross-feature (an emitted candidate). Only
     # labels with >=2 members and no matching candidate get synthesized later.
     surviving = Counter(c.composed_under for c in candidates if c.composed_under)
-    synthesizable = {lbl for lbl, n in surviving.items() if lbl not in names and n >= 2}
+    synthesizable = {lbl for lbl, n in surviving.items() if lbl not in names and n >= 2}  # noqa: PLR2004  # a composition needs two members
     valid_targets = names | synthesizable
     return valid_targets
 

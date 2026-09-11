@@ -142,26 +142,27 @@ def render_designer_step(
     buffer_only = bool(triggered) and all(
         t.get("prop_id") == "mock-stream-buffer.data" for t in triggered
     )
-    if buffer_only and not (step == 5 and (buffer_data or {}).get("error")):
+    # PLR2004: wizard step 5, the mock preview.
+    if buffer_only and not (step == 5 and (buffer_data or {}).get("error")):  # noqa: PLR2004
         return no_update, no_update
     content: Any
     if step == 1:
         content = step1_content()
-    elif step == 2:
+    elif step == 2:  # noqa: PLR2004  # wizard step 2 (step2_content)
         content = step2_content(
             bool(store.get("_has_existing_ui", True)),
             bool(store.get("_is_revision", False)),
         )
-    elif step == 3:
+    elif step == 3:  # noqa: PLR2004  # wizard step 3 (step3_content)
         content = step3_content()
-    elif step == 4:
+    elif step == 4:  # noqa: PLR2004  # wizard step 4 (step4_content)
         support: bool | None = image_support
         content = step4_content(store, support)
-    elif step == 5:
+    elif step == 5:  # noqa: PLR2004  # wizard step 5 (step5_content)
         content = step5_content(buffer_data, image_support)
-    elif step == 6:
+    elif step == 6:  # noqa: PLR2004  # wizard step 6 (step6_content)
         content = step6_content(store, session)
-    elif step == 7:
+    elif step == 7:  # noqa: PLR2004  # wizard step 7 (step7_content)
         content = step7_content(store, image_support)
     else:
         content = step2_content(
@@ -247,7 +248,7 @@ def on_mock_stream_poll(_n: Any, store: Any) -> Any:
         # e.g. clicked Refine between ticks, which must not be bounced back
         # to step 6).  Either way delivery is finished: drop the buffer and
         # stop the interval.
-        if s.get("step") != 5:
+        if s.get("step") != 5:  # noqa: PLR2004  # wizard step 5, the mock preview
             _MOCK_BUFFERS.pop(gen_id, None)
             if _DEV_MODE:
                 print(

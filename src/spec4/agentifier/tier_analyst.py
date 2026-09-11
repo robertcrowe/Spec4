@@ -300,15 +300,18 @@ def _existing_ai_context(code_review: dict[str, Any]) -> str:
     return "\n".join(found)
 
 
+_PROMPT_DESCRIPTION_CHARS = 200
+
+
 def _build_tier_descriptions(tiers: list[TierPattern]) -> str:
     """Build a concise per-tier summary for injection into the system prompt."""
     lines: list[str] = []
     for tier in sorted(tiers, key=lambda t: t.tier_order):
         lines.append(f"\n**{tier.tier_order}. {tier.name}**")
-        # Trim description to first 200 chars to keep the prompt manageable
+        # Trim description to _PROMPT_DESCRIPTION_CHARS to keep the prompt manageable
         desc = tier.description.strip()
-        if len(desc) > 200:
-            desc = desc[:200].rstrip() + "…"
+        if len(desc) > _PROMPT_DESCRIPTION_CHARS:
+            desc = desc[:_PROMPT_DESCRIPTION_CHARS].rstrip() + "…"
         lines.append(desc)
         works = tier.when_works[:3]
         lines.append("When it works: " + "; ".join(works))
@@ -327,8 +330,8 @@ def _build_mechanism_absorption_list(mechanisms: list[MechanismPattern]) -> str:
     lines: list[str] = []
     for m in mechanisms:
         summary = " ".join(m.description.split())
-        if len(summary) > 200:
-            summary = summary[:200].rstrip() + "…"
+        if len(summary) > _PROMPT_DESCRIPTION_CHARS:
+            summary = summary[:_PROMPT_DESCRIPTION_CHARS].rstrip() + "…"
         lines.append(f"- **{m.name}**: {summary}")
     return "\n".join(lines)
 

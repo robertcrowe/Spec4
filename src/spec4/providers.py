@@ -72,17 +72,17 @@ def bedrock_auth_kwargs(api_key: str) -> dict[str, str]:
 
     if _is_iam_access_key(first):
         result: dict[str, str] = {"aws_access_key_id": first}
-        if len(parts) >= 2 and parts[1].strip():
+        if len(parts) >= 2 and parts[1].strip():  # noqa: PLR2004  # guards parts[1]
             result["aws_secret_access_key"] = parts[1].strip()
-        if len(parts) >= 3 and parts[2].strip():
+        if len(parts) >= 3 and parts[2].strip():  # noqa: PLR2004  # guards parts[2]
             result["aws_region_name"] = parts[2].strip()
-        if len(parts) >= 4 and parts[3].strip():
+        if len(parts) >= 4 and parts[3].strip():  # noqa: PLR2004  # guards parts[3]
             result["aws_session_token"] = parts[3].strip()
         return result
 
     # Bedrock API key
     result = {"api_key": first}
-    if len(parts) >= 2 and parts[1].strip():
+    if len(parts) >= 2 and parts[1].strip():  # noqa: PLR2004  # guards parts[1]
         result["aws_region_name"] = parts[1].strip()
     return result
 

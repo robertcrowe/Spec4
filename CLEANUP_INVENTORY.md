@@ -11358,6 +11358,23 @@ decide these, and each is recorded with its evidence, so it is known rather than
   - `object` for `_as_int` and `round_number_from_value`;
   - the 107 prop-bound inputs;
   - the session-dict and JSON-artifact edges.
+- **Should a feature-spec section whose every entry is skipped still render its heading?**
+  Measured at 7p2 (§78.2):
+  - `_render_mechanisms`, `_render_knowledge_sources` and `_render_tool_access` end with
+    `return lines if len(lines) > 2 else []`. Their header is two lines, and a blank line
+    is always appended, so with every entry skipped (not a dict, or no name or purpose)
+    they return a header-only section, for example `['**Mechanisms**', '', '']`.
+  - `_render_inputs` and `_render_failure_modes` guard with `> 3`, which requires at least
+    one entry, and return `[]`.
+
+  One guard is one short of the other. 7p names numbers only and changed neither, and each
+  line now carries its `noqa` with the reason. Whether real output reaches that case is not
+  measured.
+- **The mechanism-summary trim is written twice.** `tier_analyst.py` and `feature_specs.py`
+  carry the same four lines: collapse the whitespace, compare to 200 characters, trim, and
+  add "…". Since 7p2 they sit under two constants of the same value,
+  `_PROMPT_DESCRIPTION_CHARS` and `_MECHANISM_SUMMARY_CHARS`. Lifting them to one helper is
+  a dedupe of §67.11's kind.
 
 **A Phase 7 candidate beside 7k's `module_seam`, not for now (ruled at 7d, §64).** 7c's
 shadow flip (§63.1) retired the reason for the `sys.modules` idiom in `test_cost_summary.py`:
@@ -15552,3 +15569,113 @@ outside the format gate.
 | Tests | `4210 passed, 1 skipped` (exit 0) |
 | Coverage | `TOTAL 12425 stmts, 891 miss, 93%`, **unchanged**. `scripts/` is not measured |
 | Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
+
+### 78.2 Commit 7p2: PLR2004 in `src/`, 49 → 0
+
+**Two criteria, one per kind of number:**
+- **A tunable quantity gets a named module constant.** This covers a display or prompt
+  limit and a heuristic threshold: numbers someone might change. The constant replaces
+  every occurrence of the quantity, including the slice or the arithmetic beside the flagged
+  comparison, so the two cannot drift apart. It is defined at module level, directly above
+  the top-level statement that first uses it.
+- **An identity or a structural number gets `# noqa: PLR2004` with a reason that names it.**
+  This covers a tier's order, a wizard step, an index guard, a grammar count, a header-line
+  count, a stemmer's suffix length, and a definitional minimum. Changing any of these would
+  be a different design, not a tuning, and a module constant would only restate what the
+  comment says. The reason goes inline when the line still fits in 88 columns, or when the
+  file is exempt from E501 (`agents/**`, `agentifier/**`). Otherwise it goes on a comment
+  line directly above: 33 inline, 6 above.
+
+**Nine constants cover 10 sites:**
+
+| Constant | Value | Module | Sites flagged | Loads the inline check reversed |
+|---|---:|---|---:|---:|
+| `_RATIONALE_NOTE_CHARS` | 60 | `agentifier/_render.py` | 1 | 2: the comparison and its slice |
+| `_PROMPT_DESCRIPTION_CHARS` | 200 | `agentifier/tier_analyst.py` | 2 | 4: two comparisons, two slices; the comment at `:308` names the constant |
+| `_MECHANISM_SUMMARY_CHARS` | 200 | `feature_specs.py` | 1 | 2 |
+| `_FALLBACK_BULLETS_SHOWN` | 10 | `agents/phaser/__init__.py` | 1 | 3: the comparison, the slice, the "plus N more" arithmetic |
+| `_SELECTED_NAMES_SHOWN` | 5 | `callbacks/_chat.py` | 1 | 3: the same shape |
+| `_DEBUG_LOGGED_CHUNKS` | 3 | `agents/designer.py` | 1 | 1 |
+| `_MIN_TOKEN_CHARS` | 3 | `agentifier/requires_reconciler.py` | 1 | 1 |
+| `_MIN_STEM_TOKENS` | 2 | `agentifier/requires_reconciler.py` | 1 | 1 |
+| `_MIN_STEM_CHARS` | 6 | `agentifier/requires_reconciler.py` | 1 | 1 |
+
+The standing-form collision check found none of the nine names anywhere in the repo before
+7p2.
+
+**The 39 `noqa` sites, by what the number is:**
+
+| Kind | Sites | Where, and the reason given |
+|---:|---:|---|
+| a tier's order | 8 | `cross_cutting_analyst.py:36, 42` ("embeddings and up", "single_call and up (`_TIER_ORDER`)"); `spec_drafter.py:161, 163, 165, 211` ("rag", "tool_agent" ×2, "orchestrated_subagents and up"); `_feature_context.py:679, 744` ("tool_agent and up (`TIER_ORDER_FOR_SUMMARY`)"; `:744` keeps its own "chained_calls and up are inherently multi-step"). Each number was checked against the map it indexes |
+| a wizard step | 8 | `callbacks/designer/__init__.py`: the `stepN_content` dispatch at `:150–164`, and step 5, the mock preview, at `:145` (reason above) and `:250` |
+| a composition's two-member minimum | 8 | `composer.py` ×2, `linker.py` ×2, `panel_closure.py` ×2, `prioritizer.py:267` ("a second-earliest member needs two"), `agentifier.py:1805` ("an edge needs two endpoints") |
+| an index guard | 6 | `providers.py:75, 77, 79, 85` ("guards `parts[N]`"); `_reask.py:146` and `phaser/__init__.py:582` ("guards `msgs[-2]`") |
+| a header-line count | 5 | `feature_specs.py:213, 279, 361, 386, 416`, reasons above; see the finding below |
+| a stemmer's suffix length | 2 | `requires_reconciler.py:155, 157` ("'ing' / 's' plus a stem of at least three letters") |
+| a grammar count | 1 | `_turn_flow.py:69` ('"a and b" phrasing') |
+| a number the user-facing message states | 1 | `layouts/designer.py:339`. "More than 5 screenshots" is in the string beside it, so a constant would drift from the message unless the message were rebuilt, which is a runtime change |
+
+**The proof.** `inline_check.py HEAD .` reports `files changed: 20; files with residue: 0`.
+Every file is `identical after inlining`: the seven that add constants have all 18 loads
+reversed, and the other 13 are plain AST identity.
+- **PLR2004 in `src/`: 49 → 0.**
+- `uv run ruff check src/ tests/` and `uv run ruff check .` both report `All checks
+  passed!`.
+- Strict mypy is clean.
+- **Footprint:** 20 files, 97 insertions and 55 deletions.
+
+**Two incidents, both caught before the commit:**
+- **The first apply run stopped partway.** It named `tier_analyst.py`'s comment as `:309`,
+  but it is `:308`. The script asserted the text and exited, but only after it had already
+  written nine files. They were restored from HEAD with `git checkout -- src/`. The only
+  changes there were that run's own: the tree was clean at `ac20ced` and the file list was
+  printed first. The script was then changed to validate every file before writing any,
+  and it was re-run from a clean tree.
+- **`ruff format` stranded one `noqa`.** It split `_feature_context.py:679`'s generator
+  expression across two lines and left the comment on `for f in features`, one line below
+  the `>= 5` it justifies. The rule's own count caught it: 1 finding left. The comment was
+  moved back onto the comparison line, and `ruff format --check` then left it in place.
+
+**Found, not fixed, and put on the Phase 8 list.**
+- **Three section builders are one short.** `_render_mechanisms`, `_render_knowledge_sources`
+  and `_render_tool_access` return `lines if len(lines) > 2`. Measured with every entry
+  skipped, they return the header alone, for example `['**Mechanisms**', '', '']`.
+  `_render_inputs` and `_render_failure_modes` use `> 3` and return `[]`. 7p names numbers
+  and changes no behaviour. So the three lines keep their `2`, with a reason that says what
+  it admits.
+- **The mechanism-summary trim is duplicated.** `tier_analyst.py` and `feature_specs.py`
+  carry the same four lines, now under two constants of the same value.
+
+**Proposed, not done: promoting PLR2004 into the gate.** §49.4 kept PLR2004 out of `select`
+because its 49 were unreviewed. They are now named or justified. Without promotion, the next
+change can bring the rule back unseen. Promotion needs `"PLR2004"` added to three
+per-file-ignore lists, because magic values are a test's expected values:
+- `tests/**` has 230;
+- `evals/**` has 25;
+- `scripts/**` has 6.
+
+§60.6's row asks for "each rule's own count, to zero or a justified `noqa`", not for a gate
+change. So this is left for a ruling, as a one-commit change of its own.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` · `221 files already formatted` · `Success: no issues found in 92 source files` |
+| Tests | `4210 passed, 1 skipped` (exit 0) |
+| Coverage | `TOTAL 12434 stmts, 891 miss, 93%`. There are **9 more statements**, the nine constants, each executed at import, and **misses are unchanged** |
+| Floor / off-limits | **456 / 456** (`FAILURES: 0`); no test file touched |
+
+### 78.3 7p closed
+
+- **Item 10: E501 in `scripts/e2e_agentifier.py`, 13 → 0** (7p1, `ac20ced`). The AST is
+  unchanged.
+- **Item 9: PLR2004 in `src/`, 49 → 0** (7p2, this commit). There are nine constants, and 39
+  `noqa`s each carry a reason. The AST is unchanged once the constants are inlined.
+- **`uv run ruff check .` is clean across the whole repo** for the first time since
+  §49.7 recorded the 13.
+
+**Recorded alongside this commit, on the Phase 8 list:** the one-short section guard, and
+the duplicated trim. **Left for a ruling:** PLR2004's promotion into the gate.
+
+7q is last, in plan mode with `ultrathink` at high effort: the agentifier eight with the
+`yield from` backlog.

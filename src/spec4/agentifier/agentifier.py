@@ -1802,7 +1802,7 @@ def _run_catalog_phase(  # noqa: C901, PLR0912, PLR0915  # 24-yield generator; t
             # Composer groups by it. Scout surfaces nodes; the Linker owns edges;
             # the Composer materialises coordinators from the labels. Skipped
             # below two candidates — no edge is possible, so no draw.
-            if len(candidates) >= 2:
+            if len(candidates) >= 2:  # noqa: PLR2004  # an edge needs two endpoints
                 _linker_banner = (
                     "### Linker\n\n"
                     "Mapping how these features depend on each other…\n\n"

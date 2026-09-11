@@ -662,6 +662,9 @@ def collect_ui_source_files(project_root: Path) -> list[str]:
     return result
 
 
+_DEBUG_LOGGED_CHUNKS = 3
+
+
 def generate_mock_streaming(  # noqa: PLR0913  # the mock-generation contract, shared verbatim with callbacks/designer/_mock_gen.py
     session: DesignerSession,
     model: str,
@@ -731,7 +734,7 @@ def generate_mock_streaming(  # noqa: PLR0913  # the mock-generation contract, s
                 content = getattr(delta, "content", None) or ""
                 tc_deltas = getattr(delta, "tool_calls", None)
 
-                if chunk_count <= 3 or tc_deltas:
+                if chunk_count <= _DEBUG_LOGGED_CHUNKS or tc_deltas:
                     logger.debug(
                         "Chunk %d: content=%r tool_calls=%s finish_reason=%s",
                         chunk_count,

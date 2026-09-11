@@ -163,7 +163,7 @@ def _enrich_descriptions(
     coordinator_members = {
         label: [m.name for m in members]
         for label, members in members_by_label.items()
-        if len(members) >= 2
+        if len(members) >= 2  # noqa: PLR2004  # a composition needs two members
     }
     for c in candidates:
         desc = c.rough_description.rstrip()
@@ -212,7 +212,7 @@ class ComposerAgent:
                 # A coordinator has >=2 members (C-series). A single-member
                 # head-present group is a normal candidate plus a normal member,
                 # so record no composition — no surface should crown it.
-                if len(members) >= 2:
+                if len(members) >= 2:  # noqa: PLR2004  # a composition needs two members
                     compositions.append(
                         Composition(
                             coordinator=label,

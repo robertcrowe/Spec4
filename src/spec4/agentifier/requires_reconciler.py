@@ -152,18 +152,21 @@ def _norm_chunk(chunk: str) -> str:
     "modeling" meets "model" and "assumptions" meets "assumption". Not
     stemming; deliberately minimal.
     """
-    if len(chunk) > 5 and chunk.endswith("ing"):
+    if len(chunk) > 5 and chunk.endswith("ing"):  # noqa: PLR2004  # "ing" plus a stem of at least three letters
         chunk = chunk[:-3]
-    if len(chunk) > 3 and chunk.endswith("s"):
+    if len(chunk) > 3 and chunk.endswith("s"):  # noqa: PLR2004  # "s" plus a stem of at least three letters
         chunk = chunk[:-1]
     return chunk
+
+
+_MIN_TOKEN_CHARS = 3
 
 
 def _tokens(text: str) -> set[str]:
     """Lowercased content tokens: len >= 3, stopworded, suffix-normalised."""
     out: set[str] = set()
     for tok in re.findall(r"[a-z0-9]+", text.lower()):
-        if len(tok) < 3 or tok in _STOPWORDS:
+        if len(tok) < _MIN_TOKEN_CHARS or tok in _STOPWORDS:
             continue
         out.add(_norm_chunk(tok))
     return out
@@ -250,6 +253,12 @@ def _outputs_text(node: dict[str, Any]) -> str:
     return " ".join(p for p in parts if p)
 
 
+_MIN_STEM_TOKENS = 2
+
+
+_MIN_STEM_CHARS = 6
+
+
 def _stem_prefix_match(input_name: str, producer_name: str) -> bool:
     """S1b: input-name stem is a chunk-prefix of the producer name.
 
@@ -259,7 +268,7 @@ def _stem_prefix_match(input_name: str, producer_name: str) -> bool:
     stem = _chunks(input_name)
     while stem and stem[-1] in _GENERIC_INPUT_SUFFIXES:
         stem = stem[:-1]
-    if len(stem) < 2 or sum(len(c) for c in stem) < 6:
+    if len(stem) < _MIN_STEM_TOKENS or sum(len(c) for c in stem) < _MIN_STEM_CHARS:
         return False
     prod = [_norm_chunk(c) for c in _chunks(producer_name)]
     stem = [_norm_chunk(c) for c in stem]
