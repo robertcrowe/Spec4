@@ -1838,3 +1838,101 @@ prediction about a line count. The annotations fell as predicted:
 | Tests | `4222 passed, 1 skipped`, exit 0: unchanged, as annotations should leave it | `4222 passed, 1 skipped`, exit 0, at `7dfb44f` and at `ba46e15` |
 | Coverage | `TOTAL 12439 834 93%`: unchanged | `TOTAL 12439 834 93%`: unchanged, at both |
 | Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`; no file under `tests/` touched | the same, at both |
+
+## 13. 8i0: the three turns' baselines and probes (P5–P7), record only
+
+Before any turn is split, each module's `run` gets three traced baselines, which must be
+identical to one another, and one probe, shown to bite. This is 7q0's shape (inventory
+§79.0), with `TRACE_MODULE` naming the module and `TRACE_FAMILY=run`. Nothing under
+`src/`, `tests/` or `scripts/cleanup/` changed; this section is the commit.
+
+### 13.1 The baselines, three per module, at `08e83a2`
+
+Each run:
+
+```sh
+TRACE_OUT=<scratch>/tr8i/<m>_<i>.json TRACE_MODULE=spec4.agents.<module> TRACE_FAMILY=run \
+    PYTHONHASHSEED=0 PYTHONPATH=scripts/cleanup \
+    uv run pytest -p trace_identity -q -p no:cacheprovider --basetemp=<scratch>/tr8i/tmp_<m>
+```
+
+| Module | Each run's meta | Run 1 vs 2, 1 vs 3 (`trace_diff.py`) | Suite |
+|---|---|---|---|
+| `spec4.agents.brainstormer` | 47 tests, 47 invocations, 968 events, 807 distinct snapshots; entries `run` 47 | identical 47 of 47; diverging 0; worker-thread invocations 0 | `4222 passed, 1 skipped`, each |
+| `spec4.agents.code_scanner` | 42 tests, 43 invocations, 241 events, 206 distinct snapshots; entries `run` 43 | identical 42 of 42; diverging 0; worker-thread invocations 0 | the same |
+| `spec4.agents.deployer` | 32 tests, 32 invocations, 821 events, 838 distinct snapshots; entries `run` 32 | identical 32 of 32; diverging 0; worker-thread invocations 0 | the same |
+
+- **The test and invocation counts equal §1.1's** at the fold: 47 / 47, 42 / 43, 32 / 32.
+  Every invocation is on the main thread, so trace identity's verdict covers every one.
+- **The baselines are the scratch files `tr8i/<m>_{1,2,3}.json`.** Each `--basetemp` is
+  fixed per module, and each probe below reused its module's.
+
+### 13.2 The probes: one character in a string `run` yields
+
+Each probe is 7q0's probe A in shape: one character changed in a string that the turn
+yields, so the trace must show it wherever that string reaches the consumer. Each swap is
+one character for one, so no length changes. Otherwise a probe could reach the chars
+counters and diverge beyond its prediction.
+
+**Written before any probe ran.** The prediction is computed from the first baseline:
+every traced test with a yield carrying the string. The cases file is scratch
+`cases_8i.json`, sha256 `0f5b51ec0b35e7aad225ad2bfc6492222d825b299288695b6bf9e15ccac3c6c6`, and
+each anchor occurs once in its file.
+
+| Probe | The edit | Predicted to diverge |
+|---|---|---|
+| `8i0_brainstormer` | the fresh-start greeting: `"Hello! I'm the **Brainstormer**…"` → `"Hello. …"` | 6 of 47: `TestBrainstormer::test_opening_asks_for_idea`, `::test_opening_does_not_call_llm`, `TestBrainstormerBranches::test_reentry_drops_orphan_user_and_falls_through`, `TestOrphanTurnRecovery::test_user_submit_after_failure_routes_to_fresh_start`, `TestResumeSummary::test_empty_messages_skips_recap_branch` (all `tests/test_agents.py`), and `tests/test_vision_disk_reconciliation.py::TestRunEntryDecision::test_stale_session_no_disk_is_greenfield` |
+| `8i0_code_scanner` | the scan intro line: `` f"**{mode}** `{working_dir}`…\n\n" `` → `` …`.\n\n" `` | 15 of 42: `tests/test_agents.py::TestCodeScanner::test_rescan_enters_update_mode_when_review_exists`, and 14 in `tests/test_code_scanner_progress.py` (`TestCharsTotal` 4, `TestScanIsNarrated` 5, `TestWaitIsNamed` 5) |
+| `8i0_deployer` | the saved-plan confirmation: `"Your new deployment plan has been saved. "` → `"… saved! "` | 2 of 32: `tests/test_agents.py::TestDeployerExistingPlanGuard::test_yes_reply_preserves_markdown_for_persist`, `::TestDeployerReadme::test_offer_appended_after_replace_confirmation_accepted` |
+
+**The results:**
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+probe 8i0_brainstormer (one greeting character: brainstormer.run's fresh-start greeting (8i0 probe)): as predicted
+  suite under the probe: 4222 passed, 1 skipped in 97.91s (0:01:37)
+  traces diverging: 6; predicted 6, of which diverged 6; predicted but NOT diverging: none
+  tests traced: base 47, new 47; identical 41; diverging 6 (key order only: 0); identical to a recorded variant other than the first: 0
+
+restore: 1 file(s) byte-identical by sha256; tree clean
+probe 8i0_code_scanner (one intro character: code_scanner.run's scan intro line (8i0 probe)): as predicted
+  suite under the probe: 4222 passed, 1 skipped in 98.47s (0:01:38)
+  traces diverging: 15; predicted 15, of which diverged 15; predicted but NOT diverging: none
+  tests traced: base 42, new 42; identical 27; diverging 15 (key order only: 0); identical to a recorded variant other than the first: 0
+
+restore: 1 file(s) byte-identical by sha256; tree clean
+probe 8i0_deployer (one confirmation character: deployer.run's saved-plan confirmation (8i0 probe)): as predicted
+  suite under the probe: 4222 passed, 1 skipped in 94.30s (0:01:34)
+  traces diverging: 2; predicted 2, of which diverged 2; predicted but NOT diverging: none
+  tests traced: base 32, new 32; identical 30; diverging 2 (key order only: 0); identical to a recorded variant other than the first: 0
+```
+
+- **Each probe bit exactly as predicted,** and nothing else diverged: 6 of 47, 15 of 42, 2 of 32.
+  Every restore was byte-identical by sha256, and the tree was clean after each.
+- **The suite passed under all three,** `4222 passed, 1 skipped`: no test pins those characters.
+  The trace catches a change the suite does not. That is what a turn's split leans on: a
+  step that changes what the consumer receives shows as a divergence, even where no test
+  asserts it.
+- **The lengths held, so no chars counter moved,** and no test outside the predictions diverged
+  through `_stream_received_chars`. That includes code_scanner's `TestCharsTotal`, which
+  diverged only because the intro text itself changed.
+
+### 13.3 What 8i1 starts from
+
+Measured at `08e83a2`, with `ruff check --select C901,PLR0912,PLR0915 --ignore-noqa`:
+
+| Turn | Span | Yields | C901 | PLR0912 | PLR0915 | Misses inside it (8h2's gate) |
+|---|---|---:|---|---|---|---|
+| `brainstormer.run` | `brainstormer.py:667–767`, 101 lines | 6 | 14 > 10 | 16 > 12 | under | `688–689` |
+| `code_scanner.run` | `code_scanner/__init__.py:160–334`, 175 lines | 9 | 12 > 10 | 13 > 12 | 59 > 50 | none (the module's three, `103–104` and `110`, are outside it) |
+| `deployer.run` | `deployer.py:529–713`, 185 lines | 10 | 21 > 10 | 25 > 12 | 88 > 50 | `567–568` |
+
+- **The spans are §1.2's, except that `deployer.run` moved up 19 lines.** 8d2 lifted
+  `revision_delta` out of `deployer.py`, above it. Its body and figures are unchanged.
+- **The two turns with misses carry them into the split:** `brainstormer.py:688–689` and
+  `deployer.py:567–568`, as §1.5 named. A step whose failure path no test reaches must not
+  add a miss: 7q2's lesson.
+- **8i1 is next, and the mode changes there,** as ruled at review of 8a–8e2 (§10.1): plan mode,
+  `ultrathink`, high effort, auto on. The plan and the trace harness are the review, and no
+  edit lands before the plan is read. 8i1's proof is `brainstormer.run`'s three baselines
+  above: the split's traced run must be identical to them.
