@@ -1936,3 +1936,167 @@ Measured at `08e83a2`, with `ruff check --select C901,PLR0912,PLR0915 --ignore-n
   `ultrathink`, high effort, auto on. The plan and the trace harness are the review, and no
   edit lands before the plan is read. 8i1's proof is `brainstormer.run`'s three baselines
   above: the split's traced run must be identical to them.
+
+## 14. 8i1: `brainstormer.run` as a driver over four steps (P5)
+
+This ran in plan mode, as ruled at review of 8a–8e2 (§10.1). The plan was read and approved
+before any edit, with one amendment: `Literal` goes on the existing runtime `typing` import,
+since `brainstormer.py` already imports from `typing` there. 7o's `if TYPE_CHECKING:` form
+applies only where a module does not.
+
+### 14.1 The cut
+
+**It is 7q's shape, as `agentifier.py:807–823` states it (inventory §79).**
+- A step is a private generator, typed `Generator[str, None, R]`.
+- It yields exactly its block's text.
+- It returns `None` only when the turn ended inside it.
+- The driver returns at once on `None`.
+- No sentinel is used. P8 stays not taken: each `None` below has one cause.
+
+**What landed** (`src/spec4/agents/brainstormer.py` only): `1 file changed, 81 insertions(+),
+41 deletions(-)`.
+- **`run` is the driver.** Its signature, docstring and entry are unchanged: the
+  `brainstormer_messages` init, `drop_orphan_or_route_to_fresh_start`, and
+  `rehydrate_vision_from_disk`. It then does one dispatch:
+  `user_input is not None` → `_brainstormer_take_input`; `msgs` → `_brainstormer_resume`;
+  else `_brainstormer_seed`.
+  - It returns on `None`. The dispatch order inverts the original's `if user_input is
+    None:` nesting, and is equivalent to it: the conditions are exclusive and have no side
+    effects.
+  - It keeps `search_cfg`, `system` and the `stream_suppressing_json` call in place, with
+    their comment. It ends with `yield from _brainstormer_settle(...)`.
+- **The four steps, each body moved verbatim:**
+
+| Step | Block | Returns |
+|---|---|---|
+| `_brainstormer_take_input(user_input, session, msgs)` | the review-request reply; the user message appended | `None` after the review text; `True` after the append |
+| `_brainstormer_resume(session, msgs)` | the staleness question, the replay, the resume summary | `None` after the question or the replay; `True` when the summary was injected |
+| `_brainstormer_seed(session, msgs)` | `_brainstormer_seed_context`, and the four-arm seed chain with the fresh-start greeting | `None` after the greeting; `True` after a seed |
+| `_brainstormer_settle(session, msgs, system, search_cfg, llm_config)` | the extract, the re-ask, the abandon, the commit | `None`: a terminal step |
+
+- **`run`'s `# noqa: C901, PLR0912  # six-yield generator…` is deleted.** §27.4's seventh
+  entry, `agents/brainstormer.py` `run`, is retired by this commit.
+- **A two-line comment above the steps** points at agentifier's convention.
+
+**A step with no product returns `Literal[True] | None`** (ruled at plan review). This is
+now the convention for such steps.
+- Every agentifier step that goes on returns a product. The three opening steps here have
+  none: the driver needs only "go on to the draw".
+- `Literal[True]` is single-valued. So `None` keeps its one meaning, and no `False` can
+  become a third.
+- 8i2 and 8i3 follow it, where a step has no product.
+
+### 14.2 The proofs
+
+**Strict mypy, ruff and format.** `Success: no issues found in 93 source files`; `All
+checks passed!` on `src/ tests/` and on `.`; `240 files already formatted`.
+- **`ruff format` rewrapped one assignment in `_brainstormer_seed`** (lines 758–759) after
+  the traced run and the gate had run. The format pass left the AST identical (`ast.dump`,
+  before and after). No line moved, so every line number and figure below holds for the
+  committed text.
+
+**Complexity.** With `--ignore-noqa`, `brainstormer.py` flags nothing. The exact figures,
+with the thresholds lowered so that every function reports:
+
+```
+  run                        C901  5  branches  5  statements 17
+  _brainstormer_take_input   C901  3  branches  2  statements  7
+  _brainstormer_resume       C901  3  branches  2  statements  6
+  _brainstormer_seed         C901  4  branches  4  statements 10
+  _brainstormer_settle       C901  4  branches  3  statements 11
+```
+
+Before, at `d23cf37`, `run` measured C901 14 and 16 branches, with statements under 50.
+
+**Frozen strings (Rule 4):** predicted identical, with 0 count changes.
+
+```
+src/spec4/agents/brainstormer.py: string constants 186 -> 186; distinct 87 -> 87
+  gone: 0; added: 0; count changes: 0
+strings-exit=0
+```
+
+**Trace identity, against 8i0's three baselines,** with the steps named in `TRACE_STEPS`:
+
+```
+base: {"tests_traced": 47, "invocations": 47, "events": 968, "distinct_snapshots": 807, "exitstatus": 0, "entries": {"run": 47}}
+new:  {"tests_traced": 47, "invocations": 47, "events": 968, "distinct_snapshots": 807, "exitstatus": 0, "entries": {"run": 47}}
+tests traced: base 47, new 47; identical 47; diverging 0 (key order only: 0); identical to a recorded variant other than the first: 0
+worker-thread invocations: tests 0; differing 0: advisory (timing) 0, escalated (content) 0
+```
+
+- **Every step is entered under a traced `run` by at least one test,** coverage's second
+  condition. The committed `trace_diff.py` does not print step reach, so the counts come
+  from the trace file's `steps`:
+  - `_brainstormer_take_input` 30: the 28 that reach the append, and the 2 review replies;
+  - `_brainstormer_seed` 14;
+  - `_brainstormer_settle` 37;
+  - `_brainstormer_resume` 3.
+
+**Coverage, both conditions.** `brainstormer.py` stays at `327 9 97%`, with 9 misses before
+and after. The staleness exit's two misses moved with their block: `688–689` became
+`743–744`, inside `_brainstormer_resume`. Every `return True` is reached. The total is
+`TOTAL 12452 834 93%`: statements rise by 13 for the new definitions and returns, and misses
+are unchanged.
+
+**One mutation, under §60.6's rule: the forbidden `None`.** `_brainstormer_take_input`
+reports its continue as "the turn ended": `return True` became `return None`, after the
+append.
+- **It ran as a `diverge` case, against the three baselines.**
+- **The prediction was written before it ran.** It is every traced test whose effective path
+  reaches the append.
+- **The prediction came from a scratch script,** which replays the driver's real entry
+  decision on each baseline start snapshot. It uses `drop_orphan_or_route_to_fresh_start`
+  and `_is_review_request`, because two tests pass an input that the routing turns into a
+  fresh start.
+- **The result: 28 of 47,** as the plan estimated. The prediction file `diverge_8i1.json`
+  has sha256 `b92872d1f96fc0ff50fed651ff73b74e26224d0116c11d0f44e2962b967e7dff`, and the case file `cases_8i1.json` has sha256 `1591c08c20241111d6af337c130b9599200d90f765d3e1fa314d72eaa238df58`.
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+probe 8i1_take_input (_brainstormer_take_input reports its continue as the turn ended (8i1, the forbidden None)): as predicted
+  suite under the probe: 24 failed, 4198 passed, 1 skipped in 96.20s (0:01:36)
+  traces diverging: 28; predicted 28, of which diverged 28; predicted but NOT diverging: none
+  tests traced: base 47, new 47; identical 19; diverging 28 (key order only: 0); identical to a recorded variant other than the first: 0
+```
+
+- **As predicted: 28 of 28 diverged, and no other trace diverged.** The restore was
+  byte-identical, and the tree was clean after.
+- **The suite failed 24 tests under it.** A `diverge` case prints only the count. So the same
+  edit was run once more as a case with `fail: []`, which prints every failure as "other, to
+  explain" and reads "A WRONG PREDICTION" by construction (as at §11.2). It gave
+  `summary: 24 failed, 4198 passed, 1 skipped in 95.24s (0:01:35)`.
+  - All 24 are among the 28 that diverged, and none is outside them.
+- **Four diverged and passed. Each asserts only a state or an absence, which a turn that ends
+  before the draw also leaves:**
+  - `TestBrainstormer::test_non_vision_response_stays_in_progress`: the state is in
+    progress, and there is no vision;
+  - `TestBrainstormer::test_initialises_brainstormer_messages_if_missing`: the key exists;
+    the driver writes it before the dispatch;
+  - `TestBrainstormerUnparseableArtifact::test_failed_reask_leaves_no_dead_end_user_turn`:
+    no user message says the vision "could not be read";
+  - `TestBrainstormerUnparseableArtifact::test_state_is_not_advanced_when_both_attempts_fail`:
+    the state is not complete, and there is no vision.
+
+  Their positives, in the same classes, failed: `test_user_input_streams_llm_output`,
+  `test_truncated_block_is_re_asked` and `test_turn_never_ends_silently`. As with 8i0's
+  probes (§13.2), the trace pins what these four do not. They are not 8i1's to change;
+  they are recorded here as found.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | as above |
+| Tests | `4222 passed, 1 skipped`, exit 0 |
+| Coverage | `TOTAL 12452 834 93%`: misses unchanged, statements +13 |
+| Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`; no test file touched |
+
+### 14.3 A correction to §13.3
+
+§13.3 gives `deployer.py:567–568` as the misses inside `deployer.run`, "as §1.5 named".
+§1.5 named them `586–587`, at the fold. They are the same two lines, moved up 19 lines by
+8d2, which lifted `revision_delta` out of the module above them. The figure was right, and
+the attribution misquoted §1.5's numbers.
+
+### 14.4 Stop
+
+8i1 stops here for review. 8i2, `code_scanner.run`, returns to plan mode with its own plan.

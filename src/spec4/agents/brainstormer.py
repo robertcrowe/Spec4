@@ -4,7 +4,7 @@ import json
 import os
 import traceback
 from collections.abc import Generator
-from typing import Any
+from typing import Any, Literal
 
 from spec4 import project_manager, llm, websearch
 from spec4.agents import feature_speccer
@@ -664,7 +664,7 @@ def rehydrate_vision_from_disk(session: dict[str, Any]) -> None:
         session["feature_specs"] = None
 
 
-def run(  # noqa: C901, PLR0912  # six-yield generator; the surviving branches are five yield/return guards and nine entry guards with no extractable body (rule 12, CLEANUP_INVENTORY.md 27.4)
+def run(
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
@@ -681,46 +681,14 @@ def run(  # noqa: C901, PLR0912  # six-yield generator; the surviving branches a
     user_input = drop_orphan_or_route_to_fresh_start(msgs, user_input)
     rehydrate_vision_from_disk(session)
 
-    if user_input is None:
-        if msgs:
-            stale_q = maybe_inject_staleness_question(session, "brainstormer", msgs)
-            if stale_q is not None:
-                yield stale_q
-                return
-            if not maybe_inject_resume_summary(
-                session, "brainstormer", msgs, STATE_VISION_COMPLETE
-            ):
-                yield from replay_last_assistant(msgs)
-                return
-            # Resume summary injected — fall through to LLM call.
-        else:
-            vision, prior_vision, code_review, code_review_block = (
-                _brainstormer_seed_context(session)
-            )
-
-            if vision:
-                _brainstormer_seed_from_vision(msgs, vision, code_review_block)
-            elif prior_vision is not None:
-                _brainstormer_seed_from_prior(msgs, prior_vision, code_review_block)
-            elif code_review:
-                _brainstormer_seed_from_review(msgs, code_review)
-            else:
-                # Fresh start: static greeting
-                yield (
-                    "Hello! I'm the **Brainstormer**. I'll help you develop a clear, "
-                    "well-defined vision for your software project.\n\n"
-                    "What's your initial idea for the project? It can be rough — "
-                    "we'll refine it together."
-                )
-                return
+    if user_input is not None:
+        opened = yield from _brainstormer_take_input(user_input, session, msgs)
+    elif msgs:
+        opened = yield from _brainstormer_resume(session, msgs)
     else:
-        if _is_review_request(user_input, session, msgs):
-            vision = session.get("vision_statement")
-            if vision:
-                review = _brainstormer_review_text(vision)
-                yield review
-                return
-        msgs.append({"role": "user", "content": user_input})
+        opened = yield from _brainstormer_seed(session, msgs)
+    if opened is None:
+        return
 
     search_cfg = websearch.from_session(session)
     system = llm.build_system_prompt(SYSTEM_PROMPT, search_cfg)
@@ -745,6 +713,78 @@ def run(  # noqa: C901, PLR0912  # six-yield generator; the surviving branches a
         ),
     )
 
+    yield from _brainstormer_settle(session, msgs, system, search_cfg, llm_config)
+
+
+# ``run`` is a driver over the steps below, in agentifier.py's shape (CLEANUP_INVENTORY.md
+# 79): a step returns ``None`` only when the turn ended inside it, and ``True`` to go on.
+
+
+def _brainstormer_take_input(
+    user_input: str, session: dict[str, Any], msgs: list[dict[str, Any]]
+) -> Generator[str, None, Literal[True] | None]:
+    """A reply: the review it asks for, or the message appended for the draw."""
+    if _is_review_request(user_input, session, msgs):
+        vision = session.get("vision_statement")
+        if vision:
+            review = _brainstormer_review_text(vision)
+            yield review
+            return None
+    msgs.append({"role": "user", "content": user_input})
+    return True
+
+
+def _brainstormer_resume(
+    session: dict[str, Any], msgs: list[dict[str, Any]]
+) -> Generator[str, None, Literal[True] | None]:
+    """A re-entry with history: the staleness question, the replay, or a recap."""
+    stale_q = maybe_inject_staleness_question(session, "brainstormer", msgs)
+    if stale_q is not None:
+        yield stale_q
+        return None
+    if not maybe_inject_resume_summary(
+        session, "brainstormer", msgs, STATE_VISION_COMPLETE
+    ):
+        yield from replay_last_assistant(msgs)
+        return None
+    # Resume summary injected — fall through to LLM call.
+    return True
+
+
+def _brainstormer_seed(
+    session: dict[str, Any], msgs: list[dict[str, Any]]
+) -> Generator[str, None, Literal[True] | None]:
+    """A first entry: the history seeded from what exists, or a fresh start greeted."""
+    vision, prior_vision, code_review, code_review_block = _brainstormer_seed_context(
+        session
+    )
+
+    if vision:
+        _brainstormer_seed_from_vision(msgs, vision, code_review_block)
+    elif prior_vision is not None:
+        _brainstormer_seed_from_prior(msgs, prior_vision, code_review_block)
+    elif code_review:
+        _brainstormer_seed_from_review(msgs, code_review)
+    else:
+        # Fresh start: static greeting
+        yield (
+            "Hello! I'm the **Brainstormer**. I'll help you develop a clear, "
+            "well-defined vision for your software project.\n\n"
+            "What's your initial idea for the project? It can be rough — "
+            "we'll refine it together."
+        )
+        return None
+    return True
+
+
+def _brainstormer_settle(
+    session: dict[str, Any],
+    msgs: list[dict[str, Any]],
+    system: str,
+    search_cfg: websearch.SearchConfig | None,
+    llm_config: dict[str, Any],
+) -> Generator[str, None, None]:
+    """After the draw: the vision extracted, re-asked for once, and committed."""
     raw_reply = last_assistant_text(msgs)
     vision = _extract_vision_json(raw_reply)
     if vision is None and suppressed_as_artifact(raw_reply):
