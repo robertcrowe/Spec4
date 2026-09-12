@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -e
+uv run pytest -q -p no:cacheprovider
+uv run python scripts/cleanup/floor_check.py

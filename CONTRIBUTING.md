@@ -45,11 +45,42 @@ Each pattern file must pass `make test` (the loader validates every pattern agai
 
 To check whether a tier-pattern or Tier Analyst prompt change affects calibration, run the eval harness in `evals/tier_calibration/` (see its README) before and after your change and compare the over-engineering rate. This harness is **not part of `make test`** — it makes real LLM calls and costs tokens.
 
+### Development Setup and the Gate
+
+Spec4 uses [uv](https://docs.astral.sh/uv/). After cloning:
+
+```sh
+uv sync
+git config core.hooksPath scripts/hooks
+```
+
+The second line enables the repository's git hooks: a `pre-commit` hook runs the static checks, and a `pre-push` hook runs the test suite and the regression floor. They are the same checks CI runs, so enabling them means a push that fails CI is rare.
+
+A change is done when all five of these pass:
+
+```sh
+uv run ruff check .
+uv run ruff format --check src/ tests/
+uv run mypy src/            # strict
+uv run pytest --cov=spec4 --cov-report=term-missing -q
+uv run python scripts/cleanup/floor_check.py
+```
+
+Three rules go with them:
+
+- **Coverage must not fall.** New code arrives with its tests. The `pytest --cov` run prints the current missed-line count; a PR that raises it will be asked to add tests before review.
+- **The regression floor is off-limits.** `scripts/cleanup/data/floor.json` names a set of test node ids that pin the application's core behaviour. They are not edited, renamed, moved, or deleted in an ordinary PR. If a change genuinely needs one to move, `scripts/cleanup/README.md` describes the petition process, and the PR must say which entry and why.
+- **A `noqa` needs a reason.** Every lint suppression carries a comment on the same line explaining why the code is that way. The promoted ruff rules, strict mypy, and the complexity limits (C901 ≤ 10, branches ≤ 12, statements ≤ 50) are not relaxed for a feature.
+
+Don't use `--no-verify` to get past a hook. If a hook fails on something that isn't your change, open an issue.
+
+The full set of conventions the codebase follows — session-key handling, test patterns, typing, layout — is in [AGENTS.md](AGENTS.md). It is written for coding agents but applies to everyone.
+
 ### Submitting Code
 
 1. **Open an issue first** before starting significant work. This avoids wasted effort if the change isn't a good fit.
 2. Fork the repository and create a branch from `main`.
-3. Follow the existing code style and conventions.
+3. Follow the existing code style and conventions (see **Development Setup and the Gate** above and [AGENTS.md](AGENTS.md)).
 4. Write or update tests as appropriate.
 5. Keep commits focused and write clear commit messages.
 6. Open a Pull Request (PR) against `main` with a clear description of what it does and why.
