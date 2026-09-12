@@ -3007,3 +3007,102 @@ Under the three forbidden-`None` mutations, eleven tests diverged and still pass
 ### 18.5 Stop
 
 The mechanical half is closed. Phase 8 stops here for the decisions half's rulings.
+
+## 19. The decisions half, ruled; D1: the three section guards at `> 3`
+
+### 19.1 The rulings on the decisions half
+
+All twelve were ruled at once, from §18.4's table. They are recorded here as ruled, and the
+order follows them.
+
+| D | Ruling | Reason, as ruled |
+|---|---|---|
+| D1 | **Fix.** Flip the three guards to `> 3`, and pin it: one test that a section with every entry skipped renders nothing, paired with one that a section with entries renders them | Nothing written reaches the header-only case, and the flip fails no test (§3). So consistency with the two siblings is the only argument left, and it is sufficient. The pair gives the guard a reason the next reader can run |
+| D4 | **Remove.** Delete the `sys.modules` line and keep the assertions. No mutation | One test carrying scaffolding for a problem 7c retired. The shadow is gone, and the test's own pass proves the plain import resolves |
+| D5 | **Keep `persist_artifacts`. Closed** | The contract docstring names the flush. 62 occurrences and 8 patch strings for a verb nobody has proposed is churn |
+| D6 | **The sentinel stays not taken. Closed** | No step generator in the four turns split so far needed two ending causes: agentifier's 10 from 7q, and 8i's 10 across `brainstormer`, `code_scanner` and `deployer`. It reopens if one does, and the plan says how (inventory §79; §1.5) |
+| D7 | **Do it:** `project_manager` as a package, then batch 11's renames. Plan mode, `ultrathink`, high | The inconsistency has been carried since Phase 5, and the size is one package move with three renames behind it. The proofs are: substitution for the imports; check 4 on every `project_manager.*` patch string; the layering test with the new edges; goldens byte-identical; and §54.7's import-only petition on the golden floor file for `_with_readme_attribution`'s four sites. **If that file needs anything beyond import lines, the name stays private** and the other two proceed |
+| D8 | **Closed. `_start_gen` and `_record_usage` stay private** | `TestMockBuffers` was closed under 6f's standard, and nothing has changed. The two names would open a Phase 1 characterization file to change two spellings, and that file's job is to be untouched |
+| D9 | **Split `test_agents.py`** | The precondition is met. The 16 tier-B ids that change file are exactly the move petition: bodies byte-identical, `floor.json` updated in the same commit with old and new ids, and the floor 456 / 456 after. It is split by the class structure already there, not by count |
+| D10 | **The consolidation goes to Part 2. The large-files item is dropped** | Merging 24 files for tidiness is what the pruning rule forbids, by analogy: it happens only when a structural reason arrives, and Part 2 is where that waits. Files of 155–215 tests are not a problem, so that item closes |
+| D11 | **Drop** | The condition never arose |
+| D12 | **Tests are exempt by policy. The rest stays deferred** | Magic numbers in tests are the assertions, and that is recorded as the reason `tests/**` is ignored permanently, not deferred. `evals/**` stays ignored while `evals/` is outside the gate. `scripts/**` follows D13 |
+| D13 | **Ruff yes, mypy no** | `ruff check .` is already the standing requirement, and it stays. 230 strict-mypy errors in scaffolding is a lift with no consumer until the next refactor phase, and none is planned. The three limits are documented in the README as limits: the sweep's closure resolution, check 4's aliases, and mutating on a working-tree edit. Fixing them is Part 2, "when next used". The tools' maturity: proven on this codebase, typed by nobody, and honest about what they cannot see |
+| D14 | **Classify the `-> Any` returns, and take the typeable ones** | The same pass as 7o. The classes are source-edge, session-edge, JSON-edge, genuinely typeable and load-bearing. The typeable subset is taken under annotations-only and the width rule. The edges join the design limit's count |
+
+**The order:**
+1. D1, D4 and D14, as three small default-mode commits.
+2. D7, in plan mode.
+3. D9, under the move petition.
+4. One record-only commit closing D5, D6, D8, D10, D11, D12 and D13, with the reasons above.
+5. Phase 8's close-out, which is the last stop.
+
+No page is to be published: §18.4's table is the record.
+
+**Carried from §18.3, a correction.** "While at least 14.2 GB stayed available" holds for the
+kills at 8h1's sweep, where memory was sampled every 10 seconds. At 8e2's kill (§9.2) no
+memory was sampled.
+
+### 19.2 D1: what landed
+
+**What landed:** `2 files changed, 56 insertions(+), 6 deletions(-)`.
+- **`src/spec4/feature_specs.py`: the three guards.** `_render_mechanisms` (`:364`),
+  `_render_knowledge_sources` (`:390`) and `_render_tool_access` (`:421`) now read
+  `return lines if len(lines) > 3 else []`, as the two siblings at `:214` and `:281` do.
+- **Each `noqa` reason is now the siblings' own:** "a two-line header and a closing blank, so
+  > 3 is one entry". It fits all three exactly. Each builder opens its lines with the
+  heading and a blank, and appends a closing blank, so a section with every entry skipped
+  is three lines. `> 2` let that through, and `> 3` requires one entry.
+- **`tests/test_feature_specs.py`: the pair,** as `TestSectionGuards`, appended after
+  `TestMechanismGlossary`.
+  - The pair goes through the public `render_feature_block(feature, fields=(field,),
+    include_graph=False)`, as the file's other tests do. It loops over the three fields,
+    with the field as each assertion's message.
+  - **`test_a_section_whose_entries_are_all_skipped_renders_nothing`** feeds each builder
+    only skipped entries: a bare string, and an object without the field its builder
+    names the entry by (`name`, or `purpose` for tools). It asserts `== []`.
+  - **`test_a_section_with_entries_renders_them`** feeds the same skipped entries plus one
+    that survives. It asserts the exact lines: the heading, a blank, the one entry, and
+    the closing blank.
+  - So the pair shows that the skipped entries are ignored, not just that a single entry
+    renders.
+- **Floor:** the file's entries are `TestPhaseSpecFields`' five ids, which are untouched.
+  The hunk is an append after the file's last class, which is §51.6's allowed-and-reported
+  case.
+
+### 19.3 D1: the proofs
+
+**Strict mypy, ruff and format.** `Success: no issues found in 93 source files`; `All
+checks passed!` on `src/ tests/` and on `.`; `240 files already formatted`.
+
+**The mutation, run before the commit (§15, ruling 6): the fix undone.**
+- **The case needs no source edit.** HEAD's guards are the mutated state, so the case
+  carries only the new pair, and runs it against `> 2`.
+- **Predicted:** the skipped-entries test fails, and the with-entries test is must-pass.
+- **The sequence ran with the review's checks:**
+
+```
+e2d976f567745c98f12ebc0830c0805246807ae8a3c9a10655d3e02aed24905b  src/spec4/feature_specs.py
+b290a2234a20afeff7403d9a941d2d421557b6b4f50edc8fc81d35b30a4f9d06  tests/test_feature_specs.py
+cases_d1.json sha256 a09c50daecabda2165cc307c74a5eaee035622695a2d7cd3458b5bb5c0c7602c
+tree verified clean at HEAD (0da5745)
+restore: 1 file(s) byte-identical by sha256; tree clean
+M d1_unflipped (D1: the three section guards left at > 2, with the new pair added (the fix undone)): predicted 1, failed 1; must-pass 1, failed 0; as predicted
+   FAILED (predicted)       tests/test_feature_specs.py::TestSectionGuards::test_a_section_whose_entries_are_all_skipped_renders_nothing
+   PASSED (must pass)       tests/test_feature_specs.py::TestSectionGuards::test_a_section_with_entries_renders_them
+   other failures: 0
+   summary: 1 failed, 4223 passed, 1 skipped in 87.96s (0:01:27)
+restored: both sha256 identical to before
+```
+
+- **As predicted.** The pin fails exactly when the guard admits a header-only section. The
+  with-entries half holds under both guards, so the flip removes only the empty section.
+  Nothing else in the suite noticed. That is 8a's measurement (§3.3) again, now from the
+  other side.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | as above |
+| Tests | `4224 passed, 1 skipped`, exit 0: the two new tests |
+| Coverage | `TOTAL 12475 808 94%`. **Misses fall from 834 to 808,** all 26 in `feature_specs.py` (80 → 54). The pair is the first thing in the suite to run the three builders' entry paths |
+| Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`; the one test hunk is outside every entry |

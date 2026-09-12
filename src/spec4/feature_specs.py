@@ -360,8 +360,8 @@ def _render_mechanisms(value: Any) -> list[str]:
                 if detail:
                     lines.append(f"  - {key}: {detail}")
     lines.append("")
-    # PLR2004: admits a header-only section; the guards above use > 3.
-    return lines if len(lines) > 2 else []  # noqa: PLR2004
+    # PLR2004: a two-line header and a closing blank, so > 3 is one entry.
+    return lines if len(lines) > 3 else []  # noqa: PLR2004
 
 
 def _render_knowledge_sources(value: Any) -> list[str]:
@@ -386,8 +386,8 @@ def _render_knowledge_sources(value: Any) -> list[str]:
             head += f" [updates: {freq}]"
         lines.append(head)
     lines.append("")
-    # PLR2004: admits a header-only section; the guards above use > 3.
-    return lines if len(lines) > 2 else []  # noqa: PLR2004
+    # PLR2004: a two-line header and a closing blank, so > 3 is one entry.
+    return lines if len(lines) > 3 else []  # noqa: PLR2004
 
 
 def _render_tool_access(value: Any) -> list[str]:
@@ -417,8 +417,8 @@ def _render_tool_access(value: Any) -> list[str]:
         if rationale:
             lines.append(f"  - Rationale: {rationale}")
     lines.append("")
-    # PLR2004: admits a header-only section; the guards above use > 3.
-    return lines if len(lines) > 2 else []  # noqa: PLR2004
+    # PLR2004: a two-line header and a closing blank, so > 3 is one entry.
+    return lines if len(lines) > 3 else []  # noqa: PLR2004
 
 
 def _render_topology(value: Any) -> list[str]:

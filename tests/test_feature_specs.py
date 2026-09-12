@@ -362,3 +362,53 @@ class TestMechanismGlossary:
             assert definitions.get(name), name
             assert len(definitions[name]) <= 201  # trimmed, one line
             assert "\n" not in definitions[name]
+
+
+class TestSectionGuards:
+    """A list section renders only when at least one entry survives its skips.
+
+    Mechanisms, knowledge sources and tool access each skip an entry that is not
+    an object, or that lacks the field the entry is named by. When every entry
+    is skipped, the section renders nothing, not a bare heading: the same rule
+    as the sections above them.
+    """
+
+    # Every entry here is skipped: a bare string, or an object without the
+    # field its builder names the entry by (`name`, or `purpose` for tools).
+    _SKIPPED: dict[str, Any] = {
+        "mechanisms": ["reflection", {"rationale": "no name"}],
+        "knowledge_sources": ["policy library", {"type": "vector_store"}],
+        "tool_access": {"capabilities_needed": ["search", {"source": "api"}]},
+    }
+
+    def _render(self, field: str, value: Any) -> list[str]:
+        feature = {"id": "x", "name": "X", field: value}
+        return render_feature_block(feature, fields=(field,), include_graph=False)
+
+    def test_a_section_whose_entries_are_all_skipped_renders_nothing(self) -> None:
+        for field, value in self._SKIPPED.items():
+            assert self._render(field, value) == [], field
+
+    def test_a_section_with_entries_renders_them(self) -> None:
+        # The same skipped entries, plus one that survives.
+        cases = {
+            "mechanisms": (
+                [*self._SKIPPED["mechanisms"], {"name": "bespoke", "rationale": "why"}],
+                ["**Mechanisms**", "", "- `bespoke` — why", ""],
+            ),
+            "knowledge_sources": (
+                [*self._SKIPPED["knowledge_sources"], {"name": "glossary"}],
+                ["**Knowledge sources**", "", "- `glossary`", ""],
+            ),
+            "tool_access": (
+                {
+                    "capabilities_needed": [
+                        *self._SKIPPED["tool_access"]["capabilities_needed"],
+                        {"purpose": "search policies"},
+                    ]
+                },
+                ["**Tool access**", "", "- search policies", ""],
+            ),
+        }
+        for field, (value, expected) in cases.items():
+            assert self._render(field, value) == expected, field
