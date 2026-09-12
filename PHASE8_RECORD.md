@@ -2204,3 +2204,238 @@ suite is already green. A commit is amended only for its record.
 
 8i2, `code_scanner.run`, in plan mode with its own plan. `Literal[True] | None` is the
 convention for a step with no product (§14.1), and ruling 6 sets the order of its proofs.
+
+## 16. 8i2: `code_scanner.run` as a driver over two steps (P6), and the rulings from review of 8i1
+
+This ran in plan mode, as ruled for 8i2 at review of 8i1. The plan was read and approved
+before any edit, with one amendment: the recap fall-through, reached in 0 of 43 invocations,
+is recorded as a path no test reaches (§16.2). It also joins BACKLOG 1.3's test row (§16.4).
+
+This is one commit, code and record together, with no amend. That is §15's ruling 6.
+
+### 16.1 The rulings from review of 8i1
+
+1. **8i1 is approved as `cb3e059`.**
+2. **The four tests that diverge under 8i1's mutation yet pass** (§14.2) are the finding
+   7q0 and 8i0 made: the trace pins what the assertions don't.
+   - **They go on the report's list** of invariants the suite assumed rather than pinned,
+     beside the racing nine's origin. That is `CLEANUP_REPORT.md` §2.4a, numbered so that
+     §2.5–§2.8, which the record cites, keep their numbers.
+   - **They are a Phase 8 test row if 8i2 or 8i3 adds to the count.**
+3. **§15's mutation sequence is accepted for 8i2 and 8i3,** with its checks:
+   - the edit's sha256, taken before it leaves the tree and after it returns;
+   - the tree, verified clean at HEAD before the first case runs.
+
+   It is the harness's own restore discipline applied one level up, and it gives one commit
+   per turn instead of an amend.
+4. **"Mutate on top of a working-tree edit" goes to D13** with the other tool changes. Three
+   tool limits have now landed there:
+   - the sweep cannot resolve a closure;
+   - check 4 cannot see `import … as`;
+   - the harness cannot mutate on top of a working-tree edit.
+
+   The decision is one about the tools' maturity, not three fixes.
+5. **The report's figure is the bare-`Any` series across `src/spec4`: 355 → 279 → 250.**
+   §12's per-file chains stay as the per-commit proof.
+6. **BACKLOG 2.1's family split is right, and the limit's shape gets one sentence there.**
+   The review worded it as every one lying inside Phase 4's split of
+   `callbacks/__init__.py`. That holds for the 26. The 13 lie in Phase 4's split of
+   `callbacks/designer.py` (`data/families_phase4.json`), so the sentence names both
+   splits.
+7. **At plan review of 8i2:** the recap fall-through is recorded as a path no test reaches,
+   and it joins BACKLOG 1.3's test row beside any diverge-but-pass tests the mutation names.
+
+### 16.2 The cut
+
+**The entry decision, replayed on each baseline start snapshot,** splits the 43 invocations:
+
+| Path | Invocations |
+|---|---:|
+| first entry, narrated scan | 15 |
+| first entry, no working dir | 4 |
+| first entry, existing review shown | 2 |
+| re-entry, review re-displayed | 2 |
+| re-entry, replay | 1 |
+| re-entry, recap that falls through to the draw | **0** |
+| input appended | 19 |
+
+**The recap fall-through is a path no test reaches.** It is a re-entry with history, where
+`maybe_inject_resume_summary` injects the recap request and the turn goes on to the draw.
+- **At HEAD the path has no statement of its own,** so line coverage cannot see the gap.
+- **As a step, its `return True` would be a new line no test reaches,** and misses would rise
+  by one. That is 7q2's departure (§79.2), where misses rose 876 → 877 and the block was
+  folded back into its caller.
+- **Here the re-entry arm stays inline in the driver from the start,** verbatim, one level
+  out.
+
+**What landed** (`src/spec4/agents/code_scanner/__init__.py` only): `1 file changed, 122 insertions(+), 85 deletions(-)`.
+
+- **`run` is the driver.**
+  - Its signature, docstring and entry are unchanged: the init, the orphan routing,
+    `pre_stream_chars = 0` with the D-SC-P1 comment, and the hoisted `search_cfg` /
+    `system` with the D-SC-P2 comment.
+  - It then dispatches. `user_input is not None` appends the message; `msgs` runs the
+    re-entry arm, inline; anything else goes to `_scanner_first_entry`, which returns
+    `None` or the new running total.
+  - The stream call stays in place. It ends with `yield from _scanner_settle(...)`.
+  - The dispatch order is inverted, as at 8i1, and is equivalent: the conditions are
+    exclusive and have no side effects.
+- **The steps:**
+
+| Step | Block | Returns |
+|---|---|---|
+| `_scanner_first_entry(session, msgs, system, llm_config, pre_stream_chars)` | the existing review shown; the no-working-dir exit; the narrated scan | `None` after either exit; else the new running total, per D-AT3's convention |
+| `_scanner_settle(session, system, search_cfg, llm_config, pre_stream_chars)` | the extract, the D-SC-P3 block, the schema-retry re-ask, the D-SC18a commit | `None`: a terminal step |
+
+- **`_scanner_settle` reads `msgs = session["code_scanner_messages"]` itself.**
+  - *Why:* the tail needs six values, and PLR0913's limit is five.
+  - *Precedent:* 7q1's steps read `agentifier_messages` themselves (§79.1).
+  - *Safe:* the list is never rebound. `:171` is the only assignment in `src/`, and
+    `_turn_flow` assigns none.
+- **How it was applied: verbatim by construction.** A scratch script sliced the original
+  lines, guarded by assertions on the text at `def9464`. It moved the re-entry arm out one
+  level and the first-entry block out two. It changed only the first-entry block's two
+  terminal `return`s, to `return None`. `ruff format` then rewrapped the driver's settle
+  call.
+- **`run`'s `# noqa: C901, PLR0912, PLR0915` is deleted.** §27.4's eighth entry,
+  `agents/code_scanner/__init__.py` `run`, is retired by this commit.
+- **No `Literal` import is needed:** each step either has a product or is terminal.
+
+### 16.3 The proofs
+
+**Strict mypy, ruff and format.** `Success: no issues found in 93 source files`; `All
+checks passed!` on `src/ tests/` and on `.`; `240 files already formatted`.
+
+**Complexity.** With `--ignore-noqa`, `code_scanner/__init__.py` flags nothing,
+PLR0913 included. The exact figures, with the thresholds lowered so that every function
+reports:
+
+```
+  run                     C901  7  branches  7  statements 24
+  _scanner_first_entry    C901  3  branches  2  statements 27
+  _scanner_settle         C901  5  branches  4  statements 14
+```
+
+Before, at `def9464`, `run` measured C901 12, 13 branches and 59 statements.
+
+**Frozen strings (Rule 4):** predicted identical, with exactly one count change.
+
+```
+src/spec4/agents/code_scanner/__init__.py: string constants 78 -> 79; distinct 51 -> 51
+  gone: 0; added: 0; count changes: 1
+  COUNT 3 -> 4  'code_scanner_messages'
+strings-exit=0
+```
+
+The one change is `_scanner_settle`'s own read of the message list, the precedent 7q1 set.
+
+**Trace identity, against 8i0's three baselines,** with `TRACE_STEPS=_scanner_first_entry,_scanner_settle`:
+
+```
+base: {"tests_traced": 42, "invocations": 43, "events": 241, "distinct_snapshots": 206, "exitstatus": 0, "entries": {"run": 43}}
+new:  {"tests_traced": 42, "invocations": 43, "events": 241, "distinct_snapshots": 206, "exitstatus": 0, "entries": {"run": 43}}
+tests traced: base 42, new 42; identical 42; diverging 0 (key order only: 0); identical to a recorded variant other than the first: 0
+worker-thread invocations: tests 0; differing 0: advisory (timing) 0, escalated (content) 0
+```
+
+- **Both steps are entered under a traced `run`,** coverage's second condition. The counts
+  come from the trace file's `steps`, and they match the classification in §16.2:
+  - `_scanner_first_entry` by 21 tests: 15 narrated, 4 with no working dir, and 2 showing
+    the existing review;
+  - `_scanner_settle` by 34: the 15 narrated scans and the 19 input turns. No recap
+    reaches it.
+
+**Coverage, both conditions.** `code_scanner/__init__.py` is `134 3 98%   103-104, 110`:
+the same three misses, all outside `run`. Statements rose from 125 to 134. The total is
+`TOTAL 12461 834 93%`: misses unchanged, statements +9.
+
+**One mutation, before the commit: the forbidden `None`.** `_scanner_first_entry` returns
+`None` in place of its running total, so the turn ends after the done line.
+- **The prediction was fixed before the run:** the 15 narrated-scan tests, from the
+  classification. It is the same set as §13.2's probe. The file `diverge_8i2.json` has
+  sha256 `f611e369ac5914a6e2da8da436cc0170ff1deadf99bd4ca45f320e45c37c125e`.
+
+**§15's sequence, as it ran.** Three files were modified: the code, `BACKLOG.md` and
+`CLEANUP_REPORT.md`. All three left the tree together.
+
+```
+15709ec317c8e101c5e776df56af86b84609a98cc6dc22fa32d82405bf1cc19d  src/spec4/agents/code_scanner/__init__.py
+f57688e139218bcbfe0f543c9ee4f41a7d07e7dcc02b12a79edd0ba735d4e1bb  BACKLOG.md
+74f2de24c23db8bbb54eafc866dcd69cf276b0f5769453fd679f2919a3c86105  CLEANUP_REPORT.md
+cases_8i2.json sha256 24b291214172016a463116f677a4595fb811762729e0a458262435bd02990008
+cases_8i2_names.json sha256 541b847db9bef1137f0c04de35fdb8d5de93bda1f8d5aadb36cfbce9911f34fa
+anchor: HEAD lines 160-285 (126 lines), once; replacement 163 lines; predicted diverging 15
+tree verified clean at HEAD (def9464)
+```
+
+- **Each case carries the whole turn.** Its anchor is HEAD's text of the changed region,
+  and its replacement is the turn's text with `return pre_stream_chars` made
+  `return None`. The anchor ends at line 285, not 334, because `run`'s tail moved into
+  `_scanner_settle` byte-identical and was absorbed as common suffix.
+- **The tree was clean after each case,** and then:
+
+```
+restored: all three sha256 identical to before
+```
+
+**The `diverge` case:**
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+probe 8i2_first_entry (_scanner_first_entry returns None in place of its running total (8i2, the forbidden None; the case carries the whole turn)): as predicted
+  suite under the probe: 9 failed, 4213 passed, 1 skipped in 95.08s (0:01:35)
+  traces diverging: 15; predicted 15, of which diverged 15; predicted but NOT diverging: none
+  tests traced: base 42, new 42; identical 27; diverging 15 (key order only: 0); identical to a recorded variant other than the first: 0
+```
+
+- **As predicted: 15 of 15 diverged, and no other trace diverged.**
+- **The same edit, run as a `fail: []` case to name the failures** (as at §14.2), gave
+  `summary: 9 failed, 4213 passed, 1 skipped in 97.38s (0:01:37)`.
+  - All 9 are among the 15. They are `TestCharsTotal` ×3, `TestWaitIsNamed` ×5 and
+    `TestScanIsNarrated::test_narration_closes_before_the_llm_text`, all in
+    `tests/test_code_scanner_progress.py`.
+- **Six diverged and passed.** Each asserts only what the turn does before the mutated
+  return:
+  - `tests/test_agents.py::TestCodeScanner::test_rescan_enters_update_mode_when_review_exists`
+    asserts the seed.
+  - `TestScanIsNarrated::test_first_chunk_arrives_before_the_walk`,
+    `::test_narration_names_the_directory`, `::test_narration_reports_the_file_count` and
+    `::test_rescan_says_rescanning` assert the narration. Each asserts no more than its
+    name claims.
+  - `TestCharsTotal::test_total_is_monotonic_across_the_handover` passes vacuously. Its
+    claim is the counter across the stream's opening, and under the mutation the stream
+    never opens.
+- **8i2 adds to ruling 1's count,** so the finding becomes a Phase 8 test row (§16.4). It
+  joins the report's §2.4a beside 8i1's four.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | as above |
+| Tests | `4222 passed, 1 skipped`, exit 0 |
+| Coverage | `TOTAL 12461 834 93%`: misses unchanged, statements +9 |
+| Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`; no test file touched |
+
+### 16.4 BACKLOG 1.3's test row
+
+BACKLOG 1.3 gains one row, beside the racing nine and the Prioritizer banner:
+- **Tests that assert less than their path: 10.** 8i1's four in `brainstormer`, and
+  8i2's six in `code_scanner` (§14.2, §16.3).
+- **A path no test reaches: 1.** `code_scanner.run`'s recap fall-through, 0 of 43
+  traced invocations (§16.2).
+- **8i3 extends the row.**
+
+`CLEANUP_REPORT.md` gains §2.4a, "Tests that assert less than their path", naming the ten.
+- **Where it sits:** beside §2.4, the racing nine, and numbered so that §2.5–§2.8 keep
+  their numbers.
+- **The two counts that name the report's four invariants now note it:** §2's intro, and
+  the line in the close-out summary's "Left" list.
+- **§2.4a and the row were written after the mutation sequence, from its result.** The
+  sha256 lines in §16.3 are `BACKLOG.md` and `CLEANUP_REPORT.md` as they stood before
+  those two edits.
+
+BACKLOG 2.1 gains the sentence on the limit's shape (§16.1, ruling 6).
+
+### 16.5 Stop
+
+8i2 stops here for review. 8i3, `deployer.run`, is the last turn. It returns to plan mode
+with its own plan and runs the same sequence.

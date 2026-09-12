@@ -62,10 +62,10 @@ go with Phase 8's tools decision; `PHASE8_RECORD.md` §1.1, §2).
 ## 2. The findings
 
 These are defects in the safety net itself: places where the suite looked as if it
-guarded something and did not. The first four are properties the design depends on that
-nothing in the suite would have noticed losing (the record's heading for them is
-"invariants the suite assumed rather than pinned"). Each entry names the phase that found
-it, and the mutation or measurement that proved it.
+guarded something and did not. The first four, and §2.4a, which Phase 8 added, are
+properties the design depends on that nothing in the suite would have noticed losing (the
+record's heading for them is "invariants the suite assumed rather than pinned"). Each
+entry names the phase that found it, and the mutation or measurement that proved it.
 
 ### 2.1 `get_agent_gen` passing a copy of the session was caught by nothing
 
@@ -112,6 +112,33 @@ it, and the mutation or measurement that proved it.
   dependency on a bad day. They pass anyway, because they assert only on the store returned
   synchronously.
 - **Where it went:** the Phase 8 list, as a defect.
+
+### 2.4a Tests that assert less than their path
+
+**Found in Phase 8, at 8i1 and 8i2** (`PHASE8_RECORD.md` §14.2, §16.3). It is §2.3's
+finding again, found by mutation rather than by probe: the trace pins what the assertions
+do not. 8i0's probes had found it once in each of the three backlog turns, each time on one
+string (§13.2).
+- **The measurement.** Each turn's split was proved by one mutation, the forbidden `None`.
+  A step reports "the turn ended" where it should go on, so the draw never runs. The trace
+  diverged in every predicted test, and some of those tests still passed:
+  - at 8i1, `brainstormer.run`: 28 diverged, 24 failed, 4 passed;
+  - at 8i2, `code_scanner.run`: 15 diverged, 9 failed, 6 passed.
+- **The ten that passed each assert only what the turn does before the mutated return.** A
+  turn that ends early leaves the same thing:
+  - **a state or an absence:** `tests/test_agents.py::TestBrainstormer::test_non_vision_response_stays_in_progress`,
+    `::TestBrainstormer::test_initialises_brainstormer_messages_if_missing`,
+    `::TestBrainstormerUnparseableArtifact::test_failed_reask_leaves_no_dead_end_user_turn`
+    and `::TestBrainstormerUnparseableArtifact::test_state_is_not_advanced_when_both_attempts_fail`;
+  - **the seed:** `tests/test_agents.py::TestCodeScanner::test_rescan_enters_update_mode_when_review_exists`;
+  - **the scan's narration:** `tests/test_code_scanner_progress.py::TestScanIsNarrated::test_first_chunk_arrives_before_the_walk`,
+    `::test_narration_names_the_directory`, `::test_narration_reports_the_file_count` and
+    `::test_rescan_says_rescanning`;
+  - **a vacuous pass:** `tests/test_code_scanner_progress.py::TestCharsTotal::test_total_is_monotonic_across_the_handover`.
+    It claims the counter across the stream's opening, and under the mutation the stream
+    never opens.
+- **Where it went:** the Phase 8 list (BACKLOG 1.3). It is one test row, together with the
+  path no test reaches that 8i2 found: `code_scanner.run`'s recap fall-through.
 
 ### 2.5 The per-character `MagicMock` chunk factory cost about 50 seconds
 
@@ -730,4 +757,4 @@ The plan turned the original list of symptoms into acceptance criteria for this 
     the 31 contract keys the suite never saw change; the five unreached annotated
     targets; and `PLR2004` in `tests/`.
   - The four invariants the suite assumed rather than pinned are the report's findings
-    (§2.1–§2.4).
+    (§2.1–§2.4). Phase 8 added a fifth of the same kind, §2.4a.

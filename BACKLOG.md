@@ -58,6 +58,7 @@ Section numbers (§N) refer to `CLEANUP_INVENTORY.md`. The tools named below are
 |---|---|---|
 | The nine racing tests: patch `streaming.start`, or wait for the stream | 9 tests; a defect | §79.0, §79.2 |
 | The Prioritizer banner | 1 assertion | §79.0 |
+| Tests that assert less than their path, and a path no test reaches. Ten tests pass while the trace diverges under a turn's forbidden-`None` mutation: 8i1's 4, in `brainstormer`, and 8i2's 6, in `code_scanner`. `code_scanner.run`'s recap fall-through is reached by 0 of 43 traced invocations. 8i3 extends the row | 10 tests, 1 path | `PHASE8_RECORD.md` §14.2, §16; `CLEANUP_REPORT.md` §2.4a |
 | Documented contract keys the suite never saw change | 31 keys across 4 generators: one contract test each | §79.3 |
 | Annotated targets no test reaches: `on_designer_generate_mock` ×3, `on_provider_hint`, `_designer_tool_call_followup` | 3 functions | §77.9 |
 | Feature-spec section guards: `> 2` against its siblings' `> 3`. Check that real output reaches it before deciding | 3 builders | §78.2 |
@@ -99,6 +100,8 @@ This was ruled at review of the close-out (§80.2): it is not cleanup.
   - **13 are in the `callbacks/designer` family:** `_wizard.py` 10 and `_refine.py` 3.
   - **Every one sits in a family this entry names,** so none is a Phase 8 test row. The row
     map is `scripts/cleanup/data/rows_8h.json`.
+  - **The limit has a shape, not just a count:** every one of the 39 lies in a module that
+    Phase 4 carved out of `callbacks/__init__.py` (26) or `callbacks/designer.py` (13).
 
 The figures below were measured at `85a9cb6`, and `tests/README.md` carries the full table.
 

@@ -157,7 +157,7 @@ def build_update_scan_seed(
     )
 
 
-def run(  # noqa: C901, PLR0912, PLR0915  # nine-yield generator; the surviving branches are five yield/return guards and seven entry guards with no extractable body (rule 12, CLEANUP_INVENTORY.md 27.4)
+def run(
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
@@ -182,91 +182,31 @@ def run(  # noqa: C901, PLR0912, PLR0915  # nine-yield generator; the surviving 
     search_cfg = websearch.from_session(session)
     system = llm.build_system_prompt(SYSTEM_PROMPT, search_cfg)
 
-    if user_input is None:
-        if msgs:
-            if (
-                session.get("code_scanner_state") == STATE_REVIEW_COMPLETE
-                and session.get("code_scanner_artifact_msg_count") == len(msgs)
-                and session.get("code_review") is not None
-            ):
-                display = format_review_as_text(session["code_review"])
-                msgs[-1]["content"] = display
-                session["_display_override"] = display
-                yield display
-                return
-            if not maybe_inject_resume_summary(
-                session, "code_scanner", msgs, STATE_REVIEW_COMPLETE
-            ):
-                yield from replay_last_assistant(msgs)
-                return
-        else:
-            existing_review = session.get("code_review")
-            if (
-                existing_review is not None
-                and session.get("code_scanner_state") == STATE_REVIEW_COMPLETE
-            ):
-                display = format_review_as_text(existing_review)
-                msgs.append(
-                    {
-                        "role": "user",
-                        "content": "[Spec4: displaying existing code review]",
-                    }
-                )
-                msgs.append({"role": "assistant", "content": display})
-                session["code_scanner_artifact_msg_count"] = len(msgs)
-                session["_display_override"] = display
-                yield display
-                return
-
-            working_dir = session.get("working_dir")
-            if not working_dir:
-                yield (
-                    "I'm the **CodeScanner**. I analyze your project directory to "
-                    "understand the existing codebase.\n\n"
-                    "No project directory has been selected. Please go back and "
-                    "select a working directory first."
-                )
-                return
-
-            # D-SC-P1: the directory walk and the sample reads that follow it
-            # run for seconds on a large tree, and until now yielded nothing —
-            # the user watched an empty bubble with no indication the agent was
-            # working. Narrate the two phases as they happen. This text is
-            # display-only: on the artifact turn `_display_override` replaces
-            # the visible message wholesale, and the message history records
-            # only what `stream_turn` appends.
-            mode = "Re-scanning" if existing_review is not None else "Scanning"
-            intro_line = f"**{mode}** `{working_dir}`…\n\n"
-            pre_stream_chars += len(intro_line)
-            yield intro_line
-
-            all_files = collect_files(pathlib.Path(working_dir))
-            n = len(all_files)
-            count_line = (
-                f"- Indexed **{n}** file{'' if n == 1 else 's'} — reading "
-                "manifests, README, and source samples…\n"
-            )
-            pre_stream_chars += len(count_line)
-            yield count_line
-
-            seed = _scanner_seed(msgs, working_dir, existing_review, all_files)
-
-            # D-SC-P2: what follows is a single completion call, and the wait
-            # before its first token is dominated by prefill over this request.
-            # Nothing runs locally in that window, so name the size and the
-            # model rather than leaving "analyzing…" to imply local work.
-            approx = approx_tokens(system) + approx_tokens(seed)
-            model = llm_config.get("model") or "the configured model"
-            done_line = (
-                f"\nScan complete — sent ~{approx:,} tokens to "
-                f"`{model}`.\n\n"
-                "_Waiting for the first response. Large projects can take a "
-                "couple of minutes before text starts appearing._\n\n---\n\n"
-            )
-            pre_stream_chars += len(done_line)
-            yield done_line
-    else:
+    if user_input is not None:
         msgs.append({"role": "user", "content": user_input})
+    elif msgs:
+        if (
+            session.get("code_scanner_state") == STATE_REVIEW_COMPLETE
+            and session.get("code_scanner_artifact_msg_count") == len(msgs)
+            and session.get("code_review") is not None
+        ):
+            display = format_review_as_text(session["code_review"])
+            msgs[-1]["content"] = display
+            session["_display_override"] = display
+            yield display
+            return
+        if not maybe_inject_resume_summary(
+            session, "code_scanner", msgs, STATE_REVIEW_COMPLETE
+        ):
+            yield from replay_last_assistant(msgs)
+            return
+    else:
+        narrated = yield from _scanner_first_entry(
+            session, msgs, system, llm_config, pre_stream_chars
+        )
+        if narrated is None:
+            return
+        pre_stream_chars = narrated
 
     yield from stream_suppressing_json(
         llm.stream_turn(
@@ -283,6 +223,103 @@ def run(  # noqa: C901, PLR0912, PLR0915  # nine-yield generator; the surviving 
         artifact_status=("Drafting the code review — this can take a few minutes…"),
     )
 
+    yield from _scanner_settle(
+        session, system, search_cfg, llm_config, pre_stream_chars
+    )
+
+
+# ``run`` is a driver over the steps below, in agentifier.py's shape
+# (CLEANUP_INVENTORY.md 79): a step returns ``None`` only when the turn ended inside it.
+
+
+def _scanner_first_entry(
+    session: dict[str, Any],
+    msgs: list[dict[str, Any]],
+    system: str,
+    llm_config: dict[str, Any],
+    pre_stream_chars: int,
+) -> Generator[str, None, int | None]:
+    """A first entry: the existing review shown, or the scan narrated.
+
+    Returns the running total of characters yielded before the draw.
+    """
+    existing_review = session.get("code_review")
+    if (
+        existing_review is not None
+        and session.get("code_scanner_state") == STATE_REVIEW_COMPLETE
+    ):
+        display = format_review_as_text(existing_review)
+        msgs.append(
+            {
+                "role": "user",
+                "content": "[Spec4: displaying existing code review]",
+            }
+        )
+        msgs.append({"role": "assistant", "content": display})
+        session["code_scanner_artifact_msg_count"] = len(msgs)
+        session["_display_override"] = display
+        yield display
+        return None
+
+    working_dir = session.get("working_dir")
+    if not working_dir:
+        yield (
+            "I'm the **CodeScanner**. I analyze your project directory to "
+            "understand the existing codebase.\n\n"
+            "No project directory has been selected. Please go back and "
+            "select a working directory first."
+        )
+        return None
+
+    # D-SC-P1: the directory walk and the sample reads that follow it
+    # run for seconds on a large tree, and until now yielded nothing —
+    # the user watched an empty bubble with no indication the agent was
+    # working. Narrate the two phases as they happen. This text is
+    # display-only: on the artifact turn `_display_override` replaces
+    # the visible message wholesale, and the message history records
+    # only what `stream_turn` appends.
+    mode = "Re-scanning" if existing_review is not None else "Scanning"
+    intro_line = f"**{mode}** `{working_dir}`…\n\n"
+    pre_stream_chars += len(intro_line)
+    yield intro_line
+
+    all_files = collect_files(pathlib.Path(working_dir))
+    n = len(all_files)
+    count_line = (
+        f"- Indexed **{n}** file{'' if n == 1 else 's'} — reading "
+        "manifests, README, and source samples…\n"
+    )
+    pre_stream_chars += len(count_line)
+    yield count_line
+
+    seed = _scanner_seed(msgs, working_dir, existing_review, all_files)
+
+    # D-SC-P2: what follows is a single completion call, and the wait
+    # before its first token is dominated by prefill over this request.
+    # Nothing runs locally in that window, so name the size and the
+    # model rather than leaving "analyzing…" to imply local work.
+    approx = approx_tokens(system) + approx_tokens(seed)
+    model = llm_config.get("model") or "the configured model"
+    done_line = (
+        f"\nScan complete — sent ~{approx:,} tokens to "
+        f"`{model}`.\n\n"
+        "_Waiting for the first response. Large projects can take a "
+        "couple of minutes before text starts appearing._\n\n---\n\n"
+    )
+    pre_stream_chars += len(done_line)
+    yield done_line
+    return pre_stream_chars
+
+
+def _scanner_settle(
+    session: dict[str, Any],
+    system: str,
+    search_cfg: websearch.SearchConfig | None,
+    llm_config: dict[str, Any],
+    pre_stream_chars: int,
+) -> Generator[str, None, None]:
+    """After the draw: the review extracted, re-asked for once, and committed."""
+    msgs = session["code_scanner_messages"]
     raw_reply = last_assistant_text(msgs)
     review, errors = _extract_and_validate_review(raw_reply)
     if review is None and not errors and suppressed_as_artifact(raw_reply):
