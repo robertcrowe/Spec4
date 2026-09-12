@@ -2681,3 +2681,329 @@ uv run python scripts/cleanup/remeasure.py 6956aca HEAD \
 ```
 
 Every moved cell is explained, and the review stop follows.
+
+## 18. The mechanical half closes
+
+**Ruled at review of 8i3.** 8i3 is approved as `dd9b8ab`, and with it the mechanical half.
+- **The three turns are off rule 12 under the same shape.** Each has trace identity against
+  its own baseline, and a mutation the suite alone would not have caught.
+- **The row is what the classification test made it:** four tests whose names promise more
+  than they assert, and one path.
+- **The half's close runs as planned (§1.5),** with two additions to its section:
+  - the complexity `noqa`s, 9 → 6, each remaining one with its reason and shape;
+  - the half's own finding list, gathered from §2–§17 into one place.
+- **Then the stop.** The decisions half is laid out whole, with its sizes from §1.2 (§18.4),
+  rather than one ruling at a time.
+
+This section is record-only.
+
+### 18.1 The remeasure: `6956aca` against HEAD
+
+**How it ran.** §1.5's command, with HEAD's coverage output reused from a first attempt:
+
+```sh
+uv run python scripts/cleanup/remeasure.py 6956aca HEAD \
+    --cov-base scripts/cleanup/data/coverage_85a9cb6.txt --cov-head <scratch>/coverage_HEAD.txt
+```
+
+- **The first attempt added `--families scripts/cleanup/data/families_phase4.json`,** which
+  §1.5's command does not carry.
+  - That file maps Phase 0's modules to Phase 4's splits. `6956aca` is already
+    post-Phase 4, so the comparison looked up `agents/code_scanner.py`.
+  - It stopped with a `KeyError` in the report step, after measuring.
+- **That attempt's `--run-coverage` had already run the suite** in a `git archive` export of
+  HEAD. It gave `4222 passed, 1 skipped` and `TOTAL 12475 834 93%`, the same as 8i3's gate,
+  and that saved output is the `--cov-head` above.
+- **The tree was clean throughout.**
+
+| Check | Base | Head |
+|---|---|---|
+| Tests | 4210 passed, 1 skipped | 4222 passed, 1 skipped |
+| Coverage | 12,459 / 876 / 93.0% | 12,475 / 834 / 93.3% |
+| `ruff check src/ tests/` | All checks passed! | All checks passed! |
+| `ruff format --check src/ tests/` | 221 files already formatted | 223 files already formatted |
+| `mypy src/` | Success: no issues found in 92 source files | Success: no issues found in 93 source files |
+
+Same path: 92 modules; 9 rose, 80 unchanged, 3 fell.
+- fell: `agentifier/_render.py` 253 / 11 / 95.7% -> 247 / 11 / 95.5%
+- fell: `agents/stack_advisor/_stack_shape.py` 87 / 2 / 97.7% -> 81 / 2 / 97.5%
+- fell: `feature_specs.py` 344 / 80 / 76.7% -> 341 / 80 / 76.5%
+- new at head, outside any family: agents/_revision.py
+
+| Measure | Base | Head |
+|---|---|---|
+| vulture, no whitelist | 60 (src 37, tests 23) | 58 (src 35, tests 23) |
+| vulture, with `vulture_whitelist.py` | 26 (src 3, tests 23) | 26 (src 3, tests 23) |
+| ruff F401/F811/F841/ARG, `src/` | 0 | 0 |
+| ruff F401/F811/F841/ARG, `tests/` | 178 | 183 |
+| Top-level definitions | 1093 | 1100 |
+| No reference outside own file | 513 | 521 |
+|   of which private | 457 | 466 |
+|   of which public | 56 | 55 |
+|   public: Dash callbacks | 32 | 31 |
+|   public: the review list | 24 | 24 |
+| Referenced only from tests/evals/scripts | 135 | 137 |
+
+| deptry | Base | Head |
+|---|---|---|
+| DEP001 own | 314 | 319 |
+| DEP001 evals | 29 | 29 |
+| DEP001 other | 1 | 1 |
+| DEP002 | 0 | 0 |
+| DEP003 | 0 | 0 |
+| DEP004 | 3 | 3 |
+| Total | 347 | 352 |
+
+| Rule (noqa ignored) | Base | Head |
+|---|---|---|
+| C901 | 9 | 6 |
+| PLR0912 | 6 | 3 |
+| PLR0913 | 12 | 12 |
+| PLR0915 | 3 | 1 |
+| Total | 30 | 22 |
+
+Over C901's threshold at head: 24 stream_turn (llm.py), 17 _validate_frontmatter (agentifier/pattern_loader.py), 13 _artifact_button_state (project_manager.py), 12 _spec_field (agentifier/_render.py), 11 _validate_dependencies (agents/feature_speccer.py), 11 _has_cycle (agentifier/requires_reconciler.py)
+
+|  | Base | Head |
+|---|---|---|
+| `src/spec4/` | 92 files, 40,284 lines | 93 files, 40,405 lines |
+| Files over 1,300 lines | `src/spec4/agentifier/agentifier.py` 2,874, `src/spec4/agents/_feature_context.py` 1,329 | `src/spec4/agentifier/agentifier.py` 2,874, `src/spec4/agents/_feature_context.py` 1,329 |
+| Longest functions | `spec4.agents.deployer.run` 185, `spec4.agents.code_scanner.run` 175, `spec4.llm.stream_turn` 174, `spec4.layouts._chat.chat_layout` 163, `spec4.callbacks.designer.on_mock_stream_poll` 150 | `spec4.llm.stream_turn` 174, `spec4.layouts._chat.chat_layout` 163, `spec4.callbacks.designer.on_mock_stream_poll` 150, `spec4.layouts.designer.designer_layout` 148, `spec4.session.default_session` 136 |
+| `tests/` | 129 files, 56,534 lines | 130 files, 57,039 lines |
+| Largest test file | `tests/test_agents.py` 5,268 lines, 332 functions | `tests/test_agents.py` 5,268 lines, 332 functions |
+
+|  | Base | Head |
+|---|---|---|
+| Modules | 92 | 93 |
+| Cycles | 0 | 0 |
+| Layer violations | 0 | 0 |
+| Importers of `llm` / `project_manager` | 21 / 23 | 21 / 23 |
+| TYPE_CHECKING-only edges | 3 | 3 |
+| `global` statements | 0 | 0 |
+
+The report's unchanged lists are left out here:
+- the 26 whitelisted vulture lines, identical;
+- the 24-name review list, identical;
+- the lazy couplings, which are in the saved output.
+
+**Every moved cell, explained.** The per-item lists were re-derived with `remeasure.py`'s own
+functions, on `git archive` exports of both trees. That covers the cross-reference rows, the
+ARG findings and deptry's DEP001s, since the JSON keeps only their counts.
+
+- **Tests, 4210 → 4222 (+12):** 8c +1 (§5), 8e +6 (§8) and 8g2 +5 (§11).
+- **Misses, 876 → 834 (−42):**
+  - 8e, −24: `agents/designer.py` −9, `callbacks/designer/_wizard.py` −13,
+    `callbacks/_setup.py` −1, and `providers.py` −1. The `providers.py` line is `:180`,
+    `provider_key_for_label`'s fallback. 8e's `on_provider_hint` test reaches it through
+    `layouts/_setup.py:122`'s `provider_key_hint`.
+  - 8g2, −18: `agentifier/agentifier.py` (§11.4).
+- **Statements, 12,459 → 12,475 (+16):**
+  - 8d2, −20: five `revision_delta` bodies of 6 statements each, −30, in `_render.py`,
+    `_stack_shape.py`, `phaser/_revision.py`, `designer.py` and `deployer.py`; and
+    `agents/_revision.py` +10.
+  - 8d, 0: `pattern_loader.py` +5, `feature_specs.py` −3 and `tier_analyst.py` −2.
+  - The three turns, +36: `brainstormer.py` +13, `code_scanner/__init__.py` +9 and
+    `deployer.py` +14. `deployer.py` nets +8, with 8d2's −6.
+- **Format, 221 → 223 files, and mypy, 92 → 93 source files:** `agents/_revision.py` (8d2),
+  and `tests/agentifier/test_generator_contracts.py` (8g2) for the format count.
+- **Per module: 9 rose, 3 fell, 80 unchanged, 1 new.**
+  - *Rose by fewer misses:* `agentifier.py`, `_setup.py`, `_wizard.py`, `designer.py` and
+    `providers.py`.
+  - *Rose by more statements with the same misses:* `brainstormer.py`,
+    `code_scanner/__init__.py`, `deployer.py` and `pattern_loader.py`.
+  - *Fell by fewer statements with the same misses:* `_render.py` and `_stack_shape.py`
+    (8d2), and `feature_specs.py` (8d). **No module lost a covered line.** Each percentage
+    fell by arithmetic.
+  - `tier_analyst.py` (−2, 8d) and `phaser/_revision.py` (−6, 8d2) moved in statements, but
+    not at one decimal, so the report counts them unchanged.
+  - *New:* `agents/_revision.py`, 10 statements, 0 missed.
+  - Among the lowest-covered, `_wizard.py` went 49.6% → 60.0% (8e), and `feature_specs.py`
+    76.7% → 76.5% (8d, by arithmetic).
+- **Vulture, `src` 37 → 35:** `on_provider_hint` and `on_designer_generate_mock`, which 8e's
+  tests now call. The whitelisted run is unchanged.
+- **ARG, `tests/` 178 → 183:** five ARG001s, all in `test_designer.py`. They are the unused
+  parameters of 8e's fakes: `api_key`, `kwargs`, `model`, `search_cfg` and `wd`.
+- **Definitions, 1093 → 1100 (+7):** the five `revision_delta` copies went (8d2). Twelve
+  arrived:
+  - `agents/_revision.revision_delta`;
+  - `pattern_loader.trimmed_description`;
+  - the ten steps: `_brainstormer_{take_input,resume,seed,settle}`,
+    `_scanner_{first_entry,settle}` and `_deployer_{take_input,resume,seed,settle}`.
+- **No reference outside its own file, 513 → 521:**
+  - +10 for the steps, each private and called only by its driver;
+  - −2 for `designer._designer_tool_call_followup` and `callbacks._setup.on_provider_hint`,
+    which 8e's tests now reference. Both moved to "referenced only from
+    tests/evals/scripts", 135 → 137.
+
+  So private goes 457 → 466; public 56 → 55; and public callbacks 32 → 31, all three for
+  `on_provider_hint`. `on_designer_generate_mock` never counted as unreferenced, so it moves
+  no cross-reference cell.
+- **deptry, DEP001 own 314 → 319, total 347 → 352:** the five
+  `from spec4.agents._revision import revision_delta` lines 8d2 added. There is one each in
+  `_render.py`, `deployer.py`, `designer.py`, `phaser/_revision.py` and `_stack_shape.py`.
+- **Complexity, 30 → 22:** C901 9 → 6, PLR0912 6 → 3 and PLR0915 3 → 1. All of it is the
+  three turns: 8i1 took a C901 and a PLR0912, and 8i2 and 8i3 took one of each of the three
+  rules. PLR0913 is unchanged at 12.
+- **`src/`, 40,284 → 40,405 lines (+121),** by `git diff --numstat` per file:
+  - the turns, 8i1 +40, 8i2 +37 and 8i3 with 8d2 +22;
+  - `_revision.py` +32;
+  - 8d2's four other modules −16, −17, −16 and −17;
+  - 8d: `pattern_loader.py` +14, `tier_analyst.py` −1 and `feature_specs.py` −3;
+  - 8h's callback files +46, the signatures `ruff format` split;
+  - 8b's annotation-only files, ±0.
+- **Longest functions:** `deployer.run` (185) and `code_scanner.run` (175) left the top five.
+  `layouts.designer.designer_layout` (148) and `session.default_session` (136) entered it.
+- **`tests/`, 129 → 130 files and 56,534 → 57,039 lines (+505):**
+  - `test_generator_contracts.py` +292 (8g2);
+  - `test_designer.py` +99 and `test_setup_search_provider.py` +24 (8e);
+  - `test_try_again.py` +52 (8f);
+  - `test_prioritizer.py` +13 (8c);
+  - 8e2's four fixture files +26;
+  - `test_cost_summary.py` −1 (8b).
+
+  `tests/README.md`'s +148 is not a `.py` file, so it is not in the count.
+- **Imports:** 92 → 93 modules, for `_revision.py`. Cycles, layer violations, importers,
+  TYPE_CHECKING edges and `global`s are unchanged.
+
+### 18.2 The complexity `noqa`s: 9 → 6
+
+`git grep -c 'noqa: C901' <rev> -- src/`, summed: `2214ce9` 9, HEAD **6**. The three that went are
+§27.4's sixth, seventh and eighth entries, the backlog turns (§14, §16, §17).
+
+The six that remain. Figures are with `--ignore-noqa`, and each reason is quoted from its
+`noqa`:
+
+| Function | Where | C901 / branches / statements | Shape | The reason its `noqa` carries |
+|---|---|---|---|---|
+| `stream_turn` | `llm.py:814` | 24 / 26 / 64, and PLR0913 7 | a generator, 174 lines, 4 loops | "entry guards plus the chunk loop, which 27.3 keeps whole as the streaming characterization surface" |
+| `_validate_frontmatter` | `agentifier/pattern_loader.py:247` | 17 / 17 / under | a plain function, 77 lines | "flat per-field schema validation; one branch per frontmatter field, each two or three lines appending an error" |
+| `_artifact_button_state` | `project_manager.py:449` | 13 / under / under | a plain function, 50 lines | "the branches are the documented artifact button state machine" |
+| `_spec_field` | `agentifier/_render.py:146` | 12 / 13 / under | a plain function, 30 lines | "four-way dispatch on JSON value shape; each branch is that shape's rendering" |
+| `_validate_dependencies` | `agents/feature_speccer.py:368` | 11 / under / under | a plain function, 40 lines, 5 loops | "single DFS back-edge pruning; the WHITE/GRAY/BLACK colour invariant spans the whole function, so any split leaves a helper callable at only one point in the traversal" |
+| `_has_cycle` | `agentifier/requires_reconciler.py:405` | 11 / under / under | a plain function, 43 lines, 3 loops | "single iterative-DFS cycle detection; the colour invariant spans the whole function, so any split leaves a helper callable at only one point in the traversal" |
+
+**None is a shape 7q's driver fits as it stands.** The driver splits a generator turn into
+steps at its yield-and-return guards. Five of the six are not generators.
+- **Load-bearing by algorithm: `_validate_dependencies` and `_has_cycle`.** Their `noqa`s
+  say why: a split breaks the colour invariant.
+- **Load-bearing by ruling: `stream_turn`.** It is the only generator. Its entry guards are
+  the driver's kind of guard, but inventory §27.3 keeps it whole as the characterization
+  surface, and 5o's attempt to extract its chunk loop broke the turn (inventory §48.1).
+  - Taking it would be a ruling on §27.3, not a Phase 8 item.
+- **Flat dispatch or validation: `_validate_frontmatter`, `_artifact_button_state` and
+  `_spec_field`.** Each is one branch per case: a field, a state or a JSON shape.
+  - The shape that would fit them is a table, not a driver. A table would rewrite the
+    form the logic is written in, where the driver only moves blocks.
+  - So it is not a mechanical item. It is listed here only so the decisions half can see
+    it, and no ruling is asked for.
+
+### 18.3 The mechanical half's findings, in one place
+
+**1. Tests that assert less than their path** (§14.2, §16.3, §17.3; `CLEANUP_REPORT.md` §2.4a).
+Under the three forbidden-`None` mutations, eleven tests diverged and still passed:
+4 in `brainstormer`, 6 in `code_scanner` and 1 in `deployer`.
+- **The work is the four whose names claim more than they assert** (§17.1). They are
+  BACKLOG 1.3's row:
+  - `test_agents.py::TestBrainstormer::test_non_vision_response_stays_in_progress`;
+  - `::TestBrainstormerUnparseableArtifact::test_failed_reask_leaves_no_dead_end_user_turn`;
+  - `::TestBrainstormerUnparseableArtifact::test_state_is_not_advanced_when_both_attempts_fail`;
+  - `test_code_scanner_progress.py::TestCharsTotal::test_total_is_monotonic_across_the_handover`.
+- **The other seven assert what their names say.** That is coverage-by-path, not a defect.
+- **8i0 found the same thing by probe (§13.2).** One character changed in a string each turn
+  yields. The suite passed all three probes, and the trace diverged in 6, 15 and 2 tests.
+
+**2. Paths no test reaches:**
+- **`code_scanner.run`'s recap fall-through:** 0 of 43 traced invocations (§16.2). It is on
+  BACKLOG 1.3's row.
+- **The staleness exits of `brainstormer.run` and `deployer.run`:** 0 of 47 and 0 of 32
+  (§14.2, §17.2). Their two lines each are the misses the turns carry, now
+  `brainstormer.py:743–744` and `deployer.py:658–659`.
+- **The `> 2` guard's header-only case (§3.4).** Nothing the app has written reaches it,
+  across 24 real phase files. One hand-written list of strings in the tree does, and it
+  stays reachable in principle. That is D1's evidence.
+- **39 typed callback parameters no test exercises** (§12.4; BACKLOG 2.1). 26 are in the
+  `callbacks/__init__` family and 13 in the `callbacks/designer` family, so the width rule
+  holds for them only vacuously.
+- **Closed:** 8e's five annotated targets, which no test had reached. The sweep now reaches
+  63 of 63 (§8.2).
+
+**3. The tool limits, sent to D13** (§16.1, ruling 4):
+- the width sweep cannot resolve a target defined inside a function (§12.4). The closure
+  `on_open_artifact` was proved with a scratch copy;
+- check 4 cannot see `import … as` (§8.2, §10.1). That is the `web_search` alias, accepted
+  as explained;
+- the harness cannot mutate on top of a working-tree edit (§16.1). 8i2 and 8i3 met it by
+  carrying the whole turn in each case;
+- **raised, and not ruled:** `trace_diff.py` does not print step reach (§14.2).
+
+**4. The upload rejection (§12.4).** The prop rule typed `on_designer_refine_upload`'s
+`contents` and `filename` as `str | None`.
+- The component is declared `multiple=True`, so it delivers lists.
+- Strict mypy passed the narrow type. The width sweep rejected it on real values.
+- It was widened to `str | list[str] | None` before it shipped. It is the width rule doing
+  its job (§16.1, ruling 5).
+
+**5. The contract keys (§11): 31 → 0.**
+- 31 documented session keys were never seen changing under their generator's own entry
+  (inventory §79.3).
+- `contract_check.py`, the thirteenth tool, reproduced 7q3's report line for line. Its bite
+  was shown.
+- Five contract tests, one per path, drove each key from its generator's own entry.
+- On a traced run of 8g2's tree: never seen changing 0, nothing undocumented.
+
+**Also recorded across §2–§17:**
+- `_fmt_usd` accepted a string only for a test. No production caller passes one, so the
+  annotation was narrowed (§4.2).
+- The Prioritizer banner (report §2.3) is now asserted whole (§5).
+- The racing nine (report §2.4) wait for their worker (§10). Identifying the worker needed
+  a hold (§10.2).
+- 5p's `: Any` grep proved a ruler of lines, not of annotations (§12.4). The figure is the
+  AST series, 355 → 279 → 250 (§15.1, §16.1).
+- **Wrong predictions, recorded as made:**
+  - `two_state_project`'s flip (§9.2);
+  - 5p's grep "does not move" (§12.4);
+  - the row map's prop rule for `multiple=True` (§12.4).
+- **A correction to §1:** the trace already records each invocation's entry snapshot
+  (§11.1).
+- **Runs killed by the environment for "low memory":** at 8e2 (§9.2) and twice at 8h1's
+  sweep (§12.4), while at least 14.2 GB stayed available. Long runs have been in the
+  foreground since.
+
+### 18.4 The decisions half, laid out
+
+- **Three were settled inside the mechanical half, by ruling:**
+  - D2, `_fmt_usd`, narrowed at 8b (§4.2);
+  - D3, `revision_delta`, lifted into `agents/_revision.py` at 8d2 (§7);
+  - D15, the mtime sleeps, replaced by `os.utime` at 8e2 (§9).
+- **Twelve remain.** Sizes are §1.2's. A "HEAD" figure is re-measured at `dd9b8ab`, and is
+  shown only where it moved.
+
+| D | Item | The ruling asked (§1.5) | Size (§1.2) | Since §1.2 |
+|---|---|---|---|---|
+| D7 | P3, P4, P2: root-siblings and batch 11 | Convert `project_manager` to a package, or not? If so, the move, then batch 11's renames. `_with_readme_attribution`'s four sites in the golden whole-file entry go by a petition per node, or the name stays private | P3: 4 modules, 1,746 lines, behind the 498-line façade; 13 reference lines in 4 files. P4: `_write_text_if_changed` 19 in 3; `_phase_spec_preamble` 8 in 5. P2: `_with_readme_attribution` 8 in 3, all 4 test sites in the whole-file `test_project_manager_golden.py` | unchanged (2,244 lines; the same counts) |
+| D8 | P29, P1: `TestMockBuffers` against `TestMockDeliveryAck`, and the net-blocked `_start_gen` and `_record_usage` | Consolidate them? That opens `test_streaming_characterization.py`, and the two names ride with it. If not, both stay private | P29: 2 classes, 6 tests and 7. P1: `_start_gen` 38 in 6; `_record_usage` 9 in 3. Floor: whole-file `test_streaming_characterization.py` (`:344`, `:402`); tier-B `test_designer.py` `TestCapturePassesPlanningContext` (2), `TestRetryReproducesTheDraw` (2), `TestRefinePersistsManifest` (1); tier-A `TestMockDeliveryAck::test_delivery_preserves_prior_store_keys` | `_start_gen` 39 in 6 (+1, 8e's new test in `test_designer.py`) |
+| D6 | P8: the step sentinel | Does it stay not taken? | 0 steps need it; the agentifier's 10 steps and their 24 `yield from` sites if taken | Evidence from 8i1–8i3: every step's `None`s end the turn, and no driver tells them apart |
+| D4 | P12: the `sys.modules` idiom in `test_cost_summary.py` | Schedule the simplification 7d ruled "not scheduled", or leave it? | 1 test: the lookup, its 3-line comment, and `import sys` | unchanged |
+| D5 | P31: `persist_artifacts`' name | Keep it, or rename it, and to what? | 62 occurrences in 14 files: `tests/` 51, of them 8 patch strings; `src/` 10; `scripts/` 1 | unchanged |
+| D9 | P24: split `tests/test_agents.py` by source module | Split it? It was to come after 8i | 5,268 lines; 293 tests; 36 classes; 16 tier-B ids would change file | unchanged. Its precondition is met: P5–P7 (8i1–8i3) and P10 (8d2) are done |
+| D10 | P27, P28: the test-family consolidation and the four large files | Phase 8, Part 2, or drop? | P27: 24 files, 616 tests. P28: 215, 213, 163 and 155 collected | `test_designer.py` 167 (+4, 8e) |
+| D11 | P30: `tests/_golden.py` could absorb golden idioms | Drop it, or carry it to Part 2? | its condition has not come about | unchanged |
+| D12 | P25: PLR2004 | Clear it, keep it deferred with the sizes corrected, or turn a deferral into an exemption? | `tests/` 230; `evals/` 25; `scripts/` 20 | unchanged |
+| D13 | P26: the tools, inside the gate and under mypy | Bring them in, at what cost? It is now a decision about the tools' maturity, not a set of fixes (§16.1) | 16 files; mypy 224 errors in 15 | 17 files (`contract_check.py`); mypy 230 errors in 16. Three limits have landed there (§18.3 item 3), and one more is raised |
+| D14 | P15: the `-> Any` returns | Classify them now, with a return-side sweep, or leave them with the design limit? | 148 lines in 24 files | 147 in 24 (`run_with_timeout` returns `T`, 8b) |
+| D1 | P23b: the `> 2` guards | With 8a's evidence (§3.4), is flipping them to `> 3` a fix? | 3 characters in 1 file | the evidence: §3.4 |
+
+**The order §1.5 proposed still holds:**
+- D1 first, since its evidence is in hand.
+- D2–D6 are small, and of those D4, D5 and D6 remain.
+- D7's move comes before its renames.
+- D8, D9 and D10 share the move petition, and the first of them ruled in builds it.
+- D13 comes last, because it changes the gate under everything after it.
+
+**Carried from the mechanical half. These are work, not rulings:**
+- BACKLOG 1.3's new row, 4 tests and 1 path (§17.4);
+- BACKLOG 2.1's 39 unreached callback parameters, which are product work (§15.1).
+
+### 18.5 Stop
+
+The mechanical half is closed. Phase 8 stops here for the decisions half's rulings.
