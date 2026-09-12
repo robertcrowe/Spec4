@@ -2,6 +2,12 @@
 Makefile.publish
 
 # Python-generated files
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
 __pycache__/
 *.py[oc]
 build/
