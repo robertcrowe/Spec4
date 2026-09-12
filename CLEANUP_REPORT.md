@@ -129,7 +129,7 @@ time on one string (§13.2).
   mutated return, and a turn that ends early does that much too.
 - **The work is the four whose names claim more than they assert** (ruled at review of 8i2,
   §17.1). Each names an event and still passes when that event never happens:
-  - `tests/test_agents.py::TestBrainstormer::test_non_vision_response_stays_in_progress`:
+  - `tests/test_brainstormer.py::TestBrainstormer::test_non_vision_response_stays_in_progress`:
     no response arrives;
   - `::TestBrainstormerUnparseableArtifact::test_failed_reask_leaves_no_dead_end_user_turn`:
     the mutation leaves exactly the dead-end user turn its name rules out;
@@ -139,13 +139,13 @@ time on one string (§13.2).
     the stream never opens.
 - **The other seven assert what their names say,** on a path that goes further. That is a
   fact about coverage-by-path, not a defect, and there is nothing to fix:
-  - `tests/test_agents.py::TestBrainstormer::test_initialises_brainstormer_messages_if_missing`;
-  - `tests/test_agents.py::TestCodeScanner::test_rescan_enters_update_mode_when_review_exists`,
+  - `tests/test_brainstormer.py::TestBrainstormer::test_initialises_brainstormer_messages_if_missing`;
+  - `tests/test_code_scanner.py::TestCodeScanner::test_rescan_enters_update_mode_when_review_exists`,
     which asserts the seed;
   - `tests/test_code_scanner_progress.py::TestScanIsNarrated::test_first_chunk_arrives_before_the_walk`,
     `::test_narration_names_the_directory`, `::test_narration_reports_the_file_count` and
     `::test_rescan_says_rescanning`, which assert the narration;
-  - `tests/test_agents.py::TestDeployerReadme::test_accept_uses_existing_readme_as_baseline`,
+  - `tests/test_deployer.py::TestDeployerReadme::test_accept_uses_existing_readme_as_baseline`,
     which asserts the README request built before the draw.
 - **Where it went:** the Phase 8 list (BACKLOG 1.3). The four are one row there, together
   with the path no test reaches that 8i2 found: `code_scanner.run`'s recap fall-through.

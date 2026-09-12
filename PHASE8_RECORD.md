@@ -3631,3 +3631,123 @@ MOVE PETITION: PASS
 | Ruff / format | `All checks passed!` on the tool and on `.`; `1 file already formatted` |
 | Tests, coverage, mypy | unaffected: no file under `src/` or `tests/` changed, and the tools stay outside mypy (D13) |
 | Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`, as the petition's own run shows |
+
+## 25. D9b: `tests/test_agents.py` split by source module
+
+The plan approved at §24 carries this commit. §24's tool is its proof.
+
+### 25.1 What landed
+
+**Five new files and a helper module, split by the class structure already there:**
+
+| File | Classes | Test functions |
+|---|---|---:|
+| `tests/test_brainstormer.py` | 5 | 39 |
+| `tests/test_stack_advisor.py` | 6, with `_stack_revision_vision` | 37 |
+| `tests/test_code_scanner.py` | 5 | 69 |
+| `tests/test_phaser.py` | 13, with `_valid_phase` and `_phase_block` | 84 |
+| `tests/test_deployer.py` | 5 | 38 |
+| `tests/test_agents.py`, which stays | 2: `TestResumeSummary` and `TestSuppressedAsArtifact` | 11 |
+| `tests/_agent_helpers.py` | none: the six shared helpers `make_session`, `collect`, `mock_litellm_stream`, `_chunkify_stream`, `_reply_sequence` and `_phaser_revision_vision` | 0 |
+
+- **The totals are the file's at `a0cf8c1`:** 36 classes, 278 test functions and 293
+  collected ids.
+- **`test_agents.py` goes from 5,268 lines to 171.** The seven files hold 5,363 lines. The
+  95 extra are the new headers and docstrings.
+- **Built by the scratch script behind §24's proof,** run on the clean tree. The script:
+  - copies every top-level node byte for byte, with the banner above it;
+  - generates each file's imports from the original header, filtered to the names that
+    file's nodes use;
+  - gives each file a docstring naming its subject and origin.
+- **`ruff format` wrapped one line in each of five files.** That line is the generated
+  `from tests._agent_helpers import …`, which was over 88 characters. No moved body
+  changed (check 2). After the format, all seven files are byte-identical to §24's scratch
+  split, which passed the petition there.
+- **The pointers, updated in the same commit:**
+  - **`floor.json`:** the 16 tier-B ids, old → new, rewritten in place. Of these, 8 are
+    `TestAiFeaturesForPhaserFullSurface` and 4 `TestPhaserSpecReferenceDirective`, now in
+    `tests/test_phaser.py`. The other 4 are `TestLoadDesignManifest`, now in
+    `tests/test_stack_advisor.py`. The result is identical to the scratch copy's.
+  - **BACKLOG 1.3's test row:** its first id → `test_brainstormer.py::`. Its two `::`
+    continuations follow it, since both classes moved there.
+  - **`CLEANUP_REPORT.md` §2.4a:** four id lines, to `test_brainstormer.py` (two),
+    `test_code_scanner.py` and `test_deployer.py`.
+- **Unchanged, as planned:**
+  - the record and `CLEANUP_INVENTORY.md`;
+  - the report's historical statements about `test_agents.py`, at `:157`, `:309`, `:380`,
+    `:606`, `:612`, `:666` and `:676`;
+  - `.spec4/`, under Rule 2. Its `v0/code_review.json:279` names `test_agents.py`, and stays.
+- **BACKLOG's split row (`:65`) closes by hand in the record-only commit,** like P2 and P4
+  (§23).
+
+### 25.2 A claim in the plan that was wrong: one other test imports from `test_agents.py`
+
+- **The plan said "No other test imports from it."** In fact
+  `tests/test_stack_shape_resilience.py:41` does:
+  `from .test_agents import collect, make_session, mock_litellm_stream`.
+  - It has been there since `72a23d8`, the 1.0.0 release.
+  - The plan's survey missed it. A search for the relative form, `from .test_agents`,
+    finds it.
+- **It still resolves, unchanged.**
+  - `test_agents.py` keeps `TestResumeSummary`, which uses all three helpers. So its
+    generated header imports them from `tests._agent_helpers` (`:13`).
+  - The relative import therefore gets the same three objects.
+  - The file collects, and its tests pass in the suite below.
+- **The petition covers this dependency.**
+  - Had the header dropped any of the three, `test_stack_shape_resilience.py` would fail
+    to collect, and check 1 would fail on its ids.
+  - Check 4 holds the file byte-identical.
+- **Re-pointing the import is not taken here.**
+  - `test_stack_shape_resilience.py` now gets the helpers through a file that only
+    re-exports them, not from the file that defines them.
+  - The file holds two tier-B ids (`floor.json:89–90`), so re-pointing its import to
+    `._agent_helpers` would be a floor-file edit. That needs §54.7's import-only petition,
+    and it is outside D9's ruling.
+  - It goes to the close-out stop, for a ruling: re-point it under §54.7, or leave it and
+    keep this record of the dependency.
+- **One docstring goes slightly stale.**
+  - `tests/test_renderer_goldens.py:13`, a whole-file floor entry, names "``test_stack_*``,
+    ``test_agents``" as the existing behavioural tests. The per-agent ones are now the five
+    new files.
+  - That is inventory §60.2's "goes stale", recorded here with its line, like the golden
+    file's docstring at §23. No edit.
+
+### 25.3 The proofs
+
+**The move petition.** `move_check.py` (§24) ran against a `git archive` export of
+`298c54b`, with the working tree as NEW:
+
+```
+collected: BASE 4225, NEW 4225
+check 1 (collection): PASS
+top-level nodes compared: 45
+check 2 (byte-identity): PASS
+floor ids rewritten old -> new: 16; NEW's floor_check: ['floor total          : 456 (expect 456)', 'FAILURES             : 0']
+check 3 (the floor): PASS
+other tests/ files compared: 180
+check 4 (nothing else): PASS
+MOVE PETITION: PASS
+```
+
+This is §24's scratch result, on the repo.
+
+**Coverage, file by file.** The suite ran twice on the same venv:
+- on the split tree;
+- on the HEAD export, with `PYTHONPATH` pointing at the export's `src/`. `spec4.__file__`
+  resolved there.
+
+Both gave `4224 passed, 1 skipped` and `TOTAL 12475 808 94%`. The two term-missing tables,
+97 rows each, are identical.
+
+**No mutation.** The plan made the petition the proof of a move. No source line changed.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` on `src/ tests/` and on `.`; `247 files already formatted`; `Success: no issues found in 93 source files` |
+| Tests | `4224 passed, 1 skipped`, exit 0: unchanged, with the same 4225 ids collected |
+| Coverage | `TOTAL 12475 808 94%`: unchanged, and identical file by file |
+| Floor / off-limits | tier-B `183 (expect 183)`, `456 (expect 456)`, `FAILURES: 0` |
+| Goldens | `git diff` names nothing under `tests/golden`, `tests/snapshots` or `tests/test_project_manager_golden.py` |
+
+**D9 is done.** Next is the record-only commit closing D5, D6, D8, D10, D11, D12 and D13.
+After it comes Phase 8's close-out, the last stop, which takes 25.2's open question.
