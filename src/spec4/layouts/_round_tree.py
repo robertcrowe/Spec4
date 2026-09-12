@@ -437,7 +437,7 @@ def line_id(path: str) -> dict[str, str]:
 
 def _line_children(
     line: TreeLine, *, linked: bool = False, selected: str | None = None
-) -> Any:
+) -> html.Li:
     """One ``<li>``: the path in its lane colour, the status at the right.
 
     ``present`` is the resting state and is left unlabelled — the design mock

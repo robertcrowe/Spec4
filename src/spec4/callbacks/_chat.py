@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dash import ALL, Input, Output, State, callback, ctx, no_update
 
@@ -31,6 +31,9 @@ from spec4.session import (
     get_agent_gen,
     persist_artifacts,
 )
+
+if TYPE_CHECKING:
+    from dash import NoUpdate
 
 
 _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
@@ -238,7 +241,7 @@ def on_chat_retry(n_clicks: int | None, session: Any) -> Any:
     Input("btn-ff-info", "n_clicks"),
     prevent_initial_call=True,
 )
-def on_ff_info(n_clicks: int | None) -> Any:
+def on_ff_info(n_clicks: int | None) -> bool | NoUpdate:
     """Open the Fast Forward info dialog; the modal closes itself client-side."""
     if not n_clicks:
         return no_update
@@ -532,7 +535,7 @@ def on_stream_poll(_n: int | None, session: Any) -> Any:
     )
 
 
-def _poll_missing_stream(stream_id: str) -> Any:
+def _poll_missing_stream(stream_id: str) -> tuple[NoUpdate, int]:
     """The poll tick for a stream id whose entry another poll already finalised."""
     if _DEV_MODE:
         print(

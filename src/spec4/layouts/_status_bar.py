@@ -123,7 +123,7 @@ def _slot(*names: str) -> str:
     return " ".join((SLOT_CLASS, *names))
 
 
-def _dir_field(working_dir: str | None) -> Any:
+def _dir_field(working_dir: str | None) -> html.Button | html.Span:
     """The working directory field — a control, not a label.
 
     The path *is* the button: on a bar this dense there is no room for a

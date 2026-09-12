@@ -70,7 +70,7 @@ _ARTIFACTS_PHASE = PATH_TO_PHASE[ARTIFACTS_PATH]
     Input("round-tree", "id"),
     State("session", "data"),
 )
-def on_round_tree(_id: str, session: Any) -> Any:
+def on_round_tree(_id: str, session: Any) -> tuple[str, list[Any]]:
     """Recompute the round tree from disk, from scratch, on every render.
 
     D-LR4: there is no cache here and no ``dcc.Store`` behind it. The whole
@@ -322,7 +322,7 @@ def on_artifact_download(n_clicks: int | None, session: Any) -> Any:
     Input("round-cost", "id"),
     State("session", "data"),
 )
-def on_round_cost(_id: str, session: Any) -> Any:
+def on_round_cost(_id: str, session: Any) -> tuple[str, ...]:
     """Recompute the round's cost from ``usage.json``, from scratch, every time.
 
     The same shape as ``on_round_tree`` above and for the same reason: no

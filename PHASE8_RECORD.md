@@ -3146,3 +3146,162 @@ import hunk sits at the top of the file, outside every entry.
 | Floor / off-limits | `456 (expect 456)`, `FAILURES: 0` |
 
 **BACKLOG 1.1's `sys.modules` item (P12) is closed.**
+
+## 21. D14: the `-> Any` returns, classified, and the typeable fourteen taken
+
+**Ruled at §19.1.** Classify the returns in the same pass as 7o, into source-edge,
+session-edge, JSON-edge, genuinely typeable and load-bearing. Take the typeable subset
+under annotations-only and the width rule, and let the edges join the design limit's count.
+
+### 21.1 The rows
+
+**144 functions in 23 files return a bare `Any`,** counted by AST. That is every function
+whose return annotation is the name `Any`.
+- §1.2's 148, and §18.4's 147, were a grep for the text `-> Any`. It also matches lines
+  that are not a bare return.
+- 87 of the 144 are Dash callbacks, and none is a generator.
+
+### 21.2 How they were classified
+
+**The classes are 7o's (inventory §77), plus source-edge.** 7o's four were session-dict
+edge, JSON-artifact edge, genuinely typeable and load-bearing. Source-edge is the ruling's
+fifth. It is read here as a value whose type comes from a library mypy sees as untyped,
+so that no annotation narrower than `Any` can pass strict mypy without a cast. A cast is a
+runtime change. Two measurements, both in a scratch probe, fix what that covers:
+- **`dash_mantine_components` 2.6.1 ships no `py.typed`,** so every `dmc.*(...)` is `Any`.
+  `-> Component` on a function returning a `dmc` component fails with `Returning Any from
+  function declared to return "Component"`.
+  - `dash` 4.1.0 is typed. A wrong annotation on an `html.*` return is caught (`got "Div",
+    expected "int"`).
+  - `dash.NoUpdate` is exported publicly, and `-> bool | NoUpdate` returning `no_update`
+    passes.
+- **Two first-party wrappers inherit an untyped source:**
+  - `dcc.send_string` and `dcc.send_bytes` carry no return annotation;
+  - `@callback` hands back `Any` (`reveal_type` says so).
+
+**The rule for taking a row.** Strict mypy accepts a narrower annotation with no runtime
+change. No top-level member and no tuple element is a bare `Any`. A container of Dash
+children may hold `Any`, as 7o's `html.Div | list[Any]` did. Rows were placed by the
+callee's declared type where one decides it, never by name.
+
+| Class | Rows | What they are |
+|---|---:|---|
+| **session-edge** | **82** | 78 callbacks with a store (`data`) output, whose return is the session or store payload; and `_no_change`, `_poll_running`, `_rerun_failed_draw` and `_skip_to_stack_advisor`, which return that payload for their callbacks |
+| **source-edge** | **40** | 32 layout builders returning `dmc` components, or passing one through (`artifact_body`'s file path; `provider_key_hint`); 5 callbacks whose output is or holds a `dmc` value (`on_provider_hint`, `render_designer_step`, `on_gate_provider_change`, `on_search_provider_hint`, and `on_artifact_pane` through `artifact_body`); `_send_json` and `_build_phases_zip`, through the unannotated `dcc.send_*`; `_register_open_artifact`, returning an `@callback` closure |
+| **load-bearing** | **8** | the `SubAgent` protocol: `SubAgent.run`, `SubAgentRegistry.lookup` (it reads `_agents: dict[str, Any]`) and `SubAgentRegistry.run`, which are heterogeneous by design (7o's reason); and `llm.py`'s `_get`, `_chunk_usage`, `_hidden_usage`, `complete` and `acomplete`, litellm values read duck-typed, or a stream-or-response |
+| **JSON-edge** | **0** | no return in the 144 is an artifact payload |
+| **genuinely typeable** | **14** | all taken (§21.3) |
+
+The table, row by row, with each reason, is scratch `d14/classified.json`.
+
+### 21.3 The fourteen taken
+
+| Function | Where | Type |
+|---|---|---|
+| `artifact_controls` | `layouts/_artifact_view.py` | `html.Div` |
+| `_round_select` | `layouts/_artifact_view.py` | `html.Div` |
+| `designer_layout` | `layouts/designer.py` | `html.Div` |
+| `_line_children` | `layouts/_round_tree.py` | `html.Li` |
+| `_step_title` | `layouts/_setup.py` | `html.H2` |
+| `_sep` | `layouts/_shared.py` | `html.Span` |
+| `_dir_field` | `layouts/_status_bar.py` | `html.Button \| html.Span` |
+| `on_ff_info` | `callbacks/_chat.py` | `bool \| NoUpdate` |
+| `_poll_missing_stream` | `callbacks/_chat.py` | `tuple[NoUpdate, int]` |
+| `on_round_tree` | `callbacks/_artifacts.py` | `tuple[str, list[Any]]`, from `_round_tree_head -> str` and `_round_tree_lines_children -> list[Any]` |
+| `on_round_cost` | `callbacks/_artifacts.py` | `tuple[str, ...]`, `tuple()` of the `RoundCost` NamedTuple's three `str` fields |
+| `on_status_bar` | `callbacks/__init__.py` | `tuple[list[Any], str, str, str]`, from `status_context -> list[Any]` and three `_status_nav_class -> str` |
+| `_cc_revise_input` | `agentifier/agentifier.py` | `CrossCuttingInput` |
+| `_run_async` | `websearch.py` | PEP 695: `def _run_async[T](coro: Coroutine[Any, Any, T]) -> T`, as 8b took `run_with_timeout` |
+
+**`NoUpdate` is imported under `if TYPE_CHECKING:` in `callbacks/_chat.py`,** not added to its
+runtime `from dash import …` line.
+- **7o's rule (inventory §77.1).** A row needing a name its module does not bind at runtime
+  imports it "under `if TYPE_CHECKING:` only", because "a runtime import would be residue".
+  The strip check is the standing check for annotation work (§77.1's confirmations).
+- **The dry run showed it.** The runtime-line form left exactly one line of strip residue:
+  the import itself. The guarded form leaves none.
+- **§14's `Literal` ruling does not govern here.** It placed a `typing` name on an existing
+  runtime line, in a turn that ran no strip check. D14 is annotation work.
+- **The block sits after the last leading import,** as `llm.py`'s does, and the module carries
+  `from __future__ import annotations`. It is the seventh block in `src/`.
+
+### 21.4 The proofs
+
+**Applied as dry-run.** The fourteen edits and the guarded block went first onto a `git
+archive` export of `dc6495f`, as the second dry run. Then they went onto the tree by the
+same scripts, followed by `ruff format`.
+- **All 11 changed files are byte-identical to the dry run's** (`cmp`, file by file).
+- **Footprint:** `11 files changed, 18 insertions(+), 15 deletions(-)`, all in `src/`. No
+  test changed.
+
+**Strict mypy, ruff and format.** `Success: no issues found in 93 source files`; `All
+checks passed!` on `src/ tests/` and on `.`; `240 files already formatted`.
+- **mypy checks each of the fourteen against its body.** So a return type narrower than what
+  the function returns is caught here.
+- The PEP 695 `_run_async` is checked at its callers' types.
+
+**The strip check, against `dc6495f`:** `files changed: 11; files with residue: 0`.
+- **The first dry run put `NoUpdate` on `_chat.py`'s runtime `from dash import …` line,** and
+  left exactly that one line of residue:
+
+```
+RESIDUE: src/spec4/callbacks/_chat.py
+    -from dash import ALL, Input, Output, State, callback, ctx, no_update
+    +from dash import ALL, Input, NoUpdate, Output, State, callback, ctx, no_update
+```
+
+- **7o's rule placed it under `if TYPE_CHECKING:` instead** (§21.3), and the residue is gone.
+
+**The width rule, on returns.** The committed `width_sweep.py` checks the values that arrive
+at parameters. So a scratch plugin, `d14/ret_sweep.py`, monitors `PY_RETURN` on each of the
+fourteen and checks every returned value against the return annotation in the tree.
+- **It reuses the committed sweep's `accepts`,** adding `tuple[...]`, PEP 695 type parameters,
+  and a direct `isinstance` for `NoUpdate`. `NoUpdate` is not in `_chat.py`'s runtime
+  namespace, since it is imported under `TYPE_CHECKING`.
+- **The committed tool is unchanged,** as D13 rules. A return-side sweep is on the Part 2 list
+  with the other tool work, "when next used".
+
+```
+ret_sweep: targets 14; reached 14; never reached 0; rejected 0 []
+4224 passed, 1 skipped
+```
+
+| Target | Annotation | Calls | Returned |
+|---|---|---:|---|
+| `agentifier/agentifier.py:_cc_revise_input` | `CrossCuttingInput` | 3 | spec4.agentifier.cross_cutting_analyst.CrossCuttingInput x3 |
+| `callbacks/__init__.py:on_status_bar` | `tuple[list[Any], str, str, str]` | 39 | builtins.tuple x39 |
+| `callbacks/_artifacts.py:on_round_tree` | `tuple[str, list[Any]]` | 10 | builtins.tuple x10 |
+| `callbacks/_artifacts.py:on_round_cost` | `tuple[str, ...]` | 7 | builtins.tuple x7 |
+| `callbacks/_chat.py:on_ff_info` | `bool | NoUpdate` | 2 | builtins.bool x1, dash._no_update.NoUpdate x1 |
+| `callbacks/_chat.py:_poll_missing_stream` | `tuple[NoUpdate, int]` | 2 | builtins.tuple x2 |
+| `layouts/_artifact_view.py:artifact_controls` | `html.Div` | 96 | dash.html.Div.Div x96 |
+| `layouts/_artifact_view.py:_round_select` | `html.Div` | 87 | dash.html.Div.Div x87 |
+| `layouts/_round_tree.py:_line_children` | `html.Li` | 1773 | dash.html.Li.Li x1773 |
+| `layouts/_setup.py:_step_title` | `html.H2` | 117 | dash.html.H2.H2 x117 |
+| `layouts/_shared.py:_sep` | `html.Span` | 2760 | dash.html.Span.Span x2760 |
+| `layouts/_status_bar.py:_dir_field` | `html.Button | html.Span` | 888 | dash.html.Button.Button x840, dash.html.Span.Span x48 |
+| `layouts/designer.py:designer_layout` | `html.Div` | 76 | dash.html.Div.Div x76 |
+| `websearch.py:_run_async` | `T` | 5 | builtins.list x3, builtins.str x2 |
+
+- **Every target is reached, and every returned value is accepted:** 5,865 calls.
+- **The two unions are exercised on both members.** `_dir_field` returned `html.Button`
+  840 times and `html.Span` 48 times. `on_ff_info` returned `True` once and `NoUpdate`
+  once.
+
+**The figures.** From §15.1, the AST count is the figure, and 5p's grep is the continuity
+column:
+- **bare `-> Any` returns across `src/spec4`: 144 → 130;**
+- the bare-`Any` parameter series: 250, unchanged. `_run_async`'s parameter became
+  `Coroutine[Any, Any, T]`, which was never a bare `Any`;
+- 5p's grep: 236, unchanged. It counts `: Any`, which no return annotation contains.
+
+**The design limit's count gains the edges.** 82 session-edge returns and 40 source-edge
+returns join §1.2's design limit, beside its 90 session-dict and 107 JSON-artifact
+parameter lines. The 8 load-bearing returns stay, each with its reason in §21.2.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | as above |
+| Tests | `4224 passed, 1 skipped`, exit 0: unchanged |
+| Coverage | `TOTAL 12475 808 94%`: unchanged, as annotations add no statement |
+| Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`; no test file touched |

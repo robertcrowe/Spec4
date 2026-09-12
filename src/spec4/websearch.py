@@ -165,7 +165,7 @@ def _url(api_key: str) -> str:
     return _endpoint(SearchConfig("tavily", api_key))[0]
 
 
-def _run_async(coro: Coroutine[Any, Any, Any]) -> Any:
+def _run_async[T](coro: Coroutine[Any, Any, T]) -> T:
     """Run an async coroutine from synchronous code.
 
     Always delegates to a fresh thread so it works regardless of whether

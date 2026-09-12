@@ -96,7 +96,7 @@ def setup_step_row(active: int) -> html.Div:
     return step_row(entries, base_class=SETUP_STEP_CLASS, row_class=SETUP_STEPS_CLASS)
 
 
-def _step_title(text: str) -> Any:
+def _step_title(text: str) -> html.H2:
     """One short line naming the step. No paragraph under it (D-LR7)."""
     return html.H2(text, className="screen-title")
 

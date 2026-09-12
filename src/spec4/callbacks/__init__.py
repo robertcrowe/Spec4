@@ -163,7 +163,7 @@ __all__ = [
     Input("session", "data"),
     Input("prefs", "data"),
 )
-def on_status_bar(session: Any, prefs: Any) -> Any:
+def on_status_bar(session: Any, prefs: Any) -> tuple[list[Any], str, str, str]:
     """Recompute the status line from the two browser stores.
 
     Both stores are **Inputs**, not State. That is the whole mitigation for the

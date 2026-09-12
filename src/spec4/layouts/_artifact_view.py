@@ -671,7 +671,7 @@ def artifact_pane(
 # ---------------------------------------------------------------------------
 
 
-def artifact_controls(result: ArtifactResolution | None) -> Any:
+def artifact_controls(result: ArtifactResolution | None) -> html.Div:
     """Download, always; Open rendered, only for a present ``design/mock.html``.
 
     Beside the header, not inside it (D-LR2's sibling concern: the header is
@@ -804,7 +804,7 @@ def _round_select(
     working_dir: str | Path | None,
     session: dict[str, Any],
     round_number: int | None,
-) -> Any:
+) -> html.Div:
     """Every round on disk as one strip of controls, the current one marked.
 
     The list is rebuilt here on every render rather than read from a store, so

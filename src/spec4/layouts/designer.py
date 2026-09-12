@@ -606,7 +606,7 @@ def step7_content(store: dict[str, Any], image_support: bool | None = None) -> A
 
 def designer_layout(
     session: dict[str, Any] | None = None, prefs: dict[str, Any] | None = None
-) -> Any:
+) -> html.Div:
     session = session or {}
     # Designer has no chat turn, so its gate stands in front of the whole
     # wizard rather than in front of an opening message. Rendering it instead

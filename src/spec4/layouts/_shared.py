@@ -35,7 +35,7 @@ def _error(msg: str) -> Any:
     return dmc.Alert(msg, color="red", variant="light", mt="sm")
 
 
-def _sep() -> Any:
+def _sep() -> html.Span:
     """The dimmed ``·`` between two fields of a one-line mono strip.
 
     Two such strips exist — the status bar's context line and the Artifact

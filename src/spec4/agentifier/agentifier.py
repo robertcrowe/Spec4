@@ -2842,7 +2842,7 @@ def _cc_revise_input(
     current_topic: str,
     user_input: str,
     llm_config: dict[str, Any],
-) -> Any:
+) -> CrossCuttingInput:
     """The revision input for one cross-cutting topic."""
     _, mechanisms = load_patterns()
     features = (session.get("ai_features") or {}).get("ai_features") or []
