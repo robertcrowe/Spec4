@@ -65,7 +65,7 @@ from spec4.project_manager._artifacts import (
     save_vision,
     SPEC4_README_ATTRIBUTION,
     _with_readme_attribution,
-    _write_text_if_changed,
+    write_text_if_changed,
 )
 from spec4.project_manager._paths import (
     active_version,
@@ -81,7 +81,7 @@ from spec4.project_manager._paths import (
 )
 from spec4.project_manager._phase_markdown import (
     parse_phase_markdown,
-    _phase_spec_preamble,
+    phase_spec_preamble,
     render_phase_markdown,
 )
 from spec4.project_manager._usage import (
@@ -137,7 +137,7 @@ __all__ = [
     "_NON_ARTIFACT_FILES",
     "parse_phase_markdown",
     "_path_mtime",
-    "_phase_spec_preamble",
+    "phase_spec_preamble",
     "_PIPELINE_ARTIFACT_ORDER",
     "render_phase_markdown",
     "_REQUIRED_INPUTS",
@@ -163,7 +163,7 @@ __all__ = [
     "_USAGE_ROLLUP_PARENT",
     "usage_totals",
     "_with_readme_attribution",
-    "_write_text_if_changed",
+    "write_text_if_changed",
 ]
 
 

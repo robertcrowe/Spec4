@@ -308,18 +308,18 @@ class TestIdempotentWrites:
         import os
 
         p = tmp_path / "a.json"
-        project_manager._write_text_if_changed(p, '{"x": 1}')
+        project_manager.write_text_if_changed(p, '{"x": 1}')
         os.utime(p, (1000, 1000))
-        project_manager._write_text_if_changed(p, '{"x": 1}')  # identical
+        project_manager.write_text_if_changed(p, '{"x": 1}')  # identical
         assert os.stat(p).st_mtime == 1000
 
     def test_write_if_changed_rewrites_on_change(self, tmp_path: Path) -> None:
         import os
 
         p = tmp_path / "a.json"
-        project_manager._write_text_if_changed(p, '{"x": 1}')
+        project_manager.write_text_if_changed(p, '{"x": 1}')
         os.utime(p, (1000, 1000))
-        project_manager._write_text_if_changed(p, '{"x": 2}')  # different
+        project_manager.write_text_if_changed(p, '{"x": 2}')  # different
         assert os.stat(p).st_mtime != 1000
         assert p.read_text(encoding="utf-8") == '{"x": 2}'
 
@@ -652,7 +652,7 @@ class TestLoadPriorDeploymentPlan:
 class TestProjectReadme:
     """save_readme / load_existing_readme manage the project README, the one
     Spec4 artifact that lives at the project **root** rather than under
-    .spec4/v{N}/. save_readme routes through _write_text_if_changed (no-op on
+    .spec4/v{N}/. save_readme routes through write_text_if_changed (no-op on
     unchanged content); load_existing_readme is the baseline reader for
     Deployer's README authoring (blank/missing treated as absent)."""
 
@@ -1135,7 +1135,7 @@ class TestPreambleTwoAltitudesAndSurfaces:
         }
 
     def _preamble(self, phase: dict[str, Any]) -> str:
-        return "\n".join(project_manager._phase_spec_preamble(phase, self._context()))
+        return "\n".join(project_manager.phase_spec_preamble(phase, self._context()))
 
     def test_both_altitudes_render_in_order_with_surfaces_between(self) -> None:
         text = self._preamble(self._phase())

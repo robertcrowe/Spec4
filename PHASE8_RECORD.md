@@ -3435,3 +3435,109 @@ the golden tests pass.
 §60.6).
 
 **BACKLOG 1.1's root-siblings item (P3) is done.** Batch 11 follows at D7b.
+
+## 23. D7b: batch 11's two renames
+
+The plan approved at §22 carries this commit.
+- **`_write_text_if_changed` → `write_text_if_changed`.**
+- **`_phase_spec_preamble` → `phase_spec_preamble`.**
+- **`_with_readme_attribution` stays private, by the ruling (§19.1).**
+  - Its four sites in the golden floor file, `test_project_manager_golden.py:168`, `:169`,
+    `:172` and `:173`, are attribute calls: `project_manager._with_readme_attribution(...)`.
+  - They are not import lines, so §54.7's import-only petition cannot be met there. That is
+    inventory §60.2's ⛔.
+  - So the golden floor file needs no edit, and no §54.7 petition runs.
+
+### 23.1 What landed
+
+**`rename_apply.py`, with the map `[["_write_text_if_changed", "write_text_if_changed"],
+["_phase_spec_preamble", "phase_spec_preamble"]]`, on the clean tree at `72fd462`:**
+
+```
+files changed: 8, lines changed: 31
+whole-file alias edits: 0 in 0 files
+module-path occurrences left alone: 0
+frozen-data hits: none
+BLOCKED (§54.7 cannot be met): none
+```
+
+- **The code, 26 lines in 5 files:**
+  - `project_manager/_artifacts.py` 12: the definition, its uses, and two docstring mentions;
+  - `tests/test_project_manager.py` 6: `TestIdempotentWrites`' four calls, `TestProjectReadme`'s
+    docstring at `:655`, and `TestPreambleTwoAltitudesAndSurfaces`' call at `:1138`;
+  - `project_manager/__init__.py` 4: the two import lines and the two `__all__` entries,
+    which now list the public names;
+  - `project_manager/_phase_markdown.py` 3;
+  - the `agents/_seam_check.py:341` docstring (D-PH2), 1.
+
+  `ruff format` then left all five files unchanged: `5 files changed, 26 insertions(+), 26 deletions(-)`.
+- **The tool also rewrote three documents,** since it spares only `CLEANUP_INVENTORY.md`, the
+  Phase 7 record: `BACKLOG.md` 1 line, `CLEANUP_REPORT.md` 1 and `PHASE8_RECORD.md` 3. All
+  three were restored from HEAD, and each one's `git hash-object` equals HEAD's blob. The
+  record stays add-only, and BACKLOG's P2 and P4 close by hand in the record-only commit.
+- **The golden floor file is byte-untouched,** as the plan said. `rename_apply.py` excludes
+  docstrings from its blocking scan, and a whole-file entry gets only import rebinding. The
+  file imports neither name.
+  - **Its module docstring keeps the old name, as the plan's one choice accepted.** The
+    mention is at `:10–11`: "The full-phase fixture is built to drive every branch of ``_phase_spec_preamble``".
+  - It names `_phase_spec_preamble`, which is now `phase_spec_preamble`. That is inventory
+    §60.2's "goes stale", recorded here with its line.
+
+**A §22 claim, verified after the fact.** §22 said the two tests that patch `_usage._replace`
+and `_fdopen` "assert the failure the patch injects". They do:
+- `TestSaveUsageAtomicity::test_failed_write_leaves_original_intact_and_no_temp_file`
+  patches `_replace` to raise. It asserts `pytest.raises(OSError)`, the file unchanged, and
+  no temp file left.
+- `::test_partial_content_write_never_reaches_the_file` patches `_fdopen` to fail mid-write,
+  and asserts the same three.
+
+### 23.2 The proofs
+
+**Strict mypy, ruff and format.** `Success: no issues found in 93 source files`, with
+`__all__` now listing `write_text_if_changed` and `phase_spec_preamble`. `All checks passed!`
+on `src/ tests/` and on `.`; `240 files already formatted`.
+
+**The rename check (§60.2), against `72fd462`:**
+
+```
+rename check: EMPTY -- the change is identifier substitution alone
+```
+
+**The token check:**
+
+```
+hunks 26; old->new token substitutions 26; layout 0; §54.7 aliases 0; OTHER 0
+```
+
+**§60.3's rename petition, for the one floor entry the rename reaches:**
+
+```
+§60.3  tests/test_project_manager.py [tierB:TestPreambleTwoAltitudesAndSurfaces]: (1) reverse diff empty inside the net entry PASS  (2) assertions identical under substitution PASS
+off-limits (floor): FAILURES             : 0
+net files in the diff: whole=[]
+PETITION: PASS
+```
+
+- No whole-file entry is in the diff: `test_project_manager_golden.py` is untouched.
+- `TestIdempotentWrites` and `TestProjectReadme` hold no entry, so their hunks are §51.6's
+  allowed-and-reported case.
+
+**Check 4.** No patch string names either new name:
+
+```
+targets ending in a batch name (new side): 0; FAIL: 0; fourth-form candidates: 0
+```
+
+**Goldens and the golden floor file.** `git diff` names nothing under `tests/golden`,
+`tests/snapshots` or `tests/test_project_manager_golden.py`.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | as above |
+| Tests | `4224 passed, 1 skipped`, exit 0: unchanged |
+| Coverage | `TOTAL 12475 808 94%`: unchanged |
+| Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`; the petition above |
+
+**BACKLOG 1.1's batch 11 item (P4) is done for two of its three names.** P2,
+`_with_readme_attribution`, stays private by the ruling. Both close in the record-only
+commit. D9 follows, in plan mode.

@@ -91,7 +91,7 @@ def load_spec4_artifacts(working_dir: str | Path) -> dict[str, Any]:
     return result
 
 
-def _write_text_if_changed(path: Path, content: str) -> None:
+def write_text_if_changed(path: Path, content: str) -> None:
     """Write ``content`` to ``path`` only when it differs from what is on disk.
 
     Re-persisting an unchanged artifact must not bump its mtime: the agent-select
@@ -110,12 +110,12 @@ def _write_text_if_changed(path: Path, content: str) -> None:
 
 def save_vision(working_dir: str | Path, vision: dict[str, Any], version: int) -> None:
     version_dir = ensure_version_dir(working_dir, version)
-    _write_text_if_changed(version_dir / ARTIFACT_VISION, json.dumps(vision, indent=2))
+    write_text_if_changed(version_dir / ARTIFACT_VISION, json.dumps(vision, indent=2))
 
 
 def save_stack(working_dir: str | Path, stack: dict[str, Any], version: int) -> None:
     version_dir = ensure_version_dir(working_dir, version)
-    _write_text_if_changed(version_dir / ARTIFACT_STACK, json.dumps(stack, indent=2))
+    write_text_if_changed(version_dir / ARTIFACT_STACK, json.dumps(stack, indent=2))
 
 
 def merge_library_additions(
@@ -181,7 +181,7 @@ def save_code_review(
     working_dir: str | Path, review: dict[str, Any], version: int
 ) -> None:
     version_dir = ensure_version_dir(working_dir, version)
-    _write_text_if_changed(
+    write_text_if_changed(
         version_dir / ARTIFACT_CODE_REVIEW, json.dumps(review, indent=2)
     )
 
@@ -231,19 +231,19 @@ def save_phases(
         for phase in phases
     }
     # Remove only phase files no longer in the set; rewrite the rest in place so
-    # an unchanged phase keeps its mtime (see _write_text_if_changed).
+    # an unchanged phase keeps its mtime (see write_text_if_changed).
     for stale in phases_dir.glob("phase*.md"):
         if stale.name not in desired:
             stale.unlink()
     for name, content in desired.items():
-        _write_text_if_changed(phases_dir / name, content)
+        write_text_if_changed(phases_dir / name, content)
 
 
 def save_ai_catalog(
     working_dir: str | Path, catalog: dict[str, Any], version: int
 ) -> None:
     version_dir = ensure_version_dir(working_dir, version)
-    _write_text_if_changed(
+    write_text_if_changed(
         version_dir / "ai_catalog.json", json.dumps(catalog, indent=2)
     )
 
@@ -264,7 +264,7 @@ def save_ai_features(
     working_dir: str | Path, features: dict[str, Any], version: int
 ) -> None:
     version_dir = ensure_version_dir(working_dir, version)
-    _write_text_if_changed(
+    write_text_if_changed(
         version_dir / ARTIFACT_AI_FEATURES, json.dumps(features, indent=2)
     )
 
@@ -285,7 +285,7 @@ def save_feature_specs(
     working_dir: str | Path, feature_specs: dict[str, Any], version: int
 ) -> None:
     version_dir = ensure_version_dir(working_dir, version)
-    _write_text_if_changed(
+    write_text_if_changed(
         version_dir / ARTIFACT_FEATURE_SPECS, json.dumps(feature_specs, indent=2)
     )
 
@@ -342,7 +342,7 @@ def load_vision(
 
 def save_deployment_plan(working_dir: str | Path, markdown: str, version: int) -> None:
     version_dir = ensure_version_dir(working_dir, version)
-    _write_text_if_changed(version_dir / "deployment-plan.md", markdown)
+    write_text_if_changed(version_dir / "deployment-plan.md", markdown)
 
 
 def load_prior_ai_features(working_dir: str | Path) -> dict[str, Any] | None:
@@ -509,10 +509,10 @@ def save_readme(working_dir: str | Path, markdown: str) -> None:
     belongs where anyone (or any coding agent) opening the repo will find it.
     The Spec4 attribution line is appended as the closing line here rather than
     requested of the model, so it survives every authoring and revision path.
-    Routed through :func:`_write_text_if_changed` so an unchanged README is a
+    Routed through :func:`write_text_if_changed` so an unchanged README is a
     no-op and does not bump mtimes the freshness model watches.
     """
-    _write_text_if_changed(
+    write_text_if_changed(
         Path(working_dir) / "README.md", _with_readme_attribution(markdown)
     )
 

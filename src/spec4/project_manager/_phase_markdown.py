@@ -44,7 +44,7 @@ _PHASE_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 # ---------------------------------------------------------------------------
 
 
-def _phase_spec_preamble(
+def phase_spec_preamble(
     phase: dict[str, Any], context: dict[str, Any] | None
 ) -> list[str]:
     """Render the binding spec preamble for the features this phase builds.
@@ -381,7 +381,7 @@ def render_phase_markdown(
     Frontmatter carries the canonical structured payload (full round-trip);
     the body renders the same fields as prose for the coding agent, plus the
     verbatim spec preamble resolved from ``context`` (see
-    ``_phase_spec_preamble``). ``context`` defaults to ``None``, which renders
+    ``phase_spec_preamble``). ``context`` defaults to ``None``, which renders
     exactly as before — the round-trip through ``parse_phase_markdown`` reads
     only the frontmatter, so a spec-less render loses nothing.
     """
@@ -411,7 +411,7 @@ def render_phase_markdown(
         summary,
         "",
     ]
-    lines.extend(_phase_spec_preamble(phase, context))
+    lines.extend(phase_spec_preamble(phase, context))
     _render_tech_stack_section(phase, context, deps, configs, lines)
     _render_instructions_section(instructions, lines)
     _render_risk_section(bottlenecks, mitigation, lines)

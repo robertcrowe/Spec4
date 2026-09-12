@@ -338,7 +338,7 @@ def _declared_by_phase(phases: list[dict[str, Any]]) -> dict[int, set[str]]:
     share an id with a catalog node (the observed Threadline collision) would
     otherwise be misread as a capability claim. Falls back to ``features[]``
     only for pre-D-PH2 phase sets, where AI ids lived there (mirroring
-    ``_phase_spec_preamble``).
+    ``phase_spec_preamble``).
     """
     out: dict[int, set[str]] = {}
     for p in phases:
