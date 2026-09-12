@@ -3541,3 +3541,93 @@ targets ending in a batch name (new side): 0; FAIL: 0; fourth-form candidates: 0
 **BACKLOG 1.1's batch 11 item (P4) is done for two of its three names.** P2,
 `_with_readme_attribution`, stays private by the ruling. Both close in the record-only
 commit. D9 follows, in plan mode.
+
+## 24. D9a: the move petition, as the fourteenth tool
+
+This ran in plan mode (§1.6). The plan was read and approved before any edit, without
+amendment.
+- **D9 is two commits:** this one adds the check that proves a move, and D9b (§25) makes the
+  split.
+- **Committing the check was the plan's one choice of its own,** not the ruling's. It is
+  §1.4's proposal for "a petition for a moved test", and D10's consolidation can use it
+  again when it reaches Part 2. D13's ruling covers it: it is ruff-clean, and untyped like
+  the other thirteen.
+
+### 24.1 What landed
+
+- **`scripts/cleanup/move_check.py BASE_DIR NEW_DIR MAP.json`.** It compares two trees,
+  before and after, given a map of which top-level nodes left a source file and where each
+  went. It makes four checks:
+  1. **Collection:** `pytest --collect-only -q` in each tree, importing that tree's own
+     `src/`. Every node id from before must be collected after, exactly once, at its mapped
+     file, with the same class and function names and any parametrised suffix. Nothing may
+     be unaccounted for.
+  2. **Byte-identity:** every top-level node of each source file, moved or staying, must
+     have a byte-identical source segment after, decorators included. The files' headers
+     are regenerated, and not compared.
+  3. **The floor:** `floor.json` must change by exactly the moved classes' ids, old → new.
+     The new tree's own `floor_check.py` must pass on the new tree's collection.
+  4. **Nothing else:** every other `tests/` file must be byte-identical, and every new file
+     must be a destination.
+- **Why check 3 hands over the collection.** `floor_check.py` otherwise asks git for the
+  repo root, which a `git archive` export lacks. So the tool writes the new tree's
+  collected ids to a temp file and passes it. That was learned on the first scratch run,
+  where check 3 failed on exactly that, before any floor id was compared.
+- **The README** gains "The fourteenth tool: the move petition" and its row under
+  "Replayed when committed".
+- **`ruff check` and `ruff format --check` pass on the tool,** and so does `uv run ruff
+  check .`.
+
+### 24.2 The proof: the real split, built in scratch, and the tool's bite
+
+**On the real split.** A scratch script sliced a `git archive` export of `a0cf8c1` into the
+six files and the helper module, and rewrote the 16 floor ids. This is the split D9b makes
+(§25):
+
+```
+collected: BASE 4225, NEW 4225
+check 1 (collection): PASS
+top-level nodes compared: 45
+check 2 (byte-identity): PASS
+floor ids rewritten old -> new: 16; NEW's floor_check: ['floor total          : 456 (expect 456)', 'FAILURES             : 0']
+check 3 (the floor): PASS
+other tests/ files compared: 180
+check 4 (nothing else): PASS
+MOVE PETITION: PASS
+```
+
+**Its bite.** One fault per scratch copy of that split, each meant to trip one check:
+
+| Bite | The fault | Verdicts |
+|---|---|---|
+| (a) | `TestPhaser`, line 34 of `tests/test_phaser.py`: `assert len(phases) == 1 and …` → `>=` | FAIL: check 2; PASS: 1, 3, 4 |
+| (b) | `tests/test_deployer.py` imports `_no_such_helper`, a name that does not exist, inside its parenthesised import. The file parses, and only its import fails | FAIL: check 1; PASS: 2, 3, 4 |
+| (c) | `TestDeployerReadme::test_decline_skips_readme_no_llm_call` removed | FAIL: checks 1, 2; PASS: 3, 4 |
+| (d) | one `TestPhaserSpecReferenceDirective` id left at `tests/test_agents.py` in `floor.json` | FAIL: check 3; PASS: 1, 2, 4 |
+| (e) | `tests/test_session.py` gains a stray line | FAIL: check 4; PASS: 1, 2, 3 |
+| (b2) | `_no_such_helper, ` spliced in front of the import's `(`, so `tests/test_deployer.py` no longer parses | FAIL: checks 1, 2; PASS: 3, 4 |
+
+- **Each of the four checks bites alone:** (a) check 2, (b) check 1, (d) check 3, (e) check 4.
+  The tool's own lines name the fault:
+  - (a) `TestPhaser: not byte-identical in tests/test_phaser.py`;
+  - (b) `collection exit 2`, with `test_deployer.py`'s 38 ids `not collected at its new place`;
+  - (d) `floor.json['tier_b'] is not BASE's with the moved ids rewritten`, and `floor_check.py exit 1`;
+  - (e) `changed but not in the map: tests/test_session.py`.
+- **(c) is the plan's dropped test, and it trips checks 1 and 2 together.** Removing a test also
+  changes its class, so both checks see it.
+- **(b2) caught a defect in the tool, and the tool was fixed before this commit.**
+  - My first run of bite (b) spliced the name in front of the parenthesised import's `(`.
+    That made the file unparseable, which is not the fault I meant to plant.
+  - The tool then crashed in check 2's `ast.parse` with a `SyntaxError`, after reporting
+    check 1 and before checks 2 to 4.
+  - `segments()` now records a parse failure instead of raising, and check 2 reports it:
+    `tests/test_deployer.py: does not parse (line 12: invalid syntax)`.
+  - That tree is kept as (b2), and the tool now gives all four verdicts on it.
+  - Bite (b) was redone as intended. The clean pass and all six bites above are this
+    commit's tool, re-run after the fix. The earlier runs are discarded.
+
+| Gate | Result |
+|---|---|
+| Ruff / format | `All checks passed!` on the tool and on `.`; `1 file already formatted` |
+| Tests, coverage, mypy | unaffected: no file under `src/` or `tests/` changed, and the tools stay outside mypy (D13) |
+| Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`, as the petition's own run shows |

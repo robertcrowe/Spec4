@@ -320,6 +320,34 @@ uv run python scripts/cleanup/contract_check.py /outside/run.json
 **First used:** Phase 8's 8g (`PHASE8_RECORD.md` §11). On §1.1's trace of `2214ce9`
 it reproduces §79.3's report line for line: 31 documented keys never seen changing.
 
+## The fourteenth tool: the move petition
+
+**Proves:** tests moved between files, and nothing else. The tool compares two trees,
+before and after, given a map of which top-level nodes left a source file and where each
+went. It makes four checks:
+1. **Collection.** Every node id before is collected after, exactly once, at its mapped
+   file, with the same class and function names and any parametrised suffix. Nothing may
+   be unaccounted for.
+2. **Byte-identity.** Every top-level node of each source file, moved or staying, has a
+   byte-identical source segment after. The files' headers are regenerated, and not
+   compared.
+3. **The floor.** `floor.json` changes by exactly the moved classes' ids, old → new, and
+   the new tree's own `floor_check.py` passes on its collection.
+4. **Nothing else.** Every other `tests/` file is byte-identical, and every new file is a
+   destination.
+
+```sh
+uv run python scripts/cleanup/move_check.py /outside/base /outside/new MAP.json
+```
+
+Each tree is collected with its own `src/` first on the path.
+- **It is §1.4's petition for a moved test.** A node id that changes file fits neither
+  §54.7's petition nor §60.3's, because both assume a file keeps its ids.
+- **Where it applies.** Any later move or consolidation carries its floor ids through it.
+
+**First used:** Phase 8's D9, splitting `tests/test_agents.py` (`PHASE8_RECORD.md` §24,
+§25).
+
 ## Data
 
 | File | What it is |
@@ -353,6 +381,7 @@ Every check was run against a recorded result before this commit:
 | Add-only append and guard | the record | 0 deleting hunks; a blank-line run refused |
 | Phase 0, re-measured | `1d1dcbd` against `6956aca` | every table in `CLEANUP_REPORT.md` §7 |
 | Contract report | §1.1's trace of `2214ce9` (Phase 8) | §79.3's report, line for line |
+| Move petition | D9's split of `tests/test_agents.py`, in scratch (Phase 8) | PASS; five planted faults each fail the check they target (`PHASE8_RECORD.md` §24) |
 
 The two writers were run for real in a scratch clone:
 - refusal on a dirty tree, on a stale anchor, and on an output inside the repo;
