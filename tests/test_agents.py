@@ -3,6 +3,8 @@ suppressed-artifact predicate.
 
 Phase 8's D9 split the per-agent classes into their own files (``PHASE8_RECORD.md``
 §25). These two span agents, so they stay here.
+
+Keep the three helper re-exports: ``test_stack_shape_resilience.py:41`` imports them.
 """
 
 from typing import Any

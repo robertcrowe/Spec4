@@ -248,7 +248,7 @@ names given in parentheses.
 | **Mutation harnesses** | `mutate.py` with `data/cases_7q.json` (`mutate_7*.py`, and 7q0's `probe_7q.py`) | One anchored mutation that must match exactly once, the full suite, predicted failures, a sha256-checked restore | the §60.5 harness rule; the form in 7k–7q |
 | **Phase 0, re-measured** | `remeasure.py`, with `data/coverage_*.txt` and `data/families_phase4.json` (`phase0_measure.py`) | Phase 0's measurements on two revisions, side by side: the gate, coverage per module, dead code, dependencies, complexity, size and the import graph. It proves nothing about a single change | the Phase 7 close-out (§7) |
 
-## 5. Phase 8's list
+## 5. Phase 8's list, since worked through (§9)
 
 This is consolidated from the record's Phase 8 list and the deferrals across Phase 7.
 
@@ -768,3 +768,23 @@ The plan turned the original list of symptoms into acceptance criteria for this 
     targets; and `PLR2004` in `tests/`.
   - The four invariants the suite assumed rather than pinned are the report's findings
     (§2.1–§2.4). Phase 8 added a fifth of the same kind, §2.4a.
+
+## 9. Phase 8
+
+**Phase 8 worked through §5's list,** under its own record, `PHASE8_RECORD.md`. Its §27
+has the detail: the remeasure against `6956aca`, Phase 7's close-out, with every moved cell
+explained.
+
+The figures, paired:
+
+| Measure | Phase 7's close-out (`6956aca`) | Phase 8's close (`a4fcb8c`) |
+|---|---|---|
+| Tests | 4,210 passed, 1 skipped | 4,224 passed, 1 skipped |
+| Missed lines | 876 of 12,459 (93.0%) | 808 of 12,475 (93.5%) |
+| Complexity findings, `noqa` ignored | 30 | 22 |
+| Tools in `scripts/cleanup/` | 12 | 14 |
+
+- **Every item on §5's list is done or ruled.** `BACKLOG.md` Part 1 is now the cleanup's
+  done record, Phases 0–8, and Part 2 is the only live list.
+- **§1–§8 are left as written.** One of their pointers now reads differently: the row
+  that §2.4a places in "BACKLOG 1.3" is now in `BACKLOG.md` 2.1.

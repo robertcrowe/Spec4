@@ -4088,3 +4088,83 @@ here:
    through. Should the report gain a Phase 8 note, or stay the Phase 7 document it is?
 
 Phase 8 stops here.
+
+## 28. Phase 8 accepted, and with it the cleanup: the five rulings on the stop
+
+**Ruled at review of §27.** Phase 8 is accepted, and with it the cleanup.
+
+### 28.1 The rulings
+
+| # | The question (§27.5) | Ruling |
+|---|---|---|
+| 1 | §25.2's relative import | **Leave the floor file.** The import works because the slimmed `test_agents.py` still exports the three helpers. That is now a load-bearing fact about a 171-line file that looks as if it could lose them. The floor file cannot carry the comment, so `test_agents.py`'s docstring does: one line naming `test_stack_shape_resilience.py:41` as the reason the three re-exports stay. Record-only in effect |
+| 2, 3 | `trace_diff.py`'s step reach; `remeasure.py`'s `_`-prefixed families keys | **Both to BACKLOG 2.7,** in the same entry and under the same "when next used" condition. The `_`-key limit is the more serious of the two, since it produced a false "nothing to compare" rather than an error, and the entry notes that ordering |
+| 4 | Part 1's three open items | **Part 1 closes.** It is renamed from "Phase 8" to the cleanup's done record, Phases 0–8: each item with its record section, and nothing live in it. P9's standing ruling and the design limit, with D14's 122 return edges, move to a Part 2 "design limits" subsection. These are not work; they are the map a future decision sizes from. 8i's test row moves to Part 2's test work, beside the 39 unreached callback parameters. Part 2 is then the only live list in the repo |
+| 5 | `CLEANUP_REPORT.md` | **One section, not a rewrite.** The report is the cleanup's, and the cleanup now includes Phase 8. A §9, "Phase 8", gives the paired figures and points at §27 for the detail, and §5's heading is updated to say the list was worked through. Nothing in §1–§8 changes |
+
+**Also ruled:**
+- **The `.venv/` write (§26.4)** is uv maintaining its own environment on a
+  `pyproject.toml` change. It is not Rule 2's concern, and §26's note is enough.
+- **PLR2004 at 21 in `scripts/`** is D12's deferral with a size, as ruled.
+
+### 28.2 What landed
+
+**`tests/test_agents.py`:** one docstring line, after a blank line:
+
+```
+Keep the three helper re-exports: ``test_stack_shape_resilience.py:41`` imports them.
+```
+
+- The file holds no floor entry.
+- `test_stack_shape_resilience.py` is untouched.
+
+**`BACKLOG.md`:**
+- **The introduction** says Part 1 is the done record and Part 2 is the only live list.
+- **Part 1 is retitled "Done — the cleanup, Phases 0–8".**
+  - A line under the heading names §27 and §28.
+  - Each of the three open items leaves a one-line pointer to where it went: 1.1's
+    `keep` names and 1.2's design limit to 2.8, and 1.3's 8i row to 2.1.
+  - Every other item already carries its sub-phase and section (§26, §27.3).
+- **2.1 is retitled "Test work".**
+  - The UI-callback limit keeps its text, under a bold lead.
+  - 8i's row follows the table, with its four ids and its path.
+- **2.7 gains the two limits, after D13's three, with `remeasure.py`'s first.** The entry
+  gives the ordering's reason.
+  - **It now lists five limits, not four:** D13's three, and these two. The ruling said
+    four.
+- **2.8, "Design limits", is new:**
+  - the 24 `keep` names, a standing ruling;
+  - the 90 session-dict and 107 JSON-artifact parameter lines;
+  - D14's 82 session-edge and 40 source-edge returns.
+- **2.1–2.7 keep their numbers,** since the README and this record cite 2.6 and 2.7.
+
+**`CLEANUP_REPORT.md`:**
+- §5's heading now reads "Phase 8's list, since worked through (§9)".
+- §9, "Phase 8", is new. It has four paired figures, `6956aca` → `a4fcb8c`, and the
+  pointer to §27.
+- §1–§8 are otherwise byte-unchanged.
+
+**Left as they are, and named here:**
+- **`CLEANUP_REPORT.md` §2.4a** says the four tests are a row in "BACKLOG 1.3". §1–§8 do not
+  change, so §9 says where that row is now.
+- **The comment at `scripts/cleanup/trace_diff.py:18`** still calls the racing nine "on the
+  Phase 8 list", but 8f fixed them. It is a comment in a tool, and no ruling covers it.
+- **BACKLOG 2.5, "Bugs found during the cleanup",** is a done list that sits inside Part 2.
+  All four of its entries were resolved in Phase 0.5. Moving it into Part 1 would
+  renumber 2.6 and 2.7, which are cited, so it stays where it is.
+- **`scripts/cleanup/README.md` documents D13's three limits.** The two new ones are in
+  BACKLOG 2.7 and in this record.
+
+### 28.3 The proofs
+
+**The full gate ran,** since `tests/test_agents.py` changed. The coverage table was diffed against D9b's run (§25.3).
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` on `src/ tests/` and on `.`; `247 files already formatted`; `Success: no issues found in 93 source files` |
+| Tests | `4224 passed, 1 skipped`, exit 0: unchanged |
+| Coverage | `TOTAL 12475 808 94%`; the 97-row table is identical to D9b's run |
+| Floor / off-limits | tier-B `183 (expect 183)`, `456 (expect 456)`, `FAILURES: 0` |
+| `CLEANUP_REPORT.md` §1–§8 | checked against HEAD: one changed line (:251, §5's heading); 20 lines appended after §8.7, from '## 9. Phase 8' |
+
+**The cleanup is closed.** `BACKLOG.md` Part 2 is the live list.

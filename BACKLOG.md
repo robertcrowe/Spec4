@@ -3,15 +3,20 @@
 This file was folded from `CLEANUP_INVENTORY.md` at the end of the cleanup
 (`SPEC4_CLEANUP_PLAN.md`, Phase 7). From the fold on, the record is history and this file
 is live. It has two parts:
-- **Part 1, Phase 8:** the cleanup's continuation. It is the list `CLEANUP_REPORT.md` §5
-  consolidated, plus what has been ruled since.
+- **Part 1, Done:** the cleanup's done record, Phases 0–8. Nothing in it is live.
+  - Phases 0–7 are recorded in `CLEANUP_INVENTORY.md` and reported in `CLEANUP_REPORT.md`.
+  - Part 1 is the list the fold carried into Phase 8. Each item is closed with its record
+    section.
 - **Part 2, Backlog:** product and design work the cleanup found or named, but which is not
-  cleanup.
+  cleanup. It is the only live list in the repo.
 
 Section numbers (§N) refer to `CLEANUP_INVENTORY.md`. The tools named below are in
 `scripts/cleanup/`, and its README gives their invocations.
 
-## Part 1: Phase 8
+## Part 1: Done — the cleanup, Phases 0–8
+
+Phase 8 closed at `PHASE8_RECORD.md` §27, and it was accepted, and the cleanup with it, at
+§28. Its three open items moved to Part 2 then.
 
 ### 1.1 Names and seams
 
@@ -33,8 +38,8 @@ Section numbers (§N) refer to `CLEANUP_INVENTORY.md`. The tools named below are
   - **The step sentinel stays not taken. Closed (D6).** No step generator in the four
     turns split so far needed two ending causes: agentifier's 10 from 7q, and 8i's 10.
   - It reopens if one does, and the plan says how (§79; `PHASE8_RECORD.md` §1.5).
-- **Not promote targets:** the 24 `keep: subject is the private object` names (§54.1,
-  §55.4). The collection is each test's subject.
+- **The 24 `keep` names (§54.1, §55.4) are a standing ruling, not work.** They moved to
+  Part 2's design limits (2.8).
 - **The two dedupes are done:**
   - `revision_delta`'s five copies (§67.11) are one body in `agents/_revision.py`, which
     the five import (8d2: `PHASE8_RECORD.md` §7);
@@ -45,16 +50,15 @@ Section numbers (§N) refer to `CLEANUP_INVENTORY.md`. The tools named below are
 
 ### 1.2 Types (§77.8)
 
-- **The session-dict edge** (90 `: Any` lines) and **the JSON-artifact edge** (107), as
-  `TypedDict` design. D14 added the returns' edges to this count: 82 session-edge and 40
-  source-edge returns (`PHASE8_RECORD.md` §21.2).
+- **The design limit, the session-dict and JSON-artifact edges,** moved to Part 2's design
+  limits (2.8), with D14's return edges.
 
 **Done in Phase 8:**
 - **the 107 prop-bound callback inputs:** 105 typed by their prop, and 2 load-bearing (8h:
   `PHASE8_RECORD.md` §12). The 39 that no test reaches are in 2.1.
 - **the `-> Any` returns, counted by AST:** 144 bare returns (the 148 was a grep of lines).
   - 14 were typeable, and were taken, so 130 remain (D14: `PHASE8_RECORD.md` §21).
-  - The 130 are the 122 edges above and 8 load-bearing.
+  - The 130 are the 122 edges in 2.8 and 8 load-bearing.
 - **`object` for `_as_int` and `round_number_from_value`, and `run_with_timeout`'s PEP 695
   form** (8b: `PHASE8_RECORD.md` §4).
 - **`_fmt_usd`:** no production caller passes a string, so its annotation was narrowed (8b:
@@ -62,11 +66,10 @@ Section numbers (§N) refer to `CLEANUP_INVENTORY.md`. The tools named below are
 
 ### 1.3 Tests
 
-| Item | Size | Source |
-|---|---|---|
-| Tests that assert less than they claim, and a path no test reaches. Four tests name an event and still pass when it never happens, each under a turn's forbidden-`None` mutation: `test_brainstormer.py::TestBrainstormer::test_non_vision_response_stays_in_progress`, `::TestBrainstormerUnparseableArtifact::test_failed_reask_leaves_no_dead_end_user_turn`, `::TestBrainstormerUnparseableArtifact::test_state_is_not_advanced_when_both_attempts_fail`, and `test_code_scanner_progress.py::TestCharsTotal::test_total_is_monotonic_across_the_handover`. The path is `code_scanner.run`'s recap fall-through, reached by 0 of 43 traced invocations | 4 tests, 1 path | `PHASE8_RECORD.md` §14.2, §16, §17; `CLEANUP_REPORT.md` §2.4a |
+**8i's test row is live work, not closed:** tests that assert less than they claim, and a
+path no test reaches. It moved to Part 2's test work (2.1).
 
-**Closed in Phase 8, and out of this table:**
+**Closed in Phase 8:**
 - the nine racing tests (§79.0, §79.2), which now wait for their worker (8f:
   `PHASE8_RECORD.md` §10);
 - the Prioritizer banner (§79.0), now asserted whole (8c: `PHASE8_RECORD.md` §5);
@@ -103,9 +106,10 @@ would not be buried. Phase 8 ruled all four (`PHASE8_RECORD.md` §19.1):
 
 ## Part 2: Backlog
 
-### 2.1 The cleanup's known limit: UI-callback coverage
+### 2.1 Test work
 
-This was ruled at review of the close-out (§80.2): it is not cleanup.
+**UI-callback coverage, the cleanup's known limit.** This was ruled at review of the
+close-out (§80.2): it is not cleanup.
 - **Raising callback coverage is product work.** It means writing tests for behaviour
   nobody has pinned.
 - **The cleanup made that work possible.** `trace_identity.py` and `mutate.py` are what it
@@ -133,6 +137,19 @@ The figures below were measured at `85a9cb6`, and `tests/README.md` carries the 
 | `websearch.py` | 78.7% | 80.5% |
 | `session.py` | 81.6% | 82.7% |
 | `providers.py` | 82.8% | 83.9% |
+
+**Tests that assert less than they claim, and a path no test reaches: 4 tests and 1 path.**
+- **Where it came from:** Phase 8's 8i (`PHASE8_RECORD.md` §14.2, §16, §17;
+  `CLEANUP_REPORT.md` §2.4a). It moved here from Part 1 when Phase 8 closed
+  (`PHASE8_RECORD.md` §28).
+- **Four tests name an event, and still pass when it never happens,** each under a turn's
+  forbidden-`None` mutation:
+  - `test_brainstormer.py::TestBrainstormer::test_non_vision_response_stays_in_progress`;
+  - `::TestBrainstormerUnparseableArtifact::test_failed_reask_leaves_no_dead_end_user_turn`;
+  - `::TestBrainstormerUnparseableArtifact::test_state_is_not_advanced_when_both_attempts_fail`;
+  - `test_code_scanner_progress.py::TestCharsTotal::test_total_is_monotonic_across_the_handover`.
+- **The path is `code_scanner.run`'s recap fall-through,** reached by 0 of 43 traced
+  invocations.
 
 ### 2.2 Renderer cosmetics (§12.4)
 
@@ -203,8 +220,10 @@ This was ruled at Phase 8's D10 (`PHASE8_RECORD.md` §19.1).
 
 This was ruled at Phase 8's D13 and D12 (`PHASE8_RECORD.md` §19.1).
 - **The tools stay under `ruff check .`, and outside mypy.**
-- **Each limit below is fixed when a tool is next used for it,** and not before. The first
-  three are documented as limits in `scripts/cleanup/README.md`.
+- **Each limit below is fixed when a tool is next used for it,** and not before.
+  - The first three are D13's, and are documented as limits in `scripts/cleanup/README.md`.
+  - The last two were raised after D13, and were sent here at Phase 8's close
+    (`PHASE8_RECORD.md` §28).
 
 **The limits:**
 - **The width sweep cannot resolve a target defined inside a function.** 8h proved its one
@@ -216,6 +235,16 @@ This was ruled at Phase 8's D13 and D12 (`PHASE8_RECORD.md` §19.1).
 - **The mutation harness cannot mutate on top of a working-tree edit.** It refuses to start
   on a tree that is not clean. 8i2 and 8i3 met this with §15's sequence, carrying the
   whole turn in each case (`PHASE8_RECORD.md` §15, §16.1).
+- **`remeasure.py` drops every families key that starts with `_`.** It reads such a key as
+  documentation, like the file's `_about`.
+  - **Of the two raised after D13, this is the more serious.** It produced a false "nothing
+    to compare" rather than an error.
+  - At Phase 8's close-out, D7a's four `_`-named siblings fell out of the family
+    comparison without a word, and were reported as new modules. They were compared by
+    hand (`PHASE8_RECORD.md` §27.1).
+- **`trace_diff.py` does not print step reach:** how many traced invocations entered each
+  step. 8i1 read the counts from the trace file's `steps` instead (`PHASE8_RECORD.md`
+  §14.2).
 
 **A return-side width sweep, not yet committed.**
 - The committed sweep checks the values that arrive at parameters.
@@ -228,3 +257,14 @@ are its assertions (D12). The other two stay ignored:
 - `scripts/**`, with 21, which follow the tools.
   - 15 of the 21 are in `scripts/cleanup/`.
   - One of those 15 is in `move_check.py`, which came after the sizing.
+
+### 2.8 Design limits
+
+**These are not work.** They are the map a future decision sizes from. They moved here from
+Part 1 when Phase 8 closed (`PHASE8_RECORD.md` §28).
+- **Not promote targets: the 24 `keep: subject is the private object` names** (§54.1,
+  §55.4). This is a standing ruling: the collection is each test's subject.
+- **The session-dict and JSON-artifact edges, as `TypedDict` design** (§77.8):
+  - the parameters: 90 session-dict `: Any` lines, and 107 JSON-artifact ones;
+  - D14's 122 return edges: 82 session-edge returns and 40 source-edge returns
+    (`PHASE8_RECORD.md` §21.2).
