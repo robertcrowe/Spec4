@@ -25,14 +25,17 @@ from spec4.app_constants import (
     ARTIFACT_STACK,
     ARTIFACT_VISION,
 )
-from spec4._paths import (
+from spec4.project_manager._paths import (
     active_version,
     ensure_version_dir,
     get_version_dir,
     latest_implemented_version,
     latest_phase_version,
 )
-from spec4._phase_markdown import parse_phase_markdown, render_phase_markdown
+from spec4.project_manager._phase_markdown import (
+    parse_phase_markdown,
+    render_phase_markdown,
+)
 
 
 # ---------------------------------------------------------------------------

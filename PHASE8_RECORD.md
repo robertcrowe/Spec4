@@ -3305,3 +3305,133 @@ parameter lines. The 8 load-bearing returns stay, each with its reason in §21.2
 | Tests | `4224 passed, 1 skipped`, exit 0: unchanged |
 | Coverage | `TOTAL 12475 808 94%`: unchanged, as annotations add no statement |
 | Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`; no test file touched |
+
+## 22. D7a: `project_manager` as a package
+
+This ran in plan mode, as ruled at §19.1. The plan was read and approved before any edit,
+without amendment. That approval also accepted the one choice it put for review:
+`_phase_spec_preamble` proceeds at D7b, and the golden floor file's docstring mention of it
+is left stale (§23).
+
+**This commit is the move.** D7b carries the renames.
+
+### 22.1 What landed
+
+**Five renames, with their import references re-pointed:**
+
+| From | To |
+|---|---|
+| `src/spec4/project_manager.py` | `src/spec4/project_manager/__init__.py` |
+| `src/spec4/_paths.py` | `src/spec4/project_manager/_paths.py` |
+| `src/spec4/_artifacts.py` | `src/spec4/project_manager/_artifacts.py` |
+| `src/spec4/_phase_markdown.py` | `src/spec4/project_manager/_phase_markdown.py` |
+| `src/spec4/_usage.py` | `src/spec4/project_manager/_usage.py` |
+
+- **The 13 reference lines,** `spec4._x` → `spec4.project_manager._x`, each asserted to occur
+  once:
+  - the façade's four docstring `:mod:` lines, and its four imports;
+  - `_artifacts.py`'s two imports;
+  - `_usage.py`'s one;
+  - `tests/test_usage_capture.py`'s two patch strings, `spec4._usage._replace` and
+    `spec4._usage._fdopen`.
+- **Layout beyond the 13, a departure from the plan's "no other byte changes",** named
+  here and proven in §22.2:
+  - **The docstring's first two bullets reflow onto their continuation lines.** At the new
+    path they exceed 88 characters, and `project_manager`'s file carries no per-file E501
+    ignore, as its own `noqa` at `_artifact_button_state` says.
+  - **`ruff format` wraps two lines:** `_artifacts.py`'s `_phase_markdown` import, now 93
+    characters, and the two re-pointed patch strings.
+- **Nothing else changed.** `git diff -M --stat`: `6 files changed, 20 insertions(+), 15 deletions(-)`: the façade 20 lines, `_artifacts.py` 7, `_usage.py` 2, `_paths.py` and `_phase_markdown.py` 0 (pure renames), `tests/test_usage_capture.py` 6.
+- **Nothing in `src/` or `tests/` names an old path any more.**
+
+### 22.2 The proofs
+
+**1. Substitution for the imports: a scratch move check.**
+- **`rename_check.py` diffs same-path trees, so it cannot see a move.** So `d7/move_check.py`
+  applies its idea to one:
+  - every file tracked at HEAD is found at its new path, or its own;
+  - its text, with `spec4.project_manager._x` reversed to `spec4._x`, must match HEAD's;
+  - Python files compare by AST, with each string constant's whitespace collapsed, so that
+    `ruff format`'s wraps and the docstring reflow read as layout and nothing else does;
+  - every other file compares byte for byte.
+
+```
+-- the move check: 455 files at BASE
+   added beyond the moves: none
+   lost: none
+   byte-identical: 451; changed: 4, of which equal under the substitution: 4
+   changed files: ['src/spec4/project_manager/_artifacts.py', 'src/spec4/project_manager/_usage.py', 'src/spec4/project_manager/__init__.py', 'tests/test_usage_capture.py']
+   NOT equal under the substitution: none
+```
+
+- **`git diff -M` records the five as renames:** `R  src/spec4/project_manager.py ->
+  src/spec4/project_manager/__init__.py`, and the four siblings.
+
+**2. The layering test, and the new edges.** The test passes in the suite. Its own
+`_module_name` and `_import_edges` were run as its `graph` fixture runs them, over a
+`git archive` export of HEAD and over the tree:
+
+```
+   modules: base 93, head 93; the same under the substitution: True
+   spec4.project_manager -> ['spec4.app_constants', 'spec4.project_manager._artifacts', 'spec4.project_manager._paths', 'spec4.project_manager._phase_markdown', 'spec4.project_manager._usage']
+   spec4.project_manager._artifacts -> ['spec4.app_constants', 'spec4.project_manager._paths', 'spec4.project_manager._phase_markdown']
+   spec4.project_manager._paths -> ['spec4.app_constants']
+   spec4.project_manager._phase_markdown -> ['spec4.design_manifest', 'spec4.feature_specs', 'spec4.stack_routing']
+   spec4.project_manager._usage -> ['spec4', 'spec4.app_constants', 'spec4.project_manager._paths']
+   edges from the package into the Dash side: none
+   importers of the package from outside it: 23
+```
+
+- **The graph is the same graph under the substitution.** The four siblings are now inside
+  `spec4.project_manager`, which `test_import_layering.py` already lists on the agent side
+  by name or name-plus-dot.
+- **Their edges run to the package and to root modules only.** The package has no
+  internal cycle: no sibling imports it.
+
+**3. Check 4, on every patch string that reaches the package.**
+- **`patch_resolve.py` gives the same verdicts before and after the move.** It was run on
+  the tree, and on a `git archive` export of HEAD with its own scratch `git init`,
+  imported through `PYTHONPATH`. Both give `targets 9; FAIL: 8`, with the same shape and
+  reason for every target and only the module paths differing.
+- **So the move changes no check-4 verdict.** Each FAIL is a limit of the tool's form, met
+  as follows:
+
+| Target | `patch_resolve` | The proof that the patch lands |
+|---|---|---|
+| `spec4.project_manager._is_dir` (`test_root_routing.py:387`) | PASS: defined in the package's `__init__`, and called at `directory_opens@375` | — |
+| `spec4.project_manager.load_feature_specs` (`test_vision_grounding.py:276`) | FAIL (2): a re-export, with no call inside the module the string names | `check4_attr.py`: **PASS**. `feature_specs_for_session` reads `project_manager.load_feature_specs@458`, through `spec4.agentifier.agentifier`'s binding of the package |
+| `spec4.project_manager.save_usage` (`test_usage_capture.py:1003`) | FAIL (2): the same form | `check4_attr.py`: **PASS**. `persist_artifacts` reads `project_manager.save_usage@574`, through `spec4.session`'s binding |
+| `setattr(_dmod().project_manager, "load_feature_specs", …)` (`test_designer.py:841`, `:851`, `:864`) and `setattr(dmod.project_manager, …)` (`:920`) | not statically resolvable: "check by hand" | **By hand:** `spec4.callbacks.designer.project_manager`, `_mock_gen.project_manager` and `_refine.project_manager` are each `spec4.project_manager`, the same object `agentifier` and `session` bind. So each `setattr` lands on the module object every designer caller reads |
+| `spec4.project_manager._usage._replace` and `._fdopen` (`test_usage_capture.py:852`, `:875`) | FAIL (1): not a function named so; (2) holds: `_write_atomic@370` and `@366` call them | **These are 7k's seams:** `_usage._replace is os.replace` and `_usage._fdopen is os.fdopen`, so condition (1) fails by construction, check 4's alias shape (README §3). Condition (2) holds. The two tests that patch them assert the failure the patch injects, and both pass |
+
+- **None of these tests is edited.** The four `setattr` sites sit in `test_designer.py`'s
+  tier-B classes, and they were read, not touched.
+
+**4. Goldens byte-identical.** `git diff --stat -- tests/golden tests/snapshots` is empty, and
+the golden tests pass.
+
+**5. Coverage, module by module at the new paths:**
+
+| Module | At `90d6137` | At the new path |
+|---|---|---|
+| `project_manager.py` → `project_manager/__init__.py` | 110 / 1 | 110 / 1 |
+| `_paths.py` → `project_manager/_paths.py` | 60 / 0 | 60 / 0 |
+| `_artifacts.py` → `project_manager/_artifacts.py` | 257 / 17 | 257 / 17 |
+| `_phase_markdown.py` → `project_manager/_phase_markdown.py` | 230 / 0 | 230 / 0 |
+| `_usage.py` → `project_manager/_usage.py` | 160 / 2 | 160 / 2 |
+
+- **Every other module's row is identical.**
+- **`_artifacts.py`'s missed line numbers shift by 3:** the wrapped import grew from one line
+  to four.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` on `src/ tests/` and on `.`; `240 files already formatted`; `Success: no issues found in 93 source files` |
+| Tests | `4224 passed, 1 skipped`, exit 0: unchanged |
+| Coverage | `TOTAL 12475 808 94%`: unchanged |
+| Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`. No floor file is edited; `test_usage_capture.py` holds no entry |
+
+**No mutation.** A move is proven by substitution, as 7p's proof was planned (inventory
+§60.6).
+
+**BACKLOG 1.1's root-siblings item (P3) is done.** Batch 11 follows at D7b.

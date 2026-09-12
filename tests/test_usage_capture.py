@@ -848,7 +848,9 @@ class TestSaveUsageAtomicity:
         path = _usage_path(tmp_path)
         before = path.read_text()
 
-        with patch("spec4._usage._replace", side_effect=OSError("boom")):
+        with patch(
+            "spec4.project_manager._usage._replace", side_effect=OSError("boom")
+        ):
             with pytest.raises(OSError):
                 project_manager.save_usage(tmp_path, [_call("phaser")], 0)
         assert path.read_text() == before
@@ -870,7 +872,7 @@ class TestSaveUsageAtomicity:
             fh.write = _write  # type: ignore[method-assign]
             return fh
 
-        with patch("spec4._usage._fdopen", side_effect=_broken_fdopen):
+        with patch("spec4.project_manager._usage._fdopen", side_effect=_broken_fdopen):
             with pytest.raises(OSError):
                 project_manager.save_usage(tmp_path, [_call("phaser")], 0)
         assert path.read_text() == before

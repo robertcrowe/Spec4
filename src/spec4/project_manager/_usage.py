@@ -23,7 +23,7 @@ from spec4.app_constants import (
     ARTIFACT_USAGE,
 )
 from spec4 import __version__
-from spec4._paths import ensure_version_dir, get_version_dir
+from spec4.project_manager._paths import ensure_version_dir, get_version_dir
 
 # Test seams for ``_write_atomic``'s stdlib calls (CLEANUP_INVENTORY.md §52.5, §71).
 # A test that must make one of them fail patches the name here, which reaches

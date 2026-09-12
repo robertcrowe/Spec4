@@ -5,12 +5,12 @@ Handles working directory selection and .spec4 artifact storage.
 Cleanup Phase 4b split the four self-contained concerns into siblings, one
 module each:
 
-* :mod:`spec4._paths` -- where an artifact lives: the ``.spec4/`` directory
-  helpers, phase-set versioning, and the rounds on disk.
-* :mod:`spec4._artifacts` -- reading and writing every ``.spec4/`` artifact,
-  plus README assembly.
-* :mod:`spec4._phase_markdown` -- phase-file assembly and parsing.
-* :mod:`spec4._usage` -- the LLM usage log and the cost rollup.
+* :mod:`spec4.project_manager._paths` -- where an artifact lives: the
+  ``.spec4/`` directory helpers, phase-set versioning, and the rounds on disk.
+* :mod:`spec4.project_manager._artifacts` -- reading and writing every
+  ``.spec4/`` artifact, plus README assembly.
+* :mod:`spec4.project_manager._phase_markdown` -- phase-file assembly and parsing.
+* :mod:`spec4.project_manager._usage` -- the LLM usage log and the cost rollup.
 
 Staleness detection and agent-select button state stay here: both are decided
 from artifact mtimes across the whole pipeline rather than from any one
@@ -39,7 +39,7 @@ from spec4.app_constants import (
     PROJECT_MODES,
 )
 
-from spec4._artifacts import (
+from spec4.project_manager._artifacts import (
     load_ai_catalog,
     load_ai_features,
     load_deployment_plan,
@@ -67,7 +67,7 @@ from spec4._artifacts import (
     _with_readme_attribution,
     _write_text_if_changed,
 )
-from spec4._paths import (
+from spec4.project_manager._paths import (
     active_version,
     ensure_spec4_dir,
     ensure_version_dir,
@@ -79,12 +79,12 @@ from spec4._paths import (
     rounds_on_disk,
     session_is_brownfield,
 )
-from spec4._phase_markdown import (
+from spec4.project_manager._phase_markdown import (
     parse_phase_markdown,
     _phase_spec_preamble,
     render_phase_markdown,
 )
-from spec4._usage import (
+from spec4.project_manager._usage import (
     cost_summary,
     load_usage,
     round_cost,
