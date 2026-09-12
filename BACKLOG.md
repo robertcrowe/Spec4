@@ -35,35 +35,47 @@ Section numbers (§N) refer to `CLEANUP_INVENTORY.md`. The tools named below are
   - It reopens if one does, and the plan says how (§79; `PHASE8_RECORD.md` §1.5).
 - **Not promote targets:** the 24 `keep: subject is the private object` names (§54.1,
   §55.4). The collection is each test's subject.
-- **Dedupes:**
-  - `revision_delta`'s five copies, a straight lift to `_utils` (§67.11);
-  - the mechanism-summary trim, which is written twice (§78.2).
-- **Not scheduled:** the `sys.modules` lookup in `test_cost_summary.py`. It is now
-  scaffolding for a shadow that no longer exists (§64).
+- **The two dedupes are done:**
+  - `revision_delta`'s five copies (§67.11) are one body in `agents/_revision.py`, which
+    the five import (8d2: `PHASE8_RECORD.md` §7);
+  - the mechanism-summary trim (§78.2) is one helper, `pattern_loader.trimmed_description`
+    (8d: `PHASE8_RECORD.md` §6).
+- **The `sys.modules` lookup in `test_cost_summary.py` is removed** (§64; D4:
+  `PHASE8_RECORD.md` §20).
 
 ### 1.2 Types (§77.8)
 
 - **The session-dict edge** (90 `: Any` lines) and **the JSON-artifact edge** (107), as
-  `TypedDict` design.
-- **The 107 prop-bound callback inputs** on mixed lines.
-- **The 148 `-> Any` return lines** outside the grep.
-- **`object` for `_as_int` and `round_number_from_value`,** and `run_with_timeout`'s
-  generic form, which needs a runtime TypeVar.
-- **A question: should `_fmt_usd` accept `str`?** A passing test pins that it does
-  (`tests/test_cost_summary.py:160`).
+  `TypedDict` design. D14 added the returns' edges to this count: 82 session-edge and 40
+  source-edge returns (`PHASE8_RECORD.md` §21.2).
+
+**Done in Phase 8:**
+- **the 107 prop-bound callback inputs:** 105 typed by their prop, and 2 load-bearing (8h:
+  `PHASE8_RECORD.md` §12). The 39 that no test reaches are in 2.1.
+- **the `-> Any` returns, counted by AST:** 144 bare returns (the 148 was a grep of lines).
+  - 14 were typeable, and were taken, so 130 remain (D14: `PHASE8_RECORD.md` §21).
+  - The 130 are the 122 edges above and 8 load-bearing.
+- **`object` for `_as_int` and `round_number_from_value`, and `run_with_timeout`'s PEP 695
+  form** (8b: `PHASE8_RECORD.md` §4).
+- **`_fmt_usd`:** no production caller passes a string, so its annotation was narrowed (8b:
+  `PHASE8_RECORD.md` §4.2).
 
 ### 1.3 Tests
 
 | Item | Size | Source |
 |---|---|---|
-| The nine racing tests: patch `streaming.start`, or wait for the stream | 9 tests; a defect | §79.0, §79.2 |
-| The Prioritizer banner | 1 assertion | §79.0 |
 | Tests that assert less than they claim, and a path no test reaches. Four tests name an event and still pass when it never happens, each under a turn's forbidden-`None` mutation: `test_brainstormer.py::TestBrainstormer::test_non_vision_response_stays_in_progress`, `::TestBrainstormerUnparseableArtifact::test_failed_reask_leaves_no_dead_end_user_turn`, `::TestBrainstormerUnparseableArtifact::test_state_is_not_advanced_when_both_attempts_fail`, and `test_code_scanner_progress.py::TestCharsTotal::test_total_is_monotonic_across_the_handover`. The path is `code_scanner.run`'s recap fall-through, reached by 0 of 43 traced invocations | 4 tests, 1 path | `PHASE8_RECORD.md` §14.2, §16, §17; `CLEANUP_REPORT.md` §2.4a |
-| Documented contract keys the suite never saw change | 31 keys across 4 generators: one contract test each | §79.3 |
-| Annotated targets no test reaches: `on_designer_generate_mock` ×3, `on_provider_hint`, `_designer_tool_call_followup` | 3 functions | §77.9 |
-| Feature-spec section guards: `> 2` against its siblings' `> 3`. Check that real output reaches it before deciding | 3 builders | §78.2 |
 
 **Closed in Phase 8, and out of this table:**
+- the nine racing tests (§79.0, §79.2), which now wait for their worker (8f:
+  `PHASE8_RECORD.md` §10);
+- the Prioritizer banner (§79.0), now asserted whole (8c: `PHASE8_RECORD.md` §5);
+- the 31 documented contract keys (§79.3), each now driven from its generator's own entry
+  by five tests (8g: `PHASE8_RECORD.md` §11);
+- the annotated targets no test reached (§77.9), with one test per function. The sweep now
+  reaches 63 of 63 (8e: `PHASE8_RECORD.md` §8);
+- the feature-spec section guards (§78.2), now at `> 3` and pinned both ways (8a and D1:
+  `PHASE8_RECORD.md` §3, §19);
 - the `tests/test_agents.py` split (D9: `PHASE8_RECORD.md` §25);
 - PLR2004 (D12): `tests/**` is exempt by policy, and the rest waits in Part 2 (2.7).
 
@@ -169,7 +181,7 @@ resolved in Phase 0.5:
    Fixed after 0.5c, with a test: `TestDesignerLayoutWithoutProject`.
 
 §10 was not extended after Phase 0.5. The one later defect the record names is a test
-defect, the nine racing tests, and it is on the Phase 8 list (1.3).
+defect, the nine racing tests. Phase 8 fixed it (8f: `PHASE8_RECORD.md` §10).
 
 ### 2.6 Test-family consolidation, when a structural reason arrives
 

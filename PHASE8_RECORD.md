@@ -3884,3 +3884,207 @@ tomllib: HEAD == working tree: True
 
 **Next is Phase 8's close-out, the last stop.** Its remeasure maps `project_manager`'s
 paths as a family.
+
+## 27. Phase 8 closes
+
+This is fifth and last in §19.1's order. It is §1.5's close: the remeasure, with every moved
+cell explained, and then the stop.
+- **BACKLOG Part 1 is reconciled here,** as §26.3 said it would be (§27.3).
+- **No file under `src/` or `tests/` changes.**
+
+### 27.1 The remeasure: `6956aca` against HEAD
+
+**How it ran:**
+
+```sh
+uv run python scripts/cleanup/remeasure.py 6956aca HEAD \
+    --cov-base scripts/cleanup/data/coverage_85a9cb6.txt --run-coverage <scratch>/closeout \
+    --families <scratch>/closeout/families_d7.json --json <scratch>/closeout/remeasure.json
+```
+
+- **The command is §1.5's,** plus two flags: `--families` for D7a's move, and `--json` for
+  re-deriving the lists.
+- **It exited 0 after 195 s,** and the tree was clean before and after.
+- **`--run-coverage` ran the suite in a `git archive` export of HEAD.** It gave `4224
+  passed, 1 skipped` and `TOTAL 12475 808 94%`, the same as the gate at `a42fc65`.
+
+**A tool limit, found here: `remeasure.py` drops every families key that starts with `_`.**
+- It reads such a key as documentation, like the file's `_about`.
+- D7a's four siblings are `_artifacts.py`, `_paths.py`, `_phase_markdown.py` and `_usage.py`,
+  so only `project_manager.py`'s key survived. The pre-run check said so: `family keys in
+  base coverage: 1 of 1`.
+- So the report lists the four as "new at head, outside any family".
+- The tool is not changed: under D13, a limit is fixed when the tool is next used for it.
+  This one goes to the stop (§27.5).
+- The five pairs were re-derived with the tool's own `coverage()` parser, on the base's
+  saved output and the head's fresh one:
+
+| Base | Head | Statements / missed |
+|---|---|---|
+| `project_manager.py` | `project_manager/__init__.py` | 110 / 1, identical |
+| `_artifacts.py` | `project_manager/_artifacts.py` | 257 / 17, identical |
+| `_paths.py` | `project_manager/_paths.py` | 60 / 0, identical |
+| `_phase_markdown.py` | `project_manager/_phase_markdown.py` | 230 / 0, identical |
+| `_usage.py` | `project_manager/_usage.py` | 160 / 2, identical |
+
+**The report's cells:**
+
+| Check | Base | Head |
+|---|---|---|
+| Tests | 4210 passed, 1 skipped | 4224 passed, 1 skipped |
+| Coverage | 12,459 / 876 / 93.0% | 12,475 / 808 / 93.5% |
+| `ruff check src/ tests/` | All checks passed! | All checks passed! |
+| `ruff format --check src/ tests/` | 221 files already formatted | 229 files already formatted |
+| `mypy src/` | Success: no issues found in 92 source files | Success: no issues found in 93 source files |
+
+Same path: 87 modules; 10 rose, 75 unchanged, 2 fell.
+- fell: `agentifier/_render.py` 253 / 11 / 95.7% -> 247 / 11 / 95.5%
+- fell: `agents/stack_advisor/_stack_shape.py` 87 / 2 / 97.7% -> 81 / 2 / 97.5%
+- new at head, outside any family: `agents/_revision.py`, and the four siblings above
+
+| The base's six lowest-covered | Base | Head |
+|---|---|---|
+| `callbacks/designer/_wizard.py` | 49.6% | 60.0% |
+| `callbacks/_nav.py` | 62.2% | 62.2% |
+| `callbacks/_chat.py` | 74.5% | 74.5% |
+| `agents/_turn_flow.py` | 75.4% | 75.4% |
+| `feature_specs.py` | 76.7% | 84.2% |
+| `callbacks/__init__.py` | 78.3% | 78.3% |
+
+| Measure | Base | Head |
+|---|---|---|
+| vulture, no whitelist / whitelisted | 60 / 26 | 58 / 26 |
+| ruff F401/F811/F841/ARG, `src/` / `tests/` | 0 / 178 | 0 / 183 |
+| Top-level definitions / no reference outside own file | 1093 / 513 | 1100 / 521 |
+| Referenced only from tests/evals/scripts | 135 | 137 |
+| deptry total (DEP001 own) | 347 (314) | 352 (319) |
+| Complexity, `noqa` ignored: C901 / PLR0912 / PLR0913 / PLR0915 | 9 / 6 / 12 / 3 | 6 / 3 / 12 / 1 |
+| `src/spec4/` | 92 files, 40,284 lines | 93 files, 40,411 lines |
+| `tests/` | 129 files, 56,534 lines | 136 files, 57,182 lines |
+| Largest test file | `tests/test_agents.py`, 5,268 lines, 332 functions | `tests/test_designer.py`, 2,512 lines, 210 functions |
+| Modules / cycles / layer violations | 92 / 0 / 0 | 93 / 0 / 0 |
+| Importers of `llm` / `project_manager`; TYPE_CHECKING edges; `global`s | 21 / 23; 3; 0 | 21 / 23; 3; 0 |
+
+**Every moved cell, explained.** §18.1 explained `6956aca` → `dd9b8ab`. The half-close
+report was diffed line by line against this one, and each difference is covered below:
+- **Tests, 4222 → 4224 (+2):** D1's pair (§19).
+- **Misses, 834 → 808 (−26):** all 26 are in `feature_specs.py`, 80 → 54 (D1, §19.3).
+  - The pair was the first thing in the suite to run the three builders' entry paths.
+  - So `feature_specs.py` moves from "fell" (76.5%) to "rose" (84.2%). The rose count goes
+    9 → 10, and fell goes 3 → 2.
+  - It also leaves the ten lowest-covered at head, and `session.py` (82.7%) enters.
+- **Statements, 12,475: unchanged since §18.1.** D14's annotations and D7's moves and
+  renames add none.
+- **Same path, 92 → 87 modules:** D7a's five moved modules leave the same-path set.
+  - `project_manager.py` is the one family, and it is identical.
+  - The four siblings are "new at head", identical by the table above.
+  - 87 + 1 + 4 + `agents/_revision.py` = 93.
+- **Format, 223 → 229 files, and `tests/`, 130 → 136 files:** D9b's five new test files and
+  `tests/_agent_helpers.py`.
+- **`src/`, 40,405 → 40,411 lines (+6).**
+  - D14 +3: the `TYPE_CHECKING` block for `NoUpdate` in `callbacks/_chat.py`.
+  - D7a +3: the wrapped import in `project_manager/_artifacts.py`.
+  - D1 changes six lines in `feature_specs.py`, for a net of 0.
+- **`tests/`, 57,039 → 57,182 lines (+143):**
+  - D1 +50, `TestSectionGuards`;
+  - D4 −4, in `test_cost_summary.py`;
+  - D7a +2, the wrapped patch strings in `test_usage_capture.py`;
+  - D9b +95, the new headers and docstrings, net of `test_agents.py`.
+- **Largest test file:** `test_designer.py`, since D9b split `test_agents.py`.
+- **Paths only:**
+  - The review list is the same 24 names. Two now carry D7a's paths:
+    `spec4.project_manager._paths.RoundsOnDisk` and
+    `spec4.project_manager._usage.usage_rollup_name`.
+  - C901's six are the same, with `_artifact_button_state` now at
+    `project_manager/__init__.py`.
+- **Unchanged since §18.1, line for line:**
+  - vulture, both runs, and the 26 whitelisted lines;
+  - the ARG and cross-reference rows, and deptry;
+  - complexity, files over 1,300 lines, and the longest functions;
+  - the import graph, and the lazy couplings.
+
+### 27.2 Phase 8, whole
+
+| Measure | Before Phase 8 | After | By |
+|---|---|---|---|
+| Tests | 4210 passed | 4224 passed | 8c +1, 8e +6, 8g2 +5, D1 +2 |
+| Misses | 876 (93.0%) | 808 (93.5%) | 8e −24, 8g2 −18, D1 −26 |
+| Complexity findings, `noqa` ignored | 30 | 22 | the three turns, 8i1–8i3 |
+| `noqa: C901` in `src/` | 9 | 6 | the three turns; the six left are §18.2's |
+| Bare `Any` parameters, by AST | 355 at 8h's start | 250 | 8h (§15.1) |
+| Bare `-> Any` returns, by AST | 144 at D14's start | 130 | D14 (§21) |
+| Tools in `scripts/cleanup/` | 12 | 14 | `contract_check.py` (8g1), `move_check.py` (D9a) |
+| `tests/test_agents.py` | 5,268 lines | 171 lines, and five per-agent files | D9b |
+| The floor | 456 / 456 | 456 / 456 | 16 tier-B ids changed file at D9b |
+
+- **Commits:** 28 from `dbd7008` (the pre-work) to `a4fcb8c` (§26), and this one is the
+  29th.
+- **Every sub-phase proved its change with a committed tool,** or with a scratch check
+  recorded in its section.
+
+### 27.3 BACKLOG Part 1, reconciled
+
+Each item Phase 8 finished leaves Part 1's lists, and a line naming its sub-phase and
+section takes its place:
+- **1.1:**
+  - the two dedupes (P10, P11) are done;
+  - the `sys.modules` lookup (P12) is removed.
+- **1.2:**
+  - P14 to P18 move to a "Done in Phase 8" list;
+  - the design limit stays, and it now carries D14's 122 return edges.
+- **1.3:**
+  - P19 to P23 join the closure note under the table;
+  - one row stays: 8i's test row, which is work.
+- **2.5:** its sentence on the racing nine now says Phase 8 fixed them.
+
+**Part 1 now holds three open items:**
+- **P9, a standing ruling with no work:** the 24 `keep` names.
+- **The design limit:** P13's parameter edges, and D14's return edges.
+- **8i's test row:** four tests and one path.
+
+### 27.4 The decisions half's findings, in one place
+
+1. **One of the plan's claims was wrong** (§25.2). It said "No other test imports from
+   `test_agents.py`". One does, by a relative import. It still resolves, and check 1 covers
+   the dependency.
+2. **Tool behaviour met on the way:**
+   - **`rename_apply.py` rewrites every document except `CLEANUP_INVENTORY.md`,** the
+     add-only record included (§23.1). Each was restored from HEAD.
+   - **`patch_resolve.py` gives 8 FAILs on `project_manager`'s patch strings,** the same
+     before the move and after it. Each is a limit of the tool's form, met by
+     `check4_attr.py` or by hand (§22.2).
+   - **`move_check.py` crashed on an unparseable file** during its own bite. It was fixed
+     before its commit (§24.2).
+   - **`remeasure.py` drops families keys that start with `_`** (§27.1).
+   - **uv rebuilt the editable install into `.venv/`** when `pyproject.toml`'s comment
+     changed (§26.4).
+3. **Claims written ahead of the file, now made true:**
+   - §21's "on the Part 2 list", since §26;
+   - D9a's README introduction (§26).
+4. **Stale docstrings, recorded and not edited:**
+   - `test_project_manager_golden.py:10–11` (§23);
+   - `test_renderer_goldens.py:13` (§25.2).
+5. **A size that moved:** PLR2004 in `scripts/` went 20 → 21, with `move_check.py`'s one
+   (§26.2).
+
+| Gate | Result |
+|---|---|
+| Ruff / format | `All checks passed!` on `src/ tests/` and on `.`; `247 files already formatted` |
+| Tests, coverage, mypy | the remeasure's own run above: `4224 passed, 1 skipped`, `TOTAL 12475 808 94%`, `Success: no issues found in 93 source files`. No file under `src/` or `tests/` changed |
+| Floor / off-limits | tier-B `183 (expect 183)`, `456 (expect 456)`, `FAILURES: 0` |
+
+### 27.5 Stop: what is left to rule
+
+Phase 8's items are all done or ruled. Five questions remain, and none of them is taken
+here:
+1. **§25.2's relative import:** re-point `test_stack_shape_resilience.py:41` to
+   `._agent_helpers` under §54.7, or leave it with its record.
+2. **`trace_diff.py` does not print step reach** (§14.2). This is a fourth limit of D13's
+   kind: BACKLOG 2.7, or drop?
+3. **`remeasure.py`'s `_`-prefixed families keys** (§27.1). The same question.
+4. **Part 1's three open items, now that Phase 8 is closed:** where P9, the design limit and
+   8i's test row go, and whether Part 1 keeps its name "Phase 8".
+5. **`CLEANUP_REPORT.md`:** its §5, "Phase 8's list", is the list this phase has now worked
+   through. Should the report gain a Phase 8 note, or stay the Phase 7 document it is?
+
+Phase 8 stops here.
