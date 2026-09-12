@@ -90,6 +90,15 @@ This was ruled at review of the close-out (§80.2): it is not cleanup.
   nobody has pinned.
 - **The cleanup made that work possible.** `trace_identity.py` and `mutate.py` are what it
   hands over for it.
+- **39 typed callback parameters that no test exercises** (Phase 8, 8h: `PHASE8_RECORD.md`
+  §12.4, §15). 8h typed 105 prop-bound callback inputs, and the width sweep found that no
+  test reaches 39 of them. For those, the width rule holds only vacuously, as it did for
+  8e's five before their tests.
+  - **26 are in the `callbacks/__init__` family:** `__init__.py` 6, `_artifacts.py` 6,
+    `_chat.py` 3, `_gate.py` 1, `_nav.py` 8 and `_setup.py` 2.
+  - **13 are in the `callbacks/designer` family:** `_wizard.py` 10 and `_refine.py` 3.
+  - **Every one sits in a family this entry names,** so none is a Phase 8 test row. The row
+    map is `scripts/cleanup/data/rows_8h.json`.
 
 The figures below were measured at `85a9cb6`, and `tests/README.md` carries the full table.
 

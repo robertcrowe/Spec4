@@ -1,0 +1,1530 @@
+[
+ {
+  "file": "src/spec4/callbacks/__init__.py",
+  "base": 243,
+  "head": 243,
+  "klass": "genuinely typeable",
+  "qual": "on_status_bar_dir",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "html.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['html.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/__init__.py",
+  "base": 278,
+  "head": 278,
+  "klass": "genuinely typeable",
+  "qual": "on_status_bar_setup",
+  "target": "model_n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "html.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['html.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/__init__.py",
+  "base": 278,
+  "head": 278,
+  "klass": "genuinely typeable",
+  "qual": "on_status_bar_setup",
+  "target": "settings_n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "html.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['html.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/__init__.py",
+  "base": 365,
+  "head": 365,
+  "klass": "genuinely typeable",
+  "qual": "on_browser_navigate",
+  "target": "pathname",
+  "prop": "pathname",
+  "kind": "Input",
+  "component": [
+   "dcc.Location"
+  ],
+  "ptype": "str | None",
+  "evidence": "prop 'pathname' of ['dcc.Location']"
+ },
+ {
+  "file": "src/spec4/callbacks/__init__.py",
+  "base": 436,
+  "head": 436,
+  "klass": "genuinely typeable",
+  "qual": "on_dir_select",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/__init__.py",
+  "base": 463,
+  "head": 463,
+  "klass": "genuinely typeable",
+  "qual": "on_dir_up",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/__init__.py",
+  "base": 477,
+  "head": 477,
+  "klass": "genuinely typeable",
+  "qual": "on_dir_path_enter",
+  "target": "n",
+  "prop": "n_submit",
+  "kind": "Input",
+  "component": [
+   "dmc.TextInput"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_submit' of ['dmc.TextInput']"
+ },
+ {
+  "file": "src/spec4/callbacks/__init__.py",
+  "base": 477,
+  "head": 477,
+  "klass": "genuinely typeable",
+  "qual": "on_dir_path_enter",
+  "target": "value",
+  "prop": "value",
+  "kind": "State",
+  "component": [
+   "dmc.TextInput"
+  ],
+  "ptype": "str | None",
+  "evidence": "prop 'value' of ['dmc.TextInput']"
+ },
+ {
+  "file": "src/spec4/callbacks/__init__.py",
+  "base": 492,
+  "head": 492,
+  "klass": "genuinely typeable",
+  "qual": "on_subdir_click",
+  "target": "n_clicks_list",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "list[int | None]",
+  "evidence": "prop 'n_clicks' of the id, pattern-matched with ALL"
+ },
+ {
+  "file": "src/spec4/callbacks/__init__.py",
+  "base": 505,
+  "head": 505,
+  "klass": "genuinely typeable",
+  "qual": "on_create_folder",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/__init__.py",
+  "base": 505,
+  "head": 505,
+  "klass": "genuinely typeable",
+  "qual": "on_create_folder",
+  "target": "name",
+  "prop": "value",
+  "kind": "State",
+  "component": [
+   "dmc.TextInput"
+  ],
+  "ptype": "str | None",
+  "evidence": "prop 'value' of ['dmc.TextInput']"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 73,
+  "head": 73,
+  "klass": "genuinely typeable",
+  "qual": "on_round_tree",
+  "target": "_id",
+  "prop": "id",
+  "kind": "Input",
+  "component": [],
+  "ptype": "str",
+  "evidence": "an Input on the 'id' prop receives the id itself, a str"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 134,
+  "head": 134,
+  "klass": "genuinely typeable",
+  "qual": "on_round_tree_line",
+  "target": "n_clicks_list",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "list[int | None]",
+  "evidence": "prop 'n_clicks' of the id, pattern-matched with ALL"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 189,
+  "head": 189,
+  "klass": "genuinely typeable",
+  "qual": "on_artifact_round",
+  "target": "n_clicks_list",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "list[int | None]",
+  "evidence": "prop 'n_clicks' of the id, pattern-matched with ALL"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 246,
+  "head": 246,
+  "klass": "genuinely typeable",
+  "qual": "on_artifact_pane",
+  "target": "_id",
+  "prop": "id",
+  "kind": "Input",
+  "component": [
+   "html.Div"
+  ],
+  "ptype": "str",
+  "evidence": "an Input on the 'id' prop receives the id itself, a str"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 285,
+  "head": 285,
+  "klass": "genuinely typeable",
+  "qual": "on_artifact_download",
+  "target": "n_clicks",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 325,
+  "head": 325,
+  "klass": "genuinely typeable",
+  "qual": "on_round_cost",
+  "target": "_id",
+  "prop": "id",
+  "kind": "Input",
+  "component": [],
+  "ptype": "str",
+  "evidence": "an Input on the 'id' prop receives the id itself, a str"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 383,
+  "head": 383,
+  "klass": "genuinely typeable",
+  "qual": "dl_vision",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 395,
+  "head": 395,
+  "klass": "genuinely typeable",
+  "qual": "dl_stack",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 407,
+  "head": 407,
+  "klass": "genuinely typeable",
+  "qual": "dl_code_review",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 419,
+  "head": 419,
+  "klass": "genuinely typeable",
+  "qual": "dl_features",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 431,
+  "head": 431,
+  "klass": "genuinely typeable",
+  "qual": "dl_phases",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 443,
+  "head": 443,
+  "klass": "genuinely typeable",
+  "qual": "dl_deployment",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_artifacts.py",
+  "base": 516,
+  "head": 516,
+  "klass": "genuinely typeable",
+  "qual": "on_open_artifact",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']",
+  "closure": "defined in _register_open_artifact; the committed sweep cannot resolve it (PHASE8_RECORD.md 12.4, D13)"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 69,
+  "head": 69,
+  "klass": "genuinely typeable",
+  "qual": "on_init_turn",
+  "target": "n",
+  "prop": "n_intervals",
+  "kind": "Input",
+  "component": [
+   "dcc.Interval"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_intervals' of ['dcc.Interval']"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 107,
+  "head": 107,
+  "klass": "genuinely typeable",
+  "qual": "on_chat_submit",
+  "target": "_n_clicks",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 107,
+  "head": 107,
+  "klass": "genuinely typeable",
+  "qual": "on_chat_submit",
+  "target": "_n_submit",
+  "prop": "n_submit",
+  "kind": "Input",
+  "component": [
+   "dmc.Textarea"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_submit' of ['dmc.Textarea']"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 107,
+  "head": 107,
+  "klass": "genuinely typeable",
+  "qual": "on_chat_submit",
+  "target": "user_input",
+  "prop": "value",
+  "kind": "State",
+  "component": [
+   "dmc.Textarea"
+  ],
+  "ptype": "str | None",
+  "evidence": "prop 'value' of ['dmc.Textarea']"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 148,
+  "head": 148,
+  "klass": "genuinely typeable",
+  "qual": "on_fast_forward",
+  "target": "n_clicks",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 220,
+  "head": 220,
+  "klass": "genuinely typeable",
+  "qual": "on_chat_retry",
+  "target": "n_clicks",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 275,
+  "head": 275,
+  "klass": "genuinely typeable",
+  "qual": "on_breadth_submit",
+  "target": "n_clicks",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 275,
+  "head": 275,
+  "klass": "genuinely typeable",
+  "qual": "on_breadth_submit",
+  "target": "selected",
+  "prop": "value",
+  "kind": "State",
+  "component": [
+   "dmc.CheckboxGroup"
+  ],
+  "ptype": "list[str] | None",
+  "evidence": "prop 'value' of ['dmc.CheckboxGroup']"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 307,
+  "head": 307,
+  "klass": "genuinely typeable",
+  "qual": "on_breadth_try_again",
+  "target": "n_clicks",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 307,
+  "head": 307,
+  "klass": "genuinely typeable",
+  "qual": "on_breadth_try_again",
+  "target": "note",
+  "prop": "value",
+  "kind": "State",
+  "component": [
+   "dmc.Textarea"
+  ],
+  "ptype": "str | None",
+  "evidence": "prop 'value' of ['dmc.Textarea']"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 399,
+  "head": 399,
+  "klass": "genuinely typeable",
+  "qual": "on_breadth_change",
+  "target": "value",
+  "prop": "value",
+  "kind": "Input",
+  "component": [
+   "dmc.CheckboxGroup"
+  ],
+  "ptype": "list[str] | None",
+  "evidence": "prop 'value' of ['dmc.CheckboxGroup']"
+ },
+ {
+  "file": "src/spec4/callbacks/_chat.py",
+  "base": 462,
+  "head": 462,
+  "klass": "genuinely typeable",
+  "qual": "on_stream_poll",
+  "target": "_n",
+  "prop": "n_intervals",
+  "kind": "Input",
+  "component": [
+   "dcc.Interval"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_intervals' of ['dcc.Interval']"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 56,
+  "head": 56,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_provider_change",
+  "target": "provider_label",
+  "prop": "value",
+  "kind": "Input",
+  "component": [],
+  "ptype": "str | None",
+  "evidence": "dmc.Select, layouts/_setup.py:152-153"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 89,
+  "head": 89,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_effort_options",
+  "target": "effort",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": "str | None",
+  "evidence": "dmc.Select, layouts/_setup.py:211-212"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 89,
+  "head": 89,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_effort_options",
+  "target": "model",
+  "prop": "value",
+  "kind": "Input",
+  "component": [],
+  "ptype": "str | None",
+  "evidence": "dmc.Select, layouts/_setup.py:200-201"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 118,
+  "head": 118,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_use_default",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 140,
+  "head": 140,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_keep",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 162,
+  "head": 162,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_pick",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 175,
+  "head": 175,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_chip",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 194,
+  "head": 194,
+  "klass": "genuinely typeable",
+  "qual": "on_chat_retry_model",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 222,
+  "head": 222,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_back",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 240,
+  "head": 240,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_connect",
+  "target": "api_key",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": "str | None",
+  "evidence": "dmc.PasswordInput, layouts/_setup.py:164-165"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 240,
+  "head": 240,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_connect",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 240,
+  "head": 240,
+  "klass": "load-bearing",
+  "qual": "on_gate_connect",
+  "target": "provider_label",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": null,
+  "evidence": "dmc.Select, layouts/_setup.py:152-153",
+  "reason": "passed bare to provider_key_for_label(label: str): str | None is not a str, so the row stays Any (7o's rule)"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 302,
+  "head": 302,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_continue",
+  "target": "chosen_effort",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": "str | None",
+  "evidence": "dmc.Select, layouts/_setup.py:211-212"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 302,
+  "head": 302,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_continue",
+  "target": "model",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": "str | None",
+  "evidence": "dmc.Select, layouts/_setup.py:200-201"
+ },
+ {
+  "file": "src/spec4/callbacks/_gate.py",
+  "base": 302,
+  "head": 302,
+  "klass": "genuinely typeable",
+  "qual": "on_gate_continue",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_nav.py",
+  "base": 63,
+  "head": 63,
+  "klass": "genuinely typeable",
+  "qual": "on_agent_pill_click",
+  "target": "n_clicks_list",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "list[int | None]",
+  "evidence": "prop 'n_clicks' of the id, pattern-matched with ALL"
+ },
+ {
+  "file": "src/spec4/callbacks/_nav.py",
+  "base": 116,
+  "head": 116,
+  "klass": "genuinely typeable",
+  "qual": "on_project_mode_choice",
+  "target": "n_existing",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_nav.py",
+  "base": 116,
+  "head": 116,
+  "klass": "genuinely typeable",
+  "qual": "on_project_mode_choice",
+  "target": "n_new",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_nav.py",
+  "base": 139,
+  "head": 139,
+  "klass": "genuinely typeable",
+  "qual": "on_rescan_project",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_nav.py",
+  "base": 162,
+  "head": 162,
+  "klass": "genuinely typeable",
+  "qual": "on_review_to_brainstormer",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_nav.py",
+  "base": 175,
+  "head": 175,
+  "klass": "genuinely typeable",
+  "qual": "on_brainstormer_to_designer",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_nav.py",
+  "base": 188,
+  "head": 188,
+  "klass": "genuinely typeable",
+  "qual": "on_brainstormer_to_agentifier",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_nav.py",
+  "base": 201,
+  "head": 201,
+  "klass": "genuinely typeable",
+  "qual": "on_agentifier_to_designer",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_nav.py",
+  "base": 213,
+  "head": 213,
+  "klass": "genuinely typeable",
+  "qual": "on_stack_to_phaser",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_nav.py",
+  "base": 230,
+  "head": 230,
+  "klass": "genuinely typeable",
+  "qual": "on_phaser_to_deployer",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_nav.py",
+  "base": 243,
+  "head": 243,
+  "klass": "genuinely typeable",
+  "qual": "on_deployer_new_project",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 61,
+  "head": 61,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_connect",
+  "target": "api_key",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": "str | None",
+  "evidence": "dmc.PasswordInput, layouts/_setup.py:164-165"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 61,
+  "head": 61,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_connect",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 61,
+  "head": 61,
+  "klass": "load-bearing",
+  "qual": "on_setup_connect",
+  "target": "provider_label",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": null,
+  "evidence": "dmc.Select, layouts/_setup.py:152-153",
+  "reason": "passed bare to provider_key_for_label(label: str): str | None is not a str, so the row stays Any (7o's rule)"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 61,
+  "head": 61,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_connect",
+  "target": "save_prefs",
+  "prop": "checked",
+  "kind": "State",
+  "component": [
+   "dmc.Checkbox"
+  ],
+  "ptype": "bool | None",
+  "evidence": "prop 'checked' of ['dmc.Checkbox']"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 131,
+  "head": 131,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_clear",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 143,
+  "head": 143,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_back_provider",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 163,
+  "head": 163,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_effort_options",
+  "target": "effort",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": "str | None",
+  "evidence": "dmc.Select, layouts/_setup.py:211-212"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 163,
+  "head": 163,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_effort_options",
+  "target": "model",
+  "prop": "value",
+  "kind": "Input",
+  "component": [],
+  "ptype": "str | None",
+  "evidence": "dmc.Select, layouts/_setup.py:200-201"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 200,
+  "head": 200,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_model_continue",
+  "target": "chosen_effort",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": "str | None",
+  "evidence": "dmc.Select, layouts/_setup.py:211-212"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 200,
+  "head": 200,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_model_continue",
+  "target": "model",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": "str | None",
+  "evidence": "dmc.Select, layouts/_setup.py:200-201"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 200,
+  "head": 200,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_model_continue",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 248,
+  "head": 248,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_back_model",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 301,
+  "head": 301,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_search_connect",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 301,
+  "head": 301,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_search_connect",
+  "target": "provider_label",
+  "prop": "value",
+  "kind": "State",
+  "component": [
+   "dmc.Select"
+  ],
+  "ptype": "str | None",
+  "evidence": "prop 'value' of ['dmc.Select']"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 301,
+  "head": 301,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_search_connect",
+  "target": "search_key",
+  "prop": "value",
+  "kind": "State",
+  "component": [
+   "dmc.PasswordInput"
+  ],
+  "ptype": "str | None",
+  "evidence": "prop 'value' of ['dmc.PasswordInput']"
+ },
+ {
+  "file": "src/spec4/callbacks/_setup.py",
+  "base": 352,
+  "head": 352,
+  "klass": "genuinely typeable",
+  "qual": "on_setup_search_skip",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [
+   "dmc.Button"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of ['dmc.Button']"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/__init__.py",
+  "base": 183,
+  "head": 183,
+  "klass": "genuinely typeable",
+  "qual": "on_mock_stream_poll",
+  "target": "_n",
+  "prop": "n_intervals",
+  "kind": "Input",
+  "component": [
+   "dcc.Interval"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_intervals' of ['dcc.Interval']"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 36,
+  "head": 36,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_refine",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 48,
+  "head": 48,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_refine_cancel",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 64,
+  "head": 64,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_refine_upload",
+  "target": "annotations",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": "list[str | None]",
+  "evidence": "dmc.Textarea values, pattern-matched with ALL (layouts/designer.py:297, :537)"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 64,
+  "head": 64,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_refine_upload",
+  "target": "contents",
+  "prop": "contents",
+  "kind": "Input",
+  "component": [
+   "dcc.Upload",
+   "html.Div"
+  ],
+  "ptype": "str | list[str] | None",
+  "evidence": "dcc.Upload with multiple=True (layouts/designer.py:579-582): a list for several files, a str in the tests' single-file path; the body takes both (isinstance). The first map's prop rule gave str | None and the sweep rejected it",
+  "ptype_first": "str | None"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 64,
+  "head": 64,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_refine_upload",
+  "target": "filename",
+  "prop": "filename",
+  "kind": "State",
+  "component": [
+   "dcc.Upload",
+   "html.Div"
+  ],
+  "ptype": "str | list[str] | None",
+  "evidence": "dcc.Upload with multiple=True (layouts/designer.py:579-582): a list for several files, a str in the tests' single-file path; the body takes both (isinstance). The first map's prop rule gave str | None and the sweep rejected it",
+  "ptype_first": "str | None"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 64,
+  "head": 64,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_refine_upload",
+  "target": "refine_text",
+  "prop": "value",
+  "kind": "State",
+  "component": [
+   "dmc.Textarea"
+  ],
+  "ptype": "str | None",
+  "evidence": "prop 'value' of ['dmc.Textarea']"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 88,
+  "head": 88,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_refine_image_delete",
+  "target": "annotations",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": "list[str | None]",
+  "evidence": "dmc.Textarea values, pattern-matched with ALL (layouts/designer.py:297, :537)"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 88,
+  "head": 88,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_refine_image_delete",
+  "target": "n_clicks_list",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "list[int | None]",
+  "evidence": "prop 'n_clicks' of the id, pattern-matched with ALL"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 88,
+  "head": 88,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_refine_image_delete",
+  "target": "refine_text",
+  "prop": "value",
+  "kind": "State",
+  "component": [
+   "dmc.Textarea"
+  ],
+  "ptype": "str | None",
+  "evidence": "prop 'value' of ['dmc.Textarea']"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 196,
+  "head": 196,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_revise_stale",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 267,
+  "head": 267,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_retry_model",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 362,
+  "head": 362,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_retry",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_refine.py",
+  "base": 380,
+  "head": 380,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_auto_retry",
+  "target": "n",
+  "prop": "n_intervals",
+  "kind": "Input",
+  "component": [
+   "dcc.Interval"
+  ],
+  "ptype": "int | None",
+  "evidence": "prop 'n_intervals' of ['dcc.Interval']"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 47,
+  "head": 47,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_add_gui",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 73,
+  "head": 73,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_skip_1",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 86,
+  "head": 86,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_skip_2",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 104,
+  "head": 104,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_step2_choice",
+  "target": "n_create",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 104,
+  "head": 104,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_step2_choice",
+  "target": "n_modify",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 147,
+  "head": 147,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_carry_forward",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 182,
+  "head": 182,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_preferences_next",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 182,
+  "head": 182,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_preferences_next",
+  "target": "pref_text",
+  "prop": "value",
+  "kind": "State",
+  "component": [
+   "dmc.Textarea"
+  ],
+  "ptype": "str | None",
+  "evidence": "prop 'value' of ['dmc.Textarea']"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 195,
+  "head": 195,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_screenshot_upload",
+  "target": "annotations",
+  "prop": "value",
+  "kind": "State",
+  "component": [],
+  "ptype": "list[str | None]",
+  "evidence": "dmc.Textarea values, pattern-matched with ALL (layouts/designer.py:297, :537)"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 195,
+  "head": 195,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_screenshot_upload",
+  "target": "contents",
+  "prop": "contents",
+  "kind": "Input",
+  "component": [
+   "dcc.Upload"
+  ],
+  "ptype": "str | None",
+  "evidence": "prop 'contents' of ['dcc.Upload']"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 212,
+  "head": 212,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_screenshot_delete",
+  "target": "n_clicks_list",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "list[int | None]",
+  "evidence": "prop 'n_clicks' of the id, pattern-matched with ALL"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 291,
+  "head": 291,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_approve",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 328,
+  "head": 328,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_continue_stack",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 349,
+  "head": 349,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_step_back",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ },
+ {
+  "file": "src/spec4/callbacks/designer/_wizard.py",
+  "base": 373,
+  "head": 373,
+  "klass": "genuinely typeable",
+  "qual": "on_designer_start_over",
+  "target": "n",
+  "prop": "n_clicks",
+  "kind": "Input",
+  "component": [],
+  "ptype": "int | None",
+  "evidence": "prop 'n_clicks' of the id"
+ }
+]

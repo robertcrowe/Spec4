@@ -2100,3 +2100,107 @@ the attribution misquoted §1.5's numbers.
 ### 14.4 Stop
 
 8i1 stops here for review. 8i2, `code_scanner.run`, returns to plan mode with its own plan.
+
+## 15. Rulings from review of 8g–8i1, and 8h's row map committed
+
+The review read the progress through 8i0 and the 8i1 plan, and approved the work. Its
+rulings arrived after 8i1's commit, `cb3e059`, had landed with §14 amended in, so they are
+recorded here rather than there.
+
+This commit is record-only:
+- this file;
+- `BACKLOG.md`;
+- `scripts/cleanup/README.md`;
+- `scripts/cleanup/data/rows_8h.json`.
+
+Nothing under `src/` or `tests/` changed.
+
+### 15.1 The rulings
+
+**1. The measure of `Any`, from here: the AST count of `Any`-annotated parameters.** 5p's
+grep stays only as the continuity column against 5p.
+- **§1.2's "no change" was right about the annotations and wrong about the ruler.**
+  `ruff format` moved the grep 230 → 236 while the annotations fell by exactly the 105
+  rows (§12.4).
+- **The count is taken over every `.py` under `src/spec4`,** read at each commit with
+  `git show`. It counts every parameter, including `*args`, `**kwargs` and lambda
+  parameters, whose annotation is the bare name `Any`. `dict[str, Any]` and the like are
+  not counted.
+
+| Commit | `Any`-annotated parameters (AST) | 5p's grep (continuity) |
+|---|---:|---:|
+| `676246d`, before 8h | 355 | 230 |
+| `3d046e9`, 8h1 | 279 (−76) | 234 |
+| `08e83a2`, 8h2 | 250 (−29) | 236 |
+| `cb3e059`, 8i1 | 250 | 236 |
+
+- **The review's "148 → 72 → 46" chains two file sets.** 148 → 72 is 8h1's six files and
+  75 → 46 is 8h2's three (§12.4). The table above is the one series across the tree.
+
+**2. 8h's row map is committed, as `scripts/cleanup/data/rows_8h.json`.** This is the
+record-only commit §12.1 asked for.
+- **It holds 107 rows, with line numbers at `676246d`:**
+  - the 105 applied, "genuinely typeable";
+  - the two `provider_label` rows, as "load-bearing" with a null `ptype` and their reason.
+    That is `rows_7o.json`'s vocabulary for a row that stays `Any`.
+- **Two rows carry `ptype_first`:** the refine upload's `contents` and `filename`, whose
+  first type the sweep rejected (§12.4).
+- **The closure row, `on_open_artifact`, is marked `closure`,** and the command in the
+  README stops on it until D13 lifts the sweep's limit. The README records that limit
+  under the sweep, as it records check 4's alias case.
+- **Verified before the commit:** three collect-only sweeps (`--co`), each registering its targets and running no test:
+
+```
+committed tool, the map less its closure row:  width_sweep: 104 targets on 77 code objects
+scratch copy, the map whole:                   width_sweep: 105 targets on 78 code objects
+committed tool, the map whole:                 INTERNALERROR> AttributeError: 'function' object has no attribute 'on_open_artifact'
+```
+
+  The third is the known limit, stopping where the README says it does.
+
+**3. The unreached targets go on BACKLOG 2.1,** the UI-callback known-limit entry, with
+their counts.
+- **They are 8e's kind of finding:** parameters no test exercises, so the width rule holds
+  for them only vacuously.
+- **The ruling named 8h1's 26.** 8h2's 13 are the same finding, and they were placed by the
+  same rule.
+- **The rule's condition is met for all 39.** `data/families_phase4.json` maps the
+  entry's two families:
+  - `callbacks/__init__.py` became `__init__`, `_artifacts`, `_chat`, `_gate`, `_nav`,
+    `_setup` and `_shared`. That is 8h1's six modules, plus `_shared`, which holds no
+    callback. The 26 split `__init__` 6, `_artifacts` 6, `_chat` 3, `_gate` 1, `_nav` 8
+    and `_setup` 2.
+  - `callbacks/designer.py` became `callbacks/designer/`, which holds the 13: `_wizard` 10
+    and `_refine` 3.
+- **None lies outside the entry's families, so none is a Phase 8 test row.**
+
+**4. The tool limits go with D13.**
+- The width sweep cannot resolve a target defined inside a function (§12.4).
+- Check 4 cannot see `import … as` (§10.1).
+- **Raised at §14.2, and not ruled:** the committed `trace_diff.py` does not print step
+  reach. §14's counts came from the trace file.
+
+**5. The upload rejection is the width rule doing its job** (the review's words).
+`multiple=True` was a real narrowing, caught before it shipped (§12.4).
+
+**6. For the remaining turns, 8i2 and 8i3, the mutations run before the commit,** once the
+suite is already green. A commit is amended only for its record.
+- **Why:** mutations after the commit have produced a rewrite every time. It is correct
+  while nothing is pushed, but the amend count is rising: 8g1, 8g2, 8h2 twice, and 8i1.
+- **How it is carried out, with the harness as committed.** `mutate.py` refuses a dirty
+  tree: a case's edits must be the only change. So a mutation cannot run while the turn's
+  edit sits uncommitted in the tree. Before each commit:
+  1. the gate, trace identity, frozen strings and complexity run on the edited tree;
+  2. the turn's edit is copied to the scratchpad, with its sha256 taken;
+  3. each mutation case carries the whole turn. Its anchor is the HEAD text, and its
+     replacement is the turn's text with the one line mutated;
+  4. the tree is returned to HEAD for the harness, and the case runs and restores it;
+  5. the turn's edit is copied back and checked byte-identical by sha256;
+  6. one commit then carries the code and the record together.
+- **No tool changes. The harness's clean-tree rule stands.** This sequence is recorded as
+  the reading of ruling 6, and is open to review.
+
+### 15.2 Next
+
+8i2, `code_scanner.run`, in plan mode with its own plan. `Literal[True] | None` is the
+convention for a step with no product (§14.1), and ruling 6 sets the order of its proofs.

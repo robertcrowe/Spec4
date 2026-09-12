@@ -188,7 +188,24 @@ WIDTH_SWEEP_OUT=/outside/sweep.json PYTHONPATH=scripts/cleanup \
 ```
 
 The targets are `data/rows_7o.json`, 7o's row map, located at `4acdffd`. Override them
-with `WIDTH_SWEEP_ROWS` and `WIDTH_SWEEP_BASE`.
+with `WIDTH_SWEEP_ROWS` and `WIDTH_SWEEP_BASE`. Phase 8's 8h map is `data/rows_8h.json`,
+located at `676246d`:
+
+```sh
+WIDTH_SWEEP_ROWS=scripts/cleanup/data/rows_8h.json WIDTH_SWEEP_BASE=676246d \
+    WIDTH_SWEEP_OUT=/outside/sweep.json PYTHONPATH=scripts/cleanup \
+    uv run pytest -p width_sweep -q -p no:cacheprovider
+```
+
+**Known limit: a target defined inside a function.**
+- **The sweep resolves each target by attribute from its module,** so a nested def stops it
+  with an internal error at collection.
+- **`rows_8h.json` has one such row,** `on_open_artifact`, defined inside
+  `_register_open_artifact`. It is marked `closure`, and the command above stops on it until
+  the limit is lifted.
+- **8h proved that row with a scratch copy of this tool.** The copy takes the nested def's
+  code object from the enclosing function's `co_consts` (`PHASE8_RECORD.md` §12.4).
+- **Teaching the sweep nested defs is D13's** (§15).
 
 **First used:** 7o5 (§77.9).
 
@@ -313,6 +330,7 @@ it reproduces §79.3's report line for line: 31 documented keys never seen chang
 | `data/coverage_85a9cb6.txt` | The same output at `85a9cb6`, whose `src/` and `tests/` are also `6956aca`'s. It is the base for Phase 8's comparison |
 | `data/families_phase4.json` | Phase 4's splits (§16–§26): each Phase 0 module, and the modules it became |
 | `data/rows_7o.json` | 7o's row map: 67 rows, 58 of them "genuinely typeable", with line numbers at `4acdffd` |
+| `data/rows_8h.json` | Phase 8's 8h row map (`PHASE8_RECORD.md` §12): 107 prop-bound callback inputs, 105 "genuinely typeable" and 2 "load-bearing", with line numbers at `676246d`. Two rows carry `ptype_first`, the type the sweep rejected before they were widened. One carries `closure`, the sweep's known limit |
 
 ## Replayed when committed
 
