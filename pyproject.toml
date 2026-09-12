@@ -64,11 +64,12 @@ select = ["E", "F", "C90", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "SIM", "B
 # deliberate and reads better than a merged `with`. PLR0913: fixture-heavy
 # signatures. Fixing these would be churn with no reader benefit; the mechanical
 # ones (SIM300, B905, SIM105) were fixed rather than ignored.
-# PLR2004 is deferred in the next three entries, not exempted. When it was promoted
-# (cleanup Phase 7p, CLEANUP_INVENTORY.md 78.4) it had 230 findings in tests/,
-# 25 in evals/ and 6 in scripts/. Those counts are the size of the later work,
-# except scripts/, which carries 20 since the cleanup tools were committed: the 14
-# in scripts/cleanup/ go with the tools-inside-the-gate decision (PHASE8_RECORD.md 2).
+# PLR2004. In tests/ it is exempt by policy, not deferred: a test's magic numbers
+# are its assertions (cleanup Phase 8, D12: PHASE8_RECORD.md 19.1). evals/ stays
+# ignored while evals/ is outside the gate. scripts/ follows the cleanup tools, which
+# stay under ruff and outside mypy (D13). Sizes: tests/ 230, evals/ 25, scripts/ 21.
+# scripts/ had 6 at promotion (cleanup Phase 7p, CLEANUP_INVENTORY.md 78.4); 15 of
+# the 21 are the tools' own (PHASE8_RECORD.md 26).
 "tests/**/*.py" = ["ARG", "SIM117", "PLR0913", "PLR2004"]
 # evals/ and scripts/ are outside the Rule 6 gate (`ruff check src/ tests/`) and
 # were never measured by Phase 5; the same test-shaped exemptions apply, plus the

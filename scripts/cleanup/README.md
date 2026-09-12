@@ -6,13 +6,19 @@ so that a claim like "this commit only renamed" or "this refactor changed nothin
 observable" rests on an empty diff or a matching trace, not on reading.
 
 A twelfth tool, `remeasure.py`, proves nothing about a change. It re-runs Phase 0's
-measurements on two revisions, and it is described after the eleven. A thirteenth,
-`contract_check.py`, came with Phase 8 (`PHASE8_RECORD.md` §11); it is described
-last.
+measurements on two revisions, and it is described after the eleven. Phase 8 added two
+more, and they are described last:
+- a thirteenth, `contract_check.py` (`PHASE8_RECORD.md` §11);
+- a fourteenth, `move_check.py` (`PHASE8_RECORD.md` §24).
 
 **They sit outside the gate.** `uv run ruff check .` and `ruff format` cover them. mypy
 (`uv run mypy src/`), pytest (`testpaths = ["tests"]`), coverage and vulture do not.
-Whether to bring them inside is Phase 8's question (`CLEANUP_REPORT.md` §5.4).
+- **Phase 8 ruled that this stands:** ruff yes, mypy no (D13, `PHASE8_RECORD.md` §19.1).
+- **Strict mypy's 230 errors here are a lift with no consumer** until a refactor phase, and
+  none is planned.
+- **The tools are proven on this codebase, typed by nobody, and honest about what they
+  cannot see.** Each known limit below says what its tool misses.
+- **Fixing a limit is BACKLOG 2.7's,** when the tool is next used for it.
 
 ## Ground rules
 
@@ -112,7 +118,7 @@ function, but its `__name__` is not the target's name. So condition (1) fails by
 construction, even when the patch lands where the caller looks. Ruled at review of 8e
 (`PHASE8_RECORD.md` §10): such a string is accepted when condition (2) holds and a
 mutation of the call fails the test that patches it. That mutation is the substitute
-proof. Teaching check 4 to read `import … as` goes with the tools decision (D13).
+proof. Teaching check 4 to read `import … as` is BACKLOG 2.7's, when next used (D13).
 
 ### 4. Strip-and-compare
 
@@ -205,7 +211,7 @@ WIDTH_SWEEP_ROWS=scripts/cleanup/data/rows_8h.json WIDTH_SWEEP_BASE=676246d \
   the limit is lifted.
 - **8h proved that row with a scratch copy of this tool.** The copy takes the nested def's
   code object from the enclosing function's `co_consts` (`PHASE8_RECORD.md` §12.4).
-- **Teaching the sweep nested defs is D13's** (§15).
+- **Teaching the sweep nested defs is BACKLOG 2.7's,** when next used (D13; §15).
 
 **First used:** 7o5 (§77.9).
 
@@ -254,6 +260,17 @@ uv run python scripts/cleanup/mutate.py scripts/cleanup/data/cases_7q.json CASE
 uv run python scripts/cleanup/mutate.py scripts/cleanup/data/cases_7q.json probe_A \
     --trace B1.json,B2.json,B3.json --basetemp /outside/tmp --out /outside/probe.json
 ```
+
+**Known limit: a working-tree edit.** The harness refuses to start unless the tree is
+clean, so it cannot mutate on top of an uncommitted edit. 8i2 and 8i3 met this with §15's
+sequence (`PHASE8_RECORD.md` §15, accepted at §16.1):
+1. hold the edit outside the tree, with its sha256;
+2. restore HEAD, and verify that the tree is clean;
+3. run cases whose edits carry the whole turn: HEAD's region is the anchor, and the edited
+   text with one line mutated is the replacement;
+4. put the edit back, and compare its sha256.
+
+Teaching the harness to start from an edit is BACKLOG 2.7's, when next used (D13).
 
 **First used:** 7k (§71), under §60.5's harness rule. Every seam and split through 7q
 used it.

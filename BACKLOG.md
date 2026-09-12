@@ -15,24 +15,24 @@ Section numbers (§N) refer to `CLEANUP_INVENTORY.md`. The tools named below are
 
 ### 1.1 Names and seams
 
-- **Five renames are held back.** The other 76 were renamed across ten batches (§61–§70).
-  - **Three are net-blocked,** each held by the file that reaches it by attribute:
-    - `_start_gen` and `_record_usage`, by `tests/test_streaming_characterization.py`, a
-      whole-file entry. Both go in one petition, the next time that file is legitimately
-      opened.
-    - `_with_readme_attribution`, by `tests/test_project_manager_golden.py`, a whole-file
-      entry.
-  - **Three wait on the `project_manager` root-siblings inconsistency** (§27.7,
-    §60.7(f)): `_write_text_if_changed` (4 sites), `_phase_spec_preamble` (1) and
-    `_with_readme_attribution` (4). The last is in both lists.
-- **§27.4's three remaining backlog turns:** `deployer.run` (185 lines),
-  `brainstormer.run` (101) and `code_scanner.run` (175).
-  - Each still carries a rule-12 `noqa`.
-  - The shape is proven by 7q: a driver over steps, where a step's `None` has one
-    meaning (§79).
-  - `trace_identity.py` is ready to trace them; `TRACE_MODULE` and `TRACE_FAMILY` name
-    the module and its functions.
-  - The alternative not taken is a step sentinel that tells a step's ending causes apart.
+- **The five held-back renames are settled** (Phase 8: `PHASE8_RECORD.md` §19.1, §22,
+  §23). The other 76 were renamed across ten batches (§61–§70).
+  - **The root-siblings inconsistency is resolved** (§27.7, §60.7(f)). D7a made
+    `project_manager` a package, with its four siblings inside it.
+  - **Two were renamed at D7b:** `write_text_if_changed` and `phase_spec_preamble`.
+  - **Three stay private, by ruling. Closed:**
+    - `_with_readme_attribution` (D7). Its four sites in
+      `tests/test_project_manager_golden.py`, a whole-file entry, are attribute calls,
+      not import lines, so §54.7's import-only petition cannot be met.
+    - `_start_gen` and `_record_usage` (D8). Renaming them would open
+      `tests/test_streaming_characterization.py`, a Phase 1 characterization file whose
+      job is to be untouched.
+- **§27.4's three backlog turns are done** (8i1–8i3: `PHASE8_RECORD.md` §14, §16, §17).
+  `brainstormer.run`, `code_scanner.run` and `deployer.run` are each a driver over steps,
+  in 7q's shape (§79), and their rule-12 `noqa`s are deleted.
+  - **The step sentinel stays not taken. Closed (D6).** No step generator in the four
+    turns split so far needed two ending causes: agentifier's 10 from 7q, and 8i's 10.
+  - It reopens if one does, and the plan says how (§79; `PHASE8_RECORD.md` §1.5).
 - **Not promote targets:** the 24 `keep: subject is the private object` names (§54.1,
   §55.4). The collection is each test's subject.
 - **Dedupes:**
@@ -62,25 +62,32 @@ Section numbers (§N) refer to `CLEANUP_INVENTORY.md`. The tools named below are
 | Documented contract keys the suite never saw change | 31 keys across 4 generators: one contract test each | §79.3 |
 | Annotated targets no test reaches: `on_designer_generate_mock` ×3, `on_provider_hint`, `_designer_tool_call_followup` | 3 functions | §77.9 |
 | Feature-spec section guards: `> 2` against its siblings' `> 3`. Check that real output reaches it before deciding | 3 builders | §78.2 |
-| `tests/test_agents.py`: split it by source module, a test-structure item. The floor and petition checks make the split provable | 5,268 lines, 293 tests | §2, §50; ruled in §80.1 |
-| PLR2004, deferred with a size | 230 in `tests/`, 25 in `evals/`, 20 in `scripts/` (6 at promotion; the 14 in `scripts/cleanup/` go with the tools, 1.4) | §78.4; `PHASE8_RECORD.md` §1.1 |
+
+**Closed in Phase 8, and out of this table:**
+- the `tests/test_agents.py` split (D9: `PHASE8_RECORD.md` §25);
+- PLR2004 (D12): `tests/**` is exempt by policy, and the rest waits in Part 2 (2.7).
 
 ### 1.4 The tooling
 
-Whether to bring `scripts/cleanup/`'s twelve tools inside: into the gate, and under mypy.
-Today they are outside both.
+**Ruled at D13: ruff yes, mypy no** (`PHASE8_RECORD.md` §19.1). Closed.
+- `uv run ruff check .` is the standing requirement for the tools, and it stays.
+- Strict mypy's 230 errors in the scaffolding are a lift with no consumer until the next
+  refactor phase, and none is planned.
+- The tools' known limits are documented in `scripts/cleanup/README.md`. Fixing them is
+  Part 2's (2.7), when next used.
 
-### 1.5 Named, never ruled: rule on these before Phase 8 starts
+### 1.5 Named, never ruled: all four now ruled
 
-The record named these items and never ruled on them. They are listed here so that the
-fold does not bury them. Each needs a ruling: Phase 8, Part 2, or drop.
-
-| Item | Size | Source |
-|---|---|---|
-| Consolidate `test_deployer_*`, `test_phaser_*` and `test_stack_*`: fifteen-plus files target the same three modules | 15+ files | §9; deferred to Phase 6 in §11, and not carried by §59.6 |
-| §50's four other test files over 150 tests: `test_stack_render_totality.py` (215), `test_artifact_view.py` (213), `test_designer.py` (162) and `test_agent_llm_selection.py` (155) | 4 files | §50 |
-| `TestMockBuffers` overlaps `test_designer.py::TestMockDeliveryAck` on the ack and valve branches. `TestMockBuffers` is in `test_streaming_characterization.py`, a whole-file floor entry. That is how the screen-registry overlap came to be ruled frozen (§55, §56) | 2 classes | §12.5 |
-| `tests/_golden.py` could absorb the per-file golden idioms, if more goldens appear | conditional | §12.5 |
+The record named these four and never ruled on them. The fold listed them here so they
+would not be buried. Phase 8 ruled all four (`PHASE8_RECORD.md` §19.1):
+- **Consolidating `test_deployer_*`, `test_phaser_*` and `test_stack_*` goes to Part 2
+  (D10),** to wait for a structural reason (2.6).
+- **§50's four other test files over 150 tests: dropped (D10).** Files of 155–215 tests are
+  not a problem.
+- **`TestMockBuffers` against `test_designer.py::TestMockDeliveryAck`: closed (D8).** It
+  was closed under 6f's standard, and nothing has changed.
+- **`tests/_golden.py` absorbing the per-file golden idioms: dropped (D11).** The
+  condition never arose.
 
 ## Part 2: Backlog
 
@@ -163,3 +170,49 @@ resolved in Phase 0.5:
 
 §10 was not extended after Phase 0.5. The one later defect the record names is a test
 defect, the nine racing tests, and it is on the Phase 8 list (1.3).
+
+### 2.6 Test-family consolidation, when a structural reason arrives
+
+This was ruled at Phase 8's D10 (`PHASE8_RECORD.md` §19.1).
+- **Why it waits:** merging `test_deployer_*`, `test_phaser_*` and `test_stack_*` for
+  tidiness is what the pruning rule forbids, by analogy. It waits here until a
+  structural reason arrives.
+- **Its size, as Phase 8 sized it:** 24 files and 616 tests (`PHASE8_RECORD.md` §1.2,
+  P27).
+  - `test_stack_*` is 11 files and 462 tests;
+  - `test_deployer_*` is 9 files and 106 tests;
+  - `test_phaser_*` is 4 files and 48 tests.
+  - 10 of the 24 files hold floor entries, so a merge moves floor ids, as D9's split did.
+- **D9's split has since added one file per agent** (`PHASE8_RECORD.md` §25):
+  `test_stack_advisor.py`, `test_phaser.py` and `test_deployer.py`.
+- **Its proof is built:** `move_check.py`, the move petition (`PHASE8_RECORD.md` §24).
+
+### 2.7 The cleanup tools, and PLR2004 outside `tests/`
+
+This was ruled at Phase 8's D13 and D12 (`PHASE8_RECORD.md` §19.1).
+- **The tools stay under `ruff check .`, and outside mypy.**
+- **Each limit below is fixed when a tool is next used for it,** and not before. The first
+  three are documented as limits in `scripts/cleanup/README.md`.
+
+**The limits:**
+- **The width sweep cannot resolve a target defined inside a function.** 8h proved its one
+  such row, `on_open_artifact`, with a scratch copy that reads the enclosing function's
+  `co_consts` (`PHASE8_RECORD.md` §12.4).
+- **Check 4 cannot see `import … as`.** An aliased patch string is accepted when condition
+  (2) holds and a mutation of the call fails the test that patches it
+  (`PHASE8_RECORD.md` §10).
+- **The mutation harness cannot mutate on top of a working-tree edit.** It refuses to start
+  on a tree that is not clean. 8i2 and 8i3 met this with §15's sequence, carrying the
+  whole turn in each case (`PHASE8_RECORD.md` §15, §16.1).
+
+**A return-side width sweep, not yet committed.**
+- The committed sweep checks the values that arrive at parameters.
+- D14's scratch plugin checked the fourteen returns D14 typed, by monitoring `PY_RETURN`
+  (`PHASE8_RECORD.md` §21). A committed form would prove the width rule for returns.
+
+**PLR2004 outside `tests/`.** `tests/**` is exempt by policy, since a test's magic numbers
+are its assertions (D12). The other two stay ignored:
+- `evals/**`, with 25, while `evals/` is outside the gate;
+- `scripts/**`, with 21, which follow the tools.
+  - 15 of the 21 are in `scripts/cleanup/`.
+  - One of those 15 is in `move_check.py`, which came after the sizing.

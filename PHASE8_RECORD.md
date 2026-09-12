@@ -3751,3 +3751,136 @@ Both gave `4224 passed, 1 skipped` and `TOTAL 12475 808 94%`. The two term-missi
 
 **D9 is done.** Next is the record-only commit closing D5, D6, D8, D10, D11, D12 and D13.
 After it comes Phase 8's close-out, the last stop, which takes 25.2's open question.
+
+## 26. The record-only commit: D5, D6, D8, D10, D11, D12 and D13 closed
+
+This is fourth in §19.1's order, and it carries the rulings' own reasons. No file under
+`src/` or `tests/` changes. `pyproject.toml` changes in one comment, which D12's ruling
+makes wrong as it stood.
+
+### 26.1 The seven, closed
+
+| D | Item | Closed as ruled | Where it lands |
+|---|---|---|---|
+| D5 | P31 | `persist_artifacts` keeps its name. The contract docstring names the flush, and 62 occurrences and 8 patch strings for a verb nobody has proposed is churn | Here only. P31 came from the directive, and BACKLOG never carried it |
+| D6 | P8 | The step sentinel stays not taken. No step generator in the four turns split so far needed two ending causes. It reopens if one does, and the plan says how | BACKLOG 1.1's turns bullet |
+| D8 | P29, P1 | `TestMockBuffers` was closed under 6f's standard, and nothing has changed. `_start_gen` and `_record_usage` stay private, since renaming them would open a Phase 1 characterization file whose job is to be untouched | BACKLOG 1.1's renames bullet, and 1.5 |
+| D10 | P27, P28 | The consolidation waits in Part 2 for a structural reason; merging for tidiness is what the pruning rule forbids, by analogy. The four large files are dropped: 155–215 tests is not a problem | BACKLOG 1.5, and a new 2.6 |
+| D11 | P30 | Dropped: the condition never arose | BACKLOG 1.5 |
+| D12 | P25 | `tests/**` is exempt by policy, permanently: a test's magic numbers are its assertions. `evals/**` stays ignored while `evals/` is outside the gate. `scripts/**` follows D13 | BACKLOG 1.3 and a new 2.7; `pyproject.toml`'s comment |
+| D13 | P26 | Ruff yes, mypy no. `ruff check .` stays the standing requirement. 230 strict-mypy errors are a lift with no consumer, and no refactor phase is planned. The three limits are documented as limits, and fixing them is Part 2's, "when next used" | BACKLOG 1.4 and 2.7; the README |
+
+### 26.2 What landed
+
+**`BACKLOG.md`:**
+- **1.1, the renames bullet, now says all five are settled.**
+  - The root-siblings inconsistency, P3, is resolved (D7a, §22).
+  - P4's two names are renamed (D7b, §23).
+  - `_with_readme_attribution`, P2, stays private (D7, §23), and so do `_start_gen` and
+    `_record_usage`, P1 (D8).
+  - This keeps §23's word that P2 and P4 close by hand here.
+- **1.1, the turns bullet, now records P5–P7 as done** (8i1–8i3: §14, §16, §17), and the
+  sentinel closed (D6).
+  - Its "noqas deleted" was checked before it was written.
+  - `grep noqa` finds none in `agents/brainstormer.py`, `agents/code_scanner/__init__.py`
+    or `agents/deployer.py`.
+  - At `6956aca`, `brainstormer.run` carried `# noqa: C901, PLR0912`.
+- **1.3:** the split row and the PLR2004 row leave the table. A two-line note under it says
+  where each went. This keeps §25's word about the split row.
+- **1.4:** D13's ruling, in place of the question.
+- **1.5:** the four items, each with its ruling. This section is where the fold listed the
+  items that had never been ruled.
+- **2.6, new: test-family consolidation** (D10). P27's sizes from §1.2, D9's three
+  per-agent files, and the move petition as its proof.
+- **2.7, new: the tools, and PLR2004 outside `tests/`** (D13, D12).
+  - It holds the three limits and a return-side width sweep.
+  - §21 said the sweep "is on the Part 2 list with the other tool work". It was not on it
+    until this commit, so that sentence was ahead of the file, and it is true now.
+- **Record references made explicit.** BACKLOG's convention is that a bare §N means the
+  inventory, so every new reference to this record is written `PHASE8_RECORD.md` §N.
+
+**`scripts/cleanup/README.md`:**
+- **The introduction now names the fourteenth tool.** D9a (§24) added its section, but
+  left the introduction saying the thirteenth "is described last".
+- **The introduction also carries D13's ruling,** in place of "Whether to bring them inside
+  is Phase 8's question".
+- **Check 4's alias limit and the sweep's closure limit now point to BACKLOG 2.7.**
+- **The harness gains its limit: a working-tree edit.** The entry gives §15's four-step
+  sequence, as accepted at §16.1.
+
+**`pyproject.toml`, one comment.**
+- It said PLR2004 "is deferred in the next three entries, not exempted". D12 reverses that
+  for `tests/`.
+- The new comment states the policy and the current sizes.
+
+**A size that moved: `scripts/` has 21 PLR2004 findings, not 20.** The counts are measured
+with the per-file ignores lifted (`ruff check --select PLR2004 --config
+'lint.per-file-ignores = {}'`):
+
+```
+tests/           230
+evals/           25
+scripts/         21
+scripts/cleanup/ 15
+```
+
+- The new one is `move_check.py`'s, from D9a: `move_check.py:51`, `if len(problems) > 20:`, the cap on printed problems.
+- `contract_check.py`, from 8g, has none.
+- `tests/` and `evals/` are unchanged from §1.2.
+
+### 26.3 Left for the close-out
+
+**Items Phase 8 finished that BACKLOG still lists as open.** The record states each one's
+closure. This commit leaves them, since they are not among its seven, and the close-out
+reconciles Part 1 as a whole:
+- **1.1:**
+  - `revision_delta`'s copies (P10, 8d2, §7);
+  - the trim written twice (P11, 8d);
+  - the `sys.modules` item (P12, D4, §20).
+- **1.2:**
+  - the prop-bound inputs (P14, 8h);
+  - the `-> Any` returns (P15, D14, §21): 14 taken, and the edges join the design limit;
+  - `object` and `run_with_timeout` (P16, P17, 8b, §4);
+  - `_fmt_usd`'s question (P18, 8b, §4.2).
+- **1.3:**
+  - the racing nine (P19, 8f);
+  - the banner (P20, 8c);
+  - the 31 keys (P21, 8g);
+  - the five targets (P22, 8e);
+  - the guards (P23, 8a and D1, §3, §19).
+  - 1.3's test row from 8i stays open: it is work (§17).
+
+**Two questions for the close-out stop, unruled:**
+- **§25.2's relative import.** `test_stack_shape_resilience.py:41` takes its helpers
+  through `test_agents.py`. It could be re-pointed under §54.7, or left as it is, with
+  this record of the dependency.
+- **`trace_diff.py` does not print step reach.** This was raised at §14.2 and never ruled
+  (§18.3, item 3). D13's ruling named three limits, and this would be a fourth of the
+  same kind.
+
+### 26.4 The proofs
+
+**Configuration unchanged.** `pyproject.toml` parses to the same data before and after
+(`tomllib`):
+
+```
+tomllib: HEAD == working tree: True
+```
+
+**A side effect, recorded.**
+- The first `uv run` after the comment edit rebuilt the editable `spec4` and reinstalled it
+  into `.venv/`: `Building spec4 …`, `Uninstalled 1 package`, `Installed 1 package`.
+- uv does that whenever `pyproject.toml` changes. `uv.lock` is unchanged, and no
+  dependency moved.
+- Rule 2 forbids writes under `.venv/`. This one was uv's, caused by the ruled comment
+  edit, and it is named here rather than passed over.
+
+| Gate | Result |
+|---|---|
+| Changed files | `BACKLOG.md`, `pyproject.toml` (the comment), `scripts/cleanup/README.md` and this record; nothing under `src/` or `tests/`. Before the record: `3 files changed, 116 insertions(+), 45 deletions(-)` |
+| Ruff / format | `All checks passed!` on `src/ tests/` and on `.`; `247 files already formatted` |
+| Tests, coverage, mypy | unaffected: no file under `src/` or `tests/` changed, and the configuration parses equal |
+| Floor / off-limits | tier-B `183 (expect 183)`, `456 (expect 456)`, `FAILURES: 0` |
+
+**Next is Phase 8's close-out, the last stop.** Its remeasure maps `project_manager`'s
+paths as a family.
