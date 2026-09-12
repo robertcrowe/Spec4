@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Generator
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from spec4 import project_manager, llm, websearch
 from spec4.agents._feature_context import ai_features_for_deployer
@@ -526,7 +526,7 @@ def build_readme_request(
     return "".join(parts)
 
 
-def run(  # noqa: C901, PLR0912, PLR0915  # ten-yield generator; every remaining branch guards a yield or a generator return, so further extraction needs sub-generators (backlog)
+def run(
     user_input: str | None,
     session: dict[str, Any],
     llm_config: dict[str, Any],
@@ -560,80 +560,14 @@ def run(  # noqa: C901, PLR0912, PLR0915  # ten-yield generator; every remaining
             yield _README_OPTIN_REASK
             return
 
-    if user_input is None:
-        if messages:
-            stale_q = maybe_inject_staleness_question(session, "deployer", messages)
-            if stale_q is not None:
-                yield stale_q
-                return
-            if not maybe_inject_resume_summary(
-                session, "deployer", messages, STATE_DEPLOYER_COMPLETE
-            ):
-                yield from replay_last_assistant(messages)
-                return
-            # Resume summary injected — fall through to LLM call.
-        else:
-            is_revision, greenfield = _deployer_seed_context(session)
-            if greenfield and not session.get("_deployer_readme_optin_done"):
-                session["_deployer_readme_optin_done"] = True
-                session["_deployer_pending_readme_optin"] = True
-                yield _README_OPTIN_QUESTION
-                return
-
-            messages.append(
-                {
-                    "role": "user",
-                    "content": _deployer_seed_message(session, is_revision),
-                }
-            )
+    if user_input is not None:
+        opened = yield from _deployer_take_input(user_input, session, messages)
+    elif messages:
+        opened = yield from _deployer_resume(session, messages)
     else:
-        messages.append({"role": "user", "content": user_input})
-
-        if session.get("_deployer_pending_plan"):
-            session["_deployer_pending_plan"] = False
-            affirmative, negative = _yes_no_intent(
-                user_input, _YES_WORDS_PLAN, _NO_WORDS_PLAN
-            )
-            if affirmative and not negative:
-                confirm_msg = (
-                    "Your new deployment plan has been saved. "
-                    "You can download it using the button below." + _README_OFFER
-                )
-                messages.append({"role": "assistant", "content": confirm_msg})
-                session["deployer_state"] = STATE_DEPLOYER_COMPLETE
-                session["deployer_stale_acknowledged"] = {}
-                session["deployer_artifact_msg_count"] = len(messages)
-                session["_deployer_pending_readme"] = True
-                yield confirm_msg
-                return
-            elif negative and not affirmative:
-                keep_msg = (
-                    "Understood — your existing deployment plan has been kept. "
-                    "Feel free to continue refining or ask any follow-up questions."
-                )
-                messages.append({"role": "assistant", "content": keep_msg})
-                # Drop the staged plan so persist_artifacts can't save it on a
-                # later turn — the developer just told us not to.
-                session["_deployer_plan_markdown"] = None
-                yield keep_msg
-                return
-            # Ambiguous response — fall through to the LLM.
-
-        if session.get("_deployer_pending_readme"):
-            session["_deployer_pending_readme"] = False
-            affirmative, negative = _yes_no_intent(user_input, _YES_WORDS, _NO_WORDS)
-            if negative and not affirmative:
-                decline_msg = (
-                    "No problem — I haven't created a README. Your deployment "
-                    "plan is saved and you're all set; feel free to ask any "
-                    "follow-up questions."
-                )
-                messages.append({"role": "assistant", "content": decline_msg})
-                yield decline_msg
-                return
-            if affirmative and not negative:
-                _deployer_readme_accept(session, messages)
-            # Ambiguous reply — fall through to a normal conversational turn.
+        opened = yield from _deployer_seed(session, messages)
+    if opened is None:
+        return
 
     search_cfg = websearch.from_session(session)
     system = llm.build_system_prompt(SYSTEM_PROMPT, search_cfg)
@@ -654,6 +588,113 @@ def run(  # noqa: C901, PLR0912, PLR0915  # ten-yield generator; every remaining
         session,
     )
 
+    yield from _deployer_settle(session, system, search_cfg, llm_config, _received)
+
+
+# ``run`` is a driver over the steps below, in agentifier.py's shape (CLEANUP_INVENTORY.md
+# 79): a step returns ``None`` only when the turn ended inside it, and ``True`` to go on.
+
+
+def _deployer_take_input(
+    user_input: str, session: dict[str, Any], messages: list[dict[str, Any]]
+) -> Generator[str, None, Literal[True] | None]:
+    """A reply: a pending plan or README answered, or the message kept for the draw."""
+    messages.append({"role": "user", "content": user_input})
+
+    if session.get("_deployer_pending_plan"):
+        session["_deployer_pending_plan"] = False
+        affirmative, negative = _yes_no_intent(
+            user_input, _YES_WORDS_PLAN, _NO_WORDS_PLAN
+        )
+        if affirmative and not negative:
+            confirm_msg = (
+                "Your new deployment plan has been saved. "
+                "You can download it using the button below." + _README_OFFER
+            )
+            messages.append({"role": "assistant", "content": confirm_msg})
+            session["deployer_state"] = STATE_DEPLOYER_COMPLETE
+            session["deployer_stale_acknowledged"] = {}
+            session["deployer_artifact_msg_count"] = len(messages)
+            session["_deployer_pending_readme"] = True
+            yield confirm_msg
+            return None
+        elif negative and not affirmative:
+            keep_msg = (
+                "Understood — your existing deployment plan has been kept. "
+                "Feel free to continue refining or ask any follow-up questions."
+            )
+            messages.append({"role": "assistant", "content": keep_msg})
+            # Drop the staged plan so persist_artifacts can't save it on a
+            # later turn — the developer just told us not to.
+            session["_deployer_plan_markdown"] = None
+            yield keep_msg
+            return None
+        # Ambiguous response — fall through to the LLM.
+
+    if session.get("_deployer_pending_readme"):
+        session["_deployer_pending_readme"] = False
+        affirmative, negative = _yes_no_intent(user_input, _YES_WORDS, _NO_WORDS)
+        if negative and not affirmative:
+            decline_msg = (
+                "No problem — I haven't created a README. Your deployment "
+                "plan is saved and you're all set; feel free to ask any "
+                "follow-up questions."
+            )
+            messages.append({"role": "assistant", "content": decline_msg})
+            yield decline_msg
+            return None
+        if affirmative and not negative:
+            _deployer_readme_accept(session, messages)
+        # Ambiguous reply — fall through to a normal conversational turn.
+    return True
+
+
+def _deployer_resume(
+    session: dict[str, Any], messages: list[dict[str, Any]]
+) -> Generator[str, None, Literal[True] | None]:
+    """A re-entry with history: the staleness question, the replay, or a recap."""
+    stale_q = maybe_inject_staleness_question(session, "deployer", messages)
+    if stale_q is not None:
+        yield stale_q
+        return None
+    if not maybe_inject_resume_summary(
+        session, "deployer", messages, STATE_DEPLOYER_COMPLETE
+    ):
+        yield from replay_last_assistant(messages)
+        return None
+    # Resume summary injected — fall through to LLM call.
+    return True
+
+
+def _deployer_seed(
+    session: dict[str, Any], messages: list[dict[str, Any]]
+) -> Generator[str, None, Literal[True] | None]:
+    """A first entry: the greenfield README question, or the seed for the draw."""
+    is_revision, greenfield = _deployer_seed_context(session)
+    if greenfield and not session.get("_deployer_readme_optin_done"):
+        session["_deployer_readme_optin_done"] = True
+        session["_deployer_pending_readme_optin"] = True
+        yield _README_OPTIN_QUESTION
+        return None
+
+    messages.append(
+        {
+            "role": "user",
+            "content": _deployer_seed_message(session, is_revision),
+        }
+    )
+    return True
+
+
+def _deployer_settle(
+    session: dict[str, Any],
+    system: str,
+    search_cfg: websearch.SearchConfig | None,
+    llm_config: dict[str, Any],
+    _received: int,
+) -> Generator[str, None, None]:
+    """After the draw: the README or plan staged, the plan completed, and its README beat."""
+    messages = session["deployer_messages"]
     last_text = last_assistant_text(messages)
     if session.get("_deployer_generating_readme"):
         # This turn authored the project README (set by the pending-readme

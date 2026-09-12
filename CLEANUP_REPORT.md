@@ -115,30 +115,40 @@ entry names the phase that found it, and the mutation or measurement that proved
 
 ### 2.4a Tests that assert less than their path
 
-**Found in Phase 8, at 8i1 and 8i2** (`PHASE8_RECORD.md` §14.2, §16.3). It is §2.3's
-finding again, found by mutation rather than by probe: the trace pins what the assertions
-do not. 8i0's probes had found it once in each of the three backlog turns, each time on one
-string (§13.2).
+**Found in Phase 8, at 8i1, 8i2 and 8i3** (`PHASE8_RECORD.md` §14.2, §16.3, §17.3). It is
+§2.3's finding again, found by mutation rather than by probe: the trace pins what the
+assertions do not. 8i0's probes had found it once in each of the three backlog turns, each
+time on one string (§13.2).
 - **The measurement.** Each turn's split was proved by one mutation, the forbidden `None`.
   A step reports "the turn ended" where it should go on, so the draw never runs. The trace
   diverged in every predicted test, and some of those tests still passed:
   - at 8i1, `brainstormer.run`: 28 diverged, 24 failed, 4 passed;
-  - at 8i2, `code_scanner.run`: 15 diverged, 9 failed, 6 passed.
-- **The ten that passed each assert only what the turn does before the mutated return.** A
-  turn that ends early leaves the same thing:
-  - **a state or an absence:** `tests/test_agents.py::TestBrainstormer::test_non_vision_response_stays_in_progress`,
-    `::TestBrainstormer::test_initialises_brainstormer_messages_if_missing`,
-    `::TestBrainstormerUnparseableArtifact::test_failed_reask_leaves_no_dead_end_user_turn`
-    and `::TestBrainstormerUnparseableArtifact::test_state_is_not_advanced_when_both_attempts_fail`;
-  - **the seed:** `tests/test_agents.py::TestCodeScanner::test_rescan_enters_update_mode_when_review_exists`;
-  - **the scan's narration:** `tests/test_code_scanner_progress.py::TestScanIsNarrated::test_first_chunk_arrives_before_the_walk`,
+  - at 8i2, `code_scanner.run`: 15 diverged, 9 failed, 6 passed;
+  - at 8i3, `deployer.run`: 9 diverged, 8 failed, 1 passed.
+- **The finding is the eleven that passed.** Each asserts only what the turn does before the
+  mutated return, and a turn that ends early does that much too.
+- **The work is the four whose names claim more than they assert** (ruled at review of 8i2,
+  §17.1). Each names an event and still passes when that event never happens:
+  - `tests/test_agents.py::TestBrainstormer::test_non_vision_response_stays_in_progress`:
+    no response arrives;
+  - `::TestBrainstormerUnparseableArtifact::test_failed_reask_leaves_no_dead_end_user_turn`:
+    the mutation leaves exactly the dead-end user turn its name rules out;
+  - `::TestBrainstormerUnparseableArtifact::test_state_is_not_advanced_when_both_attempts_fail`:
+    neither attempt happens;
+  - `tests/test_code_scanner_progress.py::TestCharsTotal::test_total_is_monotonic_across_the_handover`:
+    the stream never opens.
+- **The other seven assert what their names say,** on a path that goes further. That is a
+  fact about coverage-by-path, not a defect, and there is nothing to fix:
+  - `tests/test_agents.py::TestBrainstormer::test_initialises_brainstormer_messages_if_missing`;
+  - `tests/test_agents.py::TestCodeScanner::test_rescan_enters_update_mode_when_review_exists`,
+    which asserts the seed;
+  - `tests/test_code_scanner_progress.py::TestScanIsNarrated::test_first_chunk_arrives_before_the_walk`,
     `::test_narration_names_the_directory`, `::test_narration_reports_the_file_count` and
-    `::test_rescan_says_rescanning`;
-  - **a vacuous pass:** `tests/test_code_scanner_progress.py::TestCharsTotal::test_total_is_monotonic_across_the_handover`.
-    It claims the counter across the stream's opening, and under the mutation the stream
-    never opens.
-- **Where it went:** the Phase 8 list (BACKLOG 1.3). It is one test row, together with the
-  path no test reaches that 8i2 found: `code_scanner.run`'s recap fall-through.
+    `::test_rescan_says_rescanning`, which assert the narration;
+  - `tests/test_agents.py::TestDeployerReadme::test_accept_uses_existing_readme_as_baseline`,
+    which asserts the README request built before the draw.
+- **Where it went:** the Phase 8 list (BACKLOG 1.3). The four are one row there, together
+  with the path no test reaches that 8i2 found: `code_scanner.run`'s recap fall-through.
 
 ### 2.5 The per-character `MagicMock` chunk factory cost about 50 seconds
 

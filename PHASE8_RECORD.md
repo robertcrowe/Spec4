@@ -2439,3 +2439,245 @@ BACKLOG 2.1 gains the sentence on the limit's shape (§16.1, ruling 6).
 
 8i2 stops here for review. 8i3, `deployer.run`, is the last turn. It returns to plan mode
 with its own plan and runs the same sequence.
+
+## 17. 8i3: `deployer.run` as a driver over four steps (P7), and the rulings from review of 8i2
+
+This ran in plan mode, as ruled for 8i3 at review of 8i2. The plan was read and approved
+before any edit, without amendment.
+
+It is one commit, code and record together, with no amend (§15, ruling 6).
+
+### 17.1 The rulings from review of 8i2
+
+1. **8i2 is approved as `d711942`.** The mutation-before-commit sequence worked as ruled. One
+   commit per turn is what the last three should have looked like.
+2. **BACKLOG 1.3's row holds only the tests that assert less than they claim.**
+   - **A test row is work,** and the work is fixing tests that claim more than they assert.
+     `test_total_is_monotonic_across_the_handover` is one. It names a property across the
+     handover, and it passes when the handover never happens.
+   - **8i2's other five assert what their names say.** They happen to sit on a path that
+     goes further. That is a fact about coverage-by-path, not a defect in the test, and
+     there is nothing to fix.
+   - **`CLEANUP_REPORT.md` §2.4a keeps naming all of them, with the distinction stated.** The
+     finding is every diverge-but-pass test. The work is the subset.
+3. **The same test, applied to 8i1's four before the row is final.** "Asserting only a state
+   or an absence" describes what a test does, not whether its name promises more. As
+   classified at plan review of 8i3:
+   - **`TestBrainstormer::test_non_vision_response_stays_in_progress` survives.** Its name
+     presumes a non-vision response. Under the mutation there is no response at all, and it
+     never asserts one arrived. That is the monotonic test's shape.
+   - **`TestBrainstormer::test_initialises_brainstormer_messages_if_missing` does not.** The
+     initialisation it names happens before the mutated return, and it asserts exactly that.
+   - **`TestBrainstormerUnparseableArtifact::test_failed_reask_leaves_no_dead_end_user_turn`
+     survives, the strongest of them.**
+     - Under the mutation the turn ends right after the user's message is appended. That
+       leaves exactly the dead-end user turn its name rules out.
+     - It passes because it looks only for the "could not be read" re-ask message. Its
+       helper `_run` asserts nothing.
+   - **`TestBrainstormerUnparseableArtifact::test_state_is_not_advanced_when_both_attempts_fail`
+     survives.** Neither attempt happens, and neither is asserted.
+4. **The recap fall-through stays on the row regardless.** A path that 0 of 43 invocations
+   reach is a gap, not a classification question.
+
+### 17.2 The cut
+
+**Reach.** The entry decision was replayed on each baseline start snapshot, using the
+module's own `_yes_no_intent` and word lists. The 32 invocations:
+
+| Path | Invocations |
+|---|---:|
+| opt-in gate, ambiguous: the re-ask | 1 |
+| opt-in gate, a clear answer, then the seed arm | 2 |
+| resume arm: the recap, falling through / the replay / the staleness question | 1 / 1 / **0** |
+| seed arm: the opt-in question / the seed appended | 1 / 13 (+2 after the gate) |
+| input: plan confirmed / plan kept / README declined, each ending the turn | 2 / 1 / 1 |
+| input: continues to the draw | 9 |
+
+Every step's continue path is reached.
+- **The resume arm can be a step here.** Unlike code_scanner's (§16.2), its recap falls
+  through in a traced test: `TestResumeSummary::test_deployer_first_reentry_calls_llm_for_recap`.
+- **The staleness question is reached by none of the 32,** as at the fold. Its two lines are
+  the misses it carries.
+
+**What landed** (`src/spec4/agents/deployer.py` only): `1 file changed, 116 insertions(+), 75
+deletions(-)`.
+- **`run` is the driver.** Unchanged: its signature, docstring and entry.
+- **The README opt-in gate stays inline, verbatim, as an entry guard.** A clear answer
+  rewrites `user_input` to `None` and falls through. A step cannot return that `None`,
+  because `None` means "the turn ended".
+- **Then one dispatch,** returning on `None`: input → `_deployer_take_input`; history →
+  `_deployer_resume`; else `_deployer_seed`. It inverts the original's order, as at 8i1 and
+  8i2, and is equivalent to it.
+- **Then, in place:** `search_cfg`, `system` and `_received = yield from stream_counting(...)`,
+  with its comment. It ends on `yield from _deployer_settle(...)`.
+- **The steps:**
+
+| Step | Block | Returns |
+|---|---|---|
+| `_deployer_take_input(user_input, session, messages)` | the append; the pending-plan answer; the pending-README answer | `None` after a confirm, a keep or a decline; `True` otherwise |
+| `_deployer_resume(session, messages)` | the staleness question; the replay; the recap | `None` after the question or the replay; `True` after the recap |
+| `_deployer_seed(session, messages)` | the greenfield opt-in question; the seed appended | `None` after the question; `True` after the seed |
+| `_deployer_settle(session, system, search_cfg, llm_config, _received)` | the README and plan staging; the confirm; the completion; the greenfield README beat; the closing offer | `None`: terminal |
+
+- **The three opening steps return `Literal[True] | None`,** §14.1's convention.
+- **`Literal` joins the existing runtime import:** `from typing import Any, Literal, cast`.
+- **`_deployer_settle` reads `messages = session["deployer_messages"]` itself.**
+  - *Why:* the tail needs six values, and PLR0913's limit is five.
+  - *Precedent:* 7q1 and 8i2.
+  - *Safe:* `:540` is the only assignment in `src/`, and neither `_deployer_readme_accept`
+    nor `_deployer_plan_confirm` rebinds the list.
+  - Its parameter keeps the name `_received`, so the tail moved byte-for-byte.
+- **How it was applied: verbatim by construction, as at 8i2.**
+  - A scratch script sliced the original lines, with every boundary asserted against the
+    text at `d711942`.
+  - It changed exactly the six terminal `return`s to `return None`. Each was asserted by
+    line and indentation first.
+  - `ruff format` then left the file unchanged.
+- **`run`'s `# noqa: C901, PLR0912, PLR0915` is deleted,** and §27.4's sixth entry,
+  `agents/deployer.py` `run`, is retired.
+  - With 8i1 and 8i2, all three backlog turns are off rule 12.
+  - `noqa: C901` lines in `src/` fall from §1.1's 9 to **6**.
+
+### 17.3 The proofs
+
+**Strict mypy, ruff and format.** `Success: no issues found in 93 source files`; `All
+checks passed!` on `src/ tests/` and on `.`; `240 files already formatted`.
+
+**Complexity.** With `--ignore-noqa`, `deployer.py` flags nothing, PLR0913 included. The
+exact figures, with the thresholds lowered so that every function reports:
+
+```
+  run                     C901  8  branches  9  statements 28
+  _deployer_take_input    C901  7  branches  6  statements 27
+  _deployer_resume        C901  3  branches  2  statements  6
+  _deployer_seed          C901  2  branches  1  statements  7
+  _deployer_settle        C901  6  branches  7  statements 29
+```
+
+Before, at `d711942`, `run` measured C901 21, 25 branches and 88 statements.
+
+**Frozen strings (Rule 4):** predicted identical, with exactly one count change.
+
+```
+src/spec4/agents/deployer.py: string constants 200 -> 201; distinct 104 -> 104
+  gone: 0; added: 0; count changes: 1
+  COUNT 3 -> 4  'deployer_messages'
+strings-exit=0
+```
+
+**Trace identity, against 8i0's three baselines,** with all four steps in `TRACE_STEPS`:
+
+```
+base: {"tests_traced": 32, "invocations": 32, "events": 821, "distinct_snapshots": 838, "exitstatus": 0, "entries": {"run": 32}}
+new:  {"tests_traced": 32, "invocations": 32, "events": 821, "distinct_snapshots": 838, "exitstatus": 0, "entries": {"run": 32}}
+tests traced: base 32, new 32; identical 32; diverging 0 (key order only: 0); identical to a recorded variant other than the first: 0
+worker-thread invocations: tests 0; differing 0: advisory (timing) 0, escalated (content) 0
+```
+
+- **Every step is entered, in exactly the predicted counts,** taken from the trace file's
+  `steps`:
+  - `_deployer_take_input` 13;
+  - `_deployer_resume` 2;
+  - `_deployer_seed` 16;
+  - `_deployer_settle` 25.
+
+  Each of the 32 tests has one invocation, so each count is both tests and invocations.
+
+**Coverage, both conditions.**
+- **`deployer.py` is `221 3 99%   379, 658-659`.** At `d711942` it was `207 3 99%   379,
+  567-568`.
+- **The staleness exit's two misses moved with their block, into `_deployer_resume`.**
+- **The total is `TOTAL 12475 834 93%`:** misses unchanged, statements +14.
+
+**One mutation, before the commit: the forbidden `None`.** `_deployer_take_input` reports its
+continue as "the turn ended", with `return True` made `return None`.
+- **The prediction was fixed before the run:** the 9 input turns that continue to the draw.
+  - It came from replaying the entry decision, using the helpers of HEAD's own
+    `deployer.py`, so the working-tree edit could not reach it.
+  - It is the same nine as the table in §17.2.
+  - The file `diverge_8i3.json` has sha256
+    `6babad91e177c9aec9e39c6a8245a748c483b0250e3fa904c3fe82b4e52c281e`.
+
+**§15's sequence, as it ran.** Only the code file left the tree. The BACKLOG and report
+edits were made after the sequence, from its result.
+
+```
+07c2b1042c850882e0460c5e573bc65c2808e9876645709e675b1bef841f3ff8  src/spec4/agents/deployer.py
+cases_8i3.json sha256 bde4e5d9c05af0ddfb71fb7c0cfa3f42e2c247f984ad66c42d7e7cd7fe53fda8
+cases_8i3_names.json sha256 7085a493d0e068e87b82e6cdfa4effa8894623c824aea2d897d6bb1b50511196
+edit 1: the typing import, once; edit 2: anchor HEAD lines 529-656 (128 lines), once; replacement 169 lines; predicted diverging 9
+tree verified clean at HEAD (d711942)
+```
+
+- **Each case carries the whole turn, as two edits.**
+  - The first is the `typing` import line.
+  - The second is the changed region of `run`, anchored by its common prefix and suffix
+    with HEAD. It ends at line 656, because the tail moved into `_deployer_settle`
+    byte-identical.
+- **The mutated line is found by its context.** `return True` occurs three times in the new
+  text, once per opening step. So the edit keys on `_deployer_take_input`'s own
+  "Ambiguous reply" comment line, asserted unique.
+- **The tree was clean after each case,** and then:
+
+```
+restored: sha256 identical to before
+```
+
+**The `diverge` case:**
+
+```
+restore: 1 file(s) byte-identical by sha256; tree clean
+probe 8i3_take_input (_deployer_take_input reports its continue as the turn ended (8i3, the forbidden None; the case carries the whole turn)): as predicted
+  suite under the probe: 8 failed, 4214 passed, 1 skipped in 89.16s (0:01:29)
+  traces diverging: 9; predicted 9, of which diverged 9; predicted but NOT diverging: none
+  tests traced: base 32, new 32; identical 23; diverging 9 (key order only: 0); identical to a recorded variant other than the first: 0
+```
+
+- **As predicted: 9 of 9 diverged, and no other trace diverged.**
+- **The same edit, run as a `fail: []` case to name the failures,** gave `summary: 8 failed, 4214 passed, 1 skipped in 87.77s (0:01:27)`.
+  All 8 are among the 9.
+- **One diverged and passed:** `tests/test_agents.py::TestDeployerReadme::test_accept_uses_existing_readme_as_baseline`.
+  - It asserts that the README request, which `_deployer_readme_accept` builds before the
+    mutated return, carries the old README and "update it in place". Its name claims
+    exactly that.
+  - By ruling 2 it is coverage-by-path, not a defect, so it joins the finding and not the
+    row.
+  - Its sibling `test_accept_generates_and_stages_readme` asserts the staged README, and it
+    failed.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | as above |
+| Tests | `4222 passed, 1 skipped`, exit 0 |
+| Coverage | `TOTAL 12475 834 93%`: misses unchanged, statements +14 |
+| Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`; no test file touched |
+
+### 17.4 The row, as it stands after the three turns
+
+**The row is final for the half. BACKLOG 1.3's row holds 4 tests and 1 path:**
+- **The four tests claim more than they assert.** Each names an event and still passes when
+  that event never happens:
+  - `tests/test_agents.py::TestBrainstormer::test_non_vision_response_stays_in_progress`;
+  - `::TestBrainstormerUnparseableArtifact::test_failed_reask_leaves_no_dead_end_user_turn`;
+  - `::TestBrainstormerUnparseableArtifact::test_state_is_not_advanced_when_both_attempts_fail`;
+  - `tests/test_code_scanner_progress.py::TestCharsTotal::test_total_is_monotonic_across_the_handover`.
+- **The path:** `code_scanner.run`'s recap fall-through, reached by 0 of 43 traced
+  invocations (§16.2).
+
+**The finding is eleven tests: 4 + 6 + 1 across the three turns.**
+- 8i3 added one to the finding and none to the work.
+- `CLEANUP_REPORT.md` §2.4a is rewritten to name all eleven, with the distinction stated.
+  The four that are the work each carry their reason. The seven that assert what their
+  names say are marked as coverage-by-path.
+
+### 17.5 Stop, and the half's close next
+
+8i3 stops here for review. It is the last mechanical sub-phase. The half then closes as
+§1.5 set:
+
+```sh
+uv run python scripts/cleanup/remeasure.py 6956aca HEAD \
+    --cov-base scripts/cleanup/data/coverage_85a9cb6.txt --run-coverage /outside/dir
+```
+
+Every moved cell is explained, and the review stop follows.
