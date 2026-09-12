@@ -1,4 +1,5 @@
-"""The regression floor, in both halves (CLEANUP_INVENTORY.md 50.3, 50.5(a)).
+"""The regression floor, in both halves
+(cleanup-complete:CLEANUP_INVENTORY.md 50.3, 50.5(a)).
 
     uv run python scripts/cleanup/floor_check.py [COLLECTED.txt]
 

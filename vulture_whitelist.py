@@ -8,9 +8,9 @@ application; it exists only so that
     uvx vulture src/ tests/ vulture_whitelist.py --min-confidence 60
 
 is quiet about callbacks and only surfaces real candidates. Regenerate it
-when callbacks are added or renamed (see CLEANUP_INVENTORY.md, Dead code).
+when callbacks are added or renamed (see cleanup-complete:CLEANUP_INVENTORY.md, Dead code).
 
-Generated for the Phase 0 baseline of SPEC4_CLEANUP_PLAN.md.
+Generated for the Phase 0 baseline of cleanup-complete:SPEC4_CLEANUP_PLAN.md.
 """
 
 # ruff: noqa

@@ -47,7 +47,8 @@ target-version = "py312"
 # carried a justified noqa. PLR is promoted by the three rules Phase 5 actually
 # measured and cleared -- PLR0912/0913/0915 -- not wholesale: bare "PLR" also
 # carries PLR2004 (49 in src/), PLR0911 (7) and PLR1714 (1), which Phase 0 never
-# counted and Phase 5 never touched. See CLEANUP_INVENTORY.md 42.6 and 49.4.
+# counted and Phase 5 never touched. See cleanup-complete:CLEANUP_INVENTORY.md
+# 42.6 and 49.4.
 # PLR2004 promoted at cleanup Phase 7p on the same pattern, clear then promote:
 # its 49 in src/ became nine named constants and 39 reasoned noqas (78.2, 78.4).
 select = ["E", "F", "C90", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "SIM", "B", "ARG"]
@@ -65,11 +66,12 @@ select = ["E", "F", "C90", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "SIM", "B
 # signatures. Fixing these would be churn with no reader benefit; the mechanical
 # ones (SIM300, B905, SIM105) were fixed rather than ignored.
 # PLR2004. In tests/ it is exempt by policy, not deferred: a test's magic numbers
-# are its assertions (cleanup Phase 8, D12: PHASE8_RECORD.md 19.1). evals/ stays
-# ignored while evals/ is outside the gate. scripts/ follows the cleanup tools, which
-# stay under ruff and outside mypy (D13). Sizes: tests/ 230, evals/ 25, scripts/ 21.
-# scripts/ had 6 at promotion (cleanup Phase 7p, CLEANUP_INVENTORY.md 78.4); 15 of
-# the 21 are the tools' own (PHASE8_RECORD.md 26).
+# are its assertions (cleanup Phase 8, D12: cleanup-complete:PHASE8_RECORD.md 19.1).
+# evals/ stays ignored while evals/ is outside the gate. scripts/ follows the
+# cleanup tools, which stay under ruff and outside mypy (D13). Sizes: tests/ 230,
+# evals/ 25, scripts/ 21. scripts/ had 6 at promotion (cleanup Phase 7p,
+# cleanup-complete:CLEANUP_INVENTORY.md 78.4); 15 of the 21 are the tools' own
+# (cleanup-complete:PHASE8_RECORD.md 26).
 "tests/**/*.py" = ["ARG", "SIM117", "PLR0913", "PLR2004"]
 # evals/ and scripts/ are outside the Rule 6 gate (`ruff check src/ tests/`) and
 # were never measured by Phase 5; the same test-shaped exemptions apply, plus the
@@ -85,7 +87,7 @@ select = ["E", "F", "C90", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "SIM", "B
 # Added at cleanup Phase 6. Without it pytest collects from the repo root, so a
 # bare `uv run pytest` pulled in four modules under evals/ -- 82 of 4,257 tests.
 # evals/ is outside the Rule 6 gate for linting and is now outside collection
-# too. See CLEANUP_INVENTORY.md 50.0(e) and 50.5(b).
+# too. See cleanup-complete:CLEANUP_INVENTORY.md 50.0(e) and 50.5(b).
 testpaths = ["tests"]
 
 [tool.mypy]

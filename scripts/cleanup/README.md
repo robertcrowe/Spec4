@@ -1,5 +1,9 @@
 # scripts/cleanup — the cleanup's mechanical checks
 
+Section references (§n) are to `CLEANUP_INVENTORY.md`, `PHASE8_RECORD.md` and
+`CLEANUP_REPORT.md` at tag `cleanup-complete`, readable with
+`git show cleanup-complete:<file>`.
+
 These are the eleven checks behind the proofs in `CLEANUP_INVENTORY.md`, the checks that
 `CLEANUP_REPORT.md` §4 names as tools. Each proves one property of a change mechanically,
 so that a claim like "this commit only renamed" or "this refactor changed nothing
@@ -10,6 +14,14 @@ measurements on two revisions, and it is described after the eleven. Phase 8 add
 more, and they are described last:
 - a thirteenth, `contract_check.py` (`PHASE8_RECORD.md` §11);
 - a fourteenth, `move_check.py` (`PHASE8_RECORD.md` §24).
+
+**In the records, several tools appear under the scratch names they were first run as:**
+- `floorcheck2.py`, the floor;
+- `strings_7q.py`, frozen strings;
+- `trace_7q.py`, trace identity;
+- `sweep_7o.py`, the width sweep;
+- `mutate_7*.py` and `probe_7q.py`, the mutation harness;
+- `phase0_measure.py`, the remeasure.
 
 **They sit outside the gate.** `uv run ruff check .` and `ruff format` cover them. mypy
 (`uv run mypy src/`), pytest (`testpaths = ["tests"]`), coverage and vulture do not.
@@ -30,6 +42,28 @@ more, and they are described last:
   inside it.
 - **Mapping files** (`MAP.json`) are `[[old, new], ...]`. The shell form of the rename
   check takes the same pairs as `old<TAB>new` lines.
+
+## What the tools are for
+
+**The cleanup changed no observable behaviour, and these checks are how each change showed
+it.** What was frozen throughout is still the bar a refactor has to clear:
+- component ids and the `PATH_TO_PHASE` keys;
+- the `.spec4/` artifact shapes and every session key;
+- every LLM prompt string;
+- `app.py`'s import order, which is load-bearing (D-LR1).
+
+**The rules that bounded every change, and what holds each one.** The numbers in the last
+column are the checks' numbers below.
+
+| Rule | What it says | Held by |
+|---|---|---|
+| Pruning is never justified by seconds | A test is dropped for redundancy, coupling or vacuity, never for being slow. A test's standalone time is a loose upper bound on what deleting it saves (§51.6) | A review rule. The floor (9) keeps the regression net out of reach of any pruning |
+| Runtime is a paired delta | Baseline and candidate are measured in the same session, and the recorded figure is the delta. An absolute figure against one taken hours earlier is machine weather (§51.6) | A measuring rule |
+| Negative assertions are paired with positive ones | A "does not" assertion needs a "does" beside it, so that the negative cannot pass for the wrong reason (§60.6) | A review rule. A mutation (11) shows the positive half bites |
+| One mutation per seam, with the amended failure condition | Every rewrite states the mutation it survives. Under it the new test must fail, and every other failure is listed and explained (§60.6, §73) | The mutation harness (11) |
+| An annotation is no narrower than what a test exercises | A passing test that feeds a value the annotation excludes is a claim the suite disproves. Either the annotation widens, or the question is ruled (§60.2, §77.9) | The width sweep (8). Strip-and-compare (4) proves the change is annotation-only |
+| Commits to the record carry only ruled changes | The record's diff is the audit trail. It is appended add-only, and guarded against deleted blank lines (§64.10) | The add-only append and its guard (10) |
+| Whole or carry | An item ruled as one decision is taken whole in its phase, or carried whole to the next, never half-done (§60.7(e)) | A planning rule |
 
 ## The two tools that write to `src/` and `tests/`
 
@@ -178,6 +212,11 @@ python scripts/cleanup/trace_diff.py BASE1.json[,BASE2.json,...] /outside/run.js
   agentifier's eight generators and `run`.
 - **`TRACE_STEPS`** names step functions whose entry is recorded.
 
+**Known limit: step reach.** `trace_diff.py` does not print how many traced invocations
+entered each step that `TRACE_STEPS` names. 8i1 read the counts from the trace file's
+`steps` instead (`PHASE8_RECORD.md` §14.2). Teaching it to print them is BACKLOG 2.7's,
+when next used.
+
 **First used:** 7q0 (§79.0). Its worker rules were ruled at review of 7q1 and at the 7q2
 stop (§79.2).
 
@@ -217,6 +256,34 @@ WIDTH_SWEEP_ROWS=scripts/cleanup/data/rows_8h.json WIDTH_SWEEP_BASE=676246d \
 
 ### 9. Floor and off-limits, in both halves
 
+**Why it exists.** The floor is the regression net that made the refactors safe (§50.3).
+- Phase 6 was allowed to prune and reshape tests. The net that had made Phases 2–5 safe
+  was not.
+- So the net was enumerated as node ids, to be checked mechanically, not by argument.
+
+**What it holds:**
+- **the seven whole-file entries:**
+  - Phase 1's net:
+    - the component-id snapshot over 72 screens (`test_layout_contract.py`);
+    - the byte-exact output of the five artifact renderers (`test_renderer_goldens.py`);
+    - the phase markdown round-trip (`test_project_manager_golden.py`);
+    - the three streaming state containers at every transition
+      (`test_streaming_characterization.py`);
+    - D-LR1's import order at startup (`test_app_import_smoke.py`);
+  - callback co-presence against every renderable layout (`test_callback_co_presence.py`);
+  - the layering contract (`test_import_layering.py`);
+- **named ordering assertions,** such as which component sits before which;
+- **every test that cites a D-number:** in its own name or docstring (tier A), or in its
+  class's (tier B, §50.5(a)).
+
+**The rule** (§50.5(a)).
+- **The floor is never lowered:** not by argument, and not by a collection count that
+  happens to land above it.
+- **A test in it changes only through a petition by node id,** with a stop for approval.
+  That applies to a rename or a move as much as to a deletion.
+- **New tests do not join it.**
+- **Phase 8 ran the check beside the gate at every commit.**
+
 **Proves:** all 456 protected node ids still collect:
 - tier A, 273: the seven whole-file entries, which collect 188, plus 85 named ids;
 - tier B, 183, in 33 classes.
@@ -225,7 +292,12 @@ A change that touches the floor must pass the matching petition:
 - §54.7's golden petition, for a whole-file entry: import lines alone, goldens
   byte-identical, node ids unchanged;
 - §60.3's rename petition, for a tier-A or tier-B entry: the reverse diff is empty
-  inside the entry, and its assertions are token-identical.
+  inside the entry, and its assertions are token-identical;
+- the move petition, the fourteenth tool, for a node id that changes file. Neither of
+  the other two fits that case.
+
+Anything else in a whole-file entry, a docstring or a literal, fits no petition. It needs
+a ruling first.
 
 ```sh
 uv run python scripts/cleanup/floor_check.py [COLLECTED.txt]    # collects itself if not given
@@ -311,6 +383,16 @@ uv run python scripts/cleanup/remeasure.py 1d1dcbd 6956aca \
 - **`--run-coverage` on `1d1dcbd` re-runs Phase 0's own suite, and reproduces §1
   exactly:** 1 failed (§1.1's test), 4116 passed, 1 skipped; 11,676 statements and
   1,020 missed; every per-module row of §1.3.
+
+**Known limit: a families key that starts with `_` is dropped.**
+- **What happens:** the tool reads such a key as documentation, like the file's `_about`.
+  So a module whose file name starts with `_` cannot be the base of a family.
+- **Nothing says so.** The module is reported as new at head instead.
+- **It is the more serious of the two limits raised after D13.** It gives a false "nothing
+  to compare" rather than an error.
+- **Phase 8's close-out** compared D7a's four `_`-named modules by hand
+  (`PHASE8_RECORD.md` §27.1).
+- **Fixing it is BACKLOG 2.7's,** when next used.
 
 **First used:** the Phase 7 close-out, for `CLEANUP_REPORT.md` §7. There it ran from
 the scratchpad as `phase0_measure.py`, and the tool calls were run by hand.

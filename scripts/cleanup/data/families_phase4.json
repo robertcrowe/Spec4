@@ -1,5 +1,5 @@
 {
- "_about": "Phase 4's splits (CLEANUP_INVENTORY.md \u00a716-\u00a726): each Phase 0 module and the paths under src/spec4/ it became. A path ending in / is a package.",
+ "_about": "Phase 4's splits (cleanup-complete:CLEANUP_INVENTORY.md \u00a716-\u00a726): each Phase 0 module and the paths under src/spec4/ it became. A path ending in / is a package.",
  "agentifier/agentifier.py": [
   "agentifier/agentifier.py",
   "agentifier/_ff_review.py",

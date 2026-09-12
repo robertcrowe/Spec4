@@ -348,7 +348,7 @@
   ],
   "ptype": "int | None",
   "evidence": "prop 'n_clicks' of ['dmc.Button']",
-  "closure": "defined in _register_open_artifact; the committed sweep cannot resolve it (PHASE8_RECORD.md 12.4, D13)"
+  "closure": "defined in _register_open_artifact; the committed sweep cannot resolve it (cleanup-complete:PHASE8_RECORD.md 12.4, D13)"
  },
  {
   "file": "src/spec4/callbacks/_chat.py",

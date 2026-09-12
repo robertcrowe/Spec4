@@ -1,5 +1,5 @@
 {
- "_about": "The regression floor (CLEANUP_INVENTORY.md 50.3, 50.5(a)). Tier A is the seven whole-file entries, every node id they collect, plus the named tier-A and ordering node ids; tier B is the node ids of the protected classes. Derived at the tools commit from the Phase 6 check's own data, with the same selection.",
+ "_about": "The regression floor (cleanup-complete:CLEANUP_INVENTORY.md 50.3, 50.5(a)). Tier A is the seven whole-file entries, every node id they collect, plus the named tier-A and ordering node ids; tier B is the node ids of the protected classes. Derived at the tools commit from the Phase 6 check's own data, with the same selection.",
  "whole_file": [
   "tests/test_app_import_smoke.py",
   "tests/test_layout_contract.py",

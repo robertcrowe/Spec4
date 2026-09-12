@@ -1,4 +1,5 @@
-"""Phase 0's measurements, re-run on two trees and compared (CLEANUP_REPORT.md §7).
+"""Phase 0's measurements, re-run on two trees and compared
+(cleanup-complete:CLEANUP_REPORT.md §7).
 
     uv run python scripts/cleanup/remeasure.py BASE HEAD \\
         [--cov-base FILE] [--cov-head FILE] [--run-coverage DIR] \\
@@ -19,7 +20,7 @@ both exports with the same tool, and printed as the report's tables:
                 src/spec4/, where a path ending in "/" is a package.
   dead code     `uvx vulture@2.16 src/ tests/ --min-confidence 60`, without and with the
                 tree's vulture_whitelist.py; ruff `F401,F811,F841,ARG` with noqa
-                respected; CLEANUP_INVENTORY.md §7's cross-reference.
+                respected; cleanup-complete:CLEANUP_INVENTORY.md §7's cross-reference.
   dependencies  `uvx deptry@0.25.1 .`, its DEP001 split into the project's own `spec4`
                 imports, evals/ sibling imports and the rest.
   complexity    ruff `C90,PLR0912,PLR0913,PLR0915,SIM,B` on src/ with noqa ignored, so
@@ -511,8 +512,8 @@ def compare_coverage(base: dict, head: dict, families: dict) -> str:
             return (sum(hm[g][0] for g in members), sum(hm[g][1] for g in members))
         return hm.get(f, (0, 0))
 
-    # As in CLEANUP_INVENTORY.md §1.3's list: a module of under 10 statements (a
-    # package __init__) is left out.
+    # As in cleanup-complete:CLEANUP_INVENTORY.md §1.3's list: a module of under 10
+    # statements (a package __init__) is left out.
     six = sorted((f for f in bm if bm[f][0] >= 10), key=lambda f: pct(*bm[f]))[:6]
     out += ["", "The base's six lowest-covered (10 or more statements), then and now:"]
     out += [""]

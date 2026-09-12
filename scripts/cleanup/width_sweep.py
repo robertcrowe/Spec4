@@ -21,7 +21,7 @@ told apart from a value of a different real type.
 The results go to WIDTH_SWEEP_OUT, and a summary line is printed at the end.
 Each value's caller is recorded too, per target, so a value a production caller
 passes can be told apart from one a test passes directly (Phase 8,
-PHASE8_RECORD.md 2.1(c)). The summary line is unchanged.
+cleanup-complete:PHASE8_RECORD.md 2.1(c)). The summary line is unchanged.
 """
 
 from __future__ import annotations
@@ -163,7 +163,8 @@ def _standin(v) -> bool:
 
 
 # Each value's caller, so a value a production caller passes can be told apart from
-# one a test passes directly (Phase 8's `_fmt_usd` rule, PHASE8_RECORD.md 2.1(c)).
+# one a test passes directly (Phase 8's `_fmt_usd` rule,
+# cleanup-complete:PHASE8_RECORD.md 2.1(c)).
 _callers: dict = collections.defaultdict(lambda: collections.Counter())
 
 

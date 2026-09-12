@@ -77,7 +77,7 @@ code in `src/` or `tests/` has changed since. Total: **12,459 statements,
 876 missed, 93%**.
 
 The UI callbacks are the least-covered code. That is the cleanup's known limit
-(`CLEANUP_REPORT.md` §7.1).
+(`cleanup-complete:CLEANUP_REPORT.md` §7.1).
 
 | Module (`src/spec4/`) | Statements | Missed | Cover |
 |---|---:|---:|---:|

@@ -13,6 +13,10 @@ is live. It has two parts:
 Section numbers (§N) refer to `CLEANUP_INVENTORY.md`. The tools named below are in
 `scripts/cleanup/`, and its README gives their invocations.
 
+Section references (§n) are to `CLEANUP_INVENTORY.md`, `PHASE8_RECORD.md` and
+`CLEANUP_REPORT.md` at tag `cleanup-complete`, readable with
+`git show cleanup-complete:<file>`.
+
 ## Part 1: Done — the cleanup, Phases 0–8
 
 Phase 8 closed at `PHASE8_RECORD.md` §27, and it was accepted, and the cleanup with it, at
@@ -221,7 +225,8 @@ This was ruled at Phase 8's D10 (`PHASE8_RECORD.md` §19.1).
 This was ruled at Phase 8's D13 and D12 (`PHASE8_RECORD.md` §19.1).
 - **The tools stay under `ruff check .`, and outside mypy.**
 - **Each limit below is fixed when a tool is next used for it,** and not before.
-  - The first three are D13's, and are documented as limits in `scripts/cleanup/README.md`.
+  - All five are documented as known limits in `scripts/cleanup/README.md`.
+  - The first three are D13's.
   - The last two were raised after D13, and were sent here at Phase 8's close
     (`PHASE8_RECORD.md` §28).
 
@@ -262,9 +267,54 @@ are its assertions (D12). The other two stay ignored:
 
 **These are not work.** They are the map a future decision sizes from. They moved here from
 Part 1 when Phase 8 closed (`PHASE8_RECORD.md` §28).
-- **Not promote targets: the 24 `keep: subject is the private object` names** (§54.1,
-  §55.4). This is a standing ruling: the collection is each test's subject.
-- **The session-dict and JSON-artifact edges, as `TypedDict` design** (§77.8):
-  - the parameters: 90 session-dict `: Any` lines, and 107 JSON-artifact ones;
-  - D14's 122 return edges: 82 session-edge returns and 40 source-edge returns
-    (`PHASE8_RECORD.md` §21.2).
+
+**The session-typing rule: the session dict gets no `TypedDict` until someone takes that
+design on.**
+- **Where it comes from:** the cleanup plan barred it, as "a design change, not cleanup"
+  (§27.5(h)). Nothing since has lifted the bar.
+- **Why it is one design.** The session is a two-store model:
+  - every agent turn mutates the one live session dict it is handed;
+  - the poll later reads those mutations, and persists them.
+  - Typing one store and not the other would be an asymmetry.
+  - So the Designer wizard's store stays untyped with the rest (§60.7(g)), even though
+    `DesignerSession` in `agents/designer.py` already models part of it.
+- **What the model depends on, and what pins it:**
+  - `run` receives the live session, not a copy. 7n2's identity test pins this for all six
+    agents (`CLEANUP_REPORT.md` §2.1).
+  - A restart leaves no Agentifier key behind (D-TA1). A scan of the whole package pins
+    this, with a test at the reset seam (`CLEANUP_REPORT.md` §2.2).
+
+**The `Any` edges behind the rule** (§60.5, §77.8):
+- **The session-dict edge, 90 `: Any` parameter lines.**
+  - These are Dash callback signatures in `callbacks/`, bound to the store and session
+    payloads (89), plus one in `app.py`.
+  - Typing them is the session `TypedDict`.
+- **The JSON-artifact edge, 107 `: Any` parameter lines,** in the renderers and artifact
+  readers.
+  - Typing them means a `TypedDict` per artifact schema, where the schema is the design.
+- **D14's 122 return edges** (`PHASE8_RECORD.md` §21.2):
+  - **82 session-edge returns:** callbacks whose store output is the session or its
+    payload, and four helpers that return that payload for them.
+  - **40 source-edge returns:** values from `dash_mantine_components`, which ships no
+    types, from the unannotated `dcc.send_*`, or from `@callback`.
+    - No annotation narrower than `Any` passes strict mypy on these without a cast.
+    - A cast is a runtime change.
+- **Not edges, and staying:** the load-bearing rows, each with its reason beside it
+  (§77.3; `PHASE8_RECORD.md` §21.2). Among the returns there are 8: the `SubAgent`
+  protocol, and litellm values read duck-typed.
+
+**The map: the contract docstrings.** The session's shape is already written down, at the
+places that write to it, before any `TypedDict` is drawn.
+- **Each of the agentifier's eight generators has an "Its contract on ``session``"
+  paragraph in its docstring** (7q3, §79.3). It states:
+  - the keys the generator writes itself;
+  - where it hands off;
+  - its counter rule.
+- **`scripts/cleanup/contract_check.py` checks those paragraphs against a traced run.**
+  Every key written must be documented.
+- **`tests/agentifier/test_generator_contracts.py` drives each documented key** from its
+  generator's own entry. That is 31 keys in five tests (Phase 8, 8g: `PHASE8_RECORD.md`
+  §11).
+
+**A standing ruling: the 24 not-promote targets.** These are the `keep: subject is the
+private object` names (§54.1, §55.4). The collection is each test's subject.

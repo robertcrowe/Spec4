@@ -1,5 +1,5 @@
 {
- "_about": "Mutation and probe cases as run in 7q (CLEANUP_INVENTORY.md 79). Anchors are text on the tree each case was written against; a case whose anchor no longer matches exactly once is refused, not approximated. 'fail'/'pass' cases are judged by the suite; 'diverge' cases by trace identity.",
+ "_about": "Mutation and probe cases as run in 7q (cleanup-complete:CLEANUP_INVENTORY.md 79). Anchors are text on the tree each case was written against; a case whose anchor no longer matches exactly once is refused, not approximated. 'fail'/'pass' cases are judged by the suite; 'diverge' cases by trace identity.",
  "cases": {
   "7q1": {
    "label": "_cc_draw_analysis returns None on success",

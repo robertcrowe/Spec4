@@ -4,9 +4,9 @@
 
 TRACE.json is a trace_identity.py run of the default family. Each family function's
 docstring carries a paragraph that begins "Its contract on ``session``" (7q3,
-CLEANUP_INVENTORY.md 79.3). This check reads the paragraph and takes as documented
-keys the ``double-backticked`` identifiers in it that name session keys. Two kinds of
-name are resolved, not read as keys:
+cleanup-complete:CLEANUP_INVENTORY.md 79.3). This check reads the paragraph and takes
+as documented keys the ``double-backticked`` identifiers in it that name session keys.
+Two kinds of name are resolved, not read as keys:
   - a family function (``_begin_priority_phase``): a hand-off, whose own documented keys
     count for this generator too, since its writes land inside the same invocation;
   - a module collection (``_RESTART_DEFAULTS``, ``_RESTART_POP``): its string members.
@@ -22,7 +22,7 @@ Reported per generator:
   observed     keys seen changing under its own entry;
   UNDOCUMENTED observed keys that neither it nor a hand-off documents. Exit 1 on any;
   never seen   documented own keys that no traced invocation changed (the Phase 8
-               contract-test list, PHASE8_RECORD.md 1.2 P21).
+               contract-test list, cleanup-complete:PHASE8_RECORD.md 1.2 P21).
 
 STAND_INS are keys that test stand-ins write into the session, set aside by name as 7q3
 did: `_finalized` and `_priority_begun`.

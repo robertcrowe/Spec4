@@ -1,4 +1,4 @@
-Phase 0 (1d1dcbd), verbatim from CLEANUP_INVENTORY.md: the test summary from §1,
+Phase 0 (1d1dcbd), verbatim from cleanup-complete:CLEANUP_INVENTORY.md: the test summary from §1,
 and the per-module table from §1.3.
 
 uv run pytest --cov=spec4 --cov-report=term-missing -q

@@ -2,10 +2,10 @@
 
     uv run python scripts/cleanup/move_check.py BASE_DIR NEW_DIR MAP.json
 
-Ruled at Phase 8's D9 (PHASE8_RECORD.md §19.1). BASE_DIR and NEW_DIR are two trees,
-such as a `git archive` export and the working tree, each holding `tests/`, `src/` and
-`scripts/cleanup/`. MAP.json names, for each source file, where its moved top-level
-nodes went:
+Ruled at Phase 8's D9 (cleanup-complete:PHASE8_RECORD.md §19.1). BASE_DIR and NEW_DIR
+are two trees, such as a `git archive` export and the working tree, each holding
+`tests/`, `src/` and `scripts/cleanup/`. MAP.json names, for each source file, where
+its moved top-level nodes went:
 
     {"tests/test_agents.py": {"TestBrainstormer": "tests/test_brainstormer.py", ...}}
 
