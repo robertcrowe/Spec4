@@ -3106,3 +3106,43 @@ restored: both sha256 identical to before
 | Tests | `4224 passed, 1 skipped`, exit 0: the two new tests |
 | Coverage | `TOTAL 12475 808 94%`. **Misses fall from 834 to 808,** all 26 in `feature_specs.py` (80 → 54). The pair is the first thing in the suite to run the three builders' entry paths |
 | Floor / off-limits | `456 (expect 456)`, `FAILURES: 0`; the one test hunk is outside every entry |
+
+## 20. D4: the `sys.modules` idiom removed from `test_cost_summary.py`
+
+**Ruled at §19.1:** remove it. Delete the `sys.modules` line, keep the assertions, and run no
+mutation. The shadow the lookup worked around is gone, and the test's own pass proves the
+plain import resolves.
+
+**What landed** (`tests/test_cost_summary.py` only): `1 file changed, 3 insertions(+), 7
+deletions(-)`.
+- **`test_both_surfaces_call_the_one_renderer`** (`TestOneRenderer`) loses the lookup
+  `module = sys.modules["spec4.layouts._round_cost"]` and its three-line comment. The
+  comment explained the lookup as a workaround for `spec4.layouts` re-exporting a
+  `_round_cost` function that shadowed the submodule.
+- **The test now patches the module by name:**
+  `monkeypatch.setattr(_round_cost, "cost_strip_lines", lambda figures: _round_cost.RoundCost(...))`.
+  `from spec4.layouts import _round_cost` sits beside the file's other `spec4.layouts`
+  imports.
+- **`import sys` goes with it.** It had no other use in the file.
+- **Every assertion is unchanged.**
+
+**Why the plain import is sound, checked before the edit:**
+- `spec4/layouts/__init__.py` imports only `round_cost` and `round_cost_lines` from the
+  submodule. Nothing binds `_round_cost`, so the package attribute is the submodule.
+- The test file uses no other name `_round_cost`.
+- **The test's pass is the proof.** Its assertions read the stub's wording through both
+  renderers, `round_cost_lines` and `run_cost_lines`. A patch on any other object would
+  leave them reading the real `cost_strip_lines`, and the test would fail.
+
+**Floor.** `TestOneRenderer` holds no entry. The file's three tier-A nodes are in
+`TestChatPlacement`, `TestDesignerPlacement` and `TestStripNumbers`, and are untouched. The
+import hunk sits at the top of the file, outside every entry.
+
+| Gate | Result |
+|---|---|
+| Ruff / format / mypy | `All checks passed!` on `src/ tests/` and on `.`; `240 files already formatted`; `Success: no issues found in 93 source files` |
+| Tests | `4224 passed, 1 skipped`, exit 0; the file's 57 all pass, `test_both_surfaces_call_the_one_renderer` among them |
+| Coverage | `TOTAL 12475 808 94%`: unchanged, as a test-only edit should leave it |
+| Floor / off-limits | `456 (expect 456)`, `FAILURES: 0` |
+
+**BACKLOG 1.1's `sys.modules` item (P12) is closed.**

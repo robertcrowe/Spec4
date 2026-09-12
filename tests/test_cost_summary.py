@@ -21,7 +21,6 @@ written against that id, and the contract is worth more than the tidier name.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +36,7 @@ from spec4.app_constants import (
     STATE_STACK_COMPLETE,
     STATE_VISION_COMPLETE,
 )
+from spec4.layouts import _round_cost
 from spec4.layouts._chat import chat_layout, cost_summary
 from spec4.layouts._round_cost import (
     COST_LABEL,
@@ -617,15 +617,11 @@ class TestOneRenderer:
         one of them is wording its lines somewhere else.
         """
         _write_usage(tmp_path, [_call("brainstormer", cost=0.02)])
-        # By `sys.modules`, not `import ... as`: written when `spec4.layouts`
-        # re-exported a `_round_cost` function that shadowed this submodule. The
-        # function is `round_cost` now; the lookup still reaches the submodule.
-        module = sys.modules["spec4.layouts._round_cost"]
 
         monkeypatch.setattr(
-            module,
+            _round_cost,
             "cost_strip_lines",
-            lambda figures: module.RoundCost(f"stub {figures.scope}", "", ""),
+            lambda figures: _round_cost.RoundCost(f"stub {figures.scope}", "", ""),
         )
         assert round_cost_lines(str(tmp_path), 0).figure == "stub v0"
         run = run_cost_lines(str(tmp_path), None, "brainstormer")
