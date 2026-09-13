@@ -12,10 +12,11 @@ self-contained concerns into siblings, one module each:
 * :mod:`spec4.callbacks.designer._refine` -- refining a drawn mock, and
   redrawing a failed one.
 
-The two callbacks that stay are the ones driving the wizard *shell* rather than
+The callbacks that stay are the ones driving the wizard *shell* rather than
 one screen's buttons: ``render_designer_step`` paints whichever step the store
-names, and ``on_mock_stream_poll`` feeds it while a draw runs and delivers the
-finished mock in-band.
+names, ``on_mock_stream_poll`` feeds it while a draw runs and delivers the
+finished mock in-band, and ``on_designer_intro_toggle`` opens and closes the
+usage notes that stand above every step (D-LR12).
 
 The import path ``spec4.callbacks.designer`` is unchanged -- ``app.py`` imports
 it to register these callbacks. Phase 4j then moved every importer onto the
@@ -35,7 +36,7 @@ through this module from outside to be patched.
 from __future__ import annotations
 
 import threading
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dash import Input, Output, State, callback, ctx, no_update
 
@@ -67,6 +68,8 @@ from spec4.callbacks.designer._wizard import (
     on_designer_step2_choice,
 )
 from spec4.layouts.designer import (
+    DESIGNER_INTRO_BODY_ID,
+    DESIGNER_INTRO_TOGGLE_ID,
     DESIGNER_STEPPER_ID,
     step1_content,
     step2_content,
@@ -79,6 +82,9 @@ from spec4.layouts.designer import (
     stepper_index,
 )
 
+if TYPE_CHECKING:
+    from dash import NoUpdate
+
 __all__ = [
     "_DEFAULT_EXPECTED_CHARS",
     "_DEV_MODE",
@@ -90,6 +96,7 @@ __all__ = [
     "_start_gen",
     "on_designer_auto_retry",
     "on_designer_carry_forward",
+    "on_designer_intro_toggle",
     "on_designer_refine_image_delete",
     "on_designer_refine_upload",
     "on_designer_regenerate",
@@ -170,6 +177,25 @@ def render_designer_step(
             bool(store.get("_is_revision", False)),
         )
     return content, designer_step_row(stepper_index(step))
+
+
+@callback(
+    Output(DESIGNER_INTRO_BODY_ID, "opened"),
+    Input(DESIGNER_INTRO_TOGGLE_ID, "n_clicks"),
+    State(DESIGNER_INTRO_BODY_ID, "opened"),
+    prevent_initial_call=True,
+)
+def on_designer_intro_toggle(n: int | None, opened: bool) -> bool | NoUpdate:
+    """Open or close "How to use Designer" (D-LR12).
+
+    The state is the Collapse's own ``opened`` and never the session's: the
+    notes are a reading aid, not a fact about the project or the round, and a
+    rebuilt page reasonably starts with them closed. Nothing here reads or
+    writes the session, so a click cannot rebuild the page it was made on.
+    """
+    if not n:
+        return no_update
+    return not opened
 
 
 @callback(

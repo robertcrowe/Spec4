@@ -66,6 +66,13 @@ DESIGNER_STEPS_CLASS = "designer-steps"
 # container instead (its Output moved with it, in the same change).
 DESIGNER_STEPPER_ID = "designer-stepper"
 
+# The introduction's disclosure (D-LR12): the text-label toggle and the
+# `dmc.Collapse` it opens. Plain string ids — one of each on the screen, both
+# addressed by `on_designer_intro_toggle` — and neither sits inside the step
+# row's container or the step content, so no step re-render reaches them.
+DESIGNER_INTRO_TOGGLE_ID = "designer-intro-toggle"
+DESIGNER_INTRO_BODY_ID = "designer-intro-body"
+
 # The two facts the preview used to frame. Both are one dimmed line now: a box
 # around a sentence that is neither a warning nor an error is chrome, and the
 # yellow disclaimer was the loudest thing on the screen it was disclaiming.
@@ -605,6 +612,136 @@ def step7_content(store: dict[str, Any], image_support: bool | None = None) -> A
     return dmc.Stack(children, gap="xs")
 
 
+def _usage_notes() -> list[html.P | html.Ol | html.Ul]:
+    """The body of "How to use Designer", element for element (D-LR12).
+
+    Reference material rather than the agent speaking, so the caller sets it
+    at the dim-line weight. Bold names a step — by the step row's own label —
+    or a control — Approve, Refine and Start Over are the preview step's own
+    button labels — italic marks the optional step and the two quoted
+    examples, and the path is monospace like every other path the app prints.
+    """
+    # One body per step the row names after the no-UI check, which only a
+    # project with no interface ever meets. Each step's lead phrase is the
+    # row's label, taken from `DESIGNER_STEPS` rather than retyped, so the
+    # guide cannot name a step the row does not.
+    bodies: tuple[list[str | html.Em | html.Strong], ...] = (
+        [
+            " — create a fresh design, let Designer scan your existing project "
+            "files and capture their current look and feel, or carry a previous "
+            "round's design forward."
+        ],
+        [
+            " — enter your visual preferences: theme (light/dark), colors, "
+            "layout style, mood, typography, or any other design direction you "
+            "have in mind."
+        ],
+        [
+            " ",
+            html.Em("(optional)"),
+            " — upload images of designs you like. For each one you can add a "
+            "note describing what you want to take from it or avoid.",
+        ],
+        [" — Designer draws a complete, self-contained HTML file."],
+        [
+            " — review the mock. You can ",
+            html.Strong("Approve"),
+            " it to move on, ",
+            html.Strong("Refine"),
+            " it with a description of changes (and optional reference images), or ",
+            html.Strong("Start Over"),
+            " from scratch.",
+        ],
+    )
+    return [
+        html.P("Designer works in a few short steps:"),
+        # `strict`: five bodies for five labels, and a count that differs is a
+        # bug to raise on, not a step to drop without a word.
+        html.Ol(
+            [
+                html.Li([html.Strong(label), *body])
+                for label, body in zip(DESIGNER_STEPS[1:], bodies, strict=True)
+            ]
+        ),
+        html.P(
+            [
+                "The finished mock is saved to ",
+                # `{N}` is the literal text the developer reads, not a format
+                # placeholder: the round number is whichever round is open.
+                html.Span(".spec4/v{N}/design/mock.html", className="mono"),
+                " (the current round's version) in your project directory. "
+                "Phaser will direct your coding agent to reference it during "
+                "implementation.",
+            ]
+        ),
+        html.P(html.Strong("Tips for better results:")),
+        html.Ul(
+            [
+                html.Li(
+                    [
+                        "Be specific — ",
+                        html.Em(
+                            '"dark navy background, orange accent, card-based layout"'
+                        ),
+                        " produces better output than ",
+                        html.Em('"modern"'),
+                        ".",
+                    ]
+                ),
+                html.Li("The mock covers the starting screen only, not every page."),
+                html.Li(
+                    "Use the Refine step rather than Start Over when you just "
+                    "want to tweak details."
+                ),
+            ]
+        ),
+    ]
+
+
+# `Any` for the reason every step builder above returns it:
+# `dash_mantine_components` is untyped (`ignore_missing_imports` in
+# pyproject), so the Stack is `Any` at its source.
+def _introduction() -> Any:
+    """The opening turn Designer never gets to speak, and its usage notes.
+
+    Every chat agent opens by saying who it is and what it does; Designer has
+    no chat, so this line says it instead, in the agent's voice — full
+    contrast, the colour the transcript's text takes, not a dimmed line. The
+    notes under it start closed on every render: the wizard is in front of
+    them, and they are there to be opened, not read on the way past. Their
+    state is the Collapse's own ``opened``, never the session's.
+
+    The Stack aligns to the start so the toggle stays the width of its words
+    instead of stretching into a full-width bar.
+    """
+    return dmc.Stack(
+        [
+            dmc.Text(
+                "Hello! I'm the Designer. I'll generate a self-contained HTML "
+                "mock-up of your application's starting screen — a visual "
+                "design reference ready to hand off to your coding agent."
+            ),
+            # `transparent` so that, were `v3.css` ever missing, the fallback
+            # is a line of text and never a second filled primary on the
+            # screen. The stylesheet does the rest of the stripping.
+            dmc.Button(
+                "How to use Designer",
+                id=DESIGNER_INTRO_TOGGLE_ID,
+                variant="transparent",
+            ),
+            dmc.Collapse(
+                html.Div(_usage_notes(), className="dim-line"),
+                id=DESIGNER_INTRO_BODY_ID,
+                opened=False,
+                transitionDuration=0,
+            ),
+        ],
+        gap="xs",
+        align="flex-start",
+        my="xs",
+    )
+
+
 def designer_layout(
     session: dict[str, Any] | None = None, prefs: dict[str, Any] | None = None
 ) -> html.Div:
@@ -744,21 +881,24 @@ def designer_layout(
                 interval=250,
                 disabled=True,
             ),
-            # No title, no introduction, no usage accordion. The step row says
-            # where the developer is, the step's own instruction line says what
-            # it wants, and the status bar names the route and the model — the
-            # paragraph that introduced the Designer said none of that twice
-            # over, and the accordion explained a wizard while standing in
-            # front of it. The route back is the status bar's Project link,
-            # which is mounted on every screen, so this one carries no Back of
-            # its own out of the wizard.
+            # D-LR12, reversing D-LR7's "no title, no introduction, no usage
+            # accordion". The pipeline row is the title: it marks Designer
+            # active exactly where a heading would have named it, so there is
+            # no heading. Under it, the introduction is the opening turn every
+            # chat agent speaks and Designer, having no chat, never got to —
+            # the asymmetry was the defect, not the paragraph. Its usage notes
+            # sit closed because the wizard is in front of them. The pipeline
+            # row, the introduction and the notes are all siblings of the step
+            # row's container and of the step content, never inside either,
+            # so `render_designer_step` re-rendering those two never touches
+            # them, on any step.
             #
-            # Above the step row is the chat frame's pipeline row, marked at
-            # Designer by name because entering this route does not write
-            # `active_agent`. It is a sibling of the step row's container, not
-            # inside it, so `render_designer_step` re-rendering that container
-            # never touches it.
+            # The pipeline row is marked at Designer by name because entering
+            # this route does not write `active_agent`. The route back is the
+            # status bar's Project link, which is mounted on every screen, so
+            # this one carries no Back of its own out of the wizard.
             agent_status_bar(session, active="designer"),
+            _introduction(),
             html.Div(
                 designer_step_row(stepper_index(initial_step)),
                 id=DESIGNER_STEPPER_ID,

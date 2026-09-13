@@ -953,6 +953,8 @@
   "designer: wizard": {
     "ids": [
       "designer-autoretry-interval",
+      "designer-intro-body",
+      "designer-intro-toggle",
       "designer-session-store",
       "designer-step-content",
       "designer-stepper",
@@ -966,6 +968,8 @@
   "designer: wizard, brownfield": {
     "ids": [
       "designer-autoretry-interval",
+      "designer-intro-body",
+      "designer-intro-toggle",
       "designer-session-store",
       "designer-step-content",
       "designer-stepper",
@@ -979,6 +983,8 @@
   "designer: wizard, no project": {
     "ids": [
       "designer-autoretry-interval",
+      "designer-intro-body",
+      "designer-intro-toggle",
       "designer-session-store",
       "designer-step-content",
       "designer-stepper",

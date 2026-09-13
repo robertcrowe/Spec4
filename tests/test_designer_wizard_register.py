@@ -8,6 +8,11 @@ six circles and check marks. What is asserted here is the register it moved
 into, not the flow it runs — the flow is unchanged, deliberately, and
 ``test_designer.py`` still holds it to that.
 
+D-LR12 later brought the introduction and the usage notes back, in this
+register rather than that one: one line in the agent's voice and a closed
+text-label disclosure, not a paragraph and an accordion. ``TestIntroduction``
+holds that shape.
+
 Four of these are structural rather than cosmetic, and they are the ones worth
 having:
 
@@ -30,12 +35,16 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from dash import no_update
 from dash._callback import GLOBAL_CALLBACK_MAP
 
 import spec4.app  # noqa: F401  — imported for its side effect: registering callbacks
 from spec4.app_constants import AGENT_KEYS
+from spec4.callbacks.designer import on_designer_intro_toggle
 from spec4.layouts import _shared
 from spec4.layouts.designer import (
+    DESIGNER_INTRO_BODY_ID,
+    DESIGNER_INTRO_TOGGLE_ID,
     DESIGNER_STEP_CLASS,
     DESIGNER_STEPPER_ID,
     DESIGNER_STEPS,
@@ -436,11 +445,17 @@ class TestPipelineRow:
             _session(working_dir=str(tmp_path), active_agent="brainstormer"), {}
         )
 
-    def test_it_stands_immediately_above_the_step_row(self, tmp_path: Any) -> None:
+    def test_it_stands_above_the_step_row_with_only_the_introduction_between(
+        self, tmp_path: Any
+    ) -> None:
+        """D-LR12 put the introduction between the two rows, and nothing else."""
         children = self._page(tmp_path).children
         at = [getattr(c, "id", None) for c in children].index(DESIGNER_STEPPER_ID)
-        assert _pipeline(children[at - 1]) is not None
-        assert [c for c in children[:at] if _has_pipeline(c)] == [children[at - 1]]
+        above = [i for i, c in enumerate(children[:at]) if _has_pipeline(c)]
+        assert len(above) == 1
+        between = children[above[0] + 1 : at]
+        assert len(between) == 1
+        assert _ids(between[0]) == {DESIGNER_INTRO_TOGGLE_ID, DESIGNER_INTRO_BODY_ID}
 
     def test_designer_is_marked_and_the_other_six_are_pills(
         self, tmp_path: Any
@@ -479,20 +494,202 @@ class TestPipelineRow:
 
 
 # ---------------------------------------------------------------------------
-# No accordion, no alerts, no prose
+# The introduction (D-LR12)
+# ---------------------------------------------------------------------------
+
+# Written out here rather than imported: the point is that the sentence on
+# screen is this sentence, word for word, and a constant shared with the
+# layout would pass whatever it said.
+_INTRO = (
+    "Hello! I'm the Designer. I'll generate a self-contained HTML mock-up of "
+    "your application's starting screen — a visual design reference ready to "
+    "hand off to your coding agent."
+)
+
+
+def _intro_lines(node: Any) -> list[Any]:
+    """Every `Text` under `node` whose whole text is the introduction."""
+    return [c for c in _of_type(node, "Text") if getattr(c, "children", None) == _INTRO]
+
+
+def _by_id(node: Any, component_id: str) -> Any:
+    return next(c for c in _walk(node) if getattr(c, "id", None) == component_id)
+
+
+def _text(node: Any) -> str:
+    """A rendered tree's text, its strings joined the way the browser runs them."""
+    if isinstance(node, str):
+        return node
+    if isinstance(node, list | tuple):
+        return "".join(_text(n) for n in node)
+    return _text(getattr(node, "children", None) or "")
+
+
+def _guide_steps(page: Any) -> list[Any]:
+    """The items of the numbered list in "How to use Designer", in order."""
+    (steps,) = _of_type(_by_id(page, DESIGNER_INTRO_BODY_ID), "Ol")
+    return list(steps.children)
+
+
+class TestIntroduction:
+    """D-LR12: Designer introduces itself, as every chat agent's opening turn does.
+
+    One line in the agent's voice and a closed disclosure holding the usage
+    notes, between the pipeline row and the step row, on every wizard step and
+    never behind the gate. Emoji absence is global rather than per-screen, and
+    ``test_visual_register.py::TestNoEmoji`` holds it for this copy too.
+    """
+
+    def test_the_intro_line_and_toggle_stand_between_the_pipeline_and_the_step_row(
+        self, page: Any
+    ) -> None:
+        children = page.children
+        pipeline = next(i for i, c in enumerate(children) if _has_pipeline(c))
+        intro = next(
+            i for i, c in enumerate(children) if DESIGNER_INTRO_TOGGLE_ID in _ids(c)
+        )
+        step_row = [getattr(c, "id", None) for c in children].index(DESIGNER_STEPPER_ID)
+        assert pipeline < intro < step_row
+        block = _walk(children[intro])
+        lines = _intro_lines(children[intro])
+        assert len(lines) == 1
+        toggle = _button(children[intro], DESIGNER_INTRO_TOGGLE_ID)
+        assert block.index(lines[0]) < block.index(toggle)
+
+    def test_neither_is_inside_the_step_row_or_the_step_content(
+        self, page: Any
+    ) -> None:
+        intro_ids = {DESIGNER_INTRO_TOGGLE_ID, DESIGNER_INTRO_BODY_ID}
+        assert intro_ids <= _ids(page)
+        for container_id in (DESIGNER_STEPPER_ID, "designer-step-content"):
+            container = next(
+                c for c in page.children if getattr(c, "id", None) == container_id
+            )
+            assert not intro_ids & _ids(container), container_id
+            assert _intro_lines(container) == [], container_id
+
+    def test_the_disclosure_starts_closed_and_does_not_animate(self, page: Any) -> None:
+        body = _by_id(page, DESIGNER_INTRO_BODY_ID)
+        assert type(body).__name__ == "Collapse"
+        assert body.opened is False
+        assert body.transitionDuration == 0
+
+    def test_the_toggle_is_a_text_label_not_a_second_primary(self, page: Any) -> None:
+        toggle = _button(page, DESIGNER_INTRO_TOGGLE_ID)
+        assert toggle.children == "How to use Designer"
+        assert _variant(toggle) == "transparent"
+        assert getattr(toggle, "color", None) is None
+        assert _filled(page) == []
+
+    def test_the_intro_line_is_the_sentence_verbatim(self, page: Any) -> None:
+        """The agent's voice: full contrast, so not a dimmed line, and no colour."""
+        lines = _intro_lines(page)
+        assert len(lines) == 1
+        classes = (getattr(lines[0], "className", None) or "").split()
+        assert "dim-line" not in classes
+        assert getattr(lines[0], "c", None) is None
+        assert getattr(lines[0], "color", None) is None
+
+    def test_the_mock_path_is_monospace(self, page: Any) -> None:
+        body = _by_id(page, DESIGNER_INTRO_BODY_ID)
+        mono = [
+            c.children
+            for c in _walk(body)
+            if "mono" in (getattr(c, "className", None) or "").split()
+        ]
+        assert mono == [".spec4/v{N}/design/mock.html"]
+
+    def test_the_guide_names_the_steps_the_row_names(self, page: Any) -> None:
+        """Asserted against the constant, so a renamed row label fails here."""
+        leads = [item.children[0] for item in _guide_steps(page)]
+        assert [type(lead).__name__ for lead in leads] == ["Strong"] * len(leads)
+        assert [lead.children for lead in leads] == list(DESIGNER_STEPS[1:])
+
+    def test_the_guide_leaves_out_the_no_ui_check(self, page: Any) -> None:
+        """Only a project with no interface meets step 1; the guide is the path
+        everyone else takes, so it starts at the step after it."""
+        guide = _text(_by_id(page, DESIGNER_INTRO_BODY_ID))
+        assert all(label in guide for label in DESIGNER_STEPS[1:])
+        assert DESIGNER_STEPS[0] not in guide
+
+    def test_the_guide_s_button_names_are_the_preview_step_s_labels(
+        self, page: Any
+    ) -> None:
+        preview = _guide_steps(page)[-1]
+        named = [strong.children for strong in _of_type(preview, "Strong")[1:]]
+        preview_step = step6_content(_STORE)
+        assert named == [
+            _button(preview_step, "btn-designer-approve").children,
+            _button(preview_step, "btn-designer-refine").children,
+            _button(preview_step, "btn-designer-start-over").children,
+        ]
+
+    def test_the_gate_branch_has_neither(self, tmp_path: Any) -> None:
+        """The chat frame's opening turn waits behind its gate; so does this."""
+        gate = designer_layout(
+            _session(working_dir=str(tmp_path), agent_llm_asked={}), {}
+        )
+        ids = _ids(gate)
+        assert "btn-agent-llm-default" in ids
+        assert not {DESIGNER_INTRO_TOGGLE_ID, DESIGNER_INTRO_BODY_ID} & ids
+        assert _intro_lines(gate) == []
+
+
+def _intro_toggle_refs() -> set[str]:
+    """Every component id `on_designer_intro_toggle` names, off the registry.
+
+    Found by the registered function's name, as `_render_designer_step_outputs`
+    finds its callback, rather than by the output key Dash files it under.
+    """
+    for spec in GLOBAL_CALLBACK_MAP.values():
+        if getattr(spec.get("callback"), "__name__", None) != (
+            "on_designer_intro_toggle"
+        ):
+            continue
+        outputs = spec["output"]
+        outputs = outputs if isinstance(outputs, list) else [outputs]
+        return {
+            *(dep["id"] for dep in spec["inputs"]),
+            *(dep["id"] for dep in spec["state"]),
+            *(out.component_id for out in outputs),
+        }
+    raise AssertionError("on_designer_intro_toggle is not a registered callback")
+
+
+class TestIntroToggle:
+    """The disclosure's own state, flipped by a click, and nothing else touched."""
+
+    def test_no_click_changes_nothing(self) -> None:
+        assert on_designer_intro_toggle(None, False) is no_update
+
+    def test_the_first_click_opens_it(self) -> None:
+        assert on_designer_intro_toggle(1, False) is True
+
+    def test_the_second_click_closes_it(self) -> None:
+        assert on_designer_intro_toggle(2, True) is False
+
+    def test_it_names_the_two_intro_ids_and_not_the_session(self) -> None:
+        refs = _intro_toggle_refs()
+        assert refs == {DESIGNER_INTRO_TOGGLE_ID, DESIGNER_INTRO_BODY_ID}
+        assert "session" not in refs
+
+
+# ---------------------------------------------------------------------------
+# No accordion, no alerts, no prose in the steps
 # ---------------------------------------------------------------------------
 
 
 class TestNoAccordionAndNoAlerts:
     def test_the_wizard_renders_no_accordion(self, page: Any) -> None:
-        """ "How to use Designer" is deleted, not collapsed or moved."""
+        """ "How to use Designer" is a closed Collapse under a text toggle.
+
+        D-LR12 brought the notes back without the accordion's framed control:
+        the one disclosure on the page is a `Collapse`, and nothing is an
+        `Accordion`.
+        """
         assert _of_type(page, "Accordion") == []
         assert _of_type(page, "AccordionItem") == []
-
-    def test_the_wizard_renders_no_introduction(self, page: Any) -> None:
-        text = " ".join(c for c in _dim_lines(page) + [str(page)] if isinstance(c, str))
-        assert "Hello! I'm the" not in text
-        assert "How to use Designer" not in text
+        assert len(_of_type(page, "Collapse")) == 1
 
     @pytest.mark.parametrize("label,content", _steps())
     def test_no_step_renders_an_alert(self, label: str, content: Any) -> None:

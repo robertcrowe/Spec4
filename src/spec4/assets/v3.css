@@ -412,6 +412,37 @@ code, pre, kbd {
   border-color: #3a3a4a;
 }
 
+/* ===== Designer introduction =====
+   D-LR12. "How to use Designer" is a disclosure drawn as the words that open
+   it. It is a Mantine Button so it can take a click, and it sheds the button
+   the way `.sb-dir` and the pipeline labels shed theirs — inherited font, no
+   fill, no border, no padding — plus the fixed height Mantine sizes a button
+   to, which a line of text has no use for. Its colour is the accent: the one
+   mark that sets it apart as a control among the prose around it, reached
+   through the theme primary like every other accent in the app (D-LR2).
+   Selected by id because Mantine's own button rules are classes and
+   `:where()`s: the id outranks them whichever stylesheet the page happens to
+   load last. */
+#designer-intro-toggle {
+  font: inherit;
+  color: var(--mantine-primary-color-filled);
+  background: none;
+  border: 0;
+  padding: 0;
+  height: auto;
+}
+
+/* A stripped control keeps its affordance, and it is `.sb-dir`'s own: an
+   underline under the pointer. */
+#designer-intro-toggle:hover { text-decoration: underline; }
+
+/* The usage notes it opens. The browser's 40px list indent is a document's;
+   under a 12px `.dim-line` it sets the list wider than the wizard around it. */
+#designer-intro-body ol,
+#designer-intro-body ul {
+  padding-left: 20px;
+}
+
 /* ===== Project-view stack =====
    Agent rows, then the round cost, then the round tree with its legend
    (D-LR11). One gap declared once and taken by all three blocks, so the
