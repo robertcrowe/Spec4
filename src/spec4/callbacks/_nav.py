@@ -61,11 +61,13 @@ def _enter_agent(session: dict[str, Any], target: str) -> tuple[dict[str, Any], 
     """Open ``target``'s screen: Designer's wizard, or the chat for every other.
 
     The arrival half of a pill click, shared with the setup wizard's two exits
-    (``_setup._leave_wizard``). Both callers have already asked
-    ``llm_selection.is_connected``; this does not ask again.
+    (``_setup._leave_wizard``) and the two Continue buttons into Designer. The
+    pill and the wizard have already asked ``llm_selection.is_connected``; this
+    does not ask again. The Continue buttons never asked (see their docstrings).
 
-    ``validate_agent_preconditions`` is not re-run either. It passed at click
-    time, before any detour, and nothing in the wizard changes artifact state:
+    ``validate_agent_preconditions`` is not re-run either. For the pill and the
+    wizard it passed at click time, before any detour, and nothing in the
+    wizard changes artifact state:
     the wizard writes the connection and the search provider, never a vision,
     a stack or the phases.
     """
@@ -81,7 +83,8 @@ def _enter_agent(session: dict[str, Any], target: str) -> tuple[dict[str, Any], 
             # away from — and could re-arm the auto-retry with it. This is
             # where the removed wizard Back button used to discard it, moved
             # to the route in now that the way out is the status bar's
-            # Project link.
+            # Project link. The Continue buttons from Brainstormer and
+            # Agentifier arrive through here too.
             "_designer_failed_draw": None,
         }, "/design"
     return _switch_agent(
@@ -204,9 +207,18 @@ def on_review_to_brainstormer(n: int | None, session: Any) -> Any:
     prevent_initial_call=True,
 )
 def on_brainstormer_to_designer(n: int | None, session: Any) -> Any:
+    """Continue from a finished vision into Designer, as the pill arrives.
+
+    ``_enter_agent`` checks neither preconditions nor the connection. Designer's
+    one precondition, a vision, holds wherever this button is drawn: it renders
+    only on ``STATE_VISION_COMPLETE``, and every writer of that state writes a
+    ``vision_statement`` with it. The connection holds only as far as the button
+    can show it: Brainstormer's turn had a model, and Designer has the same one
+    unless either agent carries its own override (``is_connected`` is per agent).
+    """
     if not n:
         return no_update, no_update
-    return {**session, "phase": "designer"}, "/design"
+    return _enter_agent(session, "designer")
 
 
 @callback(
@@ -230,9 +242,18 @@ def on_brainstormer_to_agentifier(n: int | None, session: Any) -> Any:
     prevent_initial_call=True,
 )
 def on_agentifier_to_designer(n: int | None, session: Any) -> Any:
+    """Continue from a finished AI-feature catalog into Designer, as the pill arrives.
+
+    ``_enter_agent`` checks neither preconditions nor the connection. Designer's
+    one precondition, a vision, holds wherever this button is drawn: Agentifier
+    cannot be entered without one, by its pill or by Brainstormer's Continue.
+    The connection holds only as far as the button can show it: Agentifier's
+    turn had a model, and Designer has the same one unless either agent carries
+    its own override (``is_connected`` is per agent).
+    """
     if not n:
         return no_update, no_update
-    return {**session, "phase": "designer"}, "/design"
+    return _enter_agent(session, "designer")
 
 
 @callback(

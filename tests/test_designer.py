@@ -2191,6 +2191,88 @@ class TestDesignerRetryWithADifferentModel:
         assert _component(layout, "mock-stream-buffer").data["error"] is None
 
 
+class TestContinueIntoDesigner:
+    """Both Continue buttons into Designer arrive the way the pill does.
+
+    They used to write ``phase`` alone, so a failed draw's snapshot left on
+    /design survived a trip out to Brainstormer or Agentifier and came back in
+    through Continue. Both now go through ``_enter_agent``, the one arrival
+    path, so the clear pinned for the pill above holds for them too.
+    """
+
+    _SNAPSHOT = {
+        "error": "boom",
+        "preference_text": "warm palette",
+        "screenshots": [],
+        "_capture_mode": False,
+        "_has_existing_html": False,
+    }
+    # What an arrival in Designer writes; every other key passes through.
+    _WRITTEN = ("phase", "agent_select_error", "_designer_failed_draw")
+
+    def _session(self, source: str, failed: dict[str, Any] | None) -> dict[str, Any]:
+        from spec4.session import default_session
+
+        return {
+            **default_session(),
+            "working_dir": "/tmp",
+            "phase": "chat",
+            "active_agent": source,
+            "vision_statement": {"vision": "v"},
+            "llm_config": {"model": "claude-sonnet-4-6", "api_key": "k"},
+            "messages": [{"role": "assistant", "content": "done"}],
+            "_designer_failed_draw": failed,
+        }
+
+    def _continue(self, source: str, session: dict[str, Any]) -> dict[str, Any]:
+        from spec4.callbacks._nav import (
+            on_agentifier_to_designer,
+            on_brainstormer_to_designer,
+        )
+
+        button = {
+            "brainstormer": on_brainstormer_to_designer,
+            "agentifier": on_agentifier_to_designer,
+        }[source]
+        entered, path = button(1, session)
+        assert path == "/design"
+        assert entered["phase"] == "designer"
+        return entered
+
+    def _rest(self, session: dict[str, Any]) -> dict[str, Any]:
+        return {k: v for k, v in session.items() if k not in self._WRITTEN}
+
+    def test_brainstormer_continue_discards_the_snapshot(self) -> None:
+        entered = self._continue(
+            "brainstormer", self._session("brainstormer", self._SNAPSHOT)
+        )
+        assert entered["_designer_failed_draw"] is None
+
+    def test_brainstormer_continue_keeps_a_clean_session_clean(self) -> None:
+        entered = self._continue("brainstormer", self._session("brainstormer", None))
+        assert entered["_designer_failed_draw"] is None
+
+    def test_brainstormer_continue_leaves_the_rest_alone(self) -> None:
+        session = self._session("brainstormer", self._SNAPSHOT)
+        rest = self._rest(session)
+        assert self._rest(self._continue("brainstormer", session)) == rest
+
+    def test_agentifier_continue_discards_the_snapshot(self) -> None:
+        entered = self._continue(
+            "agentifier", self._session("agentifier", self._SNAPSHOT)
+        )
+        assert entered["_designer_failed_draw"] is None
+
+    def test_agentifier_continue_keeps_a_clean_session_clean(self) -> None:
+        entered = self._continue("agentifier", self._session("agentifier", None))
+        assert entered["_designer_failed_draw"] is None
+
+    def test_agentifier_continue_leaves_the_rest_alone(self) -> None:
+        session = self._session("agentifier", self._SNAPSHOT)
+        rest = self._rest(session)
+        assert self._rest(self._continue("agentifier", session)) == rest
+
+
 class TestDesignerAutoRetry:
     """Choosing a model from a failed draw re-runs it without a second click.
 
