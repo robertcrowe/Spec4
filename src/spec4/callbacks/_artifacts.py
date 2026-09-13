@@ -7,6 +7,9 @@ from the package, so an importer may use either path.
 ``dl_deployment`` is here with the other five ``dl_*`` handlers rather than under
 the Deployer-navigation banner it used to sit beside: it is a Download, and the
 six are one concern.
+
+``on_project_intro_toggle`` is here because this module already holds the
+project view's other two callbacks, the tree and the cost strip (D-LR13).
 """
 
 from __future__ import annotations
@@ -14,11 +17,13 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dash import ALL, Input, Output, State, callback, ctx, dcc, no_update
 
 from spec4 import project_manager
+from spec4.callbacks._shared import toggle_disclosure
+from spec4.layouts import PROJECT_INTRO_BODY_ID, PROJECT_INTRO_TOGGLE_ID
 from spec4.layouts._artifact_view import (
     BODY_ID,
     DOWNLOAD_BTN_ID,
@@ -50,6 +55,9 @@ from spec4.app_constants import (
     PATH_TO_PHASE,
 )
 from spec4.session import default_session
+
+if TYPE_CHECKING:
+    from dash import NoUpdate
 
 
 # The phase the Artifact View draws under, read out of the routing table rather
@@ -344,6 +352,29 @@ def on_round_cost(_id: str, session: Any) -> tuple[str, ...]:
         project_manager.active_version(working_dir, session) if working_dir else None
     )
     return tuple(round_cost_lines(working_dir, round_number))
+
+
+# ---------------------------------------------------------------------------
+# Project view introduction
+# ---------------------------------------------------------------------------
+
+
+@callback(
+    Output(PROJECT_INTRO_BODY_ID, "opened"),
+    Input(PROJECT_INTRO_TOGGLE_ID, "n_clicks"),
+    State(PROJECT_INTRO_BODY_ID, "opened"),
+    prevent_initial_call=True,
+)
+def on_project_intro_toggle(n: int | None, opened: bool) -> bool | NoUpdate:
+    """Open or close "How Spec4 works" on the project view (D-LR13).
+
+    The same flip as Designer's "How to use Designer" — both are
+    ``_shared.toggle_disclosure`` — over this screen's own two ids. It sits
+    beside the tree and the cost strip because it is the project view's third
+    callback: like theirs, its ids exist only while that view is on screen;
+    unlike theirs, it never reads the session.
+    """
+    return toggle_disclosure(n, opened)
 
 
 # ---------------------------------------------------------------------------

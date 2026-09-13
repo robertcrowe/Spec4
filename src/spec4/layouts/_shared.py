@@ -3,10 +3,13 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from dash import dcc, html
 import dash_mantine_components as dmc
+
+if TYPE_CHECKING:
+    from dash.development.base_component import Component
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +155,74 @@ def step_row(
             )
         )
     return html.Div(items, className=row_class)
+
+
+# ---------------------------------------------------------------------------
+# Introductions — one line, and a closed disclosure under it
+# ---------------------------------------------------------------------------
+#
+# D-LR12 gave Designer one line in its own voice and a closed text-label
+# disclosure holding its usage notes; D-LR13 gave the project view the same
+# block for the pipeline. They are one renderer for the reason the step rows
+# are (D-LR9): two copies of the toggle's stripping, the Collapse's closed
+# start and the body's dimmed weight is how one of them would drift. The
+# function knows nothing of either screen — it is handed the line, the label,
+# the body, and the two ids its screen's callback addresses.
+
+
+# The classes `v3.css` draws the block with: the toggle's stripping, and the
+# body's list indent. Classes rather than the ids those rules once selected, so
+# every screen that takes this renderer takes its styling with it.
+INTRO_TOGGLE_CLASS = "intro-toggle"
+INTRO_BODY_CLASS = "intro-body"
+
+
+# `Any` for the reason every Designer step builder returns it:
+# `dash_mantine_components` is untyped (`ignore_missing_imports` in
+# pyproject), so the Stack is `Any` at its source.
+def intro_disclosure(
+    intro: str | list[str | html.Span],
+    label: str,
+    body: Sequence[Component],
+    *,
+    toggle_id: str,
+    body_id: str,
+) -> Any:
+    """One introduction line, then a closed disclosure holding ``body``.
+
+    The line is full contrast — the colour the transcript's text takes, not a
+    dimmed line: it is the screen speaking for itself. The body under the
+    toggle starts closed on every render: whatever the screen is for stands in
+    front of it, and it is there to be opened, not read on the way past. Its
+    state is the Collapse's own ``opened``, never the session's. The body is
+    reference material, so it is set at the dim-line weight.
+
+    The Stack aligns to the start so the toggle stays the width of its words
+    instead of stretching into a full-width bar.
+    """
+    return dmc.Stack(
+        [
+            dmc.Text(intro),
+            # `transparent` so that, were `v3.css` ever missing, the fallback
+            # is a line of text and never a second filled primary on the
+            # screen. The stylesheet does the rest of the stripping.
+            dmc.Button(
+                label,
+                id=toggle_id,
+                variant="transparent",
+                className=INTRO_TOGGLE_CLASS,
+            ),
+            dmc.Collapse(
+                html.Div(body, className=f"dim-line {INTRO_BODY_CLASS}"),
+                id=body_id,
+                opened=False,
+                transitionDuration=0,
+            ),
+        ],
+        gap="xs",
+        align="flex-start",
+        my="xs",
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 from dash import Input, Output, State, callback, ctx, no_update
 
 from spec4 import llm_selection, project_manager
+from spec4.callbacks._shared import toggle_disclosure
 from spec4.callbacks.designer._mock_gen import (
     MOCK_BUFFERS as _MOCK_BUFFERS,
 )
@@ -192,10 +193,11 @@ def on_designer_intro_toggle(n: int | None, opened: bool) -> bool | NoUpdate:
     notes are a reading aid, not a fact about the project or the round, and a
     rebuilt page reasonably starts with them closed. Nothing here reads or
     writes the session, so a click cannot rebuild the page it was made on.
+
+    The flip itself is ``_shared.toggle_disclosure``, shared with the project
+    view's introduction (D-LR13): two callbacks, one body.
     """
-    if not n:
-        return no_update
-    return not opened
+    return toggle_disclosure(n, opened)
 
 
 @callback(

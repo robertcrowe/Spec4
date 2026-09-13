@@ -27,7 +27,12 @@ import pytest
 
 from spec4 import project_manager
 from spec4.app_constants import AGENT_KEYS
-from spec4.layouts import build_agent_rows, agent_select_layout, agent_rows
+from spec4.layouts import (
+    PROJECT_INTRO_TOGGLE_ID,
+    build_agent_rows,
+    agent_select_layout,
+    agent_rows,
+)
 from spec4.layouts._agent_rows import (
     ACTION_BUTTON_PROPS,
     ACTION_LABELS,
@@ -742,8 +747,12 @@ class TestItLeadsTheProjectView:
     def test_the_rows_are_the_first_element(
         self, two_state_project: pathlib.Path
     ) -> None:
+        """First of the three surfaces: only D-LR13's introduction, the page's
+        one line of orientation, stands above them."""
         view = agent_select_layout(_session(two_state_project))
-        assert getattr(view.children[0], "id", None) == "agent-rows"
+        intro = {getattr(node, "id", None) for node in _walk(view.children[0])}
+        assert PROJECT_INTRO_TOGGLE_ID in intro
+        assert getattr(view.children[1], "id", None) == "agent-rows"
 
     def test_the_three_surfaces_are_in_order(
         self, two_state_project: pathlib.Path

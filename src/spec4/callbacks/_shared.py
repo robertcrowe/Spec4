@@ -1,7 +1,7 @@
 """Helpers more than one callback module needs.
 
 Cleanup Phase 4g split ``spec4.callbacks`` into four modules; this one holds the
-three names that would otherwise have to be imported across them. It imports no
+names that would otherwise have to be imported across them. It imports no
 sibling and nothing from the package ``__init__`` -- the direction the layering
 contract's rule 4 pins (CLEANUP_INVENTORY.md 15.2), and the reason
 ``callbacks/designer.py`` now reaches ``_open_pick_fields`` here rather than
@@ -12,14 +12,24 @@ through the package that imports ``designer`` for registration.
 :mod:`spec4.callbacks._gate` since 4g2 -- because ``_open_pick_fields`` calls
 it: leaving it there would make this module import a sibling and invert the
 dependency.
+
+``toggle_disclosure`` is here because two callback modules open the same
+disclosure -- Designer's usage notes and the project view's pipeline notes,
+both drawn by ``layouts._shared.intro_disclosure`` (D-LR12, D-LR13) -- and the
+flip is one decision with two callbacks over it, not two copies of it.
 """
 
 from __future__ import annotations
 
 import pathlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from dash import no_update
 
 from spec4 import llm_selection
+
+if TYPE_CHECKING:
+    from dash import NoUpdate
 
 
 _HOME = str(pathlib.Path.home())
@@ -72,3 +82,18 @@ def _open_pick_fields(
             }
         )
     return {**session, "agent_llm_draft": draft, "agent_llm_error": None}
+
+
+def toggle_disclosure(n: int | None, opened: bool) -> bool | NoUpdate:
+    """Open a closed disclosure, close an open one (D-LR12, D-LR13).
+
+    The body of every introduction toggle's callback. The state is the
+    Collapse's own ``opened`` and never the session's: the notes are a reading
+    aid, not a fact about the project or the round, and a rebuilt page
+    reasonably starts with them closed. Nothing here reads or writes the
+    session, so a click cannot rebuild the page it was made on. No click yet
+    changes nothing.
+    """
+    if not n:
+        return no_update
+    return not opened

@@ -156,7 +156,7 @@ The standard objection to spec-driven development is that it turns into waterfal
 
 Spec4 is built around the round instead of the spec. A round is one pass over the project — `.spec4/v1/`, `v2/`, `v3/` — and every round after the first starts from the code, not from the previous plan:
 
-- **CodeScanner reads what was actually built.** The code review for round N is of the code as it stands after round N−1, including everything the coding agent did that the plan didn't say.
+- **CodeScanner reads what was actually built — by anyone.** The code review for round N is of the code as it stands, including what the coding agent did that the plan didn't say and whatever you changed yourself in between. Spec4 doesn't assume it's the only thing editing the repository; a hotfix, a refactor, or a week of work done without it is just what the next round plans against.
 - **Brainstormer stamps a delta.** In a revision round it records which features were added, modified and removed, and the downstream agents scope to that delta rather than re-deriving the whole application.
 - **Phaser plans only the change.** Phase 1 of a revision is an integration thread that wires the new surface into the existing code, not a from-scratch steel thread, and no phases are emitted for established, unchanged features.
 - **Stale inputs are flagged, not ignored.** Every artifact is dated against the ones upstream of it. If you re-run Brainstormer after StackAdvisor, the project page shows StackAdvisor as needing an update — and the coding agent's `IMPLEMENTED` marker is what tells Spec4 the round is built and the next one may begin.
@@ -195,7 +195,7 @@ Phaser is the largest single line in both, because it holds every upstream artif
 
 ## What it isn't, and where your data goes
 
-- Not a coding agent, and not tied to one. Spec4 produces the plan; Claude Code, Cursor, Codex, Copilot or whatever you use does the building. The artifacts are plain Markdown and JSON with no agent-specific format — a phase file reads the same to a person as to an agent — and Deployer writes its coding-agent setup instructions for the agent you name, not for one it assumes.
+- Not a coding agent, and not tied to one. It doesn't assume every change goes through it either: work on the code however you like between rounds, and the next round starts from what's there. Spec4 produces the plan; Claude Code, Cursor, Codex, Copilot or whatever you use does the building. The artifacts are plain Markdown and JSON with no agent-specific format — a phase file reads the same to a person as to an agent — and Deployer writes its coding-agent setup instructions for the agent you name, not for one it assumes. 
 - Nothing runs in the cloud. The app is a local process; the only network calls are to the model provider you chose and, if you enable it, the search provider.
 - CodeScanner reads your repository locally and sends the model a bounded summary — manifests, entry points, samples — not the tree.
 - API keys are held in the browser (`localStorage`, opt-in) and never written to disk or sent anywhere but the provider they belong to.

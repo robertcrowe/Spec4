@@ -17,6 +17,7 @@ from spec4.layouts._shared import (
     STEP_DONE,
     STEP_UNREACHABLE,
     StepEntry,
+    intro_disclosure,
     step_row,
 )
 from spec4.agents.designer import (
@@ -705,40 +706,22 @@ def _introduction() -> Any:
     """The opening turn Designer never gets to speak, and its usage notes.
 
     Every chat agent opens by saying who it is and what it does; Designer has
-    no chat, so this line says it instead, in the agent's voice — full
-    contrast, the colour the transcript's text takes, not a dimmed line. The
-    notes under it start closed on every render: the wizard is in front of
-    them, and they are there to be opened, not read on the way past. Their
-    state is the Collapse's own ``opened``, never the session's.
+    no chat, so this line says it instead, in the agent's voice. The notes
+    under it start closed because the wizard is in front of them.
 
-    The Stack aligns to the start so the toggle stays the width of its words
-    instead of stretching into a full-width bar.
+    The block itself — the line, the text-label toggle, the closed Collapse
+    and the dimmed body — is `_shared.intro_disclosure`, the renderer the
+    project view's introduction takes too (D-LR12, D-LR13), so the two cannot
+    drift apart.
     """
-    return dmc.Stack(
-        [
-            dmc.Text(
-                "Hello! I'm the Designer. I'll generate a self-contained HTML "
-                "mock-up of your application's starting screen — a visual "
-                "design reference ready to hand off to your coding agent."
-            ),
-            # `transparent` so that, were `v3.css` ever missing, the fallback
-            # is a line of text and never a second filled primary on the
-            # screen. The stylesheet does the rest of the stripping.
-            dmc.Button(
-                "How to use Designer",
-                id=DESIGNER_INTRO_TOGGLE_ID,
-                variant="transparent",
-            ),
-            dmc.Collapse(
-                html.Div(_usage_notes(), className="dim-line"),
-                id=DESIGNER_INTRO_BODY_ID,
-                opened=False,
-                transitionDuration=0,
-            ),
-        ],
-        gap="xs",
-        align="flex-start",
-        my="xs",
+    return intro_disclosure(
+        "Hello! I'm the Designer. I'll generate a self-contained HTML "
+        "mock-up of your application's starting screen — a visual "
+        "design reference ready to hand off to your coding agent.",
+        "How to use Designer",
+        _usage_notes(),
+        toggle_id=DESIGNER_INTRO_TOGGLE_ID,
+        body_id=DESIGNER_INTRO_BODY_ID,
     )
 
 

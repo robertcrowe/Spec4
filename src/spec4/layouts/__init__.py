@@ -38,6 +38,7 @@ from spec4.app_constants import (
     PROJECT_MODE_NEW,
 )
 from spec4.layouts._agent_rows import (
+    ACTION_LABELS,
     _AGENT_ROWS,
     _agent_action_button,
     build_agent_rows,
@@ -52,6 +53,7 @@ from spec4.layouts._shared import (
     _error,
     _render_message,
     _reformat_inline_lists,
+    intro_disclosure,
 )
 from spec4.layouts._round_cost import (
     round_cost,
@@ -105,6 +107,8 @@ __all__ = [
     "working_dir_layout",
     "agent_select_layout",
     "artifact_view_layout",
+    "PROJECT_INTRO_BODY_ID",
+    "PROJECT_INTRO_TOGGLE_ID",
 ]
 
 
@@ -304,6 +308,97 @@ def _project_mode_layout(_session: dict[str, Any]) -> html.Div:
     )
 
 
+# The project view's introduction (D-LR13): the text-label toggle and the
+# `dmc.Collapse` it opens. Plain string ids — one of each on the screen, both
+# addressed by `on_project_intro_toggle` — mounted only once a project is open,
+# so neither the directory picker nor the project-mode question carries them.
+PROJECT_INTRO_TOGGLE_ID = "project-intro-toggle"
+PROJECT_INTRO_BODY_ID = "project-intro-body"
+
+# The six action states in the order "How Spec4 works" explains them. Each
+# note's lead word is `ACTION_LABELS[state]` rather than a retyped label, so
+# the notes cannot name a button the table does not draw.
+_PIPELINE_NOTE_STATES: tuple[str, ...] = (
+    project_manager.AGENT_BTN_START,
+    project_manager.AGENT_BTN_CONTINUE,
+    project_manager.AGENT_BTN_MODIFY,
+    project_manager.AGENT_BTN_NEEDS_UPDATE,
+    project_manager.AGENT_BTN_NOT_READY,
+    project_manager.AGENT_BTN_REQUIRED,
+)
+
+
+def _pipeline_intro() -> list[str | html.Span]:
+    """The project view's one sentence of orientation (D-LR13).
+
+    Full contrast, as Designer's line is: it is the page saying what it is,
+    not reference material. The path is monospace like every other path the
+    app prints.
+    """
+    return [
+        "Seven agents, in order. Each reads what the ones before it wrote, and "
+        "everything they write is a file under ",
+        html.Span(".spec4/", className="mono"),
+        " in this project.",
+    ]
+
+
+def _pipeline_notes() -> list[html.P | html.Ul]:
+    """The body of "How Spec4 works", element for element (D-LR13).
+
+    Reference material, so the renderer sets it at the dim-line weight. Bold
+    names an action by the button's own label, the round's folder and the
+    usage file are monospace, and Artifacts and Settings are the status bar's
+    nav labels as it writes them.
+    """
+    glosses = (
+        " — ready to run.",
+        " — a conversation is in progress; pick it up where you left it.",
+        " — the artifact exists and can be revised.",
+        " — something upstream changed since this agent ran.",
+        " — an input this agent needs hasn't been produced yet.",
+        " — start here; the round can't proceed until this agent runs.",
+    )
+    return [
+        html.P(
+            "The table is the pipeline. Rows run top to bottom, and the button "
+            "on each row is the one thing you can do with that agent right now:"
+        ),
+        # `strict`: six glosses for six states, and a count that differs is a
+        # bug to raise on, not a state to drop without a word.
+        html.Ul(
+            [
+                html.Li([html.Strong(ACTION_LABELS[state]), gloss])
+                for state, gloss in zip(_PIPELINE_NOTE_STATES, glosses, strict=True)
+            ]
+        ),
+        html.P(
+            [
+                "Each pass over the project is a round, kept in its own ",
+                # `{N}` is the literal text the developer reads, not a format
+                # placeholder: the round number is whichever round is open.
+                html.Span(".spec4/v{N}/", className="mono"),
+                " folder. When a round has been implemented, the next one "
+                "starts with CodeScanner, so the plan is made against the code "
+                "as it was actually built — not against the previous plan.",
+            ]
+        ),
+        html.P(
+            [
+                "The cost strip is this round's estimated spend, from ",
+                html.Span("usage.json", className="mono"),
+                "; your provider's bill is authoritative. The round tree below "
+                "it lists every artifact, and each line opens that file in "
+                "Artifacts.",
+            ]
+        ),
+        html.P(
+            "Settings sets the project's default model. Each agent's gate can "
+            "override it for that agent alone."
+        ),
+    ]
+
+
 def agent_select_layout(session: dict[str, Any]) -> html.Div:
     if project_manager.needs_project_mode(session.get("working_dir"), session):
         return _project_mode_layout(session)
@@ -333,14 +428,24 @@ def agent_select_layout(session: dict[str, Any]) -> html.Div:
         project_manager.active_version(working_dir, session) if working_dir else None
     )
 
-    # D-LR11: the controls precede the record. The agent table comes first,
-    # directly under the status bar — the project view is opened to run
-    # something, so the seven rows and their one action each are what the
-    # screen leads with. The round's cost sits between: it is what the last
-    # run cost, and it belongs beside the control that will spend again rather
-    # than at the foot of the page. The tree closes the stack, with its lane
-    # legend under it — it is the record of what the round has produced, read
-    # after deciding what to do, not before.
+    # D-LR13: the pipeline's one sentence of orientation stands above
+    # everything else on the view, with "How Spec4 works" under it — what the
+    # table's six buttons mean, what a round is, where the cost strip reads
+    # from and where the tree's lines lead. The notes sit closed because the
+    # table is in front of them: they are there to be opened, not read on the
+    # way past. The block is `_shared.intro_disclosure`, the renderer
+    # Designer's introduction uses (D-LR12), so the two cannot drift. D-LR11's
+    # order below it is untouched — controls, cost, record — and the
+    # orientation line now stands above all three.
+    #
+    # D-LR11: the controls precede the record. The agent table comes first of
+    # the three, directly under that introduction — the project view is
+    # opened to run something, so the seven rows and their one action each
+    # are what the screen leads with. The round's cost sits between: it is
+    # what the last run cost, and it belongs beside the control that will
+    # spend again rather than at the foot of the page. The tree closes the
+    # stack, with its lane legend under it — it is the record of what the
+    # round has produced, read after deciding what to do, not before.
     #
     # This replaces the earlier produced-then-to-do-then-spent order (tree,
     # rows, cost). Only the order changed: all three surfaces keep their
@@ -350,7 +455,8 @@ def agent_select_layout(session: dict[str, Any]) -> html.Div:
     # say what each agent produces and what to do with it, so the prose that
     # used to introduce them (and the step numbers and one-line descriptions on
     # the old cards) is gone rather than restated above a table that already
-    # says it.
+    # says it. D-LR13's introduction does not restate it either: it says what
+    # the table's buttons mean, closed until asked, not what to press.
     #
     # None of the three is cached. Each is computed here for the first paint
     # and recomputed from disk on every render after that (D-LR4): the rows
@@ -358,6 +464,13 @@ def agent_select_layout(session: dict[str, Any]) -> html.Div:
     # by `on_round_cost`, the tree from project_manager's dependency graph by
     # `on_round_tree`.
     children = [
+        intro_disclosure(
+            _pipeline_intro(),
+            "How Spec4 works",
+            _pipeline_notes(),
+            toggle_id=PROJECT_INTRO_TOGGLE_ID,
+            body_id=PROJECT_INTRO_BODY_ID,
+        ),
         build_agent_rows(working_dir, round_number, session),
         round_cost(working_dir, round_number),
         # `linked=True`: every line opens the file it names in the Artifact

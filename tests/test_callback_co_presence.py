@@ -78,6 +78,11 @@ _ROUND_COST_IDS = {
     "round-cost-note",
 }
 
+# The project view's introduction (D-LR13): the toggle and the Collapse it
+# opens. Listed, like the strip's, because `on_project_intro_toggle` addresses
+# both by string and would silently stop opening a renamed one.
+_PROJECT_INTRO_IDS = {"project-intro-toggle", "project-intro-body"}
+
 # The only plain id the retired agent cards carried, now retired itself: the
 # status bar's model slot and Settings item are the route to the wizard from
 # every screen, so the project view no longer mounts its own. The cards, the
@@ -134,7 +139,11 @@ _CHAT_OPEN_IDS = {f"btn-open-{key}" for key in CHAT_ARTIFACTS}
 # Everything the project view mounts, exactly. An id retired with the cards
 # that came back, or a new one added without a decision, fails here.
 _PROJECT_VIEW_IDS = (
-    _ROUND_TREE_IDS | {"round-tree-legend"} | _AGENT_ROW_IDS | _ROUND_COST_IDS
+    _ROUND_TREE_IDS
+    | {"round-tree-legend"}
+    | _AGENT_ROW_IDS
+    | _ROUND_COST_IDS
+    | _PROJECT_INTRO_IDS
 )
 
 # ---------------------------------------------------------------------------
