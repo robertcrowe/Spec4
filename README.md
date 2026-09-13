@@ -1,17 +1,218 @@
 # Spec4 AI
 
-> AI-assisted software project planning — from idea to executable coding phases.
+> From a rough idea to ordered, executable development phases — files a coding agent can build from.
 
 ![PyPI version](https://img.shields.io/pypi/v/spec4)
 
-Spec4 is a Dash app (using Dash Mantine Components) that guides you from idea to deployment using a pipeline of specialised LLM agents. Start with a rough idea and finish with a set of structured, ordered development phases — plus an optional UI mock and deployment plan — ready to hand to an AI coding agent like Claude Code.
+Spec4 turns an idea into a set of structured, ordered development phases — plus an optional UI mock and a deployment plan — that you hand to a coding agent like Claude Code. Everything it produces is a file in a `.spec4/` folder inside your project. It runs on your machine, talks only to the model provider you choose, and keeps your API key in your browser.
 
-> _"You've made something really really really cool. I'm almost done with our driver app. Will be
-> field tested by Friday. I don't think I would have built what this is going to become without it."_<br />
-> Wihan Booyse, [Kriterion.ai](https://kriterion.ai)
+It is not a coding agent. It doesn't write your application; it writes the plan your coding agent builds from — with the failure modes, acceptance criteria and deployment configuration a production system needs, not just the happy path. And the plan is not written once: each pass over the project is a new round, planned against the code as it actually exists.
 
-### How It Works
+---
+
+## What you get
+
+![Spec4's project page on its own repository](https://github.com/robertcrowe/Spec4/raw/main/src/spec4/assets/project.png)
+
+*Spec4's project page on its own repository after round `v2` was implemented: every artifact, the model that produced it, what it cost, and the next action — a re-scan, since the code has changed since the plan. Agentifier is blank because Spec4 has no AI features of its own to plan.*
+
+A round leaves this in your project directory:
+
+```
+.spec4/
+└── v1/                        # one directory per planning round
+    ├── code_review.json       # CodeScanner — the existing codebase, as facts with sources
+    ├── vision.json            # Brainstormer — purpose, audiences, MVP features
+    ├── feature_specs.json     # Brainstormer — a behavioral spec per MVP feature
+    ├── ai_features.json       # Agentifier — where AI belongs, at what tier, built how
+    ├── design/
+    │   ├── mock.html          # Designer — a self-contained mock of the starting screen
+    │   └── manifest.json      # Designer — the design decisions the mock embodies
+    ├── stack.json             # StackAdvisor — the technology stack, with canonical doc links
+    ├── phases/                # Phaser — ordered phase files, one per implementation step
+    │   ├── phase1.md
+    │   ├── phase2.md
+    │   └── ...
+    ├── deployment-plan.md     # Deployer — infrastructure, CI/CD, config files, Terraform
+    ├── usage.json             # what each agent cost this round, per call
+    └── IMPLEMENTED            # the coding agent's marker that the round is built
+```
+
+The phase files are the point. Each one is written for a coding agent, not for you. This is from Spec4's own repository — `.spec4/v0/phases/phase1.md`, the first phase of the round that reworked this app's UI:
+
+```markdown
+# Phase 1 of 7: Integration Thread — Baseline Validation of the Existing Spec4 App
+
+Prove the existing Dash application builds, serves at localhost:8050, and passes
+its full quality gate (pytest, ruff, mypy) unchanged, and read the existing
+callback co-presence contract so the coming shell rework is done against a
+known-green baseline rather than a guessed one. No feature work, no layout
+changes, no new files.
+
+## Tech Stack
+
+**Dependencies:** uv, dash, dash-mantine-components, pytest, pytest-cov, ruff, mypy, …
+
+**Configurations:** No required env vars. Optional: DASH_DEBUG (enables Dash
+hot-reload), LITELLM_LOG (must be set before litellm is first imported). App
+serves HTTP on localhost:8050 only.
+
+## Instructions
+
+1. Run `uv build` and confirm it completes without error using the existing
+   uv_build backend and pyproject.toml; do not modify pyproject.toml in this phase.
+2. Run `uv run pytest` and record the exact number of passing tests and any
+   pre-existing failures. This count is the baseline every later phase must meet
+   or exceed.
+…
+7. Open src/spec4/app.py and confirm the litellm setup ordering is intact …
+   Write a one-line D-XX comment above that block noting the ordering must not
+   be changed by this round's work.
+8. Read tests/test_callback_co_presence.py in full … This file is the existing
+   component-id contract; do NOT create a parallel inventory, a new id-manifest
+   file, or a duplicate test module.
+
+## Risk Assessment
+## Verification
+## References
+```
+
+Every phase carries a JSON frontmatter with the same content as structured data, a risk assessment naming where a coding agent is likely to go wrong and what to do about it, and a Verification section with the exact command or observable that proves the phase is done. Phase 1 is always a steel thread — the thinnest live end-to-end path — before any feature work.
+
 [![How Spec4 Works](https://github.com/robertcrowe/Spec4/raw/main/src/spec4/assets/landing.png)](https://spec4.ai/how-it-works/)
+
+---
+
+## Requirements
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)
+- An API key for at least one supported model provider (table below)
+- *Optional:* a [Tavily](https://tavily.com/) or [Exa](https://exa.ai/) key for web search grounding
+
+## Installation
+
+**From PyPI:**
+
+```bash
+uv tool install spec4 --refresh
+spec4
+```
+
+**From source** (contributors):
+
+```bash
+git clone https://github.com/robertcrowe/spec4
+cd spec4
+make spec4        # uv sync into .venv, then launch; `make run` afterwards
+```
+
+Either way the app is at [http://localhost:8050](http://localhost:8050). Pick a project directory, connect a provider, and start with Brainstormer — or CodeScanner if the directory already has code in it.
+
+## Upgrading
+
+```bash
+uv tool upgrade spec4        # PyPI
+git pull && make install     # source
+```
+
+Upgrades never touch your artifacts: everything lives in `.spec4/` inside your project. Saved credentials live in your browser's localStorage and carry over.
+
+---
+
+## The pipeline
+
+Seven agents, in order. Each reads what the ones before it wrote.
+
+| Agent | Reads | Writes | |
+|---|---|---|---|
+| **CodeScanner** | your existing code | `code_review.json` | optional; brownfield projects |
+| **Brainstormer** | you, one question at a time | `vision.json`, `feature_specs.json` | |
+| **Agentifier** | vision, feature specs | `ai_features.json` | |
+| **Designer** | vision, AI features, reference screenshots | `design/mock.html`, `design/manifest.json` | optional |
+| **StackAdvisor** | vision, AI features, code review | `stack.json` | |
+| **Phaser** | everything above | `phases/*.md` | |
+| **Deployer** | stack, phases, AI features | `deployment-plan.md`, optionally `README.md` | |
+
+**CodeScanner** reads an existing directory and records its architecture, stack, commands, entry points and conventions as facts with sources, so the later agents plan against what's there rather than what they'd guess.
+
+**Brainstormer** develops the vision through focused questions — purpose, audiences, MVP features — and, on completion, derives a technology-agnostic behavioral spec for every MVP feature: inputs, outputs, success criteria, failure modes. It searches the web for the standards it names and embeds canonical documentation links.
+
+**Agentifier** finds where AI belongs in the vision. For each candidate it recommends a complexity tier from a nine-rung ladder (single call → RAG → tool use → … → multi-agent collaboration), picks implementation mechanisms, and drafts a full spec. The tiers are the same ones the [Built With Spec4](#built-with-spec4-bws4) gallery demonstrates as working apps.
+
+**Designer** generates a self-contained HTML mock of the application's starting screen from the vision and AI features, with optional reference screenshots. Approve it, refine it with a description of changes, or start over. Phaser directs the coding agent to build to it. [Example mock.](https://spec4.ai/examples/mock.html)
+
+**StackAdvisor** recommends a technology stack that serves the features and the AI tiers, with canonical documentation links for every library it names.
+
+**Phaser** turns all of it into ordered implementation phases, one file each, written for a coding agent. It treats the stack as the approved component list: a phase that needs something not in it has to ask you first, so a dependency never appears in a plan without your having said yes to it.
+
+**Deployer** asks which coding agent you're using, produces a deployment plan — service, containerization, CI/CD, environment, monitoring, exact commands and complete config files, Terraform if you want it — and can author the project README. [Example plan.](https://spec4.ai/examples/deployment-plan.html)
+
+---
+
+## Rounds: why this isn't waterfall
+
+The standard objection to spec-driven development is that it turns into waterfall: the spec is written once, the code drifts from it, and after a month the plan describes a program that doesn't exist.
+
+Spec4 is built around the round instead of the spec. A round is one pass over the project — `.spec4/v1/`, `v2/`, `v3/` — and every round after the first starts from the code, not from the previous plan:
+
+- **CodeScanner reads what was actually built.** The code review for round N is of the code as it stands after round N−1, including everything the coding agent did that the plan didn't say.
+- **Brainstormer stamps a delta.** In a revision round it records which features were added, modified and removed, and the downstream agents scope to that delta rather than re-deriving the whole application.
+- **Phaser plans only the change.** Phase 1 of a revision is an integration thread that wires the new surface into the existing code, not a from-scratch steel thread, and no phases are emitted for established, unchanged features.
+- **Stale inputs are flagged, not ignored.** Every artifact is dated against the ones upstream of it. If you re-run Brainstormer after StackAdvisor, the project page shows StackAdvisor as needing an update — and the coding agent's `IMPLEMENTED` marker is what tells Spec4 the round is built and the next one may begin.
+
+So the plan is never the source of truth for long. The code is, and each round re-reads it. This repository carries three rounds of Spec4 planning its own changes under `.spec4/`; the phase file quoted above is the first phase of the first of them.
+
+---
+
+## Built for production, not demos
+
+A demo needs a happy path. A production system needs the rest, and Spec4's artifacts carry it:
+
+- **Every feature has failure modes.** `feature_specs.json` records inputs, outputs, success criteria and failure modes per MVP feature, technology-agnostic, before any stack is chosen.
+- **Non-functional goals are threaded, not listed.** Performance, security and reliability goals from the vision are matched to the stack components that satisfy them and rendered into the Verification section of every phase that touches them, as acceptance criteria — deterministically, from the stack spec, so the model can't drop one.
+- **Every phase names where the coding agent will go wrong.** The Risk Assessment section calls out the likely bottlenecks and the places an AI coder tends to hallucinate — auth flows, third-party API quirks — with a mitigation for each.
+- **Every phase is verifiable.** The Verification section is the exact command or observable that proves it's done, not a description of done.
+- **No dependency arrives unapproved.** The stack spec is the component list. A phase that needs something not on it stops and asks; the answer is recorded as a stack addition.
+- **The deployment plan is complete files, not pointers.** Dockerfile, CI pipeline, environment and secrets management, monitoring — and for AI features, model observability, eval cadence and guardrails — as ready-to-use content with the exact commands to run.
+- **Canonical references, from live search.** Every standard, protocol or SDK a phase names links to its documentation, found by web search at planning time rather than recalled.
+
+---
+
+## What it costs
+
+The three rounds Spec4 has run against itself, with the planning agents on Claude Sonnet and Phaser on Claude Opus:
+
+| Round | What it planned | Calls | Tokens | Cost |
+|---|---|---|---|---|
+| `v0` | the UI rework — 7 phases | 59 | 1.69M | $7.04 |
+| `v1` | the artifacts view — a smaller delta | 16 | 0.62M | $5.09 |
+| `v2` | the codebase cleanup | 40 | 1.19M | $5.88 |
+
+Phaser is the largest single line in both, because it holds every upstream artifact in context while it drafts. `usage.json` records every call per agent, per round, and the project page shows the totals. Each agent can override the project's default model and effort from its own gate, so you can put a stronger model on Phaser without changing anything else.
+
+---
+
+## What it isn't, and where your data goes
+
+- Not a coding agent. Spec4 produces the plan; Claude Code, Cursor, Codex or whatever you use does the building.
+- Nothing runs in the cloud. The app is a local process; the only network calls are to the model provider you chose and, if you enable it, the search provider.
+- CodeScanner reads your repository locally and sends the model a bounded summary — manifests, entry points, samples — not the tree.
+- API keys are held in the browser (`localStorage`, opt-in) and never written to disk or sent anywhere but the provider they belong to.
+- Web search is off unless you give it a key.
+
+---
+
+## Run it on itself
+
+Spec4 is a brownfield project like any other, and its own `.spec4/` is committed:
+
+```bash
+git clone https://github.com/robertcrowe/spec4
+spec4                              # then select the spec4 directory as the project
+```
+
+The project page opens on the latest round with its artifacts and costs. Choose "existing project" and run CodeScanner to start a fourth.
 
 ---
 
@@ -19,7 +220,7 @@ Spec4 is a Dash app (using Dash Mantine Components) that guides you from idea to
 
 <img align="right" src="https://github.com/robertcrowe/Spec4/raw/main/BWS4-logos/BWS4-white-100.png" alt="BWS4 logo" width="100" />
 
-**[Built With Spec4 (BWS4)](https://bw.spec4.ai)** is the companion showcase: a live gallery of small example apps, every one of them planned with Spec4 and built by AI coding agents working directly from Spec4's phase files. Each app demonstrates one rung of the nine-tier complexity ladder that Spec4's Agentifier recommends from, so you can see what each pattern looks like as working software — and what Spec4's artifacts turn into when a coding agent executes them.
+**[Built With Spec4](https://bw.spec4.ai)** is a live gallery of small apps, every one planned with Spec4 and built by a coding agent working from Spec4's phase files. Each demonstrates one rung of the complexity ladder Agentifier recommends from, so you can see what a tier looks like as software — and what the artifacts turn into when an agent executes them.
 
 | Example app | Pattern demonstrated |
 |-------------|----------------------|
@@ -32,277 +233,12 @@ Spec4 is a Dash app (using Dash Mantine Components) that guides you from idea to
 | [Orchestrated Subagents](https://bw.spec4.ai/orchestrated) | A coordinator briefing parallel specialists and merging their answers |
 | [Multi-Agent Collaboration](https://bw.spec4.ai/collab) | Peer agents negotiating with private, mutually invisible constraints |
 
----
-
-## Requirements
-
-- Python 3.12+
-- **[uv](https://docs.astral.sh/uv/) package manager**
-- An API key for at least one supported LLM provider
-- _(Optional)_ A [Tavily](https://tavily.com/) or [Exa](https://exa.ai/) API key for web search
+> *"You've made something really really really cool. I'm almost done with our driver app. Will be field tested by Friday. I don't think I would have built what this is going to become without it."*
+> — Wihan Booyse, [Kriterion.ai](https://kriterion.ai)
 
 ---
 
-## Installation
-
-**Option 1 — Install from PyPI (recommended for most users):**
-
-```bash
-uv tool install spec4 --refresh
-spec4
-```
-
-**Option 2 — Run from source (for contributors and developers):**
-
-```bash
-git clone https://github.com/robertcrowe/spec4
-cd spec4
-make spec4
-```
-
-`make spec4` runs `uv sync` (creates a `.venv` and installs all dependencies) then launches the app. All packages stay inside `.venv` — nothing is installed into your global Python.
-
-> **Subsequent runs:** `make run` reuses the existing `.venv`.
-
-The app will be available at [http://localhost:8050](http://localhost:8050) in both cases.
-
----
-
-## Upgrading
-
-**If you installed from PyPI:**
-
-```bash
-uv tool upgrade spec4
-spec4 --version   # confirm the new version
-```
-
-**If you run from source:**
-
-```bash
-cd spec4
-git pull
-make install      # re-sync .venv with any changed dependencies
-make run
-```
-
-Upgrades never touch your project artifacts: everything Spec4 has produced for a
-project lives in the `.spec4/` folder inside that project's directory and is
-picked up again the next time you select it. Saved provider credentials live in
-your browser's localStorage and also carry over.
-
----
-
-## Features
-
-- **Seven-stage pipeline** — CodeScanner (optional) → Brainstormer → Agentifier → Designer (optional) → StackAdvisor → Phaser → Deployer
-- **Agentifier** — identifies AI/LLM integration opportunities in your vision, recommends the right complexity tier and implementation mechanisms for each, drafts a full implementation spec per feature, and produces `ai_features.json` consumed by StackAdvisor, Phaser, and Deployer
-- **Designer** — optional parallel stage that generates [an HTML mock of your UI](https://spec4.ai/examples/mock.html) from a vision and (optionally) reference screenshots
-- **Any LLM provider** — works with Anthropic, AWS Bedrock, Cohere, Google Gemini, Mistral, Nebius, and OpenAI via LiteLLM
-- **Web search grounding** — all agents can search the web via Tavily or Exa to find canonical documentation
-- **Saved credentials** — optionally remember your provider, model, and API keys in the browser (localStorage via `dcc.Store` — never sent to or stored on the server)
-- **Incremental output** — each agent produces a downloadable artifact you can reuse in a later session
-- **Jump-in anywhere** — pick up at any stage by selecting a project directory with previously saved artifacts
-- **Project persistence** — artifacts saved to a `.spec4/` folder inside your chosen project directory
-- **Deployer** — Generates a [deployment plan](https://spec4.ai/examples/deployment-plan.html) including coding agent instructions and even Terraform scripts
-
----
-
-## Agents
-
-### 🔍 CodeScanner *(optional)*
-Analyzes an existing project directory to understand its architecture, technology stack, and coding style. Results inform Brainstormer and StackAdvisor when working on brownfield projects. Produces `code_review.json`.
-
-### 🧠 Brainstormer
-Develops a clear project vision through focused, one-at-a-time questions. Identifies technical standards via web search and embeds canonical documentation links in the output. On completion it also derives a technology-agnostic behavioral spec for every MVP feature (inputs, outputs, success criteria, failure modes). Produces `vision.json` and `feature_specs.json`.
-
-### 🤖 Agentifier
-Identifies every AI/LLM integration opportunity in your project vision, recommends the right complexity tier for each (from a nine-level ladder: deterministic → embeddings → single_call → RAG → tool agent → chained calls → planning agent → orchestrated subagents → multi-agent collaboration), and selects the implementation mechanisms that genuinely apply from a six-pattern library (structured outputs, retrieval reranking, parallel fan-out, reflection, human-in-the-loop, MCP reuse). Both decisions are grounded in a versioned Markdown pattern library whose when-to-use and over-engineering guidance is injected into the analysis prompts — wanting a mechanism never inflates a tier, and each chosen mechanism's canonical definition travels into the phase files the coding agent receives. Drafts a full implementation spec per feature (inputs, outputs, evals, budgets, failure modes, mechanisms) and produces system-level cross-cutting recommendations (observability, eval cadence, provider strategy, tool protocol strategy, and more). Produces `ai_features.json`, consumed downstream by StackAdvisor, Phaser, and Deployer. Supports both greenfield and brownfield projects.
-
-### 🎨 Designer *(optional, parallel)*
-Generates a single-file HTML mock of your UI from your vision and reference screenshots. Supports two modes — create from scratch, or modify an existing UI while preserving its look and feel — with iterative refinement. Skipped automatically for CLI/terminal projects. Produces `design/mock.html`. [Sample Design Mock](https://spec4.ai/examples/mock.html)
-
-### ⚙️ StackAdvisor
-Recommends languages, frameworks, hosting, and infrastructure based on the vision. Compares options, explains trade-offs, and uses web search to ground every recommendation. Produces `stack.json`.
-
-### 📋 Phaser
-Decomposes the vision and stack into an ordered sequence of development phases:
-
-- **Phase 1 is always a steel thread** — a minimal end-to-end path that validates the core architecture
-- **Each phase builds on the previous one**
-- **Stack spec fidelity** — confirms before adding any dependency not in the stack spec
-- **Verification criteria** — every phase includes the exact command needed to confirm it succeeded
-
-Saves one JSON file per phase under `.spec4/phases/`, downloadable as `phases.zip`.
-
-### 🚀 Deployer
-Plans the path from working code to a running production deployment. Walks through coding-agent workflow, deployment target, containerization, CI/CD, environment config, and monitoring — and can optionally generate complete Terraform scripts grounded in live provider docs via web search. Produces `deployment-plan.md`. [Sample Deployment Plan](https://spec4.ai/examples/deployment-plan.html)
-
-
----
-
-## Usage
-
-1. **Select a project directory** — new or existing; artifacts are saved to `.spec4/` inside it.
-2. **Connect** — select a provider, enter your API key, and choose a model. Optionally pick a web search provider (Tavily or Exa) and add its key.
-3. **Choose a starting point** — pick an agent to begin with.
-4. **Plan** — chat with each agent. When an agent completes, download the result and continue to the next agent.
-
-### Picking up where you left off
-
-Each session auto-saves to `.spec4/` inside your project directory. On a future visit, select the same directory and previously completed artifacts will be loaded automatically.
-
-### Usage log (`usage.json`)
-
-**Location:** `.spec4/v{N}/usage.json`, one file per round.
-
-**Produced by:** the pipeline itself. Every LLM call Spec4 makes is recorded, and the file is rewritten after each agent turn and each Designer draw, not only at the end of a round, so a crashed or abandoned session still leaves a record.
-
-**Consumed by:** you. No agent reads it. It is not a pipeline artifact: it is excluded from the artifact dependency graph, so writing or editing it never marks an agent *Needs Update*.
-
-**Purpose:** per-agent token and cost accounting for a round, with the per-call history that the summaries are derived from.
-
-**Schema (`schema_version` 1):**
-
-| Field | Meaning |
-|---|---|
-| `spec4_version`, `litellm_version` | Versions that last wrote the file |
-| `round` | `v{N}` |
-| `created_at`, `updated_at` | UTC ISO 8601; `created_at` is preserved across writes |
-| `notes.tokens_are_ground_truth` | Always `true` (see below) |
-| `notes.computed_cost_source` | Where `computed_cost_usd` comes from |
-| `notes.fast_forward` | `true` once any Fast Forward turn was recorded in the round, `false` when only ordinary turns are known, `null` when nothing is known |
-| `agents.<name>` | One block per planning agent (`brainstormer`, `agentifier`, `designer`, `stack_advisor`, `phaser`, `deployer`, `code_scanner`). Sub-agents roll up into the agent whose turn runs them |
-| `agents.<name>.calls`, `input_tokens`, `output_tokens`, `total_tokens` | Call count and summed tokens over calls that reported usage |
-| `agents.<name>.calls_missing_usage` | Calls the provider returned no usage for; their tokens are not counted |
-| `agents.<name>.calls_missing_cost` | Calls that reported usage but LiteLLM could not price; their tokens are counted, their cost is not |
-| `agents.<name>.cached_input_tokens` | Summed cache-read tokens where the provider reported them, else `null` |
-| `agents.<name>.computed_cost_usd` | Summed LiteLLM cost estimate, `null` when no call could be priced |
-| `agents.<name>.models` | Distinct `{model, provider}` pairs used, in first-seen order |
-| `agents.<name>.history` | The per-call records: `timestamp`, `agent` (the sub-agent, if any), `model`, `provider` (as LiteLLM resolves it), `streamed`, `duration_s`, `prompt_tokens`, `completion_tokens`, `total_tokens`, `cached_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `computed_cost_usd`, `usage_missing`, `error` |
-| `totals` | The same sums across all agents (including both `calls_missing_*` counts) |
-
-Every summary is recomputed from `history` on each write; nothing in the file is accumulated independently of the call records.
-
-**Two notes on the numbers:**
-
-- Token counts come from the providers' own responses, passed through LiteLLM. They are ground truth. When a provider returns no usage for a call, the call is still recorded with `null` token fields and `usage_missing: true`; nothing is estimated from text length.
-- `computed_cost_usd` comes from LiteLLM's community-maintained cost map, which can lag provider price sheets and has no entry for some models (Nebius models, for instance, are recorded with `null` cost). Treat it as advisory. When the dollar figure matters, recompute it from the token counts and the providers' current price sheets.
-
-The file survives quitting and re-entering, including with a different provider or model: a re-run appends to the agent's `history` and adds the new `{model, provider}` pair to `models`. It never overwrites earlier calls.
-
-**In-app cost card.** When an agent's run completes (CodeScanner, Brainstormer, Agentifier, StackAdvisor, Phaser, Deployer under the run's last message; Designer on the mock preview), Spec4 shows an *Estimated cost* card read from this file: the agent's summed cost for the round and the round's running total, each with a note when calls could not be priced, and a disclaimer that the figures are LiteLLM estimates rather than provider billing.
-
-To print a per-agent table for a round:
-
-```bash
-spec4-usage /path/to/project            # latest round
-spec4-usage /path/to/project --round 0  # a specific round
-```
-
----
-
-## Project structure
-
-```
-src/spec4/
-├── app.py                  # Dash entry point — app wiring, root layout, page render
-├── app_constants.py        # Phase names, URL→phase routing, agent state constants
-├── session.py              # Session defaults, agent runner, artifact persistence
-├── streaming.py            # Background-thread streaming + provider error formatting
-├── providers.py            # Provider/model registry, live model fetching
-├── llm.py                  # LLM conversation turns + web search tool loop
-├── llm_selection.py        # Which model each agent runs on: default + per-agent overrides
-├── websearch.py            # Web search providers (Tavily, Exa) — MCP async bridge
-├── project_manager.py      # Project directory management, over the four modules below
-├── _paths.py               # Where an artifact lives: the .spec4/ directory helpers
-├── _artifacts.py           # Reading and writing .spec4/ artifacts, plus README assembly
-├── _phase_markdown.py      # Phase files: Markdown with JSON frontmatter, assembled and parsed
-├── _usage.py               # The per-round LLM usage log and its cost rollup
-├── usage_report.py         # spec4-usage CLI: per-agent table from usage.json
-├── version_check.py        # Startup version check against PyPI
-├── feature_specs.py        # Shared spec renderer (Phaser context + phase files)
-├── design_manifest.py      # Design-mock manifest joins for Phaser
-├── stack_routing.py        # Deterministic stack→phase and NFR→phase joins
-├── agents/
-│   ├── brainstormer.py     # Vision development agent
-│   ├── feature_speccer.py  # Post-vision behavioral feature specs (feature_specs.json)
-│   ├── code_scanner/       # Code review agent: prompt, repo scan, review renderer
-│   ├── stack_advisor/      # Technology stack recommendation agent: prompt, shape, renderer
-│   ├── phaser/             # Incremental phase planning agent: prompt, extraction, revision seed
-│   ├── deployer.py         # Deployment planning agent (terminal pipeline stage)
-│   ├── designer.py         # UI mock generation agent (parallel, optional)
-│   ├── _turn_flow.py       # The shared turn loop's conversation-history surgery
-│   ├── _reask.py           # The artifact re-ask protocol and the stream wrappers
-│   ├── _feature_context.py # Feature and AI-feature seed blocks, one per consumer
-│   ├── _stack_context.py   # Stack, phase, NFR and design-manifest digests
-│   └── _*.py               # Artifact schemas, the design manifest, Phaser's coverage and seam
-│                           #   checks, model capability probes, and _utils.py (a retired facade)
-├── agentifier/             # AI feature identification and specification pipeline
-│   ├── agentifier.py       # Orchestrator: catalog → spec → cross-cutting → priority
-│   ├── _seed.py            # Its sub-agent dispatch, seed message, (de)serialisation
-│   ├── _render.py          # Its renderers, priority parsing, revision snapshot
-│   ├── _ff_review.py       # Its Fast Forward review
-│   ├── scout.py            # Sub-agent: surface AI opportunity candidates
-│   ├── linker.py           # Sub-agent: the Linker
-│   ├── composer.py         # Sub-agent: the Composer (replaced the Consolidator)
-│   ├── tier_analyst.py     # Sub-agent: recommend complexity tier per candidate
-│   ├── spec_drafter.py     # StreamingSubAgent: draft per-feature implementation spec
-│   ├── cross_cutting_analyst.py  # StreamingSubAgent: system-level recommendations
-│   ├── prioritizer.py      # Sub-agent: the priority overlay on the closed feature set
-│   ├── reference_verifier.py     # Web-search-backed reference URL enrichment
-│   ├── grounding.py        # Joins AI-feature nodes to the Brainstormer vision
-│   ├── infra_expander.py   # Deterministic tier-required infrastructure expansion
-│   ├── panel_closure.py    # Selection-time closure for the breadth panel
-│   ├── requires_reconciler.py    # Assembly-time `requires`-direction reconciliation
-│   ├── pattern_loader.py   # Load and validate the tier/mechanism pattern library
-│   ├── subagents.py        # Sub-agent protocol, registry, and error types
-│   └── patterns/           # Markdown pattern library (tiers/ and mechanisms/)
-├── callbacks/              # Dash callbacks: chat frame, model gate, navigation, setup, artifacts
-│   └── designer/           # Designer's callbacks: wizard, mock generation, refine
-├── layouts/                # Every screen: chat frame, setup, agent rows, artifact view, designer
-└── assets/                 # Stylesheet, chat-input script, favicon, landing image
-tests/                      # See tests/README.md
-├── agentifier/             # Agentifier unit tests
-├── integration/            # End-to-end pipeline runs (mocked LLMs) and browser tests
-├── golden/, snapshots/     # Pinned renderer output and component ids
-└── test_*.py               # Agent, layout, callback and utility tests
-evals/                      # On-demand measurement harnesses (real LLM calls;
-├── agentifier/             #   not part of make test) — mechanism probe,
-├── tier_calibration/       #   tier calibration, Scout/Phaser/Deployer/
-└── ...                     #   StackAdvisor/Designer probes
-scripts/
-├── e2e_agentifier.py       # End-to-end driver for the Agentifier pipeline stage
-├── screenshot_ui.py        # UI screenshots (Playwright)
-└── cleanup/                # The cleanup's mechanical checks (see its README)
-Makefile                    # Common commands
-```
-
----
-
-## Development
-
-```bash
-make spec4       # First-time setup: create .venv, install deps, and launch
-make install     # Create .venv and install all dependencies (uv sync)
-make run         # Start the app (http://localhost:8050)
-make dev         # Start with debug/hot-reload enabled
-make test        # Run tests
-make lint        # Lint check with ruff
-make serve       # Production server via gunicorn (requires: uv add gunicorn)
-
-# Add a dependency (always use uv so it stays in .venv)
-uv add <package>
-uv add --dev <package>
-```
-
-On-demand eval harnesses live in `evals/` — they make real LLM calls, are never
-run by `make test`, and exist to measure prompt/pattern changes before and after
-(see `evals/agentifier/README.md` and `evals/tier_calibration/README.md`).
-
----
-
-## Supported Model Providers
+## Supported model providers
 
 | Provider | Models fetched from |
 |----------|-------------------|
@@ -315,25 +251,60 @@ run by `make test`, and exist to measure prompt/pattern changes before and after
 | OpenAI | `api.openai.com/v1/models` |
 | OpenRouter | `openrouter.ai/api/v1/models` |
 
-Models are fetched live from each provider's API when you connect, with a hardcoded fallback list if the API is unavailable.
+Models are fetched live from each provider when you connect, with a hardcoded fallback list if the API is unavailable.
 
-**AWS Bedrock** authentication supports Bedrock API keys, IAM access keys, or ambient AWS credentials (environment variables, `~/.aws/credentials`, or IAM roles).
+**AWS Bedrock** accepts Bedrock API keys, IAM access keys, or ambient AWS credentials (environment variables, `~/.aws/credentials`, or IAM roles).
 
----
+## Supported search providers
 
-## Supported Search Providers
-
-Web search grounds agent recommendations in live documentation and is available to every agent in the pipeline. It is optional — without a key the agents still run, just without live grounding. Both providers are reached through their hosted MCP servers, so there is nothing extra to install:
+Web search grounds recommendations in live documentation and is available to every agent. It is optional — without a key the agents still run, just without live grounding. Both providers are reached through their hosted MCP servers, so there is nothing extra to install:
 
 | Provider | Connected via | Get a key |
 |----------|---------------|-----------|
 | Tavily *(default)* | `mcp.tavily.com` | [tavily.com](https://tavily.com/) |
 | Exa | `mcp.exa.ai` | [exa.ai](https://exa.ai/) |
 
-Pick the search provider and enter its API key on the Connect screen, alongside your model provider.
+---
+
+## Development
+
+Spec4 is a Python 3.12 [Dash](https://dash.plotly.com/) app using Dash Mantine Components, with LLM access through LiteLLM.
+
+```
+src/spec4/
+├── agents/                 # The seven pipeline agents
+├── agentifier/             # Agentifier's sub-agents and pattern library
+├── callbacks/              # Dash server-side callbacks
+├── layouts/                # Every screen the app draws
+├── project_manager/        # .spec4/ artifacts, rounds, freshness, usage
+└── assets/                 # Stylesheet and static assets
+tests/
+├── agentifier/             # Agentifier unit tests
+├── integration/            # End-to-end pipeline runs (mocked LLMs) and browser tests
+├── golden/, snapshots/     # Pinned renderer output and component ids
+└── test_*.py               # Agent, layout, callback and utility tests
+evals/                      # On-demand measurement harnesses (real LLM calls; not part of make test)
+scripts/                    # E2E driver, UI screenshots, mechanical checks
+Makefile                    # Common commands
+```
+
+```bash
+make spec4       # First-time setup: create .venv, install deps, and launch
+make install     # Create .venv and install all dependencies (uv sync)
+make run         # Start the app (http://localhost:8050)
+make dev         # Start with debug/hot-reload enabled
+make test        # Run tests
+make lint        # Lint check with ruff
+make serve       # Production server via gunicorn (requires: uv add gunicorn)
+
+uv add <package>        # Add a dependency — always via uv so it stays in .venv
+uv add --dev <package>
+```
+
+Eval harnesses in `evals/` make real LLM calls and are never run by `make test`; they measure prompt and pattern changes before and after (see `evals/agentifier/README.md` and `evals/tier_calibration/README.md`).
 
 ---
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE) for details.
+Apache 2.0 — see [LICENSE](LICENSE).
