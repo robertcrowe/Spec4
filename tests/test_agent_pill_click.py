@@ -325,3 +325,42 @@ class TestTheDivertedClickIsRemembered:
         assert pathname == "/chat"
         assert new_session["active_agent"] == "brainstormer"
         assert new_session["_pending_agent"] is None
+
+
+# ---------------------------------------------------------------------------
+# From the Designer frame, which carries the pipeline row too
+# ---------------------------------------------------------------------------
+
+
+class TestFromTheDesignerFrame:
+    """A pill on /design routes exactly as one on /chat or /agents does.
+
+    Entering Designer leaves ``active_agent`` naming the agent the developer
+    came from, so that agent is a live pill on the Designer frame. The early
+    return for a click on the active agent is scoped to the chat frame, and
+    that scoping is what lets this click through.
+    """
+
+    def _designer(self, working_dir: str, **extra: Any) -> dict[str, Any]:
+        return _session(
+            working_dir, phase="designer", active_agent="brainstormer", **extra
+        )
+
+    def test_a_reachable_agent_opens_its_chat(self, tmp_path: Any) -> None:
+        new_session, pathname = _click("stack_advisor", self._designer(str(tmp_path)))
+        assert pathname == "/chat"
+        assert new_session["phase"] == "chat"
+        assert new_session["active_agent"] == "stack_advisor"
+
+    def test_the_agent_the_session_still_names_opens_too(self, tmp_path: Any) -> None:
+        new_session, pathname = _click("brainstormer", self._designer(str(tmp_path)))
+        assert pathname == "/chat"
+        assert new_session["phase"] == "chat"
+        assert new_session["active_agent"] == "brainstormer"
+
+    def test_a_blocked_agent_reports_and_stays(self, tmp_path: Any) -> None:
+        session = self._designer(str(tmp_path), vision_statement=None)
+        new_session, pathname = _click("phaser", session)
+        assert pathname is no_update
+        assert new_session["phase"] == "designer"
+        assert "vision statement" in new_session["agent_select_error"]

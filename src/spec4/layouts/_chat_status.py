@@ -86,7 +86,7 @@ def _completed_agents(session: dict[str, Any]) -> dict[str, bool]:
     }
 
 
-def agent_status_bar(session: dict[str, Any]) -> html.Div:
+def agent_status_bar(session: dict[str, Any], *, active: str | None = None) -> html.Div:
     """The pipeline indicator: seven plain labels, in order, no connectors.
 
     The order is ``AGENT_KEYS`` itself rather than a list restated here — a
@@ -104,8 +104,15 @@ def agent_status_bar(session: dict[str, Any]) -> html.Div:
     hold. The marking itself is `_shared.step_row` (D-LR9), shared with the
     setup and Designer steppers, so this frame cannot be the only one whose
     active mark or dimming is right.
+
+    ``active`` names the agent to mark when the frame is not the session's
+    active agent's own. Designer's route is the one: entering it does not
+    write ``active_agent`` (``_nav._enter_agent``), so the session still names
+    whichever agent the developer came from, and the frame names Designer
+    itself. Omitted, the session's ``active_agent`` is marked, as before.
     """
-    active = session.get("active_agent", "brainstormer")
+    if active is None:
+        active = session.get("active_agent", "brainstormer")
     done = _completed_agents(session)
     entries: list[StepEntry] = []
     for key in AGENT_KEYS:

@@ -432,3 +432,62 @@ class TestTheStylesheetDrawsThem:
         rule = css.split(f".{_PILL_ACTIVE} {{")[1].split("}")[0]
         assert "var(--mantine-primary-color-filled)" in rule
         assert "#39" not in rule.upper()
+
+
+# ---------------------------------------------------------------------------
+# The marked agent, named by the frame
+# ---------------------------------------------------------------------------
+
+
+def _marking(session: dict[str, Any], active: str) -> dict[str, Any]:
+    """Each label keyed by agent, with ``active`` handed to the bar."""
+    row = next(
+        node
+        for node in _walk(agent_status_bar(session, active=active))
+        if getattr(node, "className", None) == "pipeline"
+    )
+    return dict(zip(AGENT_KEYS, row.children, strict=True))
+
+
+class TestActiveOverride:
+    """``active`` marks an agent the session's ``active_agent`` does not name.
+
+    The Designer route is entered without writing ``active_agent``, so the
+    session still names whichever agent the developer came from; the frame
+    names Designer itself. Omitted, the session decides, as it always has.
+    """
+
+    def test_omitted_it_marks_the_sessions_active_agent(self) -> None:
+        by_key = _by_agent(_session(active_agent="phaser"))
+        assert [key for key in AGENT_KEYS if _PILL_ACTIVE in _classes(by_key[key])] == [
+            "phaser"
+        ]
+
+    def test_none_draws_the_same_row_as_omitted(self) -> None:
+        session = _session(active_agent="phaser")
+        assert repr(agent_status_bar(session, active=None)) == repr(
+            agent_status_bar(session)
+        )
+
+    def test_designer_is_the_one_active_label_and_has_no_id(self) -> None:
+        by_key = _marking(_session(active_agent="brainstormer"), "designer")
+        assert [key for key in AGENT_KEYS if _PILL_ACTIVE in _classes(by_key[key])] == [
+            "designer"
+        ]
+        assert type(by_key["designer"]).__name__ == "Span"
+        assert getattr(by_key["designer"], "id", None) is None
+
+    def test_the_other_six_keep_their_pill_ids(self) -> None:
+        """Brainstormer among them: the agent the session still names."""
+        by_key = _marking(_session(active_agent="brainstormer"), "designer")
+        assert [
+            getattr(by_key[key], "id", None) for key in AGENT_KEYS if key != "designer"
+        ] == [
+            {"type": "agent-pill", "agent": key}
+            for key in AGENT_KEYS
+            if key != "designer"
+        ]
+        assert by_key["brainstormer"].id == {
+            "type": "agent-pill",
+            "agent": "brainstormer",
+        }

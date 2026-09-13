@@ -33,6 +33,7 @@ import pytest
 from dash._callback import GLOBAL_CALLBACK_MAP
 
 import spec4.app  # noqa: F401  — imported for its side effect: registering callbacks
+from spec4.app_constants import AGENT_KEYS
 from spec4.layouts import _shared
 from spec4.layouts.designer import (
     DESIGNER_STEP_CLASS,
@@ -384,6 +385,97 @@ class TestTheStepperOutputResolves:
             DESIGNER_STEPPER_ID,
         ]
         assert outputs[1].component_property == "children"
+
+
+# ---------------------------------------------------------------------------
+# The pipeline row above the step row
+# ---------------------------------------------------------------------------
+
+_PIPELINE_ACTIVE = _shared.step_modifier_class("pipeline-agent", _shared.STEP_ACTIVE)
+
+
+def _pipeline(node: Any) -> Any:
+    """The `.pipeline` row under `node`. Raises if there is none."""
+    return next(c for c in _walk(node) if getattr(c, "className", None) == "pipeline")
+
+
+def _has_pipeline(node: Any) -> bool:
+    return any(getattr(c, "className", None) == "pipeline" for c in _walk(node))
+
+
+def _pill_agents(node: Any) -> list[str]:
+    """The agent of every `agent-pill` id under `node`, in render order."""
+    return [
+        c.id["agent"]
+        for c in _walk(node)
+        if isinstance(getattr(c, "id", None), dict) and c.id.get("type") == "agent-pill"
+    ]
+
+
+def _active_labels(row: Any) -> list[str]:
+    return [
+        entry.children
+        for entry in row.children
+        if _PIPELINE_ACTIVE in (getattr(entry, "className", "") or "").split()
+    ]
+
+
+class TestPipelineRow:
+    """The chat frame's pipeline row, on this frame, with Designer marked.
+
+    Entering Designer does not write ``active_agent``, so the session here
+    still names Brainstormer, and the row has to mark Designer regardless.
+    The row is a sibling of the step row's container, not inside it, so
+    ``render_designer_step`` re-rendering that container never touches it.
+    That the callback writes only the container is pinned by
+    ``TestTheStepperOutputResolves`` above.
+    """
+
+    def _page(self, tmp_path: Any) -> Any:
+        return designer_layout(
+            _session(working_dir=str(tmp_path), active_agent="brainstormer"), {}
+        )
+
+    def test_it_stands_immediately_above_the_step_row(self, tmp_path: Any) -> None:
+        children = self._page(tmp_path).children
+        at = [getattr(c, "id", None) for c in children].index(DESIGNER_STEPPER_ID)
+        assert _pipeline(children[at - 1]) is not None
+        assert [c for c in children[:at] if _has_pipeline(c)] == [children[at - 1]]
+
+    def test_designer_is_marked_and_the_other_six_are_pills(
+        self, tmp_path: Any
+    ) -> None:
+        row = _pipeline(self._page(tmp_path))
+        assert _active_labels(row) == ["Designer"]
+        designer = next(e for e in row.children if e.children == "Designer")
+        assert type(designer).__name__ == "Span"
+        assert getattr(designer, "id", None) is None
+        assert _pill_agents(row) == [k for k in AGENT_KEYS if k != "designer"]
+
+    def test_it_is_not_inside_the_step_row_container(self, tmp_path: Any) -> None:
+        page = self._page(tmp_path)
+        container = next(
+            c for c in page.children if getattr(c, "id", None) == DESIGNER_STEPPER_ID
+        )
+        assert not _has_pipeline(container)
+        assert _pill_agents(container) == []
+        assert _pill_agents(page) == [k for k in AGENT_KEYS if k != "designer"]
+
+    def test_the_gate_keeps_the_row_above_it(self, tmp_path: Any) -> None:
+        """As on the chat frame: the gate replaces the wizard, not the frame."""
+        gate = designer_layout(
+            _session(
+                working_dir=str(tmp_path),
+                active_agent="brainstormer",
+                agent_llm_asked={},
+            ),
+            {},
+        )
+        row, card = gate.children
+        assert _active_labels(_pipeline(row)) == ["Designer"]
+        assert "btn-agent-llm-default" in _ids(card)
+        assert not _has_pipeline(card)
+        assert "designer-session-store" not in _ids(gate)
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import dash_mantine_components as dmc
 from spec4 import project_manager
 from spec4.app_constants import PROJECT_MODE_NEW
 from spec4.layouts import _llm_gate
+from spec4.layouts._chat_status import agent_status_bar
 from spec4.layouts._round_cost import run_cost_strip
 from spec4.layouts._shared import (
     PROGRESS_CLASS_NAMES,
@@ -619,9 +620,15 @@ def designer_layout(
     ):
         # No heading above it. The gate's own first line reads "Model for
         # Designer: …", so a title saying "Designer" over it named the agent
-        # twice on a screen whose whole content is one panel — and the status
-        # bar names the model this route is about as well.
-        return html.Div(_llm_gate.gate_card(session, prefs, "designer"))
+        # twice — and the status bar names the model this route is about as
+        # well. The pipeline row does stand above it, as it stands above the
+        # chat frame's gate: the gate replaces the wizard, not the frame.
+        return html.Div(
+            [
+                agent_status_bar(session, active="designer"),
+                _llm_gate.gate_card(session, prefs, "designer"),
+            ]
+        )
     working_dir: str | None = session.get("working_dir")
     vision: dict[str, Any] = session.get("vision_statement") or {}
     code_review: dict[str, Any] = session.get("code_review") or {}
@@ -745,6 +752,13 @@ def designer_layout(
             # front of it. The route back is the status bar's Project link,
             # which is mounted on every screen, so this one carries no Back of
             # its own out of the wizard.
+            #
+            # Above the step row is the chat frame's pipeline row, marked at
+            # Designer by name because entering this route does not write
+            # `active_agent`. It is a sibling of the step row's container, not
+            # inside it, so `render_designer_step` re-rendering that container
+            # never touches it.
+            agent_status_bar(session, active="designer"),
             html.Div(
                 designer_step_row(stepper_index(initial_step)),
                 id=DESIGNER_STEPPER_ID,
