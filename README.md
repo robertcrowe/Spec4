@@ -4,7 +4,7 @@
 
 ![PyPI version](https://img.shields.io/pypi/v/spec4)
 
-Spec4 turns an idea into a set of structured, ordered development phases — plus an optional UI mock and a deployment plan — that you hand to a coding agent like Claude Code. Everything it produces is a file in a `.spec4/` folder inside your project. It runs on your machine, talks only to the model provider you choose, and keeps your API key in your browser.
+Spec4 turns an idea into a set of structured, ordered development phases — plus an optional UI mock and a deployment plan — that you hand to whichever coding agent you use. Everything it produces is a file in a `.spec4/` folder inside your project. It runs on your machine, talks only to the model provider you choose, and keeps your API key in your browser.
 
 It is not a coding agent. It doesn't write your application; it writes the plan your coding agent builds from — with the failure modes, acceptance criteria and deployment configuration a production system needs, not just the happy path. And the plan is not written once: each pass over the project is a new round, planned against the code as it actually exists.
 
@@ -195,7 +195,7 @@ Phaser is the largest single line in both, because it holds every upstream artif
 
 ## What it isn't, and where your data goes
 
-- Not a coding agent. Spec4 produces the plan; Claude Code, Cursor, Codex or whatever you use does the building.
+- Not a coding agent, and not tied to one. Spec4 produces the plan; Claude Code, Cursor, Codex, Copilot or whatever you use does the building. The artifacts are plain Markdown and JSON with no agent-specific format — a phase file reads the same to a person as to an agent — and Deployer writes its coding-agent setup instructions for the agent you name, not for one it assumes.
 - Nothing runs in the cloud. The app is a local process; the only network calls are to the model provider you chose and, if you enable it, the search provider.
 - CodeScanner reads your repository locally and sends the model a bounded summary — manifests, entry points, samples — not the tree.
 - API keys are held in the browser (`localStorage`, opt-in) and never written to disk or sent anywhere but the provider they belong to.
