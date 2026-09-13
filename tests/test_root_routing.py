@@ -266,6 +266,51 @@ class TestTheOtherPaths:
         assert on_browser_navigate("/agents", live, {}) is no_update
 
 
+class TestTheRouterEndsADetour:
+    """`_pending_agent` lives as long as the wizard it was carried into.
+
+    The pill click that diverts to /setup writes the key and the URL together,
+    so the router sees /setup with the key set and must keep it. Any route out
+    of the wizard ends the detour and drops the key, so a later Finish cannot
+    enter an agent the developer walked away from.
+    """
+
+    def _detoured(self, tmp_path: pathlib.Path) -> dict[str, Any]:
+        return {
+            **default_session(),
+            "phase": "setup",
+            "working_dir": str(tmp_path),
+            "_pending_agent": "brainstormer",
+        }
+
+    def test_the_diversions_own_url_keeps_it(self, tmp_path: pathlib.Path) -> None:
+        detoured = self._detoured(tmp_path)
+        assert on_browser_navigate("/setup", detoured, {}) is no_update
+        routed = _route("/setup", session=detoured)
+        assert routed["phase"] == "setup"
+        assert routed["_pending_agent"] == "brainstormer"
+
+    # Every path out of the wizard, and the root. Each row asserts the phase it
+    # routed to, so none can pass without reaching the clear.
+    @pytest.mark.parametrize(
+        ("pathname", "phase"),
+        [
+            *sorted((p, ph) for p, ph in PATH_TO_PHASE.items() if ph != "setup"),
+            (ROOT_PATH, PHASE_PROJECT_VIEW),
+        ],
+    )
+    def test_routing_out_of_the_wizard_drops_it(
+        self, pathname: str, phase: str, tmp_path: pathlib.Path
+    ) -> None:
+        routed = _route(
+            pathname,
+            session=self._detoured(tmp_path),
+            prefs={"working_dir": str(tmp_path)},
+        )
+        assert routed["phase"] == phase
+        assert routed["_pending_agent"] is None
+
+
 class TestTheBarReopensThePicker:
     """The fourth path to the picker: the status bar's directory field.
 

@@ -8,6 +8,10 @@ answers the same question -- which agent is active -- and answers it by writing
 and ``on_deployer_new_project`` are the two that re-enter a stage rather than
 advance past one.
 
+``_enter_agent`` is the arrival itself -- which screen an agent opens on. The
+setup wizard's two exits in :mod:`spec4.callbacks._setup` borrow it, so an agent
+entered after a detour through /setup lands exactly as the click would have.
+
 The turn, breadth and streaming-poll core stays in :mod:`spec4.callbacks._chat`;
 nothing here imports it, and it imports nothing from here.
 """
@@ -53,39 +57,18 @@ def _switch_agent(
     }
 
 
-@callback(
-    Output("session", "data", allow_duplicate=True),
-    Output("url", "pathname", allow_duplicate=True),
-    Input({"type": "agent-pill", "agent": ALL}, "n_clicks"),
-    State("session", "data"),
-    prevent_initial_call=True,
-)
-def on_agent_pill_click(n_clicks_list: list[int | None], session: Any) -> Any:
-    """Pipeline pill click → navigate to that agent.
+def _enter_agent(session: dict[str, Any], target: str) -> tuple[dict[str, Any], str]:
+    """Open ``target``'s screen: Designer's wizard, or the chat for every other.
 
-    Chat-view pills disable themselves on unmet preconditions, so this check is
-    defensive there. The /agents buttons are enabled by `agent_button_state`,
-    which is a separate authority and can diverge — when it does, the block is
-    reported through `agent_select_error` rather than swallowed (D-BB2).
+    The arrival half of a pill click, shared with the setup wizard's two exits
+    (``_setup._leave_wizard``). Both callers have already asked
+    ``llm_selection.is_connected``; this does not ask again.
+
+    ``validate_agent_preconditions`` is not re-run either. It passed at click
+    time, before any detour, and nothing in the wizard changes artifact state:
+    the wizard writes the connection and the search provider, never a vision,
+    a stack or the phases.
     """
-    if not ctx.triggered_id or not any(n for n in n_clicks_list if n):
-        return no_update, no_update
-    target = ctx.triggered_id["agent"]
-    session = session or {}
-    if target == session.get("active_agent") and session.get("phase") == "chat":
-        return no_update, no_update
-    error = validate_agent_preconditions(target, session)
-    if error is not None:
-        return {**session, "agent_select_error": error}, no_update
-    # No connection, no turn. Entering an agent is what leads to a provider
-    # request, so the check belongs here rather than at the point the request
-    # is built, where nothing can be done about it but raise. The remembered
-    # prefs are not consulted (see `llm_selection.is_connected`): a restored
-    # session that has never connected reaches this with a status bar happily
-    # naming the previous session's model, and sending it into chat produced a
-    # `TypeError` from inside LiteLLM instead of the setup screen it needed.
-    if not llm_selection.is_connected(session, target):
-        return {**session, "phase": "setup", "agent_select_error": None}, "/setup"
     if target == "designer":
         return {
             **session,
@@ -104,6 +87,52 @@ def on_agent_pill_click(n_clicks_list: list[int | None], session: Any) -> Any:
     return _switch_agent(
         session, target, extra={"phase": "chat", "agent_select_error": None}
     ), "/chat"
+
+
+@callback(
+    Output("session", "data", allow_duplicate=True),
+    Output("url", "pathname", allow_duplicate=True),
+    Input({"type": "agent-pill", "agent": ALL}, "n_clicks"),
+    State("session", "data"),
+    prevent_initial_call=True,
+)
+def on_agent_pill_click(n_clicks_list: list[int | None], session: Any) -> Any:
+    """Pipeline pill click → navigate to that agent.
+
+    Chat-view pills disable themselves on unmet preconditions, so this check is
+    defensive there. The /agents buttons are enabled by `agent_button_state`,
+    which is a separate authority and can diverge — when it does, the block is
+    reported through `agent_select_error` rather than swallowed (D-BB2).
+
+    An unconnected click is diverted to /setup and writes ``_pending_agent``:
+    the clicked agent, which the wizard's Finish and Skip hand back to
+    ``_enter_agent`` (``_setup._leave_wizard``). Every other arrival here goes
+    through that helper directly.
+    """
+    if not ctx.triggered_id or not any(n for n in n_clicks_list if n):
+        return no_update, no_update
+    target = ctx.triggered_id["agent"]
+    session = session or {}
+    if target == session.get("active_agent") and session.get("phase") == "chat":
+        return no_update, no_update
+    error = validate_agent_preconditions(target, session)
+    if error is not None:
+        return {**session, "agent_select_error": error}, no_update
+    # No connection, no turn. Entering an agent is what leads to a provider
+    # request, so the check belongs here rather than at the point the request
+    # is built, where nothing can be done about it but raise. The remembered
+    # prefs are not consulted (see `llm_selection.is_connected`): a restored
+    # session that has never connected reaches this with a status bar happily
+    # naming the previous session's model, and sending it into chat produced a
+    # `TypeError` from inside LiteLLM instead of the setup screen it needed.
+    if not llm_selection.is_connected(session, target):
+        return {
+            **session,
+            "phase": "setup",
+            "agent_select_error": None,
+            "_pending_agent": target,
+        }, "/setup"
+    return _enter_agent(session, target)
 
 
 @callback(

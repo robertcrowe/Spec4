@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import patch
 
+import pytest
 from dash import no_update
 
 from spec4 import websearch
@@ -204,6 +205,97 @@ class TestSkip:
 
     def test_no_clicks_is_a_no_op(self) -> None:
         assert on_setup_search_skip(0, _session()) == (no_update, no_update)
+
+
+class TestTheWizardReturnsToTheClickedAgent:
+    """Finish and Skip enter the agent whose click was diverted here.
+
+    `on_agent_pill_click` writes `_pending_agent` when it sends an unconnected
+    click to /setup. The last step spends it. With an agent pending, the
+    developer lands in that agent the way the click would have taken them;
+    without one, on /agents as before. Either way the key leaves as None.
+    """
+
+    def _connected(self, **extra: Any) -> dict[str, Any]:
+        # The search step renders only once Model has written both a model and
+        # its config, so a session standing on it is connected.
+        return _session(
+            llm_config={"model": "m", "api_key": "k"},
+            active_agent="code_scanner",
+            messages=[{"role": "assistant", "content": "old"}],
+            _designer_failed_draw={"error": "boom"},
+            **extra,
+        )
+
+    def _finish(self, session: dict[str, Any], key: str = "k", ok: bool = True) -> Any:
+        with patch.object(websearch, "validate", return_value=(ok, ["search"], "401")):
+            return on_setup_search_connect(1, "Exa", key, session, {})
+
+    def test_finish_enters_the_pending_agent(self) -> None:
+        new_session, _, path = self._finish(
+            self._connected(_pending_agent="brainstormer")
+        )
+        assert path == "/chat"
+        assert new_session["phase"] == "chat"
+        assert new_session["active_agent"] == "brainstormer"
+        assert new_session["messages"] == []
+        assert new_session["_pending_agent"] is None
+        # The step's own writes still land on the way through.
+        assert new_session["search_api_key"] == "k"
+
+    def test_finish_without_a_pending_agent_lands_on_agents(self) -> None:
+        new_session, _, path = self._finish(self._connected(_pending_agent=None))
+        assert path == "/agents"
+        assert new_session["phase"] == "agent_select"
+        assert new_session["active_agent"] == "code_scanner"
+        assert new_session["_pending_agent"] is None
+
+    def test_skip_enters_the_pending_agent(self) -> None:
+        new_session, path = on_setup_search_skip(
+            1, self._connected(_pending_agent="brainstormer", search_api_key="k")
+        )
+        assert path == "/chat"
+        assert new_session["phase"] == "chat"
+        assert new_session["active_agent"] == "brainstormer"
+        assert new_session["messages"] == []
+        assert new_session["_pending_agent"] is None
+        assert new_session["search_api_key"] is None
+
+    def test_skip_without_a_pending_agent_lands_on_agents(self) -> None:
+        new_session, path = on_setup_search_skip(
+            1, self._connected(_pending_agent=None)
+        )
+        assert path == "/agents"
+        assert new_session["phase"] == "agent_select"
+        assert new_session["active_agent"] == "code_scanner"
+        assert new_session["_pending_agent"] is None
+
+    def test_designer_is_entered_through_its_own_branch(self) -> None:
+        """`_enter_agent`'s Designer branch, not `_switch_agent`: the phase is
+        designer, the stale draw is discarded, and no chat agent is switched
+        to — the active agent and its transcript are left as they were."""
+        new_session, path = on_setup_search_skip(
+            1, self._connected(_pending_agent="designer")
+        )
+        assert path == "/design"
+        assert new_session["phase"] == "designer"
+        assert new_session["_designer_failed_draw"] is None
+        assert new_session["active_agent"] == "code_scanner"
+        assert new_session["messages"] == [{"role": "assistant", "content": "old"}]
+        assert new_session["_pending_agent"] is None
+
+    @pytest.mark.parametrize(
+        ("key", "ok"), [("  ", True), ("bad", False)], ids=["blank", "rejected"]
+    )
+    def test_a_failed_finish_keeps_the_intent(self, key: str, ok: bool) -> None:
+        """The wizard is still open, so the click's intent survives the retry."""
+        new_session, prefs, path = self._finish(
+            self._connected(_pending_agent="brainstormer"), key=key, ok=ok
+        )
+        assert path is no_update
+        assert prefs is no_update
+        assert new_session["setup_error"]
+        assert new_session["_pending_agent"] == "brainstormer"
 
 
 class TestProviderHintCallback:

@@ -298,3 +298,30 @@ class TestUnconnectedClickGoesToSetup:
         new_session, pathname = _click("stack_advisor", session)
         assert pathname is no_update
         assert new_session["agent_select_error"] is not None
+
+
+# ---------------------------------------------------------------------------
+# The diverted click is remembered for the wizard's last step
+# ---------------------------------------------------------------------------
+
+
+class TestTheDivertedClickIsRemembered:
+    """An unconnected click leaves its agent behind for /setup's exits.
+
+    The wizard's Finish and Skip spend `_pending_agent` to enter that agent
+    instead of returning to /agents. A connected click never takes the detour,
+    so it has nothing to leave behind.
+    """
+
+    def test_an_unconnected_click_remembers_its_agent(self, tmp_path: Any) -> None:
+        session = _session(str(tmp_path), model=None, llm_config=None)
+        new_session, pathname = _click("brainstormer", session)
+        assert pathname == "/setup"
+        assert new_session["_pending_agent"] == "brainstormer"
+
+    def test_a_connected_click_remembers_nothing(self, tmp_path: Any) -> None:
+        session = _session(str(tmp_path), _pending_agent=None)
+        new_session, pathname = _click("brainstormer", session)
+        assert pathname == "/chat"
+        assert new_session["active_agent"] == "brainstormer"
+        assert new_session["_pending_agent"] is None

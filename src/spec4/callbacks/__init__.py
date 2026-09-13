@@ -298,6 +298,9 @@ def on_status_bar_setup(
     two controls mean the same thing — the model slot says *what* will change,
     the nav item says *where* — and two callbacks writing the same session
     would be one more place for the two to drift.
+
+    ``_pending_agent`` is cleared too: an agent click abandoned on its way
+    through the wizard must not be replayed by a later visit to Settings.
     """
     fired = {
         "btn-status-bar-model": model_n,
@@ -311,6 +314,7 @@ def on_status_bar_setup(
         "available_models": None,
         "setup_error": None,
         "agent_select_error": None,
+        "_pending_agent": None,
     }, "/setup"
 
 
@@ -377,7 +381,7 @@ def on_browser_navigate(pathname: str | None, session: Any, prefs: Any) -> Any:
     session = session or default_session()
     prefs = prefs or {}
     if pathname not in PATH_TO_PHASE:
-        return _no_change(session, _resolve_root(session, prefs))
+        return _no_change(session, _drop_detour(_resolve_root(session, prefs)))
 
     phase = PATH_TO_PHASE[pathname]
     new_session = {**session, "phase": phase}
@@ -389,7 +393,27 @@ def on_browser_navigate(pathname: str | None, session: Any, prefs: Any) -> Any:
             **load_working_dir(prefs["working_dir"], session),
             "phase": phase,
         }
-    return _no_change(session, new_session)
+    return _no_change(session, _drop_detour(new_session))
+
+
+def _drop_detour(session: dict[str, Any]) -> dict[str, Any]:
+    """Forget a diverted agent click once the router leaves the wizard.
+
+    ``_pending_agent`` belongs to the detour ``on_agent_pill_click`` sends an
+    unconnected click on, and the detour is over the moment the router takes
+    the developer anywhere but /setup: the Project and Artifacts links, the
+    directory, the root, Back. /setup keeps it, and must, because the
+    diversion's own URL write arrives here as /setup carrying the key it just
+    set.
+
+    Written only when the key is set, so a navigation that changed nothing is
+    still ``no_update``. The clears on Settings (``on_status_bar_setup``) and on
+    selecting a directory (``load_working_dir``) stand on their own. Settings
+    is a session write, not a route, so this never sees it.
+    """
+    if session.get("phase") == "setup" or not session.get("_pending_agent"):
+        return session
+    return {**session, "_pending_agent": None}
 
 
 def _no_change(session: dict[str, Any], new_session: dict[str, Any]) -> Any:

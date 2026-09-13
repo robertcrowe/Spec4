@@ -523,6 +523,7 @@ class TestLoadWorkingDir:
                 "agent_select_error": "previous error",
                 "_deployer_plan_markdown": "# Old plan",
                 "_deployer_pending_plan": True,
+                "_pending_agent": "brainstormer",
             }
         )
         session = load_working_dir(str(tmp_path), prior)
@@ -540,6 +541,7 @@ class TestLoadWorkingDir:
         assert session.get("agent_select_error") in (None, "")
         assert session.get("_deployer_plan_markdown") in (None, "")
         assert session.get("_deployer_pending_plan") in (None, False)
+        assert session["_pending_agent"] is None
 
 
 class TestLoadWorkingDirNewRound:

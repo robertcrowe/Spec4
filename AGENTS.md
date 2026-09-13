@@ -9,8 +9,7 @@ The cleanup's records — `CLEANUP_INVENTORY.md`, `PHASE8_RECORD.md`,
 section (`§54.7`) or sub-phase (`7g`, `pre-4j`) as the reason code is the way
 it is; those references resolve at the tag. New comments may cite the same
 way; don't put a filename in every comment. What the product still depends on
-is folded into `scripts/cleanup/README.md` (the floor, the tools) and
-`BACKLOG.md` (the design limits).
+is folded into `scripts/cleanup/README.md` (the floor, the tools).
 
 ## The gate is the definition of done
 
@@ -48,7 +47,7 @@ A change is done when all of these pass, and not before:
 
 - Strict mypy, always. No new `Any` on a parameter or return unless the value
   is `Any` at its source in a dependency's own signature — say so in a comment.
-- The session dict stays untyped (design limit; see `BACKLOG.md`). Don't add
+- The session dict stays untyped (design limit). Don't add
   a TypedDict for it or for the Designer store.
 - Type-only imports go under `if TYPE_CHECKING:`. Generic functions use
   PEP 695 syntax, not a module-level `TypeVar`.
@@ -87,7 +86,6 @@ A change is done when all of these pass, and not before:
 
 ## Layout
 
-- No import cycles; `tests/test_layering.py` pins the agent/Dash boundary.
 - Concern modules live inside their package (`project_manager/_usage.py`),
   not as root siblings.
 - Public names have no underscore. A private name reached by a test is a
@@ -114,5 +112,3 @@ Trace baselines are commit-bound; re-baseline before comparing.
   `TypeVar` where PEP 695 syntax works.
 - Don't justify deleting a test by runtime. Redundancy, coupling, or vacuity
   only — and redundancy is shown by a mutation caught by another test.
-- Don't recreate a cleanup record file. Findings from ordinary work go in
-  `BACKLOG.md`.

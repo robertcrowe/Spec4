@@ -851,6 +851,19 @@ class TestTheBarOpensSetup:
         )
         assert via_model == via_settings
 
+    def test_settings_drops_an_abandoned_detour(
+        self, monkeypatch: Any, tmp_path: pathlib.Path
+    ) -> None:
+        """An agent click diverted to the wizard and walked away from is not
+        carried into the wizard Settings opens."""
+        detoured = {**self._connected(tmp_path), "_pending_agent": "brainstormer"}
+        new_session, pathname = self._press(
+            monkeypatch, "status-bar-nav-settings", detoured
+        )
+        assert pathname == "/setup"
+        assert new_session["phase"] == "setup"
+        assert new_session["_pending_agent"] is None
+
     def test_it_is_the_back_buttons_write_plus_a_route(
         self, monkeypatch: Any, tmp_path: pathlib.Path
     ) -> None:

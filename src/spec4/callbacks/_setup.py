@@ -6,6 +6,11 @@ from the package, so an importer may use either path.
 ``_prefs_keep_working_dir`` is here because its only two callers are: Connect
 writes the remembered credential, Clear takes it away again, and both must leave
 the working directory alone.
+
+``_leave_wizard`` hands the last step back to
+:func:`spec4.callbacks._nav._enter_agent` when an agent click sent the developer
+here. That is this module's one sibling import; ``_nav`` imports nothing from
+here, so the edge cannot close a cycle.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from dash import Input, Output, State, callback, html, no_update
 import dash_mantine_components as dmc
 
 from spec4 import llm_selection, providers, websearch
+from spec4.callbacks._nav import _enter_agent
 from spec4.layouts._setup import SETUP_IDS, provider_key_hint
 
 
@@ -295,6 +301,30 @@ def on_search_provider_hint(provider_label: str | None) -> Any:
     return spec["key_label"], spec["placeholder"], hint
 
 
+def _leave_wizard(session: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    """Where the last step goes: the agent that sent the developer here, else /agents.
+
+    Its contract on ``session``: it reads ``_pending_agent``, which
+    ``on_agent_pill_click`` wrote when it diverted an unconnected click to
+    /setup, and always writes it back as None, so the intent is spent whichever
+    way the developer leaves. With an agent pending, it hands off to
+    ``_enter_agent``, which writes ``phase`` and that agent's arrival keys and
+    picks the route. Without one, ``session`` is returned as the caller built
+    it, for /agents.
+
+    The connection is asked again rather than assumed. It cannot fail from here
+    today: Finish and Skip exist only on the search step, which renders only
+    once ``on_setup_model_continue`` has written a model and its config
+    together. But entering an agent without a connection is the failure the
+    diversion exists to prevent, so the guard costs nothing to keep.
+    """
+    pending = session.get("_pending_agent")
+    session = {**session, "_pending_agent": None}
+    if pending and llm_selection.is_connected(session, pending):
+        return _enter_agent(session, pending)
+    return session, "/agents"
+
+
 @callback(
     Output("session", "data", allow_duplicate=True),
     Output("prefs", "data", allow_duplicate=True),
@@ -347,7 +377,8 @@ def on_setup_search_connect(
             if prefs.get("save_prefs")
             else prefs
         )
-        return new_session, new_prefs, "/agents"
+        entered, path = _leave_wizard(new_session)
+        return entered, new_prefs, path
     return (
         {**session, "setup_error": f"{label} connection failed: {err}"},
         no_update,
@@ -365,13 +396,15 @@ def on_setup_search_connect(
 def on_setup_search_skip(n: int | None, session: Any) -> Any:
     if not n:
         return no_update, no_update
-    return {
-        **session,
-        "search_provider": None,
-        "search_api_key": None,
-        # Also cleared: `from_session` reads it as a fallback, so leaving it set
-        # would turn "Skip" into "keep using the old Tavily key".
-        "tavily_api_key": None,
-        "setup_error": None,
-        "phase": "agent_select",
-    }, "/agents"
+    return _leave_wizard(
+        {
+            **session,
+            "search_provider": None,
+            "search_api_key": None,
+            # Also cleared: `from_session` reads it as a fallback, so leaving it
+            # set would turn "Skip" into "keep using the old Tavily key".
+            "tavily_api_key": None,
+            "setup_error": None,
+            "phase": "agent_select",
+        }
+    )

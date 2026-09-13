@@ -155,6 +155,14 @@ def default_session() -> dict[str, Any]:
         # D-ER1: set by the poll when a turn dies on a provider error, which is
         # what puts the Try Again panel in the chat. Cleared by every turn start.
         "_stream_error": None,
+        # The agent whose click was diverted to /setup for want of a connection.
+        # Set by `on_agent_pill_click`, spent by the wizard's Finish and Skip,
+        # which enter that agent instead of returning to /agents. Settings, the
+        # model slot and any route out of the wizard clear it, so an abandoned
+        # detour is never replayed. Transient like `_stream_error`, and not in
+        # `_PRESERVED_SETUP_KEYS`, so `reset_for_new_project` and
+        # `load_working_dir` drop it with the project.
+        "_pending_agent": None,
         # One-line status shown under the chat input while a stream runs.
         # Seeded per-agent at turn start, overwritten by agents as stages
         # progress, cleared by the poll when the stream finalises.
