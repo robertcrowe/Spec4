@@ -649,6 +649,27 @@ class TestLoadPriorDeploymentPlan:
         assert project_manager.load_prior_deployment_plan(str(tmp_path)) is None
 
 
+class TestLoadDeploymentPlanByRound:
+    """load_deployment_plan reads the latest round by default (Deployer's seed),
+    or the round it is given: Deployer's resume reads the active round, which is
+    where persist wrote the plan and need not be the latest on disk."""
+
+    def test_default_reads_latest_round(self, tmp_path: Path) -> None:
+        project_manager.save_deployment_plan(str(tmp_path), "# Old plan\n", 0)
+        project_manager.save_deployment_plan(str(tmp_path), "# New plan\n", 1)
+        assert project_manager.load_deployment_plan(str(tmp_path)) == "# New plan\n"
+
+    def test_given_round_is_read_even_when_not_latest(self, tmp_path: Path) -> None:
+        project_manager.save_deployment_plan(str(tmp_path), "# Old plan\n", 0)
+        project_manager.save_deployment_plan(str(tmp_path), "# New plan\n", 1)
+        assert project_manager.load_deployment_plan(str(tmp_path), 0) == "# Old plan\n"
+
+    def test_given_round_without_a_plan_is_none(self, tmp_path: Path) -> None:
+        project_manager.save_deployment_plan(str(tmp_path), "# New plan\n", 1)
+        assert project_manager.load_deployment_plan(str(tmp_path), 1) == "# New plan\n"
+        assert project_manager.load_deployment_plan(str(tmp_path), 0) is None
+
+
 class TestProjectReadme:
     """save_readme / load_existing_readme manage the project README, the one
     Spec4 artifact that lives at the project **root** rather than under

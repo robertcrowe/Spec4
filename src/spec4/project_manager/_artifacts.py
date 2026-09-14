@@ -422,8 +422,17 @@ def load_prior_stack(working_dir: str | Path) -> dict[str, Any] | None:
         return None
 
 
-def load_deployment_plan(working_dir: str | Path) -> str | None:
-    version = latest_phase_version(working_dir)
+def load_deployment_plan(
+    working_dir: str | Path, version: int | None = None
+) -> str | None:
+    """Read a round's ``deployment-plan.md``: the latest round's, or ``version``'s.
+
+    Deployer's seed reads the latest round. Its resume reads the active round,
+    where persist wrote the plan, which need not be the latest on disk (D-LR4:
+    the file is the truth).
+    """
+    if version is None:
+        version = latest_phase_version(working_dir)
     if version is None:
         return None
     path = get_version_dir(working_dir, version) / "deployment-plan.md"

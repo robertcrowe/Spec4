@@ -3,9 +3,10 @@
 Deployer was gated on in ``_TOKEN_COUNTER_AGENTS`` but published no total, so it
 ran on ``streamed_token_count``'s displayed-message fallback. That fallback is
 only accurate while a turn is a single stream yielding exactly what the visible
-assistant message holds — and the greenfield README beat is neither: it yields
-an authoring note between two ``stream_turn`` calls, and the second call starts
-a fresh assistant message, so the counter dropped back to near zero mid-turn.
+assistant message holds — and the README beat is neither: the README is drained,
+not shown, so its characters never reach the visible message and the fallback
+would stand still for the whole authoring draw. On the greenfield path that draw
+is a second ``stream_turn`` after the plan's, in the same turn.
 """
 
 from __future__ import annotations
@@ -106,8 +107,14 @@ class TestDeployerPublishesReceipt:
 class TestReadmeBeatStaysMonotonic:
     """The regression: two streams and a yielded note inside one turn."""
 
-    def _run(self, session: dict[str, Any], seen: list[int]) -> list[str]:
-        replies = iter((_PLAN, _README))
+    def _run(
+        self,
+        session: dict[str, Any],
+        seen: list[int],
+        draws: tuple[str, ...] = (_PLAN, _README),
+        reply: str = "go",
+    ) -> list[str]:
+        replies = iter(draws)
 
         def _stream(*args: Any, **kwargs: Any) -> Any:
             inner = _fake_stream(next(replies))(*args, **kwargs)
@@ -123,7 +130,7 @@ class TestReadmeBeatStaysMonotonic:
             patch.object(deployer.llm, "build_system_prompt", return_value=""),
             patch.object(deployer.llm, "stream_turn", _stream),
         ):
-            return list(deployer.run("go", session, {"model": "x"}))
+            return list(deployer.run(reply, session, {"model": "x"}))
 
     def test_counter_never_goes_backwards_across_the_two_streams(self) -> None:
         session = _session(
@@ -133,15 +140,36 @@ class TestReadmeBeatStaysMonotonic:
         seen: list[int] = []
         out = self._run(session, seen)
 
-        # The beat really did run: plan, note, README.
-        assert deployer._README_AUTHORING_NOTE in "".join(out)
+        # The beat really did run: the plan, then the written-line. The README
+        # was authored into history but never yielded.
+        joined = "".join(out)
+        assert joined == _PLAN + "\n\n---\n\n" + deployer._README_WRITTEN
+        assert _README not in joined
         assert session["deployer_state"] == STATE_DEPLOYER_COMPLETE
         assert session["_deployer_readme_markdown"] == _README
 
+        total = len(_PLAN) + len(_README)
         assert seen == sorted(seen), f"counter went backwards: {seen}"
-        assert session["_stream_received_chars"] == (
-            len(_PLAN) + len(deployer._README_AUTHORING_NOTE) + len(_README)
+        # The drain published as it went: the last reading is the full total,
+        # past anything the plan alone accounts for.
+        assert seen[-1] == total
+        assert session["_stream_received_chars"] == total
+
+    def test_counter_climbs_through_the_opt_in_later_drain(self) -> None:
+        # Opting in later, the README draw is the turn's only stream, and it is
+        # drained: the counter still climbs to the README's length.
+        session = _session(
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            _deployer_pending_readme=True,
         )
+        seen: list[int] = []
+        out = self._run(session, seen, draws=(_README,), reply="yes")
+
+        assert "".join(out) == deployer._README_WRITTEN
+        assert session["_deployer_readme_markdown"] == _README
+        assert seen == sorted(seen), f"counter went backwards: {seen}"
+        assert seen[-1] == len(_README)
+        assert session["_stream_received_chars"] == len(_README)
 
     def test_fallback_would_have_dipped(self) -> None:
         # The defect: with no published total the counter reads the visible

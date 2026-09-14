@@ -195,7 +195,7 @@ Phaser is the largest single line in both, because it holds every upstream artif
 
 ## What it isn't, and where your data goes
 
-- Not a coding agent, and not tied to one. It doesn't assume every change goes through it either: work on the code however you like between rounds, and the next round starts from what's there. Spec4 produces the plan; Claude Code, Cursor, Codex, Copilot or whatever you use does the building. The artifacts are plain Markdown and JSON with no agent-specific format — a phase file reads the same to a person as to an agent — and Deployer writes its coding-agent setup instructions for the agent you name, not for one it assumes. 
+- Not a coding agent, and not tied to one. It doesn't assume every change goes through it either: work on the code however you like between rounds, and the next round starts from what's there. Spec4 produces the plan; Claude Code, Cursor, Codex, Copilot or whatever you use does the building. The artifacts are plain Markdown and JSON with no agent-specific format — a phase file reads the same to a person as to an agent — and Deployer writes its coding-agent setup instructions for the agent you name, not for one it assumes.
 - Nothing runs in the cloud. The app is a local process; the only network calls are to the model provider you chose and, if you enable it, the search provider.
 - CodeScanner reads your repository locally and sends the model a bounded summary — manifests, entry points, samples — not the tree.
 - API keys are held in the browser (`localStorage`, opt-in) and never written to disk or sent anywhere but the provider they belong to.

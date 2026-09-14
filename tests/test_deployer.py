@@ -4,8 +4,15 @@ Split out of ``tests/test_agents.py`` by source module, with every class unchang
 (Phase 8, D9: ``PHASE8_RECORD.md`` §25).
 """
 
+import copy
+import os
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
+
+import pytest
+
+from spec4 import project_manager
 from spec4.agents import deployer
 from spec4.app_constants import STATE_DEPLOYER_COMPLETE
 from tests._chunks import make_stream_chunk
@@ -634,6 +641,30 @@ class TestDeployerReadme:
         assert "Old README" in seed
         assert "update it in place" in seed
 
+    def test_accept_authors_readme_without_showing_it(self) -> None:
+        # Opting in later, the README is drained rather than streamed: the
+        # turn's whole output is the one line saying it was written.
+        session = make_session(
+            active_agent="deployer",
+            working_dir=None,
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            deployer_messages=[
+                {"role": "user", "content": "earlier"},
+                {"role": "assistant", "content": "plan…" + deployer._README_OFFER},
+            ],
+            _deployer_pending_readme=True,
+        )
+        readme = "# My App\n\nA great app.\n\n## Install\n\n`pip install .`\n"
+        with mock_litellm_stream(readme):
+            output = collect(deployer.run("yes please", session, session["llm_config"]))
+        assert output == deployer._README_WRITTEN
+        assert "My App" not in output
+        # History still ends on the README, for persistence and for the stamp.
+        msgs = session["deployer_messages"]
+        assert msgs[-1] == {"role": "assistant", "content": readme}
+        assert session["_deployer_readme_markdown"] == readme
+        assert session["deployer_artifact_msg_count"] == len(msgs)
+
     def test_decline_skips_readme_no_llm_call(self) -> None:
         session = make_session(
             active_agent="deployer",
@@ -651,6 +682,11 @@ class TestDeployerReadme:
         assert session["_deployer_pending_readme"] is False
         assert session.get("_deployer_readme_markdown") in (None, "")
         assert not session.get("_deployer_generating_readme")
+        # A decline finishes the run: the stamp marks the decline line as the
+        # last message, so a resume reads the run as finished.
+        assert session["deployer_artifact_msg_count"] == len(
+            session["deployer_messages"]
+        )
 
 
 class TestDeployerReadmeUpfrontOptin:
@@ -767,15 +803,25 @@ class TestDeployerReadmeUpfrontOptin:
         assert not session.get("_deployer_pending_readme")
         assert deployer._README_OFFER not in output
         assert session["_deployer_readme_requested"] is False
-        # The authoring instruction was injected as a user turn, and both the
-        # plan and the freshly-authored README appear in the turn's output.
+        # The authoring instruction was injected as a user turn. The README is
+        # authored, not shown: the output is the plan, then the one line saying
+        # it was written, and never the README body.
         assert any(
             "comprehensive project README" in m["content"]
             for m in session["deployer_messages"]
             if m["role"] == "user"
         )
+        assert output == plan + "\n\n---\n\n" + deployer._README_WRITTEN
         assert "Deployment Steps" in output
-        assert "My App" in output
+        assert "My App" not in output
+        # History still ends on the README, for persistence and for the stamp.
+        assert session["deployer_messages"][-1] == {
+            "role": "assistant",
+            "content": readme,
+        }
+        assert session["deployer_artifact_msg_count"] == len(
+            session["deployer_messages"]
+        )
         assert session["deployer_state"] == STATE_DEPLOYER_COMPLETE
 
     def test_optin_no_skips_readme_after_plan(self) -> None:
@@ -811,3 +857,145 @@ class TestDeployerReadmeUpfrontOptin:
             if m["role"] == "user"
         )
         assert session["deployer_state"] == STATE_DEPLOYER_COMPLETE
+
+
+class TestDeployerResumeShowsPlan:
+    """A returning developer with a finished run sees the deployment plan, read
+    from ``deployment-plan.md`` in the active round (D-LR4), never the README the
+    run authored last. The replay is display only: history is untouched.
+    "Finished" is the resume helper's own test — complete state, and the
+    artifact stamp matching the history — so a conversation carried on past the
+    plan still replays its last reply."""
+
+    # The plan on disk differs from the plan in history, so a match proves the
+    # replay read the file.
+    _PLAN = "# Deployment Plan\n\n## Deployment Steps\n\n### 1. Build\n…\n"
+    _README = "# My App\n\nA great app.\n"
+
+    def _finished(self, tmp_path: Path, last: str, **overrides: Any) -> dict[str, Any]:
+        messages = [
+            {"role": "user", "content": "seed"},
+            {"role": "assistant", "content": "the plan as it streamed"},
+            {"role": "user", "content": "yes"},
+            {"role": "assistant", "content": last},
+        ]
+        defaults: dict[str, Any] = dict(
+            active_agent="deployer",
+            working_dir=str(tmp_path),
+            phase_version=0,
+            deployer_state=STATE_DEPLOYER_COMPLETE,
+            deployer_messages=messages,
+            deployer_artifact_msg_count=len(messages),
+        )
+        defaults.update(overrides)
+        return make_session(**defaults)
+
+    def _resume(self, session: dict[str, Any]) -> str:
+        with patch("spec4.llm.litellm.completion") as mock_llm:
+            output = collect(deployer.run(None, session, session["llm_config"]))
+        mock_llm.assert_not_called()
+        return output
+
+    def test_complete_run_resumes_to_the_plan_on_disk(self, tmp_path: Path) -> None:
+        project_manager.save_deployment_plan(str(tmp_path), self._PLAN, 0)
+        session = self._finished(tmp_path, self._README)
+        before = copy.deepcopy(session["deployer_messages"])
+        output = self._resume(session)
+        assert output == self._PLAN
+        assert "My App" not in output
+        assert session["deployer_messages"] == before
+
+    def test_complete_run_with_offer_pending_shows_plan_and_offer(
+        self, tmp_path: Path
+    ) -> None:
+        # The replace-confirm "yes": the confirm line carries the README offer,
+        # which is still open. The offer rides on the plan, once, display only.
+        project_manager.save_deployment_plan(str(tmp_path), self._PLAN, 0)
+        confirm = (
+            "Your new deployment plan has been saved. "
+            "You can download it using the button below." + deployer._README_OFFER
+        )
+        session = self._finished(tmp_path, confirm, _deployer_pending_readme=True)
+        before = copy.deepcopy(session["deployer_messages"])
+        output = self._resume(session)
+        assert output == self._PLAN + deployer._README_OFFER
+        assert output.count(deployer._README_OFFER) == 1
+        assert "has been saved" not in output
+        assert session["deployer_messages"] == before
+        assert project_manager.load_deployment_plan(str(tmp_path), 0) == self._PLAN
+
+    def test_complete_run_with_offer_answered_shows_plan_alone(
+        self, tmp_path: Path
+    ) -> None:
+        # Opt in later: answer the offer, let the README be authored, come back.
+        project_manager.save_deployment_plan(str(tmp_path), self._PLAN, 0)
+        session = self._finished(
+            tmp_path, "plan…" + deployer._README_OFFER, _deployer_pending_readme=True
+        )
+        with mock_litellm_stream(self._README):
+            collect(deployer.run("yes", session, session["llm_config"]))
+        assert session["deployer_messages"][-1]["content"] == self._README
+        output = self._resume(session)
+        assert output == self._PLAN
+        assert deployer._README_OFFER not in output
+        assert "My App" not in output
+
+    def test_resume_after_decline_shows_plan_alone(self, tmp_path: Path) -> None:
+        project_manager.save_deployment_plan(str(tmp_path), self._PLAN, 0)
+        session = self._finished(
+            tmp_path, "plan…" + deployer._README_OFFER, _deployer_pending_readme=True
+        )
+        with patch("spec4.llm.litellm.completion") as mock_llm:
+            declined = collect(
+                deployer.run("no thanks", session, session["llm_config"])
+            )
+        mock_llm.assert_not_called()
+        assert session["deployer_artifact_msg_count"] == len(
+            session["deployer_messages"]
+        )
+        before = copy.deepcopy(session["deployer_messages"])
+        output = self._resume(session)
+        assert output == self._PLAN
+        assert declined not in output
+        assert deployer._README_OFFER not in output
+        assert session["deployer_messages"] == before
+
+    @pytest.mark.parametrize("on_disk", [None, "  \n"], ids=["missing", "empty"])
+    def test_missing_or_empty_plan_falls_back_to_replay(
+        self, tmp_path: Path, on_disk: str | None
+    ) -> None:
+        if on_disk is not None:
+            project_manager.save_deployment_plan(str(tmp_path), on_disk, 0)
+        session = self._finished(tmp_path, self._README)
+        assert self._resume(session) == self._README
+
+    def test_staleness_question_wins_over_plan(self, tmp_path: Path) -> None:
+        project_manager.save_deployment_plan(str(tmp_path), self._PLAN, 0)
+        v0 = project_manager.get_version_dir(str(tmp_path), 0)
+        (v0 / "stack.json").write_text("{}", encoding="utf-8")
+        os.utime(v0 / "deployment-plan.md", (1_000.0, 1_000.0))
+        os.utime(v0 / "stack.json", (2_000.0, 2_000.0))
+        session = self._finished(tmp_path, self._README)
+        output = self._resume(session)
+        assert "revise the deployment plan" in output
+        assert self._PLAN not in output
+
+    def test_chat_past_the_plan_replays_last_reply(self, tmp_path: Path) -> None:
+        # Complete from disk, but mid-revision: a fresh plan awaits "replace?".
+        # The stamp is stale, so the run is not finished, and the question the
+        # next reply will answer stays on screen.
+        project_manager.save_deployment_plan(str(tmp_path), self._PLAN, 0)
+        replace_q = (
+            "# New plan\n\n## Deployment Steps\n…\n\n"
+            "**Would you like to replace it with this new plan?**"
+        )
+        session = self._finished(
+            tmp_path,
+            replace_q,
+            deployer_artifact_msg_count=None,
+            deployer_resumed=True,
+            _deployer_pending_plan=True,
+        )
+        output = self._resume(session)
+        assert output == replace_q
+        assert self._PLAN not in output

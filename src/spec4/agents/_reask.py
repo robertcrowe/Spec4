@@ -317,11 +317,12 @@ def stream_counting(
     back to the length of the in-flight assistant message when nothing is
     published, and for a verbatim reply that fallback is accurate — but only
     while the turn is one stream that yields exactly what the message holds.
-    Deployer's greenfield README beat is neither: it yields an authoring note
-    between two ``stream_turn`` calls, and the second call starts a fresh
-    assistant message, so the fallback counter drops back to zero mid-turn.
-    Publishing a cumulative total keeps it monotonic, and leaves the counter
-    correct if a suppressed artifact turn is ever added here (D-SC60).
+    Deployer's README beats are not: the README is drained with
+    :func:`drain_stream`, not shown, and on the greenfield path that draw is a
+    second ``stream_turn`` after this one in the same turn. Publishing a
+    cumulative total here gives the drain a seed to carry on from, keeping the
+    counter monotonic, and leaves it correct if a suppressed artifact turn is
+    ever added here (D-SC60).
 
     Returns the running total so a caller with several streams in one turn can
     seed the next from it: ``received = yield from stream_counting(...)``.

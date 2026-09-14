@@ -6,7 +6,7 @@ from typing import Any, Literal, cast
 
 from spec4 import project_manager, llm, websearch
 from spec4.agents._feature_context import ai_features_for_deployer
-from spec4.agents._reask import stream_counting
+from spec4.agents._reask import drain_stream, stream_counting
 from spec4.agents._revision import revision_delta
 from spec4.agents._stack_context import (
     nfr_goals_for_deployer,
@@ -462,11 +462,7 @@ _README_OPTIN_REASK = (
     "root? (yes/no)"
 )
 
-_README_AUTHORING_NOTE = (
-    "\n\n---\n\n"
-    "Your deployment plan is ready and saved. As you requested, I'll now "
-    "author your **README.md** using the finished plan…\n\n"
-)
+_README_WRITTEN = "**README.md** written to the project root."
 
 
 def build_readme_request(
@@ -573,20 +569,21 @@ def run(
     system = llm.build_system_prompt(SYSTEM_PROMPT, search_cfg)
 
     # Deployer's replies are shown verbatim, so the chars counter's displayed-
-    # message fallback would mostly work — but not on the greenfield README beat
-    # below, which yields a note and opens a second stream in the same turn.
-    # Publish a running total instead; `_received` seeds that second stream.
-    _received = yield from stream_counting(
-        llm.stream_turn(
-            system,
-            messages,
-            llm_config,
-            search_cfg,
-            agent_name="deployer",
-            session=session,
-        ),
-        session,
+    # message fallback would mostly work — but not on the README beats, which
+    # drain the README instead of showing it. Publish a running total instead;
+    # `_received` seeds the greenfield beat's second stream in the settle step.
+    draw = llm.stream_turn(
+        system,
+        messages,
+        llm_config,
+        search_cfg,
+        agent_name="deployer",
+        session=session,
     )
+    if session.get("_deployer_generating_readme"):
+        _received = yield from _deployer_author_readme(draw, session, 0)
+    else:
+        _received = yield from stream_counting(draw, session)
 
     yield from _deployer_settle(session, system, search_cfg, llm_config, _received)
 
@@ -641,6 +638,9 @@ def _deployer_take_input(
                 "follow-up questions."
             )
             messages.append({"role": "assistant", "content": decline_msg})
+            # The run is finished: stamp the decline as its last message, as the
+            # replace-confirm "yes" does, so a resume shows the plan.
+            session["deployer_artifact_msg_count"] = len(messages)
             yield decline_msg
             return None
         if affirmative and not negative:
@@ -660,10 +660,41 @@ def _deployer_resume(
     if not maybe_inject_resume_summary(
         session, "deployer", messages, STATE_DEPLOYER_COMPLETE
     ):
-        yield from replay_last_assistant(messages)
+        yield from _deployer_replay(session, messages)
         return None
     # Resume summary injected — fall through to LLM call.
     return True
+
+
+def _deployer_replay(
+    session: dict[str, Any], messages: list[dict[str, Any]]
+) -> Generator[str, None, None]:
+    """Replay on re-entry: a finished run's plan from disk, else the last reply.
+
+    A run is finished when the resume helper says so — complete, with the
+    artifact stamp matching the history. That is also what keeps a conversation
+    carried on past the plan (a pending "replace?" question, say) replaying its
+    own last reply. The plan is read from ``deployment-plan.md`` in the active
+    round, never from history (D-LR4), so a README authored after it does not
+    come back; an absent or empty file falls back to the last reply. A README
+    offer still open rides on the plan, once. Display only: nothing is written
+    to ``session`` or ``messages``.
+    """
+    working_dir = session.get("working_dir")
+    complete = session.get("deployer_state") == STATE_DEPLOYER_COMPLETE
+    stamped = session.get("deployer_artifact_msg_count") == len(messages)
+    plan = (
+        project_manager.load_deployment_plan(
+            working_dir, project_manager.active_version(working_dir, session)
+        )
+        if complete and stamped and working_dir
+        else None
+    )
+    if plan and plan.strip():
+        offer = _README_OFFER if session.get("_deployer_pending_readme") else ""
+        yield plan + offer
+        return
+    yield from replay_last_assistant(messages)
 
 
 def _deployer_seed(
@@ -698,10 +729,14 @@ def _deployer_settle(
     last_text = last_assistant_text(messages)
     if session.get("_deployer_generating_readme"):
         # This turn authored the project README (set by the pending-readme
-        # handler above). Stage it for persist_artifacts to write to the
-        # project root; the deployment plan is already complete and saved.
+        # handler above, drained in `run`, never shown). Stage it for
+        # persist_artifacts to write to the project root; the deployment plan is
+        # already complete and saved. Stamp it as the run's last message, so the
+        # cost strip shows and a resume reads the run as finished — and shows
+        # the plan, not this README.
         session["_deployer_generating_readme"] = False
         session["_deployer_readme_markdown"] = last_text
+        session["deployer_artifact_msg_count"] = len(messages)
     elif "## Deployment Steps" in last_text:
         session["_deployer_plan_markdown"] = last_text
         if session.get("_deployer_plan_existed"):
@@ -723,14 +758,13 @@ def _deployer_settle(
                         else None
                     )
                     readme_delta = revision_delta(session.get("vision_statement"))
-                    yield _README_AUTHORING_NOTE
                     messages.append(
                         {
                             "role": "user",
                             "content": build_readme_request(existing, readme_delta),
                         }
                     )
-                    yield from stream_counting(
+                    yield from _deployer_author_readme(
                         llm.stream_turn(
                             system,
                             messages,
@@ -740,7 +774,8 @@ def _deployer_settle(
                             session=session,
                         ),
                         session,
-                        seed=_received + len(_README_AUTHORING_NOTE),
+                        _received,
+                        "\n\n---\n\n",
                     )
                     session["_deployer_readme_markdown"] = last_assistant_text(messages)
                     session["deployer_artifact_msg_count"] = len(messages)
@@ -752,6 +787,26 @@ def _deployer_settle(
                 messages[-1]["content"] = last_text + _README_OFFER
                 session["_display_override"] = messages[-1]["content"]
                 session["_deployer_pending_readme"] = True
+
+
+def _deployer_author_readme(
+    draw: Generator[str, None, None],
+    session: dict[str, Any],
+    seed: int,
+    lead: str = "",
+) -> Generator[str, None, int]:
+    """Author the README without showing it: drain the draw, then say so in one line.
+
+    The README reaches ``deployer_messages`` through ``stream_turn`` as any reply
+    does, so the settle step stages it from there and persist_artifacts writes
+    it; only the screen is spared it, which leaves the plan as the last
+    substantive thing shown. ``drain_stream`` publishes the running total from
+    ``seed``, so the chars counter climbs through the draw. ``lead`` separates
+    the line from a plan yielded earlier in the same turn. Returns the total.
+    """
+    _, received = drain_stream(draw, session, seed)
+    yield lead + _README_WRITTEN
+    return received
 
 
 _YES_WORDS: tuple[str, ...] = (
