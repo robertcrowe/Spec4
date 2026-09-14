@@ -79,8 +79,6 @@ serves HTTP on localhost:8050 only.
 
 Every phase carries a JSON frontmatter with the same content as structured data, a risk assessment naming where a coding agent is likely to go wrong and what to do about it, and a Verification section with the exact command or observable that proves the phase is done. Phase 1 is always a steel thread — the thinnest live end-to-end path — before any feature work.
 
-[![How Spec4 Works](https://github.com/robertcrowe/Spec4/raw/main/src/spec4/assets/landing.png)](https://spec4.ai/how-it-works/)
-
 ---
 
 ## Requirements
