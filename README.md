@@ -14,7 +14,7 @@ It is not a coding agent. It doesn't write your application; it writes the plan 
 
 ![Spec4's project page on its own repository](https://github.com/robertcrowe/Spec4/raw/main/src/spec4/assets/project.png)
 
-*Spec4's project page on its own repository after round `v2` was implemented: every artifact, the model that produced it, what it cost, and the next action — a re-scan, since the code has changed since the plan. Agentifier is blank because Spec4 has no AI features of its own to plan.*
+*Spec4's project page on its own repository after round `v2` was implemented: every artifact, the model that produced it, what it cost, and the next action — a re-scan, since the code has changed since the plan. Agentifier is blank because Spec4's AI features were added before it was mature enough to use on itself.*
 
 A round leaves this in your project directory:
 
