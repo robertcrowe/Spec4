@@ -234,6 +234,7 @@ The project page opens on the latest round with its artifacts and costs. Choose 
 | [Tool Use](https://bw.spec4.ai/tool-use) | A real function-calling loop with live web search |
 | [Chained Calls](https://bw.spec4.ai/chained-calls) | Sequential calls, each building on the last |
 | [Planning Agent](https://bw.spec4.ai/planning) | A model that plans its own research steps, streamed live |
+| [ReAct Loop](https://bw.spec4.ai/react) | Interleaved reason-act-observe under the planning-agent tier, in contrast with the plan-first Planning Agent |
 | [Orchestrated Subagents](https://bw.spec4.ai/orchestrated) | A coordinator briefing parallel specialists and merging their answers |
 | [Multi-Agent Collaboration](https://bw.spec4.ai/collab) | Peer agents negotiating with private, mutually invisible constraints |
 
