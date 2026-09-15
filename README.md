@@ -24,6 +24,7 @@ A round leaves this in your project directory:
     ├── code_review.json       # CodeScanner — the existing codebase, as facts with sources
     ├── vision.json            # Brainstormer — purpose, audiences, MVP features
     ├── feature_specs.json     # Brainstormer — a behavioral spec per MVP feature
+    ├── ai_catalog.json        # Agentifier — its recommendation and your decision, per feature
     ├── ai_features.json       # Agentifier — where AI belongs, at what tier, built how
     ├── design/
     │   ├── mock.html          # Designer — a self-contained mock of the starting screen
@@ -126,7 +127,7 @@ Seven agents, in order. Each reads what the ones before it wrote.
 |---|---|---|---|
 | **CodeScanner** | your existing code | `code_review.json` | optional; brownfield projects |
 | **Brainstormer** | you, one question at a time | `vision.json`, `feature_specs.json` | |
-| **Agentifier** | vision, feature specs | `ai_features.json` | |
+| **Agentifier** | vision, feature specs | `ai_catalog.json`, `ai_features.json` | |
 | **Designer** | vision, AI features, reference screenshots | `design/mock.html`, `design/manifest.json` | optional |
 | **StackAdvisor** | vision, AI features, code review | `stack.json` | |
 | **Phaser** | everything above | `phases/*.md` | |
@@ -136,7 +137,7 @@ Seven agents, in order. Each reads what the ones before it wrote.
 
 **Brainstormer** develops the vision through focused questions — purpose, audiences, MVP features — and, on completion, derives a technology-agnostic behavioral spec for every MVP feature: inputs, outputs, success criteria, failure modes. It searches the web for the standards it names and embeds canonical documentation links.
 
-**Agentifier** finds where AI belongs in the vision. For each candidate it recommends a complexity tier from a nine-rung ladder (single call → RAG → tool use → … → multi-agent collaboration), picks implementation mechanisms, and drafts a full spec. The tiers are the same ones the [Built With Spec4](#built-with-spec4-bws4) gallery demonstrates as working apps.
+**Agentifier** looks for places in the vision where an AI feature would serve it and recommends how much AI each one needs: a complexity tier from a nine-tier ladder (deterministic code → embeddings → single call → RAG → tool use → … → multi-agent collaboration) and the mechanisms to build it with. You choose the candidates and decide each tier; it records both and drafts a full spec for each feature you keep. The tiers are the same ones the [Built With Spec4](#built-with-spec4-bws4) gallery demonstrates as working apps.
 
 **Designer** generates a self-contained HTML mock of the application's starting screen from the vision and AI features, with optional reference screenshots. Approve it, refine it with a description of changes, or start over. Phaser directs the coding agent to build to it. [Example mock.](https://spec4.ai/examples/mock.html)
 
@@ -179,21 +180,26 @@ A demo needs a happy path. A production system needs the rest, and Spec4's artif
 
 ## What it costs
 
-The three rounds Spec4 has run against itself, with the planning agents on Claude Sonnet and Phaser on Claude Opus:
+The three rounds Spec4 has run against itself, planning changes to its own code, with every call recorded. `claude-sonnet-5` was the default; Phaser ran on `claude-opus-5` in all three; Designer ran on `claude-fable-5-1` in `v0` and `v1` and `claude-opus-5` in `v2`.
 
-| Round | What it planned | Calls | Tokens | Cost |
-|---|---|---|---|---|
-| `v0` | the UI rework — 7 phases | 59 | 1.69M | $7.04 |
-| `v1` | the artifacts view — a smaller delta | 16 | 0.62M | $5.09 |
-| `v2` | the codebase cleanup | 40 | 1.19M | $5.88 |
+| Round | What it planned | Calls | Tokens | Cost | Elapsed |
+|---|---|---|---|---|---|
+| `v0` | the UI rework — 7 phases; excludes CodeScanner, which ran before usage was recorded | 59 | 1.69M | $7.04 | 1 h 51 m |
+| `v1` | the artifacts view and chat frame | 16 | 0.62M | $5.09 | 1 h 18 m |
+| `v2` | the rest of the UI rework — five remaining screens, per-agent effort | 40 | 1.19M | $5.88 | 4 h 17 m |
 
-Phaser is the largest single line in both, because it holds every upstream artifact in context while it drafts. `usage.json` records every call per agent, per round, and the project page shows the totals. Each agent can override the project's default model and effort from its own gate, so you can put a stronger model on Phaser without changing anything else.
+Elapsed is the first call's start to the last call's end, including the developer's time in the dialogue. Cost is LiteLLM's estimate from its community cost map; your provider's bill is authoritative.
+
+Phaser is the first or second largest line in every round, because it holds every upstream artifact in context while it drafts; the other large lines are long dialogues on the default model. `usage.json` records every call per agent, per round, and the project page shows the totals. Each agent can override the project's default model and effort from its own gate, so you can put a stronger model on Phaser without changing anything else.
 
 ---
 
 ## What it isn't, and where your data goes
 
 - Not a coding agent, and not tied to one. It doesn't assume every change goes through it either: work on the code however you like between rounds, and the next round starts from what's there. Spec4 produces the plan; Claude Code, Cursor, Codex, Copilot or whatever you use does the building. The artifacts are plain Markdown and JSON with no agent-specific format — a phase file reads the same to a person as to an agent — and Deployer writes its coding-agent setup instructions for the agent you name, not for one it assumes.
+- Not for every change. A round is the unit for a feature or a rework; for a quick script, a refactor, or a small feature in a mature codebase, it is more process than the change needs.
+- No commands inside your coding agent. You hand it the files.
+- It stops at the spec. Building and verifying the code is your coding agent's job and yours.
 - Nothing runs in the cloud. The app is a local process; the only network calls are to the model provider you chose and, if you enable it, the search provider.
 - CodeScanner reads your repository locally and sends the model a bounded summary — manifests, entry points, samples — not the tree.
 - API keys are held in the browser (`localStorage`, opt-in) and never written to disk or sent anywhere but the provider they belong to.
@@ -218,7 +224,7 @@ The project page opens on the latest round with its artifacts and costs. Choose 
 
 <img align="right" src="https://github.com/robertcrowe/Spec4/raw/main/BWS4-logos/BWS4-white-100.png" alt="BWS4 logo" width="100" />
 
-**[Built With Spec4](https://bw.spec4.ai)** is a live gallery of small apps, every one planned with Spec4 and built by a coding agent working from Spec4's phase files. Each demonstrates one rung of the complexity ladder Agentifier recommends from, so you can see what a tier looks like as software — and what the artifacts turn into when an agent executes them.
+**[Built With Spec4](https://bw.spec4.ai)** is a live gallery of small apps, every one planned with Spec4 and built by a coding agent working from Spec4's phase files. Each demonstrates one tier of the complexity ladder Agentifier recommends from, so you can see what a tier looks like as software — and what the artifacts turn into when an agent executes them. BWS4 was planned in nine rounds, with hand edits between them; its full `.spec4/` history, `v0` through `v8`, every artifact and every phase file, is in the BWS4 repository.
 
 | Example app | Pattern demonstrated |
 |-------------|----------------------|
