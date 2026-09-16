@@ -17,6 +17,7 @@ Covers:
 from __future__ import annotations
 
 import asyncio
+import importlib.metadata
 import json
 import logging
 import os
@@ -35,6 +36,9 @@ from spec4.app_constants import FF_PROMPT, STATE_VISION_COMPLETE
 from spec4.layouts._chat import turn_token_text
 from spec4.session import default_session, persist_artifacts
 from tests._chunks import make_stream_chunk, make_usage
+
+# What `_usage_versions` records: the installed LiteLLM, never a literal.
+_LITELLM_VERSION = importlib.metadata.version("litellm")
 
 _CFG = {"model": "gpt-4o-mini", "api_key": "sk-test"}
 
@@ -590,7 +594,7 @@ class TestSaveUsageSchema:
         ]
         assert data["schema_version"] == "1"
         assert data["round"] == "v2"
-        assert data["litellm_version"] == "1.82.0"
+        assert data["litellm_version"] == _LITELLM_VERSION
         assert data["spec4_version"]
         assert data["created_at"].endswith("+00:00")
         assert data["updated_at"].endswith("+00:00")
@@ -748,7 +752,10 @@ class TestSaveUsageReadModifyWrite:
         assert data["totals"]["total_tokens"] == 470
         assert data["created_at"] == "2026-08-30T10:00:00+00:00"
         assert data["updated_at"] > "2026-08-30T10:05:00+00:00"
-        assert data["litellm_version"] == "1.82.0"
+        # Rewritten by this session, so it carries this session's LiteLLM,
+        # not the "1.80.0" the prior file was stamped with.
+        assert data["litellm_version"] == _LITELLM_VERSION
+        assert data["litellm_version"] != "1.80.0"
 
     def test_rollups_are_recomputed_from_history_not_trusted(
         self, tmp_path: Path

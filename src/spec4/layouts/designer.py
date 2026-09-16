@@ -49,7 +49,7 @@ _PLACEHOLDER_HTML = (
 DESIGNER_STEPS: tuple[str, ...] = (
     "No-UI check",
     "Start / Resume",
-    "Preferences",
+    "Vision",
     "Screenshots",
     "Generate",
     "Preview",

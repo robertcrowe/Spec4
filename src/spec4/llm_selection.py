@@ -64,8 +64,8 @@ BASE_EFFORTS: tuple[str, ...] = (DEFAULT_EFFORT, "low", "medium", "high")
 # a provider with no entry here offers exactly `BASE_EFFORTS`.
 #
 # This table is keyed by *provider*, not by model, and is deliberately coarse:
-# a level that a specific model rejects (Anthropic's "max" is Opus-4.6-only,
-# for instance) is handled by the one-shot fallback retry in `llm.py`, NOT by
+# a level that a specific model, or the installed LiteLLM's mapping for it,
+# rejects is handled by the one-shot fallback retry in `llm.py`, NOT by
 # pruning entries from here. Do not add model-level conditions to this table —
 # the retry is what keeps a rejected level from failing a run, and it works for
 # models that do not exist yet.

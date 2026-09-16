@@ -3,7 +3,9 @@ from collections.abc import Iterator
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import litellm
 import pytest
+from litellm.exceptions import APIConnectionError as LiteLLMAPIConnectionError
 from litellm.exceptions import BadRequestError as LiteLLMBadRequestError
 
 from spec4 import llm
@@ -456,6 +458,30 @@ class TestSupportsReasoningEffort:
         assert llm.supports_reasoning_effort("") is None
 
 
+class TestLiteLLMMapsEffortForAdaptiveThinkingModels:
+    """Characterizes the installed LiteLLM, no network.
+
+    Pins the regression behind the litellm floor bump: on 1.82.0 the Anthropic
+    transformation knew only low/medium/high and raised
+    ``Unmapped reasoning effort: max`` for Fable before any request was sent,
+    and mapped ``high`` to a ``budget_tokens`` block the Claude 5 family
+    rejects. A model that thinks adaptively must get ``output_config.effort``
+    and never a token budget.
+    """
+
+    @pytest.mark.parametrize("effort", ["low", "high", "max"])
+    def test_fable_effort_maps_to_output_config(self, effort: str) -> None:
+        params = litellm.get_optional_params(
+            model="claude-fable-5-1",
+            custom_llm_provider="anthropic",
+            reasoning_effort=effort,
+            drop_params=True,
+        )
+        assert params["output_config"] == {"effort": effort}
+        assert params["thinking"]["type"] == "adaptive"
+        assert "budget_tokens" not in params["thinking"]
+
+
 class TestIsEffortRejectedError:
     """The second failure shape, kept distinct from the first.
 
@@ -472,6 +498,11 @@ class TestIsEffortRejectedError:
 
     def test_detects_an_invalid_effort_value(self) -> None:
         exc = Exception("Invalid value for reasoning_effort: 'max'")
+        assert llm.is_effort_rejected_error(exc, self._SENT) is True
+
+    def test_detects_a_level_litellm_cannot_map(self) -> None:
+        """LiteLLM's own pre-request refusal, worded without any provider marker."""
+        exc = Exception("Unmapped reasoning effort: max")
         assert llm.is_effort_rejected_error(exc, self._SENT) is True
 
     def test_a_call_that_sent_no_effort_can_never_match(self) -> None:
@@ -701,6 +732,57 @@ class TestEffortRejectionFallback:
                     )
                 )
         assert len(calls) == 1, "a mid-stream failure must not trigger the retry"
+
+    def test_a_mapping_failure_wrapped_as_a_connection_error_is_retried(
+        self,
+    ) -> None:
+        """A level LiteLLM cannot map fails before the request is built, and
+        LiteLLM wraps that local error as APIConnectionError, not
+        BadRequestError. It is still a refused level and gets the one retry."""
+        calls: list[dict[str, Any]] = []
+
+        def fake_completion(**kwargs: Any) -> Any:
+            calls.append(dict(kwargs))
+            if len(calls) == 1:
+                raise LiteLLMAPIConnectionError(
+                    message="Unmapped reasoning effort: max",
+                    model="claude-fable-5-1",
+                    llm_provider="anthropic",
+                )
+            return iter(self._ok())
+
+        with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
+            out = "".join(
+                llm.stream_turn(
+                    "sys", [], {"model": "m", "api_key": "k", "effort": "max"}, None
+                )
+            )
+        assert out == "Hi"
+        assert len(calls) == 2
+        assert calls[0]["reasoning_effort"] == "max"
+        assert "reasoning_effort" not in calls[1]
+
+    def test_a_real_connection_error_still_raises(self) -> None:
+        """Widening the class must not turn a network failure into a retry."""
+        calls: list[dict[str, Any]] = []
+
+        def refuse_connection(**kwargs: Any) -> Any:
+            calls.append(dict(kwargs))
+            raise LiteLLMAPIConnectionError(
+                message="Connection refused", model="m", llm_provider="anthropic"
+            )
+
+        with patch("spec4.llm.litellm.completion", side_effect=refuse_connection):
+            with pytest.raises(LiteLLMAPIConnectionError):
+                list(
+                    llm.stream_turn(
+                        "sys",
+                        [],
+                        {"model": "m", "api_key": "k", "effort": "max"},
+                        None,
+                    )
+                )
+        assert len(calls) == 1
 
 
 class TestIsToolIncompatibleError:

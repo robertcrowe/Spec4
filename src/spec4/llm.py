@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 import litellm
+from litellm.exceptions import APIConnectionError as LiteLLMAPIConnectionError
 from litellm.exceptions import BadRequestError as LiteLLMBadRequestError
 
 from spec4.websearch import (
@@ -127,6 +128,7 @@ _EFFORT_REJECTION_MARKERS = (
     "unexpected value",
     "only works",
     "only available",
+    "unmapped",
 )
 
 
@@ -136,9 +138,10 @@ def is_effort_rejected_error(exc: Exception, kwargs: dict[str, Any]) -> bool:
     D-EF3, the second of two failure shapes. The first — a model that does not
     accept `reasoning_effort` at all — never reaches here: `drop_params=True`
     makes LiteLLM discard the parameter silently, so no error is raised. This
-    one is the provider accepting the parameter and refusing the *value*
-    (Anthropic takes "max" only on Opus 4.6, for instance). The two are kept
-    separate on purpose and must not be collapsed into one branch.
+    one is the parameter being accepted and the *value* refused — by the
+    provider, or by LiteLLM's own mapping layer before the request is built
+    (a level newer than the installed LiteLLM knows, for instance). The two
+    are kept separate on purpose and must not be collapsed into one branch.
 
     Two rules bound what can match:
 
@@ -170,6 +173,14 @@ def _drop_effort(kwargs: dict[str, Any]) -> str:
     return rejected
 
 
+# The error classes a refused level can arrive as. A provider refusing the
+# value is a BadRequestError; a level LiteLLM cannot map fails while the
+# request is *built*, and LiteLLM wraps that local error as APIConnectionError
+# with no status. Both still have to pass :func:`is_effort_rejected_error`, so
+# a genuine connection failure is never retried as an effort rejection.
+_EFFORT_REJECTION_ERRORS = (LiteLLMBadRequestError, LiteLLMAPIConnectionError)
+
+
 def _send_with_effort_fallback(kwargs: dict[str, Any]) -> tuple[Any, str | None]:
     """Open a sync request, retrying once without the effort if it is refused.
 
@@ -181,7 +192,7 @@ def _send_with_effort_fallback(kwargs: dict[str, Any]) -> tuple[Any, str | None]
     """
     try:
         return litellm.completion(**kwargs), None
-    except LiteLLMBadRequestError as exc:
+    except _EFFORT_REJECTION_ERRORS as exc:
         if not is_effort_rejected_error(exc, kwargs):
             raise
         rejected = _drop_effort(kwargs)
@@ -195,7 +206,7 @@ async def _asend_with_effort_fallback(
     """Async twin of :func:`_send_with_effort_fallback`, same policy."""
     try:
         return await litellm.acompletion(**kwargs), None
-    except LiteLLMBadRequestError as exc:
+    except _EFFORT_REJECTION_ERRORS as exc:
         if not is_effort_rejected_error(exc, kwargs):
             raise
         rejected = _drop_effort(kwargs)

@@ -357,7 +357,7 @@ def on_designer_step_back(n: int | None, store: Any) -> Any:
     """One step back inside the wizard — never out of it.
 
     The button is rendered by the two steps that have somewhere to go back to
-    (Preferences and Screenshots) and by no others, so decrementing is the
+    (Vision and Screenshots) and by no others, so decrementing is the
     whole rule; the floor is step 2, the wizard's first question in every flow
     that does not open on the no-UI check. Leaving Designer is the status bar's
     Project link, not a button in here.
