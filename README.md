@@ -213,7 +213,8 @@ Spec4 is a brownfield project like any other, and its own `.spec4/` is committed
 
 ```bash
 git clone https://github.com/robertcrowe/spec4
-spec4                              # then select the spec4 directory as the project
+spec4
+# then select the spec4 directory as the project
 ```
 
 The project page opens on the latest round with its artifacts and costs. Choose "existing project" and run CodeScanner to start a fourth.
