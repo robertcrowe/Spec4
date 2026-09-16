@@ -78,7 +78,7 @@ serves HTTP on localhost:8050 only.
 ## References
 ```
 
-Every phase carries a JSON frontmatter with the same content as structured data, a risk assessment naming where a coding agent is likely to go wrong and what to do about it, and a Verification section with the exact command or observable that proves the phase is done. Phase 1 is always a steel thread — the thinnest live end-to-end path — before any feature work.
+Every phase carries a JSON frontmatter with the same content as structured data, a risk assessment naming where a coding agent is likely to go wrong and what to do about it, and a Verification section with the exact command or observable that proves the phase is done. Phase 1 of a new project is a steel thread — the thinnest live end-to-end path; phase 1 of a revision round is an integration thread that wires the change into the existing code.
 
 ---
 
@@ -212,7 +212,7 @@ Phaser is the first or second largest line in every round, because it holds ever
 Spec4 is a brownfield project like any other, and its own `.spec4/` is committed:
 
 ```bash
-git clone https://github.com/robertcrowe/spec4
+uv tool install spec4 --refresh
 spec4
 # then select the spec4 directory as the project
 ```
