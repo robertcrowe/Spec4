@@ -119,10 +119,9 @@ def on_designer_step2_choice(
     model, api_key, search_cfg, wd, support, api_base, aws_kw, effort = _llm_params(
         sess, image_support
     )
-    # D-DM7: this generation carries the manifest instruction (it is the only
-    # non-refine draw in the brownfield path, so it is the sole chance to
-    # produce manifest.json — every later refinement passes existing_html,
-    # which skips both the instruction and persist_manifest). It therefore
+    # D-DM7: this generation carries the manifest instruction. It is the only
+    # non-refine draw in the brownfield path, so it seeds the manifest.json
+    # that every later refinement updates in place (D-DM9). It therefore
     # needs the same planning context as every other manifest-bearing draw.
     new_store, buf, disabled = _start_gen(
         store or {},

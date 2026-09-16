@@ -372,6 +372,29 @@ _MANIFEST_CAPTURE_NOTE = (
 # artifact is consumed (whole-file load) and how `design_manifest` treats it:
 # names and counts are expected to vary across draws, and the stable join
 # surface is the derived id pair, which `enrich_manifest` re-pins every time.
+#
+# The prompt now also carries the existing manifest (`## Existing Manifest`)
+# whenever the design dir has one. Without it, "carry every entry through
+# unchanged" was unsatisfiable — the model saw only the HTML, so each refine
+# re-invented the manifest from the markup (names and entities drifting from
+# what Phaser and StackAdvisor had already consumed) or dropped it as
+# inapplicable, leaving the prior manifest.json describing the old mock. The
+# two notes below differ only in whether there is a manifest to update.
+# "Re-state it anyway" costs nothing downstream: `persist_manifest` skips
+# the write when the re-stated manifest equals the one on disk, so a purely
+# visual refine leaves manifest.json's mtime — and StackAdvisor's freshness —
+# alone.
+_MANIFEST_REFINE_UPDATE_NOTE = (
+    "\n**Refinement — re-state the manifest for the updated mock.** Start from "
+    "the Existing Manifest above: it describes the mock you were given. Update "
+    "it in place to align with the refinement — keep the `name`, `id` and "
+    "`catalog_surface` of every screen, surface and entity the refinement "
+    "leaves alone exactly as they are, add entries for anything the refinement "
+    "introduces, and drop entries for anything it removes. Emit the complete "
+    "updated manifest, not a diff. If the refinement is purely visual (colour, "
+    "spacing, copy, typography) the manifest is unchanged — re-state it "
+    "anyway.\n"
+)
 _MANIFEST_REFINE_NOTE = (
     "\n**Refinement — re-state the manifest for the updated mock.** Emit the "
     "complete manifest describing the mock *after* your changes, not a diff and "
@@ -391,11 +414,17 @@ def build_mock_prompt(  # noqa: PLR0913  # the mock-generation contract, shared 
     planning_context: dict[str, Any] | None = None,
     existing_html: str | None = None,
     capture_mode: bool = False,
+    existing_manifest: dict[str, Any] | None = None,
 ) -> list[dict[str, object]]:
-    """Construct the LiteLLM messages list for mock generation or refinement."""
+    """Construct the LiteLLM messages list for mock generation or refinement.
+
+    ``existing_manifest`` is the manifest describing ``existing_html``; it is
+    only rendered on a refine draw, where the model updates it in place.
+    """
     parts: list[dict[str, object]] = []
 
     _mock_existing_html_part(parts, existing_html)
+    _mock_existing_manifest_part(parts, existing_html, existing_manifest)
     _mock_planning_parts(parts, planning_context)
     _mock_preference_and_screenshots(parts, session, image_support)
     _mock_source_snippets(parts, existing_html, ui_source_snippets, capture_mode)
@@ -411,8 +440,7 @@ def build_mock_prompt(  # noqa: PLR0913  # the mock-generation contract, shared 
     parts.append({"type": "text", "text": instruction})
     # Every draw is manifest-bearing (D-DM9). The mode-specific note comes
     # after the shared schema; a refine is a refine even if the flag is set.
-    manifest_text = _MANIFEST_INSTRUCTION
-    manifest_text = _mock_manifest_text(existing_html, capture_mode)
+    manifest_text = _mock_manifest_text(existing_html, capture_mode, existing_manifest)
     parts.append({"type": "text", "text": manifest_text})
     return [
         {"role": "system", "content": system},
@@ -433,6 +461,28 @@ def _mock_existing_html_part(
                     "Below is the current HTML. Apply the requested changes to it — "
                     "preserve everything not explicitly changed.\n\n"
                     "```html\n" + existing_html + "\n```\n\n---"
+                ),
+            }
+        )
+
+
+def _mock_existing_manifest_part(
+    parts: list[dict[str, object]],
+    existing_html: str | None,
+    existing_manifest: dict[str, Any] | None,
+) -> None:
+    """The existing-manifest part, on a refine draw that has one to update."""
+    if existing_html and existing_manifest is not None:
+        parts.append(
+            {
+                "type": "text",
+                "text": (
+                    "## Existing Manifest\n\n"
+                    "This design manifest describes the existing mock above. It "
+                    "is the manifest you will update to match your changes.\n\n"
+                    "```json\n"
+                    + json.dumps(existing_manifest, indent=2)
+                    + "\n```\n\n---"
                 ),
             }
         )
@@ -514,10 +564,16 @@ def _mock_source_snippets(
         parts.append({"type": "text", "text": label + combined})
 
 
-def _mock_manifest_text(existing_html: str | None, capture_mode: bool) -> str:
+def _mock_manifest_text(
+    existing_html: str | None,
+    capture_mode: bool,
+    existing_manifest: dict[str, Any] | None,
+) -> str:
     """The manifest instruction plus its mode-specific note (D-DM9)."""
     manifest_text = _MANIFEST_INSTRUCTION
-    if existing_html:
+    if existing_html and existing_manifest is not None:
+        manifest_text += _MANIFEST_REFINE_UPDATE_NOTE
+    elif existing_html:
         manifest_text += _MANIFEST_REFINE_NOTE
     elif capture_mode:
         manifest_text += _MANIFEST_CAPTURE_NOTE
@@ -662,6 +718,7 @@ def generate_mock_streaming(  # noqa: PLR0913  # the mock-generation contract, s
     api_base: str | None = None,
     extra_kwargs: dict[str, Any] | None = None,
     effort: str = "default",
+    existing_manifest: dict[str, Any] | None = None,
 ) -> Iterator[str]:
     messages: list[dict[str, Any]] = build_mock_prompt(
         session,
@@ -670,6 +727,7 @@ def generate_mock_streaming(  # noqa: PLR0913  # the mock-generation contract, s
         planning_context,
         existing_html,
         capture_mode,
+        existing_manifest=existing_manifest,
     )
     tools: list[dict[str, Any]] | None = [WEB_SEARCH_TOOL] if search_config else None
 

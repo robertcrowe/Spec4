@@ -395,6 +395,21 @@ def load_prior_mock(working_dir: str | Path) -> str | None:
     return html if html.strip() else None
 
 
+def load_prior_manifest(working_dir: str | Path) -> dict[str, Any] | None:
+    """Read the design manifest of the latest *implemented* round.
+
+    Twin of :func:`load_prior_mock`, for ``design/manifest.json``. A revision
+    round carries the prior round's approved mock forward as the baseline its
+    delta is refined onto; this is the manifest that describes that baseline,
+    so the refine draw can update it rather than re-invent it. Returns ``None``
+    when no implemented round exists or its manifest is missing/unreadable.
+    """
+    version = latest_implemented_version(working_dir)
+    if version is None:
+        return None
+    return load_design_manifest(working_dir, version)
+
+
 def load_prior_stack(working_dir: str | Path) -> dict[str, Any] | None:
     """Read the stack spec of the latest *implemented* round, as reference.
 

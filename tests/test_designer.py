@@ -1,3 +1,5 @@
+import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -400,6 +402,54 @@ class TestBuildMockPrompt:
         assert "<h1>Old</h1>" in combined
         assert "Project Vision" in combined
         assert "FreshApp" in combined
+
+    _MANIFEST = {"screens": [{"id": "home"}], "surfaces": [{"name": "kept-list"}]}
+
+    def _texts(self, **kwargs: Any) -> list[str]:
+        parts = build_mock_prompt(_session(preference_text=""), [], False, **kwargs)[1][
+            "content"
+        ]
+        assert isinstance(parts, list)
+        return [str(p.get("text", "")) for p in parts]
+
+    def test_refine_includes_the_existing_manifest(self) -> None:
+        """D-DM9: the refine note asks the model to carry surviving entries
+        through unchanged, which it can only do if it sees them."""
+        texts = self._texts(
+            existing_html="<html><body>old</body></html>",
+            existing_manifest=self._MANIFEST,
+        )
+        section = [t for t in texts if t.startswith("## Existing Manifest")]
+        assert len(section) == 1
+        assert '"kept-list"' in section[0]
+        assert "```json" in section[0]
+
+    def test_existing_manifest_follows_the_mock_and_precedes_the_schema(
+        self,
+    ) -> None:
+        texts = self._texts(
+            existing_html="<html><body>old</body></html>",
+            existing_manifest=self._MANIFEST,
+        )
+        i_mock = next(
+            i for i, t in enumerate(texts) if t.startswith("## Existing Mock")
+        )
+        i_man = next(
+            i for i, t in enumerate(texts) if t.startswith("## Existing Manifest")
+        )
+        i_schema = next(i for i, t in enumerate(texts) if MANIFEST_START in t)
+        assert i_mock < i_man < i_schema
+
+    def test_greenfield_and_capture_ignore_an_existing_manifest(self) -> None:
+        """Only a refine has a mock for the manifest to describe."""
+        for kwargs in ({}, {"capture_mode": True}):
+            texts = self._texts(existing_manifest=self._MANIFEST, **kwargs)
+            assert not any(t.startswith("## Existing Manifest") for t in texts)
+            assert '"kept-list"' not in " ".join(texts)
+
+    def test_refine_without_a_manifest_has_no_section(self) -> None:
+        texts = self._texts(existing_html="<html><body>old</body></html>")
+        assert not any(t.startswith("## Existing Manifest") for t in texts)
 
     def test_ai_surfaces_section_injected_from_planning_context(self) -> None:
         ai_features = {
@@ -1041,6 +1091,332 @@ class TestRefinePersistsManifest:
         assert prior.read_text() == '{"screens": ["kept"]}'
 
 
+class TestUnchangedManifestIsNotRewritten:
+    """A refine that re-states an unchanged design leaves manifest.json's mtime
+    alone, so StackAdvisor's freshness — the button and detect_stale_inputs,
+    which now agree — only moves when the design actually changed."""
+
+    _VISION = 1000.0
+    _FIRST_DRAW = 2000.0
+    _STACK = 3000.0
+
+    @staticmethod
+    def _output(surfaces: list[str]) -> str:
+        manifest = {
+            "entities": [],
+            "screens": [{"id": "home", "surfaces": surfaces}],
+            "surfaces": [
+                {"name": n, "kind": "non_ai", "screen": "home"} for n in surfaces
+            ],
+            "shared_layout": {"nav": "top", "shell": []},
+        }
+        return (
+            MANIFEST_START
+            + "\n"
+            + json.dumps(manifest)
+            + "\n"
+            + MANIFEST_END
+            + "\n<html><body>"
+            + " ".join(surfaces)
+            + "</body></html>"
+        )
+
+    def _project(self, tmp_path: Path) -> tuple[str, Path]:
+        """v0 with a first draw's manifest, then a newer stack.json."""
+        from spec4 import project_manager
+
+        wd = str(tmp_path)
+        v0 = project_manager.get_version_dir(wd, 0)
+        design = v0 / "design"
+        design.mkdir(parents=True)
+        for name in ("vision.json", "ai_features.json"):
+            (v0 / name).write_text("{}")
+            os.utime(v0 / name, (self._VISION, self._VISION))
+        _dmod()._mock_gen.persist_manifest(self._output(["list"]), None, design)
+        manifest = design / "manifest.json"
+        assert manifest.exists()
+        os.utime(manifest, (self._FIRST_DRAW, self._FIRST_DRAW))
+        (design / "mock.html").write_text("<html><body>list</body></html>")
+        os.utime(design / "mock.html", (self._FIRST_DRAW, self._FIRST_DRAW))
+        (v0 / "stack.json").write_text("{}")
+        os.utime(v0 / "stack.json", (self._STACK, self._STACK))
+        return wd, manifest
+
+    def _refine(self, monkeypatch, wd: str, surfaces: list[str]) -> None:
+        dmod = _dmod()
+        monkeypatch.setattr(dmod._mock_gen.threading, "Thread", _SyncThread)
+        monkeypatch.setattr(
+            dmod._mock_gen,
+            "generate_mock_streaming",
+            lambda *a, **k: iter([self._output(surfaces), "__DONE__"]),
+        )
+        dmod._start_gen(
+            {"mock_html": "<html><body>list</body></html>"},
+            wd,
+            "m",
+            "k",
+            None,
+            False,
+            existing_html="<html><body>list</body></html>",
+        )
+
+    def test_before_any_refine_the_stack_is_fresh(self, tmp_path: Path) -> None:
+        from spec4 import project_manager
+
+        wd, _manifest = self._project(tmp_path)
+        assert project_manager.agent_button_state(wd, "stack_advisor") == (
+            project_manager.AGENT_BTN_MODIFY
+        )
+        assert project_manager.detect_stale_inputs(wd, "stack_advisor") == {}
+
+    def test_unchanged_manifest_keeps_its_mtime_and_the_button_at_modify(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from spec4 import project_manager
+
+        wd, manifest = self._project(tmp_path)
+        self._refine(monkeypatch, wd, ["list"])
+        assert manifest.stat().st_mtime == self._FIRST_DRAW
+        # The mock itself was redrawn — only the manifest write was skipped.
+        assert (manifest.parent / "mock.html").stat().st_mtime > self._STACK
+        assert project_manager.agent_button_state(wd, "stack_advisor") == (
+            project_manager.AGENT_BTN_MODIFY
+        )
+        assert project_manager.detect_stale_inputs(wd, "stack_advisor") == {}
+
+    def test_changed_manifest_is_rewritten_and_flips_the_button(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        from spec4 import project_manager
+
+        wd, manifest = self._project(tmp_path)
+        self._refine(monkeypatch, wd, ["list", "detail"])
+        assert manifest.stat().st_mtime > self._STACK
+        names = [s["name"] for s in json.loads(manifest.read_text())["surfaces"]]
+        assert names == ["list", "detail"]
+        assert project_manager.agent_button_state(wd, "stack_advisor") == (
+            project_manager.AGENT_BTN_NEEDS_UPDATE
+        )
+        stale = project_manager.detect_stale_inputs(wd, "stack_advisor")
+        assert set(stale) == {"design manifest"}
+
+    def test_equality_is_parsed_not_byte_for_byte(self, tmp_path: Path) -> None:
+        """Key order and whitespace in the model's JSON must not force a write."""
+        dmod = _dmod()
+        design = tmp_path / "design"
+        design.mkdir()
+        dmod._mock_gen.persist_manifest(self._output(["list"]), None, design)
+        manifest = design / "manifest.json"
+        os.utime(manifest, (self._FIRST_DRAW, self._FIRST_DRAW))
+        reordered = json.dumps(json.loads(manifest.read_text()), indent=4)
+        dmod._mock_gen.persist_manifest(
+            MANIFEST_START + "\n" + reordered + "\n" + MANIFEST_END + "\n<html></html>",
+            None,
+            design,
+        )
+        assert manifest.stat().st_mtime == self._FIRST_DRAW
+
+    def test_a_manifest_still_lands_when_none_is_on_disk(self, tmp_path: Path) -> None:
+        dmod = _dmod()
+        design = tmp_path / "design"
+        design.mkdir()
+        dmod._mock_gen.persist_manifest(self._output(["list"]), None, design)
+        assert (design / "manifest.json").exists()
+
+
+class TestExistingManifestReachesTheDraw:
+    """D-DM9: the manifest describing the mock being refined travels from the
+    refine call sites through _start_gen and generate_mock_streaming into the
+    prompt, so the model updates it rather than re-inventing it."""
+
+    _MANIFEST = {"screens": [{"id": "home"}]}
+
+    def test_generate_mock_streaming_forwards_it_to_the_prompt(
+        self, monkeypatch
+    ) -> None:
+        import spec4.agents.designer as agent_mod
+
+        captured: dict[str, Any] = {}
+
+        def fake_prompt(*args: Any, **kwargs: Any) -> list[dict[str, Any]]:
+            captured.update(kwargs)
+            return []
+
+        monkeypatch.setattr(agent_mod, "build_mock_prompt", fake_prompt)
+        monkeypatch.setattr(
+            agent_mod.llm, "stream_completion", lambda **kwargs: iter([])
+        )
+        out = list(
+            generate_mock_streaming(
+                _session(),
+                "m",
+                "k",
+                [],
+                False,
+                existing_html="<html></html>",
+                existing_manifest=self._MANIFEST,
+            )
+        )
+        assert out == ["__DONE__"]
+        assert captured["existing_manifest"] == self._MANIFEST
+
+    def test_start_gen_forwards_it_to_the_generator(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        dmod = _dmod()
+        captured: dict[str, Any] = {}
+
+        def fake_gen(*args: Any, **kwargs: Any) -> Any:
+            captured.update(kwargs)
+            return iter(["<html><body>hi</body></html>", "__DONE__"])
+
+        monkeypatch.setattr(dmod._mock_gen.threading, "Thread", _SyncThread)
+        monkeypatch.setattr(dmod._mock_gen, "generate_mock_streaming", fake_gen)
+        dmod._start_gen(
+            {},
+            str(tmp_path),
+            "m",
+            "k",
+            None,
+            False,
+            existing_html="<html></html>",
+            existing_manifest=self._MANIFEST,
+        )
+        assert captured["existing_manifest"] == self._MANIFEST
+
+    def _design_dir(self, tmp_path: Path, version: int) -> Path:
+        from spec4 import project_manager
+
+        d = project_manager.get_version_dir(str(tmp_path), version) / "design"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def test_resolver_reads_the_active_round_when_it_has_a_mock(
+        self, tmp_path: Path
+    ) -> None:
+        dmod = _dmod()
+        d = self._design_dir(tmp_path, 0)
+        (d / "mock.html").write_text("<html></html>")
+        (d / "manifest.json").write_text('{"screens": ["active"]}')
+        out = dmod._mock_gen.existing_manifest_for_refine({}, str(tmp_path), None)
+        assert out == {"screens": ["active"]}
+
+    def test_resolver_gives_none_when_the_active_draw_had_no_manifest(
+        self, tmp_path: Path
+    ) -> None:
+        """A prior round's manifest describes a different mock — never that."""
+        dmod = _dmod()
+        d0 = self._design_dir(tmp_path, 0)
+        (d0 / "mock.html").write_text("<html>old</html>")
+        (d0 / "manifest.json").write_text('{"screens": ["prior"]}')
+        (d0.parent / "IMPLEMENTED").write_text("")
+        d1 = self._design_dir(tmp_path, 1)
+        (d1 / "mock.html").write_text("<html>new</html>")
+        out = dmod._mock_gen.existing_manifest_for_refine(
+            {"_is_revision": True}, str(tmp_path), {"phase_version": 1}
+        )
+        assert out is None
+
+    def test_resolver_falls_back_to_the_prior_round_for_a_carried_mock(
+        self, tmp_path: Path
+    ) -> None:
+        """Carry-forward seeds the store with the prior round's mock; the
+        revision round has no mock of its own, so the prior manifest is the
+        one to update."""
+        dmod = _dmod()
+        d0 = self._design_dir(tmp_path, 0)
+        (d0 / "mock.html").write_text("<html>old</html>")
+        (d0 / "manifest.json").write_text('{"screens": ["prior"]}')
+        (d0.parent / "IMPLEMENTED").write_text("")
+        self._design_dir(tmp_path, 1)
+        out = dmod._mock_gen.existing_manifest_for_refine(
+            {"_is_revision": True}, str(tmp_path), {"phase_version": 1}
+        )
+        assert out == {"screens": ["prior"]}
+
+    def test_resolver_gives_none_outside_a_revision_with_no_active_mock(
+        self, tmp_path: Path
+    ) -> None:
+        dmod = _dmod()
+        d0 = self._design_dir(tmp_path, 0)
+        (d0 / "manifest.json").write_text('{"screens": ["prior"]}')
+        (d0.parent / "IMPLEMENTED").write_text("")
+        self._design_dir(tmp_path, 1)
+        out = dmod._mock_gen.existing_manifest_for_refine(
+            {}, str(tmp_path), {"phase_version": 1}
+        )
+        assert out is None
+
+    def test_resolver_gives_none_without_a_working_dir(self) -> None:
+        dmod = _dmod()
+        assert dmod._mock_gen.existing_manifest_for_refine({}, None, None) is None
+
+    def _capture_start_gen(self, monkeypatch) -> dict[str, Any]:
+        dmod = _dmod()
+        captured: dict[str, Any] = {}
+
+        def fake_start_gen(*args: Any, **kwargs: Any) -> Any:
+            captured.update(kwargs)
+            return {}, {}, False
+
+        monkeypatch.setattr(dmod._refine, "_start_gen", fake_start_gen)
+        monkeypatch.setattr(
+            dmod._refine,
+            "existing_manifest_for_refine",
+            lambda store, wd, sess: self._MANIFEST,
+        )
+        monkeypatch.setattr(dmod.project_manager, "load_ai_features", lambda wd: None)
+        monkeypatch.setattr(dmod.project_manager, "load_feature_specs", lambda wd: None)
+        return captured
+
+    def test_regenerate_passes_the_resolved_manifest(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        dmod = _dmod()
+        captured = self._capture_start_gen(monkeypatch)
+        store = {
+            "step": 7,
+            "mock_html": "<html>old</html>",
+            "preference_text": "",
+            "screenshots": [],
+            "refine_images": [],
+        }
+        dmod.on_designer_regenerate(
+            1, "tighter spacing", [], store, {"working_dir": str(tmp_path)}, True
+        )
+        assert captured["existing_manifest"] == self._MANIFEST
+
+    def test_retry_of_a_refine_passes_the_resolved_manifest(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        dmod = _dmod()
+        captured = self._capture_start_gen(monkeypatch)
+        d = self._design_dir(tmp_path, 0)
+        (d / "mock.html").write_text("<html>old</html>")
+        dmod.on_designer_retry(
+            1,
+            {"step": 5, "_has_existing_html": True},
+            {"working_dir": str(tmp_path)},
+            True,
+        )
+        assert captured["existing_html"] == "<html>old</html>"
+        assert captured["existing_manifest"] == self._MANIFEST
+
+    def test_greenfield_retry_passes_no_manifest(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        dmod = _dmod()
+        captured = self._capture_start_gen(monkeypatch)
+        dmod.on_designer_retry(
+            1,
+            {"step": 5, "_has_existing_html": False},
+            {"working_dir": str(tmp_path)},
+            True,
+        )
+        assert captured["existing_html"] is None
+        assert captured["existing_manifest"] is None
+
+
 class TestRefineImageAnnotations:
     """Refine images carry an annotation the same way step-4 screenshots do
     (mirrors TestBuildMockPrompt.test_annotation_included_with_image)."""
@@ -1259,7 +1635,7 @@ class TestRegenerateSourcesCatalogFromDisk:
         assert pc["ai_features"] is sess_cat
 
 
-from spec4.agents._manifest import MANIFEST_START  # noqa: E402
+from spec4.agents._manifest import MANIFEST_END, MANIFEST_START  # noqa: E402
 
 
 class TestManifestInstruction:
@@ -1299,6 +1675,31 @@ class TestManifestInstruction:
         ]["content"]
         combined = " ".join(str(p.get("text", "")) for p in parts)
         assert "re-state it anyway" in combined
+
+    def test_refine_with_a_manifest_says_to_update_it_in_place(self) -> None:
+        parts = build_mock_prompt(
+            _session(),
+            [],
+            False,
+            existing_html="<html></html>",
+            existing_manifest={"screens": []},
+        )[1]["content"]
+        combined = " ".join(str(p.get("text", "")) for p in parts)
+        assert "start from the existing manifest above" in combined.lower()
+        assert "update it in place" in combined.lower()
+        assert "keep the `name`, `id` and `catalog_surface`" in combined
+        # The shared refine contract survives in both variants.
+        assert "re-state the manifest for the updated mock" in combined.lower()
+        assert "not a diff" in combined
+        assert "re-state it anyway" in combined
+
+    def test_refine_without_a_manifest_keeps_the_restate_note(self) -> None:
+        parts = build_mock_prompt(_session(), [], False, existing_html="<html></html>")[
+            1
+        ]["content"]
+        combined = " ".join(str(p.get("text", "")) for p in parts)
+        assert "not the manifest of the mock you were given" in combined
+        assert "start from the existing manifest above" not in combined.lower()
 
     def test_greenfield_omits_the_refine_note(self) -> None:
         parts = build_mock_prompt(_session(), [], False)[1]["content"]

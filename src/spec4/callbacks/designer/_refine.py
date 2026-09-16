@@ -24,6 +24,7 @@ from spec4.callbacks.designer._mock_gen import (
     _llm_params,
     _planning_ctx,
     _start_gen,
+    existing_manifest_for_refine,
 )
 
 
@@ -152,6 +153,12 @@ def on_designer_regenerate(  # noqa: PLR0913  # parameters are the callback's In
     model, api_key, search_cfg, wd, support, api_base, aws_kw, effort = _llm_params(
         sess, image_support
     )
+    # The manifest the refine updates in place (D-DM9): shown next to the
+    # existing HTML so surviving entries keep their names instead of being
+    # re-invented from the markup.
+    existing_manifest = (
+        existing_manifest_for_refine(store, wd, sess) if existing_html else None
+    )
     _vision_s3 = sess.get("vision_statement")
     # Source the AI catalog from disk so the surfaces block reflects the current
     # ai_features.json (which upstream edits like a feature deselection write)
@@ -185,6 +192,7 @@ def on_designer_regenerate(  # noqa: PLR0913  # parameters are the callback's In
         extra_kwargs=aws_kw or None,
         session=sess,
         effort=effort,
+        existing_manifest=existing_manifest,
     )
     return new_store, buf, disabled
 
@@ -325,6 +333,9 @@ def _rerun_failed_draw(store: Any, session: Any, image_support: Any) -> Any:
         )
         with contextlib.suppress(OSError, FileNotFoundError):
             existing_html = mock_path.read_text()
+    existing_manifest = (
+        existing_manifest_for_refine(store, wd, sess) if existing_html else None
+    )
     # D-DM8: a retry must reproduce the draw it is retrying. Both the mode and
     # the planning context now come back: refine draws carry planning context
     # too (they always did at the refine call site), and every draw is
@@ -344,6 +355,7 @@ def _rerun_failed_draw(store: Any, session: Any, image_support: Any) -> Any:
         extra_kwargs=aws_kw or None,
         session=sess,
         effort=effort,
+        existing_manifest=existing_manifest,
     )
     # The snapshot existed only to carry this draw across the model picker's
     # page rebuild. Drawing spends it; left behind, a later render would

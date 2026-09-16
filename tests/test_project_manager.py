@@ -545,6 +545,54 @@ class TestLoadPriorMock:
         assert project_manager.load_prior_mock(str(tmp_path)) is None
 
 
+class TestLoadPriorManifest:
+    """load_prior_manifest reads the design manifest of the latest *implemented*
+    round — the twin of load_prior_mock, so a revision round can update the
+    manifest describing the mock it carries forward (D-DM9).
+    """
+
+    def _implement(self, tmp_path: Path, version: int, manifest: str | None) -> None:
+        design_dir = project_manager.get_version_dir(str(tmp_path), version) / "design"
+        design_dir.mkdir(parents=True, exist_ok=True)
+        if manifest is not None:
+            (design_dir / "manifest.json").write_text(manifest, encoding="utf-8")
+        project_manager.get_version_dir(str(tmp_path), version).joinpath(
+            "IMPLEMENTED"
+        ).write_text("")
+
+    def test_none_when_no_versions(self, tmp_path: Path) -> None:
+        assert project_manager.load_prior_manifest(str(tmp_path)) is None
+
+    def test_none_when_round_in_progress(self, tmp_path: Path) -> None:
+        design_dir = project_manager.get_version_dir(str(tmp_path), 0) / "design"
+        design_dir.mkdir(parents=True, exist_ok=True)
+        (design_dir / "manifest.json").write_text('{"screens": []}')
+        assert project_manager.load_prior_manifest(str(tmp_path)) is None
+
+    def test_returns_implemented_manifest(self, tmp_path: Path) -> None:
+        self._implement(tmp_path, 0, '{"screens": [{"id": "home"}]}')
+        assert project_manager.load_prior_manifest(str(tmp_path)) == {
+            "screens": [{"id": "home"}]
+        }
+
+    def test_ignores_higher_in_progress_round(self, tmp_path: Path) -> None:
+        self._implement(tmp_path, 0, '{"screens": ["old"]}')
+        d1 = project_manager.get_version_dir(str(tmp_path), 1) / "design"
+        d1.mkdir(parents=True, exist_ok=True)
+        (d1 / "manifest.json").write_text('{"screens": ["new"]}')
+        assert project_manager.load_prior_manifest(str(tmp_path)) == {
+            "screens": ["old"]
+        }
+
+    def test_none_when_manifest_missing(self, tmp_path: Path) -> None:
+        self._implement(tmp_path, 0, None)
+        assert project_manager.load_prior_manifest(str(tmp_path)) is None
+
+    def test_none_when_manifest_malformed(self, tmp_path: Path) -> None:
+        self._implement(tmp_path, 0, "{not json")
+        assert project_manager.load_prior_manifest(str(tmp_path)) is None
+
+
 class TestLoadPriorStack:
     """load_prior_stack reads the stack spec of the latest *implemented* round,
     underpinning StackAdvisor's revision mode (carry the established stack forward

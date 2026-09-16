@@ -48,6 +48,7 @@ from spec4.project_manager._artifacts import (
     load_feature_specs,
     load_prior_ai_features,
     load_prior_deployment_plan,
+    load_prior_manifest,
     load_prior_mock,
     load_prior_stack,
     load_prior_vision,
@@ -126,6 +127,7 @@ __all__ = [
     "load_feature_specs",
     "load_prior_ai_features",
     "load_prior_deployment_plan",
+    "load_prior_manifest",
     "load_prior_mock",
     "load_prior_stack",
     "load_prior_vision",
@@ -281,15 +283,31 @@ def detect_stale_inputs(working_dir: str | Path, agent: str) -> dict[str, float]
 # Canonical pipeline order of artifacts (earliest stage -> latest), relative to
 # .spec4/v{N}/. The freshness chain is evaluated against this order: each
 # upstream artifact must be older than the one downstream of it.
+#
+# The manifest sits beside the mock: it is StackAdvisor's design input (D-SC5c)
+# and without it here the button never saw a design change at all, while
+# `detect_stale_inputs` did. No agent lists both design files, so the two are
+# never chained against each other — `persist_manifest` leaves manifest.json
+# untouched when a refine re-states an unchanged design, so it can lawfully be
+# older than the mock.
 _PIPELINE_ARTIFACT_ORDER: list[str] = [
     ARTIFACT_CODE_REVIEW,
     ARTIFACT_VISION,
     ARTIFACT_AI_FEATURES,
     "design/mock.html",
+    "design/manifest.json",
     ARTIFACT_STACK,
     "phases",
     "deployment-plan.md",
 ]
+
+# Inputs that join the freshness comparison but not the internal-order check.
+# The design manifest is Designer's output: when it lags the vision or the AI
+# features, that is Designer's `needs_update`, not StackAdvisor's `not_ready`.
+# D-BB1 keeps StackAdvisor reachable with a design that is behind the catalog,
+# and the click gate (`validate_agent_preconditions`) agrees; chaining the
+# manifest strictly would have re-opened that button/click disagreement.
+_UNCHAINED_INPUTS: frozenset[str] = frozenset({"design/manifest.json"})
 
 # Inputs that must exist for an agent to be runnable at all (the Not-Ready gate),
 # derived from `validate_agent_preconditions`. Every other input listed in
@@ -421,10 +439,11 @@ def agent_button_state(
     - A required input is missing -> ``not_ready``.
     - The existing input chain is internally out of order (some upstream
       artifact is newer than one downstream of it in pipeline order) ->
-      ``not_ready``.
+      ``not_ready``. Inputs in ``_UNCHAINED_INPUTS`` are left out of this
+      check.
     - Otherwise, with the input chain in order: no output -> ``start``; output
-      newer than (or equal to) the nearest input -> ``modify``; output older
-      than the nearest input -> ``needs_update``.
+      newer than (or equal to) the newest input -> ``modify``; output older
+      than the newest input -> ``needs_update``.
 
     CodeScanner has no inputs: ``start`` with no ``code_review.json`` in the
     active version, ``modify`` once one exists. During a pending brownfield
@@ -483,7 +502,8 @@ def _artifact_button_state(  # noqa: C901, E501  # the branches are the document
     raw_chain = [(rel, mtime(rel)) for rel in ordered]
     chain: list[tuple[str, float]] = [(rel, m) for rel, m in raw_chain if m is not None]
 
-    for (_, m_prev), (_, m_next) in zip(chain, chain[1:], strict=False):
+    strict_chain = [(rel, m) for rel, m in chain if rel not in _UNCHAINED_INPUTS]
+    for (_, m_prev), (_, m_next) in zip(strict_chain, strict_chain[1:], strict=False):
         if m_prev > m_next:
             return AGENT_BTN_NOT_READY
 
@@ -492,7 +512,7 @@ def _artifact_button_state(  # noqa: C901, E501  # the branches are the document
         return AGENT_BTN_START
     if not chain:
         return AGENT_BTN_MODIFY
-    nearest_mtime = chain[-1][1]
+    nearest_mtime = max(m for _, m in chain)
     if output_mtime >= nearest_mtime:
         return AGENT_BTN_MODIFY
     return AGENT_BTN_NEEDS_UPDATE

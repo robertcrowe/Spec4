@@ -147,6 +147,34 @@ def test_vision_regenerated_cascades(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+def test_stack_advisor_needs_update_when_manifest_newer(tmp_path):
+    """The manifest is StackAdvisor's design input (D-SC5c); a refine that
+    changed the design must show on the button, not only in-agent."""
+    files = {**_HEALTHY, "design/manifest.json": 103}
+    _make_round(tmp_path, 0, files)
+    assert agent_button_state(tmp_path, "stack_advisor") == AGENT_BTN_MODIFY
+    _write(tmp_path / ".spec4" / "v0", "design/manifest.json", 200)
+    assert agent_button_state(tmp_path, "stack_advisor") == AGENT_BTN_NEEDS_UPDATE
+
+
+def test_stack_advisor_stays_reachable_when_manifest_lags_the_catalog(tmp_path):
+    """D-BB1: a design behind the AI features is Designer's needs_update, not
+    StackAdvisor's not_ready — the manifest is not in the strict order check."""
+    files = {**_HEALTHY, "design/manifest.json": 103, "ai_features.json": 200}
+    _make_round(tmp_path, 0, files)
+    assert agent_button_state(tmp_path, "designer") == AGENT_BTN_NEEDS_UPDATE
+    assert agent_button_state(tmp_path, "stack_advisor") == AGENT_BTN_NEEDS_UPDATE
+
+
+def test_manifest_older_than_mock_is_in_order(tmp_path):
+    """An unchanged manifest is not rewritten by a refine, so it lawfully
+    predates the mock; that must not read as an out-of-order chain."""
+    files = {**_HEALTHY, "design/manifest.json": 102.5, "design/mock.html": 103.5}
+    _make_round(tmp_path, 0, files)
+    assert agent_button_state(tmp_path, "stack_advisor") == AGENT_BTN_MODIFY
+    assert agent_button_state(tmp_path, "phaser") == AGENT_BTN_MODIFY
+
+
 def test_phaser_start_when_stack_present_no_phases(tmp_path):
     _make_round(
         tmp_path,

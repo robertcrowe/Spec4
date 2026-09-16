@@ -18,6 +18,7 @@ it is the module's cross-module surface -- and the modules that had it as
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import pathlib
@@ -181,6 +182,12 @@ def persist_manifest(
 
     Advisory: any failure is logged and swallowed — a missing or malformed
     manifest never blocks the mock from saving.
+
+    The write is skipped when the finished manifest equals the one on disk
+    (parsed JSON, not bytes). A refine that re-states an unchanged design must
+    not touch ``manifest.json``'s mtime: ``detect_stale_inputs`` and the
+    StackAdvisor button both key on it, and a purely visual refinement is
+    exactly the change a stack choice is meant to survive (D-SC5c).
     """
     manifest = extract_manifest(accumulated)
     if manifest is None:
@@ -194,7 +201,19 @@ def persist_manifest(
     )
     for warning in warnings:
         logger.warning("Designer manifest: %s", warning)
+    if manifest == _manifest_on_disk(design_dir):
+        logger.debug("Designer: design manifest unchanged; not rewritten")
+        return
     save_manifest(manifest, design_dir)
+
+
+def _manifest_on_disk(design_dir: pathlib.Path) -> dict[str, Any] | None:
+    """The parsed ``manifest.json`` in ``design_dir``; None if absent or unreadable."""
+    try:
+        data = json.loads((design_dir / ARTIFACT_MANIFEST).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def expected_stream_chars(working_dir: str | None) -> int:
@@ -240,8 +259,12 @@ def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbati
     extra_kwargs: dict[str, Any] | None = None,
     session: dict[str, Any] | None = None,
     effort: str = llm_selection.DEFAULT_EFFORT,
+    existing_manifest: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], bool]:
     """Launch generation in a background thread.
+
+    ``existing_manifest`` is the manifest describing ``existing_html`` (see
+    ``existing_manifest_for_refine``); a refine draw updates it in place.
 
     Returns (updated_store, cleared_buffer, interval_disabled=False).
     """
@@ -293,6 +316,7 @@ def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbati
                 api_base=api_base,
                 extra_kwargs=extra_kwargs,
                 effort=effort,
+                existing_manifest=existing_manifest,
             ):
                 buf_entry["text"] += chunk
                 if _DEV_MODE and not chunk.startswith("__"):
@@ -353,6 +377,30 @@ def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbati
     }
     cleared_buffer: dict[str, Any] = {"tokens": 0, "progress": 0, "error": None}
     return updated_store, cleared_buffer, False  # False = not disabled
+
+
+def existing_manifest_for_refine(
+    store: dict[str, Any],
+    working_dir: str | None,
+    session: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """The manifest describing the mock a refine draw starts from (D-DM9).
+
+    The active round's ``design/manifest.json`` when that round has drawn a
+    mock — ``None`` if its last draw produced no extractable manifest, rather
+    than a manifest for some other mock. A revision round whose store carries
+    the prior approved mock (``on_designer_carry_forward``) has no mock of its
+    own yet, so the prior implemented round's manifest is the one to update.
+    """
+    if not working_dir:
+        return None
+    active = project_manager.active_version(working_dir, session)
+    design_dir = project_manager.get_version_dir(working_dir, active) / "design"
+    if (design_dir / "mock.html").exists():
+        return project_manager.load_design_manifest(working_dir, active)
+    if store.get("_is_revision"):
+        return project_manager.load_prior_manifest(working_dir)
+    return None
 
 
 def _mock_stop_previous(store: dict[str, Any]) -> None:
