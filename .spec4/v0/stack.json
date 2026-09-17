@@ -242,7 +242,7 @@
               "ProviderModel"
             ],
             "physical": [
-              "localStorage, read via callback State; BYOK provider keys live here client-side only and never reach the server or disk"
+              "localStorage, read via callback State; BYOK provider keys live here client-side only"
             ],
             "serves_features": [
               "development_tool_shell"
