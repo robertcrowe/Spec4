@@ -552,6 +552,7 @@ def _call(
     missing: bool = False,
     *,
     effort: str = "default",
+    written: int | None = None,
 ) -> dict[str, Any]:
     return {
         "timestamp": "2026-09-02T00:00:00+00:00",
@@ -565,7 +566,7 @@ def _call(
         "completion_tokens": completion,
         "total_tokens": None if prompt is None else prompt + (completion or 0),
         "cached_tokens": cached,
-        "cache_creation_input_tokens": None,
+        "cache_creation_input_tokens": written,
         "cache_read_input_tokens": read,
         "computed_cost_usd": cost,
         "usage_missing": missing,
@@ -616,6 +617,7 @@ class TestSaveUsageSchema:
         assert (agent["input_tokens"], agent["output_tokens"]) == (100, 20)
         assert agent["total_tokens"] == 120
         assert agent["cached_input_tokens"] is None
+        assert agent["cache_creation_input_tokens"] is None
         assert agent["computed_cost_usd"] == 0.001
         assert agent["models"] == [
             {"model": "gpt-4o-mini", "provider": "openai", "effort": "default"}
@@ -630,6 +632,7 @@ class TestSaveUsageSchema:
             "output_tokens": 20,
             "total_tokens": 120,
             "cached_input_tokens": None,
+            "cache_creation_input_tokens": None,
             "computed_cost_usd": 0.001,
         }
 
@@ -804,6 +807,74 @@ class TestSaveUsageReadModifyWrite:
         assert data is not None
         assert data["agents"]["phaser"]["cached_input_tokens"] == 75
         assert data["totals"]["cached_input_tokens"] == 75
+
+    def test_cache_writes_sum_and_stay_null_when_never_reported(
+        self, tmp_path: Path
+    ) -> None:
+        records = [
+            _call("phaser", written=900),
+            _call("phaser", written=100),
+            _call("deployer"),
+        ]
+        project_manager.save_usage(tmp_path, records, 0)
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        assert data["agents"]["phaser"]["cache_creation_input_tokens"] == 1000
+        assert data["agents"]["deployer"]["cache_creation_input_tokens"] is None
+        assert data["totals"]["cache_creation_input_tokens"] == 1000
+
+    def test_a_reported_zero_write_is_not_a_missing_write(self, tmp_path: Path) -> None:
+        """A provider that said "wrote nothing" is a fact; no report is not."""
+        project_manager.save_usage(tmp_path, [_call("phaser", written=0)], 0)
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        assert data["agents"]["phaser"]["cache_creation_input_tokens"] == 0
+        assert data["totals"]["cache_creation_input_tokens"] == 0
+
+    def test_a_pre_caching_record_set_summarizes_unchanged(
+        self, tmp_path: Path
+    ) -> None:
+        """Records written before any cache field existed must still load.
+
+        The whole record shape as it was, with every cache key absent rather
+        than null: the new rollup field reads as "never reported", and every
+        other figure is what the same records summarized to before it existed.
+        """
+        legacy = []
+        for prompt, completion, cost in ((100, 20, 0.001), (300, 50, 0.01)):
+            call = _call("phaser", prompt=prompt, completion=completion, cost=cost)
+            for key in (
+                "cached_tokens",
+                "cache_creation_input_tokens",
+                "cache_read_input_tokens",
+            ):
+                del call[key]
+            legacy.append(call)
+        project_manager.save_usage(tmp_path, legacy, 0)
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        agent = data["agents"]["phaser"]
+        assert agent["cache_creation_input_tokens"] is None
+        assert agent["cached_input_tokens"] is None
+        assert (agent["calls"], agent["calls_missing_usage"]) == (2, 0)
+        assert agent["calls_missing_cost"] == 0
+        assert (agent["input_tokens"], agent["output_tokens"]) == (400, 70)
+        assert agent["total_tokens"] == 470
+        assert agent["computed_cost_usd"] == 0.011
+        assert agent["models"] == [
+            {"model": "gpt-4o-mini", "provider": "openai", "effort": "default"}
+        ]
+        assert data["totals"] == {
+            "calls": 2,
+            "calls_missing_usage": 0,
+            "calls_missing_cost": 0,
+            "input_tokens": 400,
+            "output_tokens": 70,
+            "total_tokens": 470,
+            "cached_input_tokens": None,
+            "cache_creation_input_tokens": None,
+            "computed_cost_usd": 0.011,
+        }
 
     def test_unreadable_existing_file_starts_fresh_without_raising(
         self, tmp_path: Path
@@ -1021,7 +1092,7 @@ class TestPersistFlush:
 class TestUsageReport:
     def test_table_has_a_row_per_agent_and_totals(self, tmp_path: Path) -> None:
         records = [
-            _call("brainstormer", cached=40),
+            _call("brainstormer", cached=40, written=900),
             _call("phaser", "claude-sonnet-4-5-20250929", "anthropic", 300, 50, 0.01),
             _call("phaser", prompt=None, completion=None, cost=None, missing=True),
         ]
@@ -1037,19 +1108,59 @@ class TestUsageReport:
             "input",
             "output",
             "cached",
+            "cache_write",
+            "hit%",
             "models",
             "cost_usd",
         ]
         brainstormer = next(ln for ln in lines if ln.startswith("brainstormer"))
-        assert brainstormer.split()[:5] == ["brainstormer", "1", "100", "20", "40"]
+        assert brainstormer.split()[:7] == [
+            "brainstormer", "1", "100", "20", "40", "900", "40.0%",
+        ]  # fmt: skip
         assert "gpt-4o-mini (openai)" in brainstormer
         phaser = next(ln for ln in lines if ln.startswith("phaser"))
-        assert phaser.split()[:5] == ["phaser", "2", "300", "50", "-"]
+        assert phaser.split()[:6] == ["phaser", "2", "300", "50", "-", "-"]
         assert "claude-sonnet-4-5-20250929 (anthropic)" in phaser
         total = next(ln for ln in lines if ln.startswith("TOTAL"))
-        assert total.split()[:5] == ["TOTAL", "3", "400", "70", "40"]
+        assert total.split()[:7] == [
+            "TOTAL", "3", "400", "70", "40", "900", "10.0%",
+        ]  # fmt: skip
         assert total.split()[-1] == "0.0110"
         assert "1 call(s) returned no usage" in table
+
+    def test_hit_rate_is_blank_not_a_dash_when_nothing_was_cached(
+        self, tmp_path: Path
+    ) -> None:
+        """A dash would read as a reported 0% hit rate; nothing was reported."""
+        project_manager.save_usage(tmp_path, [_call("phaser")], 0)
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        lines = usage_report.render_usage_table(data).splitlines()
+        header, phaser = lines[1], next(ln for ln in lines if ln.startswith("phaser"))
+        start = header.index("hit%")
+        assert header[start : start + len("hit%")] == "hit%"
+        assert phaser[start : start + len("hit%")].strip() == ""
+        assert "%" not in phaser
+        assert phaser.split()[:6] == ["phaser", "1", "100", "20", "-", "-"]
+
+    def test_hit_rate_is_blank_when_no_input_tokens_were_counted(
+        self, tmp_path: Path
+    ) -> None:
+        """A share of nothing is not 0%, and must not divide by zero either."""
+        records = [
+            _call("phaser", prompt=None, completion=None, cost=None, missing=True),
+            _call("phaser", prompt=None, completion=None, cost=None, cached=0),
+        ]
+        project_manager.save_usage(tmp_path, records, 0)
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        assert data["agents"]["phaser"]["input_tokens"] == 0
+        assert data["agents"]["phaser"]["cached_input_tokens"] == 0
+        lines = usage_report.render_usage_table(data).splitlines()
+        phaser = next(ln for ln in lines if ln.startswith("phaser"))
+        total = next(ln for ln in lines if ln.startswith("TOTAL"))
+        assert "%" not in phaser and "%" not in total  # only the header carries one
+        assert phaser.split()[:6] == ["phaser", "2", "0", "0", "0", "-"]
 
     def test_a_non_default_effort_is_shown_beside_the_model(
         self, tmp_path: Path
@@ -1102,6 +1213,28 @@ class TestUsageReport:
         ]
         table = usage_report.render_usage_table(data)
         assert "gpt-4o-mini (openai)" in table
+
+    def test_hit_rate_is_blank_when_the_block_has_no_input_count(
+        self, tmp_path: Path
+    ) -> None:
+        """A hand-written block can carry a cache read and no input sum."""
+        version_dir = project_manager.ensure_version_dir(tmp_path, 0)
+        (version_dir / "usage.json").write_text(
+            json.dumps(
+                {
+                    "round": "v0",
+                    "agents": {
+                        "phaser": {"calls": 1, "cached_input_tokens": 40},
+                    },
+                }
+            )
+        )
+        data = project_manager.load_usage(tmp_path, 0)
+        assert data is not None
+        lines = usage_report.render_usage_table(data).splitlines()
+        phaser = next(ln for ln in lines if ln.startswith("phaser"))
+        assert "%" not in phaser  # only the header carries one
+        assert phaser.split()[:6] == ["phaser", "1", "-", "-", "40", "-"]
 
     def test_a_hand_written_legacy_file_renders_unchanged(self, tmp_path: Path) -> None:
         """The pre-effort on-disk shape, read straight from JSON."""

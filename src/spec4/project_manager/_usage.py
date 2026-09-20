@@ -80,6 +80,19 @@ def _usage_float(value: Any) -> float | None:
     return float(value)
 
 
+def _add_reported(rollup: dict[str, Any], key: str, value: int | None) -> None:
+    """Add ``value`` into a null-until-reported slot, leaving None alone.
+
+    The slot starts at None and becomes a number the first time any call
+    reports one, so "no call reported this" never renders as a confident
+    zero -- which is exactly how a round recorded before the field existed
+    must read. One function for both cache fields in both rollups: the two
+    counters would otherwise be four copies of the same three lines.
+    """
+    if value is not None:
+        rollup[key] = (rollup[key] or 0) + value
+
+
 def usage_rollup_name(agent: str | None) -> str:
     raw = agent if isinstance(agent, str) and agent else "unknown"
     return _USAGE_ROLLUP_PARENT.get(raw, raw)
@@ -99,11 +112,17 @@ def summarize_usage(history: list[dict[str, Any]]) -> dict[str, Any]:
 
     Derived, never accumulated: every write recomputes this from the full
     history, so the summary cannot drift from the call records. Token and
-    cost sums cover only calls that reported them; ``cached_input_tokens``
-    and ``computed_cost_usd`` stay null when no call in the history had a
-    value, rather than reading as a confident zero. ``models`` lists each
-    distinct (model, provider) pair in first-seen order, which is how a
-    re-run on a different model within the round becomes visible.
+    cost sums cover only calls that reported them; ``cached_input_tokens``,
+    ``cache_creation_input_tokens`` and ``computed_cost_usd`` stay null when
+    no call in the history had a value, rather than reading as a confident
+    zero -- which is what a round recorded before prompt caching existed must
+    read as. ``models`` lists each distinct (model, provider) pair in
+    first-seen order, which is how a re-run on a different model within the
+    round becomes visible.
+
+    Cache reads and cache writes are both already inside ``input_tokens``:
+    every provider Spec4 talks to counts them in ``prompt_tokens``, so these
+    two are a breakdown of that sum, not additions to it.
     """
     rollup: dict[str, Any] = {
         "calls": 0,
@@ -116,6 +135,7 @@ def summarize_usage(history: list[dict[str, Any]]) -> dict[str, Any]:
         "output_tokens": 0,
         "total_tokens": 0,
         "cached_input_tokens": None,
+        "cache_creation_input_tokens": None,
         "computed_cost_usd": None,
         "models": [],
     }
@@ -136,10 +156,12 @@ def summarize_usage(history: list[dict[str, Any]]) -> dict[str, Any]:
         cached = _usage_int(call.get("cached_tokens"))
         if cached is None:
             cached = _usage_int(call.get("cache_read_input_tokens"))
-        if cached is not None:
-            rollup["cached_input_tokens"] = (
-                rollup["cached_input_tokens"] or 0
-            ) + cached
+        _add_reported(rollup, "cached_input_tokens", cached)
+        _add_reported(
+            rollup,
+            "cache_creation_input_tokens",
+            _usage_int(call.get("cache_creation_input_tokens")),
+        )
         cost = _usage_float(call.get("computed_cost_usd"))
         if cost is not None:
             rollup["computed_cost_usd"] = round(
@@ -169,6 +191,7 @@ def usage_totals(agents: dict[str, dict[str, Any]]) -> dict[str, Any]:
         "output_tokens": 0,
         "total_tokens": 0,
         "cached_input_tokens": None,
+        "cache_creation_input_tokens": None,
         "computed_cost_usd": None,
     }
     for entry in agents.values():
@@ -181,11 +204,8 @@ def usage_totals(agents: dict[str, dict[str, Any]]) -> dict[str, Any]:
             "total_tokens",
         ):
             totals[key] += _usage_int(entry.get(key)) or 0
-        cached = _usage_int(entry.get("cached_input_tokens"))
-        if cached is not None:
-            totals["cached_input_tokens"] = (
-                totals["cached_input_tokens"] or 0
-            ) + cached
+        for key in ("cached_input_tokens", "cache_creation_input_tokens"):
+            _add_reported(totals, key, _usage_int(entry.get(key)))
         cost = _usage_float(entry.get("computed_cost_usd"))
         if cost is not None:
             totals["computed_cost_usd"] = round(
@@ -212,6 +232,7 @@ _COST_SUMMARY_EMPTY: dict[str, Any] = {
     "input_tokens": 0,
     "output_tokens": 0,
     "cached_input_tokens": None,
+    "cache_creation_input_tokens": None,
 }
 
 
@@ -219,7 +240,12 @@ def _cost_block(entry: Any) -> dict[str, Any]:
     """One agent's (or the totals') cost and token figures, shape-guarded.
 
     Tokens are the provider-reported sums over calls that returned usage;
-    ``cached_input_tokens`` stays None when no call reported a cache read.
+    ``cached_input_tokens`` stays None when no call reported a cache read and
+    ``cache_creation_input_tokens`` when none reported a cache write. Both are
+    already counted inside ``input_tokens``, so a caller that adds them to it
+    double-counts. The shape must stay identical to ``_COST_SUMMARY_EMPTY``
+    above: a caller reading a key from one and not the other is the drift this
+    pairing exists to prevent.
     """
     if not isinstance(entry, dict):
         return dict(_COST_SUMMARY_EMPTY)
@@ -231,6 +257,9 @@ def _cost_block(entry: Any) -> dict[str, Any]:
         "input_tokens": _usage_int(entry.get("input_tokens")) or 0,
         "output_tokens": _usage_int(entry.get("output_tokens")) or 0,
         "cached_input_tokens": _usage_int(entry.get("cached_input_tokens")),
+        "cache_creation_input_tokens": _usage_int(
+            entry.get("cache_creation_input_tokens")
+        ),
     }
 
 

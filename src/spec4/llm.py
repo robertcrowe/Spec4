@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 import time
 from collections.abc import AsyncIterator, Generator
@@ -214,6 +215,104 @@ async def _asend_with_effort_fallback(
         return response, f"{_DEFAULT_EFFORT} (fallback from {rejected})"
 
 
+# ---------------------------------------------------------------------------
+# Prompt caching (Lever 1: one ephemeral marker on the system turn)
+# ---------------------------------------------------------------------------
+
+# The providers whose LiteLLM integration *translates* a cache-control marker
+# into the provider's own syntax: `anthropic` into `cache_control` blocks,
+# `bedrock` into a `cachePoint` (stripped again by LiteLLM for Bedrock models
+# that cannot take one). Everything else is off the list, two of them
+# deliberately:
+#
+# * `gemini` — the marker does not translate, it *switches modes*: LiteLLM
+#   turns on Vertex explicit context caching, which adds a live GET and POST
+#   per request and can move the user turn out of the live contents.
+# * `openai` — hosted OpenAI strips the marker, but Spec4's Nebius provider
+#   resolves as `openai` with a custom `api_base`, and there the marker is
+#   forwarded verbatim; a strict server may answer 400.
+#
+# `openrouter` is absent only because no Claude traffic is routed through it.
+# LiteLLM does translate the marker for OpenRouter's Claude ids, so add it
+# here if that changes.  [D-PC2, D-PC2a]
+_CACHE_MARKER_PROVIDERS = frozenset({"anthropic", "bedrock"})
+
+# Read at call time, never at import: a test (or a run) flipping the variable
+# between two calls must be seen by the second one.  [D-PC5]
+_PROMPT_CACHING_ENV = "SPEC4_PROMPT_CACHING"
+_PROMPT_CACHING_OFF = frozenset({"0", "false", "off"})
+
+
+def _cache_injection_points() -> list[dict[str, Any]]:
+    """A fresh Lever-1 injection-point list: one ephemeral mark on the system turn.
+
+    A function rather than a module constant so that nothing shared can be
+    mutated: LiteLLM's hook does not touch the caller's point dicts, but a
+    caller reaching into the kwargs it was handed would otherwise edit every
+    later request too.
+    """
+    return [
+        {
+            "location": "message",
+            "role": "system",
+            "index": None,
+            "control": {"type": "ephemeral"},
+        }
+    ]
+
+
+def _stream_cache_injection_points() -> list[dict[str, Any]]:
+    """A fresh conversation-turn point list: the system mark, plus the last message.
+
+    Lever 2. The system mark alone never caches a chat agent on a provider
+    whose minimum cacheable prefix is 4,096 tokens — Spec4's system prompts sit
+    below it — but the whole conversation passes that floor after a few turns.
+    The second point marks the last message in the list, so each round's read
+    covers everything up to the previous round and its write extends the
+    prefix for the next one.
+
+    ``role: None`` means "whatever the last message is". On a ``tool`` message
+    the mark lands on the tool_result block; on an assistant message carrying
+    only ``tool_calls`` it is a no-op that costs no breakpoint slot, and
+    :func:`stream_turn` never ends a request on that shape anyway — tool
+    results always follow before the next round.
+
+    Order matters: the points are honoured in list order against a budget of
+    four, and Anthropic builds its prefix tools → system → messages, so the
+    system point comes first and already covers the tools block.
+
+    Fresh lists and fresh dicts per call, for the reason
+    :func:`_cache_injection_points` gives.
+    """
+    return [
+        *_cache_injection_points(),
+        {
+            "location": "message",
+            "role": None,
+            "index": -1,
+            "control": {"type": "ephemeral"},
+        },
+    ]
+
+
+def _prompt_caching_enabled(llm_config: dict[str, Any]) -> bool:
+    """Whether this call's system turn gets a cache-control marker.
+
+    Two gates, both cheap and neither able to raise: the kill switch
+    (``SPEC4_PROMPT_CACHING`` set to 0/false/off, in any case), and the
+    provider allowlist above, resolved from the same model and api_base
+    :func:`_build_completion_kwargs` sends. An unresolvable model is not on the
+    list and so is not marked.
+
+    There is no token-count or minimum-prefix gate: a prefix below the
+    provider's caching floor makes the marker a no-op, at no cost.  [D-PC8]
+    """
+    if os.environ.get(_PROMPT_CACHING_ENV, "").strip().lower() in _PROMPT_CACHING_OFF:
+        return False
+    provider = _resolve_provider(llm_config.get("model"), llm_config.get("api_base"))
+    return provider in _CACHE_MARKER_PROVIDERS
+
+
 def _build_completion_kwargs(
     llm_config: dict[str, Any],
     messages: list[dict[str, Any]],
@@ -236,6 +335,14 @@ def _build_completion_kwargs(
     omitted entirely rather than sent as the string "default". This is the only
     mechanism by which effort ever reaches a provider; no provider-specific
     thinking or budget parameter is ever constructed (project constraint).
+
+    Prompt caching rides the same rule. On a provider in
+    ``_CACHE_MARKER_PROVIDERS`` — and unless ``SPEC4_PROMPT_CACHING`` turns it
+    off — the call carries LiteLLM's ``cache_control_injection_points``,
+    marking the system turn ephemeral. That is a LiteLLM-level kwarg, like
+    ``reasoning_effort``: LiteLLM's own hook translates it per provider, so no
+    provider-specific parameter is constructed here either, and ``content``
+    stays a plain string rather than becoming a list of blocks.
     """
     kwargs: dict[str, Any] = {"model": llm_config["model"], "messages": messages}
     if llm_config.get("api_key"):
@@ -262,6 +369,11 @@ def _build_completion_kwargs(
         # unsupported parameter silently, and a blanket setting would also
         # swallow the tool rejection `stream_turn`'s retry depends on seeing.
         kwargs["drop_params"] = True
+    if _prompt_caching_enabled(llm_config):
+        # setdefault, like the two around it: a caller passing its own points
+        # through **extra keeps them. `drop_params` is deliberately not set
+        # for this — the kwarg is only ever sent where it is understood.
+        kwargs.setdefault("cache_control_injection_points", _cache_injection_points())
     if kwargs.get("stream"):
         kwargs.setdefault("stream_options", _STREAM_USAGE_OPTIONS)
     return kwargs
@@ -456,6 +568,12 @@ def _record_usage(  # noqa: PLR0913  # the usage record's fields, one parameter 
             "effort": effort_note
             or str(kwargs.get("reasoning_effort") or _DEFAULT_EFFORT),
             "streamed": streamed,
+            # Monotonic elapsed time, while ``timestamp`` above is wall-clock:
+            # the two are on different clocks and must never be subtracted from
+            # each other (a reader wanting "when did this call end" has no field
+            # here). For a streamed call the record is written at generator
+            # finalization, so a stream the consumer abandoned and left to the
+            # garbage collector can overstate it.
             "duration_s": round(time.monotonic() - start_mono, 3),
             "prompt_tokens": None,
             "completion_tokens": None,
@@ -1019,12 +1137,37 @@ def _stream_request_kwargs(
     llm_config: dict[str, Any],
     response_format: dict[str, Any] | None,
     tools: list[dict[str, Any]] | None,
+    **extra: Any,
 ) -> dict[str, Any]:
-    """One tool-loop round's completion kwargs."""
+    """One tool-loop round's completion kwargs.
+
+    Where a one-shot call marks only the system turn, a conversation round
+    marks the last message as well — see
+    :func:`_stream_cache_injection_points`. This is the only builder
+    :func:`stream_turn` uses, and the kwargs it returns are re-sent unchanged
+    by every later round of the tool loop and by both retry paths, so the
+    second point rides along with them.
+
+    The one-shot paths (``complete``, ``complete_stream``, ``acomplete``,
+    ``stream_completion``) keep the system point alone: their last message is a
+    user turn that differs on every call, so a mark there would always be a
+    cache write and never a read.
+
+    The upgrade is applied only when :func:`_build_completion_kwargs` was the
+    one that injected the points — the same two gates, plus the absence of a
+    caller value in ``extra``. A caller passing its own
+    ``cache_control_injection_points`` through ``**extra`` gets them through
+    untouched.
+    """
     llm_messages = [{"role": "system", "content": system_prompt}] + messages
     kwargs = _build_completion_kwargs(
-        llm_config, llm_messages, response_format=response_format, stream=True
+        llm_config, llm_messages, response_format=response_format, stream=True, **extra
     )
+    if (
+        _prompt_caching_enabled(llm_config)
+        and "cache_control_injection_points" not in extra
+    ):
+        kwargs["cache_control_injection_points"] = _stream_cache_injection_points()
     if tools:
         kwargs["tools"] = tools
     return kwargs

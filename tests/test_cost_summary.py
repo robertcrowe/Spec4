@@ -247,6 +247,7 @@ class TestStripNumbers:
             "input_tokens": 0,
             "output_tokens": 0,
             "cached_input_tokens": None,
+            "cache_creation_input_tokens": None,
         }
         assert summary["total"]["cost_usd"] == 0.01
 

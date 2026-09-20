@@ -1,10 +1,14 @@
 """Per-agent token and cost table for a round's ``usage.json``.
 
 ``spec4-usage [WORKING_DIR] [--round N]`` prints one row per planning agent
-(agent, calls, input, output, cached, models used, computed cost) plus a totals
-row. This is the read side of :func:`spec4.project_manager.save_usage` and the
-seed for the cost page: tokens are what the providers reported, the cost column
-is LiteLLM's advisory estimate.
+(agent, calls, input, output, cached, cache_write, hit%, models used, computed
+cost) plus a totals row. This is the read side of
+:func:`spec4.project_manager.save_usage` and the seed for the cost page: tokens
+are what the providers reported, the cost column is LiteLLM's advisory estimate.
+
+``cached`` (cache reads) and ``cache_write`` (cache creation) are both already
+inside ``input``, so ``hit%`` is cached over input: the share of the prompt the
+provider served from its cache.
 """
 
 from __future__ import annotations
@@ -15,13 +19,40 @@ from typing import Any
 
 from spec4 import project_manager
 
-_COLUMNS = ("agent", "calls", "input", "output", "cached", "models", "cost_usd")
+_COLUMNS = (
+    "agent",
+    "calls",
+    "input",
+    "output",
+    "cached",
+    "cache_write",
+    "hit%",
+    "models",
+    "cost_usd",
+)
 
 
 def _fmt_int(value: Any) -> str:
     if isinstance(value, int) and not isinstance(value, bool):
         return f"{value:,}"
     return "-"
+
+
+def _fmt_hit(cached: Any, input_tokens: Any) -> str:
+    """``40.0%`` — cache reads as a share of input tokens.
+
+    Blank, not ``-``, when either figure is missing: a dash in this column
+    would read as a reported zero hit rate, and "no call reported a cache
+    read" is not the same claim as "nothing hit the cache". An input sum of
+    zero is blank for the same reason -- a share of nothing is not 0%.
+    """
+    if not isinstance(cached, int) or isinstance(cached, bool):
+        return ""
+    if not isinstance(input_tokens, int) or isinstance(input_tokens, bool):
+        return ""
+    if not input_tokens:
+        return ""
+    return f"{cached / input_tokens:.1%}"
 
 
 def _fmt_cost(value: Any) -> str:
@@ -68,6 +99,10 @@ def _rows(data: dict[str, Any]) -> list[tuple[str, ...]]:
                     _fmt_int(entry.get("input_tokens")),
                     _fmt_int(entry.get("output_tokens")),
                     _fmt_int(entry.get("cached_input_tokens")),
+                    _fmt_int(entry.get("cache_creation_input_tokens")),
+                    _fmt_hit(
+                        entry.get("cached_input_tokens"), entry.get("input_tokens")
+                    ),
                     _fmt_models(entry.get("models")),
                     _fmt_cost(entry.get("computed_cost_usd")),
                 )
@@ -81,6 +116,8 @@ def _rows(data: dict[str, Any]) -> list[tuple[str, ...]]:
                 _fmt_int(totals.get("input_tokens")),
                 _fmt_int(totals.get("output_tokens")),
                 _fmt_int(totals.get("cached_input_tokens")),
+                _fmt_int(totals.get("cache_creation_input_tokens")),
+                _fmt_hit(totals.get("cached_input_tokens"), totals.get("input_tokens")),
                 "",
                 _fmt_cost(totals.get("computed_cost_usd")),
             )
@@ -95,7 +132,9 @@ def render_usage_table(data: dict[str, Any]) -> str:
     for row in rows:
         for i, cell in enumerate(row):
             widths[i] = max(widths[i], len(cell))
-    right = {1, 2, 3, 4, 6}
+    # Every numeric column: calls, input, output, cached, cache_write, hit%
+    # and cost_usd. Only agent and models are left-aligned.
+    right = {1, 2, 3, 4, 5, 6, 8}
 
     lines = [
         f"Round {data.get('round', '?')}  (updated {data.get('updated_at', '?')})",
