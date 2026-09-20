@@ -78,7 +78,7 @@ serves HTTP on localhost:8050 only.
 ## References
 ```
 
-Every phase carries a JSON frontmatter with the same content as structured data, a risk assessment naming where a coding agent is likely to go wrong and what to do about it, and a Verification section with the exact command or observable that proves the phase is done. Phase 1 is always a steel thread — the thinnest live end-to-end path — before any feature work.
+Every phase carries a JSON frontmatter with the same content as structured data, a risk assessment naming where a coding agent is likely to go wrong and what to do about it, and a Verification section with the exact command or observable that proves the phase is done. Phase 1 of a new project is a steel thread — the thinnest live end-to-end path; phase 1 of a revision round is an integration thread that wires the change into the existing code.
 
 ---
 
@@ -202,7 +202,7 @@ Phaser is the first or second largest line in every round, because it holds ever
 - It stops at the spec. Building and verifying the code is your coding agent's job and yours.
 - Nothing runs in the cloud. The app is a local process; the only network calls are to the model provider you chose and, if you enable it, the search provider.
 - CodeScanner reads your repository locally and sends the model a bounded summary — manifests, entry points, samples — not the tree.
-- API keys are held in the browser (`localStorage`, opt-in) and never written to disk or sent anywhere but the provider they belong to.
+- API keys are held in the browser (`localStorage`, opt-in) and never sent anywhere but the provider they belong to.
 - Web search is off unless you give it a key.
 
 ---
@@ -212,8 +212,9 @@ Phaser is the first or second largest line in every round, because it holds ever
 Spec4 is a brownfield project like any other, and its own `.spec4/` is committed:
 
 ```bash
-git clone https://github.com/robertcrowe/spec4
-spec4                              # then select the spec4 directory as the project
+uv tool install spec4 --refresh
+spec4
+# then select the spec4 directory as the project
 ```
 
 The project page opens on the latest round with its artifacts and costs. Choose "existing project" and run CodeScanner to start a fourth.
