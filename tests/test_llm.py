@@ -53,6 +53,9 @@ class TestStreamTurn:
         chunk = MagicMock()
         chunk.choices[0].delta.content = content
         chunk.choices[0].delta.tool_calls = tool_calls
+        # A MagicMock auto-child is truthy; the real field is None on a
+        # content chunk, and the thinking counter reads it.
+        chunk.choices[0].delta.reasoning_content = None
         chunk.choices[0].finish_reason = finish_reason
         return chunk
 
@@ -526,12 +529,16 @@ class TestIsEffortRejectedError:
 
 
 class TestEffortIsSentAndOmitted:
-    """`reasoning_effort` is the only mechanism, and "default" sends nothing."""
+    """`reasoning_effort` is the only mechanism, and "default" sends nothing
+    -- except on a model LiteLLM confirms accepts the parameter, where it
+    sends ``DEFAULT_THINKING_EFFORT`` (``TestDefaultEffortOnReasoningModels``).
+    The model here is unknown to LiteLLM, so the probe answers None."""
 
     def _chunks(self) -> list[MagicMock]:
         chunk = MagicMock()
         chunk.choices[0].delta.content = "Hi"
         chunk.choices[0].delta.tool_calls = None
+        chunk.choices[0].delta.reasoning_content = None
         chunk.choices[0].finish_reason = "stop"
         return [chunk]
 
@@ -548,9 +555,10 @@ class TestEffortIsSentAndOmitted:
         assert sent["reasoning_effort"] == "high"
         assert sent["drop_params"] is True
 
-    def test_default_effort_sends_no_parameter_at_all(self) -> None:
+    def test_default_effort_sends_no_parameter_on_an_unknown_model(self) -> None:
         """Not the string "default" — the key must be absent entirely."""
-        sent = self._kwargs_for({"model": "m", "api_key": "k", "effort": "default"})
+        with patch("spec4.llm.litellm.get_supported_openai_params", return_value=None):
+            sent = self._kwargs_for({"model": "m", "api_key": "k", "effort": "default"})
         assert "reasoning_effort" not in sent
         assert "drop_params" not in sent
 
@@ -580,6 +588,182 @@ class TestEffortIsSentAndOmitted:
             )
         assert out == "Hi"
         assert mock_llm.call_args[1]["drop_params"] is True
+
+
+class TestDefaultEffortOnReasoningModels:
+    """On a model that reasons whenever nothing is sent, "default" would mean
+    minutes of invisible thinking. The builder sends ``DEFAULT_THINKING_EFFORT``
+    to every model LiteLLM confirms accepts the parameter -- without
+    ``drop_params``, which would also drop ``tools`` silently -- and leaves an
+    unclassifiable or non-accepting model, and every explicit choice, alone.
+    """
+
+    def _sent(self, cfg: dict[str, Any], params: list[str] | None) -> dict[str, Any]:
+        chunk = MagicMock()
+        chunk.choices[0].delta.content = "Hi"
+        chunk.choices[0].delta.tool_calls = None
+        chunk.choices[0].delta.reasoning_content = None
+        chunk.choices[0].finish_reason = "stop"
+        with (
+            patch("spec4.llm.litellm.get_supported_openai_params", return_value=params),
+            patch(
+                "spec4.llm.litellm.completion", return_value=iter([chunk])
+            ) as mock_llm,
+        ):
+            list(llm.stream_turn("sys", [], cfg, None))
+        sent: dict[str, Any] = mock_llm.call_args[1]
+        return sent
+
+    _ACCEPTS = ["temperature", "reasoning_effort"]
+    _REJECTS = ["temperature", "tools"]
+
+    def test_default_becomes_medium_where_the_parameter_is_accepted(self) -> None:
+        assert llm.DEFAULT_THINKING_EFFORT == "medium"
+        sent = self._sent({"model": "m", "effort": "default"}, self._ACCEPTS)
+        assert sent["reasoning_effort"] == "medium"
+
+    def test_a_substituted_level_does_not_set_drop_params(self) -> None:
+        sent = self._sent({"model": "m", "effort": "default"}, self._ACCEPTS)
+        assert "drop_params" not in sent
+
+    def test_an_absent_effort_field_is_treated_as_default(self) -> None:
+        sent = self._sent({"model": "m"}, self._ACCEPTS)
+        assert sent["reasoning_effort"] == "medium"
+
+    def test_default_stays_absent_where_the_parameter_is_not_accepted(self) -> None:
+        sent = self._sent({"model": "m", "effort": "default"}, self._REJECTS)
+        assert "reasoning_effort" not in sent
+        assert "drop_params" not in sent
+
+    def test_default_stays_absent_on_an_unclassifiable_model(self) -> None:
+        sent = self._sent({"model": "m", "effort": "default"}, None)
+        assert "reasoning_effort" not in sent
+
+    @pytest.mark.parametrize("effort", ["low", "high", "max"])
+    def test_an_explicit_choice_is_sent_as_chosen_with_drop_params(
+        self, effort: str
+    ) -> None:
+        sent = self._sent({"model": "m", "effort": effort}, self._ACCEPTS)
+        assert sent["reasoning_effort"] == effort
+        assert sent["drop_params"] is True
+
+    def test_the_one_shot_paths_follow_the_same_rule(self) -> None:
+        with (
+            patch(
+                "spec4.llm.litellm.get_supported_openai_params",
+                return_value=self._ACCEPTS,
+            ),
+            patch("spec4.llm.litellm.completion", return_value=MagicMock()) as mock_llm,
+        ):
+            llm.complete(llm_config={"model": "m"}, messages=[])
+        assert mock_llm.call_args[1]["reasoning_effort"] == "medium"
+        assert "drop_params" not in mock_llm.call_args[1]
+
+
+class TestStreamTurnTimeout:
+    """An interactive turn carries its own stall bound; the three bounds form
+    a ladder from the drained sub-agents up to the mock draw."""
+
+    def test_stream_turn_sends_the_turn_timeout(self) -> None:
+        chunk = MagicMock()
+        chunk.choices[0].delta.content = "Hi"
+        chunk.choices[0].delta.tool_calls = None
+        chunk.choices[0].delta.reasoning_content = None
+        chunk.choices[0].finish_reason = "stop"
+        with patch(
+            "spec4.llm.litellm.completion", return_value=iter([chunk])
+        ) as mock_llm:
+            list(llm.stream_turn("sys", [], {"model": "m"}, None))
+        assert mock_llm.call_args[1]["timeout"] is llm.LLM_TURN_TIMEOUT
+
+    def test_the_ladder(self) -> None:
+        assert llm.LLM_TURN_TIMEOUT.read == 600
+        assert (llm.LLM_STREAM_TIMEOUT.read or 0) < (llm.LLM_TURN_TIMEOUT.read or 0)
+        assert (llm.LLM_TURN_TIMEOUT.read or 0) < (
+            llm.DESIGNER_STREAM_TIMEOUT.read or 0
+        )
+
+
+class TestStreamTurnCountsThinking:
+    """Thinking deltas are counted on the session and never yielded."""
+
+    def _turn(self, chunks: list[Any], session: dict[str, Any] | None) -> str:
+        with patch("spec4.llm.litellm.completion", return_value=iter(chunks)):
+            return "".join(
+                llm.stream_turn("sys", [], {"model": "m"}, None, session=session)
+            )
+
+    def test_seeds_zero_and_advances_on_reasoning(self) -> None:
+        from tests._chunks import make_stream_chunk
+
+        session: dict[str, Any] = {}
+        out = self._turn(
+            [
+                make_stream_chunk(reasoning_content="plan"),
+                make_stream_chunk(reasoning_content=" more"),
+                make_stream_chunk(content="Hi", finish_reason="stop"),
+            ],
+            session,
+        )
+        assert out == "Hi"
+        assert session["_stream_thinking_chars"] == len("plan more")
+
+    def test_a_content_only_stream_leaves_it_at_the_seed(self) -> None:
+        from tests._chunks import make_stream_chunk
+
+        session: dict[str, Any] = {}
+        self._turn([make_stream_chunk(content="Hi", finish_reason="stop")], session)
+        assert session["_stream_thinking_chars"] == 0
+
+    def test_reasoning_text_reads_the_field_and_nothing_else(self) -> None:
+        from tests._chunks import make_delta
+
+        assert llm.reasoning_text(make_delta(reasoning_content="why")) == "why"
+        assert llm.reasoning_text(make_delta(content="text")) == ""
+        assert llm.reasoning_text(object()) == ""
+
+    def test_no_session_is_fine(self) -> None:
+        from tests._chunks import make_stream_chunk
+
+        out = self._turn(
+            [
+                make_stream_chunk(reasoning_content="plan"),
+                make_stream_chunk(content="Hi", finish_reason="stop"),
+            ],
+            None,
+        )
+        assert out == "Hi"
+
+
+class TestCompleteStreamThinkingHook:
+    def test_on_thinking_receives_reasoning_and_the_reply_does_not(self) -> None:
+        from tests._chunks import make_stream_chunk
+
+        seen: list[str] = []
+        chunks = [
+            make_stream_chunk(reasoning_content="think"),
+            make_stream_chunk(content="a"),
+            make_stream_chunk(content="b", finish_reason="stop"),
+        ]
+        with patch("spec4.llm.litellm.completion", return_value=iter(chunks)):
+            out = "".join(
+                llm.complete_stream(
+                    llm_config={"model": "m"}, messages=[], on_thinking=seen.append
+                )
+            )
+        assert out == "ab"
+        assert seen == ["think"]
+
+    def test_without_the_hook_reasoning_is_dropped(self) -> None:
+        from tests._chunks import make_stream_chunk
+
+        chunks = [
+            make_stream_chunk(reasoning_content="think"),
+            make_stream_chunk(content="a", finish_reason="stop"),
+        ]
+        with patch("spec4.llm.litellm.completion", return_value=iter(chunks)):
+            out = "".join(llm.complete_stream(llm_config={"model": "m"}, messages=[]))
+        assert out == "a"
 
 
 class TestEffortRejectionFallback:

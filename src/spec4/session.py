@@ -167,6 +167,13 @@ def default_session() -> dict[str, Any]:
         # Seeded per-agent at turn start, overwritten by agents as stages
         # progress, cleared by the poll when the stream finalises.
         "_stream_status": None,
+        # Characters of thinking text received so far on the running stream,
+        # published by `llm.stream_turn` and the agentifier's sub-agent hooks,
+        # shown as "Thinking — N chars" while no reply text has arrived,
+        # cleared by the poll with the two above. `_stream_`-prefixed on
+        # purpose: it is chat-transport state, not an `agentifier_*` flow key,
+        # so it lives outside the restart collections by design.
+        "_stream_thinking_chars": None,
     }
 
 

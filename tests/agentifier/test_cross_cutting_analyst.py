@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -278,6 +279,44 @@ class TestCrossCuttingAnalystLlmCalls:
             asyncio.run(_drain(_make_input()))
 
         assert captured[0].get("stream") is True
+
+    def test_on_thinking_receives_reasoning_and_the_stream_does_not(self) -> None:
+        from tests._chunks import make_stream_chunk
+
+        thought: list[str] = []
+
+        async def _cap(**kwargs: Any) -> Any:
+            async def _gen() -> Any:
+                yield make_stream_chunk(reasoning_content="plan")
+                yield make_stream_chunk(content="x")
+                yield make_stream_chunk(reasoning_content=" more")
+                # The usage chunk carries no choices and is skipped whole.
+                yield SimpleNamespace(choices=[], usage=None)
+
+            return _gen()
+
+        inp = _make_input()
+        inp.on_thinking = thought.append
+        with patch("spec4.agentifier.cross_cutting_analyst.acomplete", new=_cap):
+            chunks = asyncio.run(_drain(inp))
+
+        assert chunks == ["x"]
+        assert thought == ["plan", " more"]
+
+    def test_without_the_hook_reasoning_is_dropped(self) -> None:
+        from tests._chunks import make_stream_chunk
+
+        async def _cap(**kwargs: Any) -> Any:
+            async def _gen() -> Any:
+                yield make_stream_chunk(reasoning_content="plan")
+                yield make_stream_chunk(content="x")
+
+            return _gen()
+
+        inp = _make_input()
+        assert inp.on_thinking is None
+        with patch("spec4.agentifier.cross_cutting_analyst.acomplete", new=_cap):
+            assert asyncio.run(_drain(inp)) == ["x"]
 
     def test_stall_timeout_set(self) -> None:
         from spec4.llm import LLM_STREAM_TIMEOUT

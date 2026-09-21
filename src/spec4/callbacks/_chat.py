@@ -489,9 +489,12 @@ def on_stream_poll(_n: int | None, session: Any) -> Any:
     # channel as the received-chars scalar: agents overwrite it stage by stage,
     # and the poll surfaces the latest value mid-stream.
     status = stream["session"].get("_stream_status")
+    # The thinking count rides the same channel: it climbs before the first
+    # reply character, which is exactly when nothing else on screen moves.
+    thinking = stream["session"].get("_stream_thinking_chars")
 
     if not stream["done"]:
-        return _poll_running(session, messages, text, received, status)
+        return _poll_running(session, messages, text, received, status, thinking)
 
     # Stream complete — merge agent-mutated session and finalise
     _poll_dev_trace(stream_id, text, messages)
@@ -526,6 +529,7 @@ def on_stream_poll(_n: int | None, session: Any) -> Any:
             "_display_override": None,
             "_stream_received_chars": None,
             "_stream_status": None,
+            "_stream_thinking_chars": None,
             # D-ER1: the turn died and the error text is the whole assistant
             # message. Record that so the chat can offer Try Again; a clean
             # finish writes None here and retires any earlier failure.
@@ -551,24 +555,32 @@ def _poll_missing_stream(stream_id: str) -> tuple[NoUpdate, int]:
     return no_update, 0
 
 
-def _poll_running(
+def _poll_running(  # noqa: PLR0913  # the four live-session scalars the poll threads, one per parameter
     session: dict[str, Any],
     messages: list[dict[str, Any]],
     text: str,
     received: int | None,
     status: str | None,
+    thinking: int | None = None,
 ) -> Any:
-    """The poll tick while the stream is still producing."""
+    """The poll tick while the stream is still producing.
+
+    Every scalar the poll surfaces is in the short-circuit, or a tick on which
+    only that scalar advanced would return ``no_update`` and freeze it on
+    screen (D-PH9's bug, once per scalar).
+    """
     prev = (session.get("messages") or [{}])[-1].get("content", "")
     if (
         text == prev
         and received == session.get("_stream_received_chars")
         and status == session.get("_stream_status")
+        and thinking == session.get("_stream_thinking_chars")
     ):
         return no_update, no_update
     updated = {**session, "messages": messages}
     updated["_stream_received_chars"] = received
     updated["_stream_status"] = status
+    updated["_stream_thinking_chars"] = thinking
     return updated, no_update
 
 

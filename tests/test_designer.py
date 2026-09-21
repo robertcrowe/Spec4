@@ -1020,6 +1020,19 @@ class TestRetryReproducesTheDraw:
         )
         assert store["_capture_mode"] is True
 
+    def test_start_gen_starts_the_draw_clean_of_the_last_error(
+        self, monkeypatch
+    ) -> None:
+        """A retry spreads the failed store, which the poll left carrying
+        ``_draw_error``; carried into the new draw it would re-render step 5
+        as failed while the model is still drawing."""
+        dmod = _dmod()
+        monkeypatch.setattr(dmod.threading, "Thread", _NoThread)
+        store, _buf, _dis = dmod._start_gen(
+            {"_draw_error": "boom"}, None, "m", "k", None, False
+        )
+        assert store["_draw_error"] is None
+
     def test_create_new_clears_a_stale_capture_flag(self, monkeypatch) -> None:
         dmod = _dmod()
         monkeypatch.setattr(dmod._wizard, "ctx", _Ctx("btn-designer-create-new"))
@@ -1829,7 +1842,7 @@ class TestBuildMockPromptFeatureSpecs:
 
 
 # ---------------------------------------------------------------------------
-# on_mock_stream_poll — acknowledgement-based completion delivery
+# on_mock_stream_poll — two cadences, acknowledgement-based completion delivery
 # ---------------------------------------------------------------------------
 
 
@@ -1839,40 +1852,81 @@ class TestMockDeliveryAck:
     step 5. The previous fixed re-delivery window counted requests sent, not
     deliveries applied, and could expire before the first response ever
     reached the browser, stranding the UI at step 5 with the interval off.
+
+    Delivery has two phases because dash-renderer discards the older of two
+    in-flight requests of the same callback: the first tick that sees the
+    finished mock only slows the poll to ``DELIVERY_MS``, and the ticks after
+    it carry the payload. The four outputs are buffer, store, ``disabled``
+    and ``interval``.
     """
 
     _GEN_ID = "test-ack-gen"
     _HTML = "<!DOCTYPE html><html><body>ok</body></html>"
 
-    def _buffer(self) -> Any:
+    def _buffer(self, slowed: bool = True) -> Any:
+        """A finished draw, by default already past its slow-down tick."""
         dmod = _dmod()
         dmod._MOCK_BUFFERS[self._GEN_ID] = {
             "done": True,
             "stop": threading.Event(),
-            "text": "",
+            "text": self._HTML + "__DONE__",
             "final_html": self._HTML,
+            **({"slowed": True} if slowed else {}),
         }
         return dmod
 
     def teardown_method(self) -> None:
         _dmod()._MOCK_BUFFERS.pop(self._GEN_ID, None)
 
+    def test_first_sight_of_the_mock_slows_the_poll_and_delivers_nothing(
+        self,
+    ) -> None:
+        from dash import no_update
+
+        from spec4.callbacks.designer._mock_gen import DELIVERY_MS
+
+        dmod = self._buffer(slowed=False)
+        buf, new_store, disabled, interval = dmod.on_mock_stream_poll(
+            1, {"step": 5, "_gen_id": self._GEN_ID}
+        )
+        assert new_store is no_update
+        assert disabled is no_update
+        assert interval == DELIVERY_MS
+        # A running-tick payload, small enough to land inside the old period.
+        assert buf["tokens"] == len(self._HTML + "__DONE__")
+        assert buf["progress"] < 100
+        assert "mock_html" not in buf
+        entry = dmod._MOCK_BUFFERS[self._GEN_ID]
+        assert entry["slowed"] is True
+        assert "delivered" not in entry
+
+    def test_the_slow_down_happens_once(self) -> None:
+        dmod = self._buffer(slowed=False)
+        dmod.on_mock_stream_poll(1, {"step": 5, "_gen_id": self._GEN_ID})
+        _, new_store, _, interval = dmod.on_mock_stream_poll(
+            2, {"step": 5, "_gen_id": self._GEN_ID}
+        )
+        assert new_store["step"] == 6
+        assert dmod._MOCK_BUFFERS[self._GEN_ID]["delivered"] == 1
+
     def test_delivers_step6_payload_while_store_is_at_step_5(self) -> None:
         from dash import no_update
 
+        from spec4.callbacks.designer._mock_gen import DELIVERY_MS
+
         dmod = self._buffer()
-        buf, new_store, disabled = dmod.on_mock_stream_poll(
+        buf, new_store, disabled, interval = dmod.on_mock_stream_poll(
             1, {"step": 5, "_gen_id": self._GEN_ID}
         )
         assert new_store["step"] == 6
         assert new_store["mock_html"] == self._HTML
-        assert buf["progress"] == 100
-        # The identical payload also rides in the buffer, for the clientside
-        # redundant delivery route (see note 3 in on_mock_stream_poll).
-        assert buf["complete"] == new_store
-        # Keep polling until the browser acknowledges; the buffer must
-        # survive so a dropped response can be re-delivered.
+        assert buf == {"tokens": len(self._HTML), "progress": 100, "error": None}
+        # Keep polling, at the delivery cadence, until the browser
+        # acknowledges; the buffer must survive so a dropped response can be
+        # re-delivered. The cadence is re-sent, not left alone: a page rebuilt
+        # since the slow-down tick has its interval back at POLL_MS.
         assert disabled is no_update
+        assert interval == DELIVERY_MS
         assert self._GEN_ID in dmod._MOCK_BUFFERS
 
     def test_delivery_preserves_prior_store_keys(self) -> None:
@@ -1880,7 +1934,7 @@ class TestMockDeliveryAck:
         dict here dropped _capture_mode and regressed D-DM8 (Retry after a
         capture draw regenerated greenfield)."""
         dmod = self._buffer()
-        _, new_store, _ = dmod.on_mock_stream_poll(
+        _, new_store, _, _ = dmod.on_mock_stream_poll(
             1,
             {
                 "step": 5,
@@ -1911,7 +1965,7 @@ class TestMockDeliveryAck:
         dmod = self._buffer()
         new_store: Any = None
         for _ in range(20):
-            _, new_store, _ = dmod.on_mock_stream_poll(
+            _, new_store, _, _ = dmod.on_mock_stream_poll(
                 1, {"step": 5, "_gen_id": self._GEN_ID}
             )
         assert new_store["step"] == 6
@@ -1921,102 +1975,186 @@ class TestMockDeliveryAck:
     def test_ack_pops_buffer_and_disables_interval(self) -> None:
         from dash import no_update
 
+        from spec4.layouts.designer import POLL_MS
+
         dmod = self._buffer()
         dmod.on_mock_stream_poll(1, {"step": 5, "_gen_id": self._GEN_ID})
-        buf, new_store, disabled = dmod.on_mock_stream_poll(
+        buf, new_store, disabled, interval = dmod.on_mock_stream_poll(
             1, {"step": 6, "_gen_id": self._GEN_ID}
         )
         assert new_store is no_update
         assert disabled is True
-        assert buf["progress"] == 100
+        assert interval == POLL_MS
+        # Nothing for the buffer: a write here would fire the buffer's
+        # clientside painter for a bar that is gone, and it is the step-6
+        # render in flight from the delivery that must land undisturbed.
+        assert buf is no_update
         assert self._GEN_ID not in dmod._MOCK_BUFFERS
 
     def test_refine_click_between_ticks_is_not_bounced_back(self) -> None:
         from dash import no_update
 
         dmod = self._buffer()
-        _, new_store, disabled = dmod.on_mock_stream_poll(
+        _, new_store, disabled, _ = dmod.on_mock_stream_poll(
             1, {"step": 7, "_gen_id": self._GEN_ID}
         )
         assert new_store is no_update
         assert disabled is True
 
     def test_runaway_valve_reports_the_saved_mock(self) -> None:
+        from spec4.layouts.designer import POLL_MS
+
         dmod = self._buffer()
         dmod._MOCK_BUFFERS[self._GEN_ID]["delivered"] = dmod._MAX_DELIVERY_TICKS
-        buf, new_store, disabled = dmod.on_mock_stream_poll(
+        buf, new_store, disabled, interval = dmod.on_mock_stream_poll(
             1, {"step": 5, "_gen_id": self._GEN_ID}
         )
         assert "Refresh the page" in buf["error"]
         assert disabled is True
+        assert interval == POLL_MS
         assert self._GEN_ID not in dmod._MOCK_BUFFERS
 
-    def test_runaway_valve_sends_the_whole_message_and_no_store(self) -> None:
+    def test_runaway_valve_sends_the_whole_message_and_no_mock(self) -> None:
         """The test above pins one phrase. This pins the whole message -- the only
         thing that tells the user the mock is saved, and both ways back to it --
-        and that the valve delivers no step-6 store alongside it."""
-        from dash import no_update
-
+        and that the valve delivers no step-6 payload alongside it: the store
+        carries the error, which is what re-renders the step, and stays at 5."""
         dmod = self._buffer()
         dmod._MOCK_BUFFERS[self._GEN_ID]["delivered"] = dmod._MAX_DELIVERY_TICKS
-        buf, new_store, _ = dmod.on_mock_stream_poll(
-            1, {"step": 5, "_gen_id": self._GEN_ID}
+        store = {"step": 5, "_gen_id": self._GEN_ID, "_capture_mode": True}
+        buf, new_store, _, _ = dmod.on_mock_stream_poll(1, store)
+        message = (
+            "The mock was generated and saved, but this page "
+            "stopped receiving updates and could not display it. "
+            "Refresh the page to load the saved mock, or click "
+            "Retry to regenerate."
         )
-        assert buf == {
-            "error": (
-                "The mock was generated and saved, but this page "
-                "stopped receiving updates and could not display it. "
-                "Refresh the page to load the saved mock, or click "
-                "Retry to regenerate."
-            )
-        }
-        assert new_store is no_update
+        assert buf == {"error": message}
+        assert new_store == {**store, "_draw_error": message}
 
-
-# ---------------------------------------------------------------------------
-# render_designer_step — buffer ticks must not re-render the step subtree
-# ---------------------------------------------------------------------------
-
-
-class TestRenderGateSkipsBufferTicks:
-    """Plain buffer ticks (4x/sec during generation) must not replace the step
-    subtree — the constant children replacement churned dash-renderer's paths
-    map and could silently drop the completion delivery. Progress is painted
-    clientside; only store changes and buffer *errors* re-render here."""
-
-    def _render(
-        self,
-        monkeypatch: Any,
-        store: dict[str, Any],
-        buffer_data: dict[str, Any],
-        triggered: list[dict[str, Any]],
-    ) -> Any:
-        dmod = _dmod()
-        monkeypatch.setattr(dmod, "ctx", _Ctx("", triggered=triggered))
-        return dmod.render_designer_step(store, buffer_data, True)
-
-    def test_buffer_only_tick_at_step5_is_skipped(self, monkeypatch) -> None:
+    def test_a_running_tick_keeps_the_running_cadence(self) -> None:
         from dash import no_update
 
-        content, active = self._render(
-            monkeypatch,
-            {"step": 5},
-            {"tokens": 10, "progress": 1, "error": None},
-            [{"prop_id": "mock-stream-buffer.data"}],
-        )
-        assert content is no_update
-        assert active is no_update
+        from spec4.layouts.designer import POLL_MS
 
-    def test_buffer_error_at_step5_renders_retry(self, monkeypatch) -> None:
+        dmod = _dmod()
+        dmod._MOCK_BUFFERS[self._GEN_ID] = {
+            "done": False,
+            "stop": threading.Event(),
+            "text": "abc",
+        }
+        buf, new_store, disabled, interval = dmod.on_mock_stream_poll(
+            1, {"step": 5, "_gen_id": self._GEN_ID}
+        )
+        assert buf["tokens"] == 3
+        assert new_store is no_update
+        assert disabled is no_update
+        assert interval == POLL_MS
+
+    def test_a_failed_draw_puts_the_error_on_both_and_resets_the_cadence(
+        self,
+    ) -> None:
+        from spec4.layouts.designer import POLL_MS
+
+        dmod = _dmod()
+        dmod._MOCK_BUFFERS[self._GEN_ID] = {
+            "done": True,
+            "stop": threading.Event(),
+            "text": "<p>__GENERATION_ERROR__: boom",
+        }
+        store = {"step": 5, "_gen_id": self._GEN_ID, "preference_text": "p"}
+        buf, new_store, disabled, interval = dmod.on_mock_stream_poll(1, store)
+        assert buf == {"error": "boom"}
+        assert new_store == {**store, "_draw_error": "boom"}
+        assert disabled is True
+        assert interval == POLL_MS
+        assert self._GEN_ID not in dmod._MOCK_BUFFERS
+
+    def test_a_gone_buffer_and_a_stopped_draw_reset_the_cadence(self) -> None:
+        from dash import no_update
+
+        from spec4.layouts.designer import POLL_MS
+
+        dmod = _dmod()
+        stopped = (no_update, no_update, True, POLL_MS)
+        assert dmod.on_mock_stream_poll(1, {"step": 5, "_gen_id": "gone"}) == stopped
+        dmod._MOCK_BUFFERS[self._GEN_ID] = {
+            "done": True,
+            "stop": threading.Event(),
+            "text": "<html>",
+        }
+        assert (
+            dmod.on_mock_stream_poll(1, {"step": 5, "_gen_id": self._GEN_ID}) == stopped
+        )
+        assert self._GEN_ID not in dmod._MOCK_BUFFERS
+
+
+# ---------------------------------------------------------------------------
+# render_designer_step — the buffer is its State, never its Input
+# ---------------------------------------------------------------------------
+
+
+class TestRenderStepIgnoresBufferTicks:
+    """A buffer tick arrives twice a second for the length of a draw. As an
+    Input it cost a server round trip carrying the whole session each time,
+    which pushed the poll's own round trip past its period and froze the
+    counter (dash-renderer discards the older of two in-flight requests of
+    the same callback). Progress is painted clientside; the step re-renders
+    on store changes only, and a failed draw's error rides the store."""
+
+    def _render(self, store: dict[str, Any], buffer_data: dict[str, Any]) -> Any:
+        return _dmod().render_designer_step(store, buffer_data, True)
+
+    def test_the_buffer_is_registered_as_state_not_input(self) -> None:
+        from dash._callback import GLOBAL_CALLBACK_LIST
+
+        from spec4.layouts.designer import DESIGNER_STEPPER_ID
+
+        import spec4.app  # noqa: F401  — registers the callbacks
+
+        # A multi-output key is the outputs joined, each as `id.prop`.
+        [spec] = [
+            spec
+            for spec in GLOBAL_CALLBACK_LIST
+            if f"{DESIGNER_STEPPER_ID}.children" in str(spec["output"])
+        ]
+        assert [dep["id"] for dep in spec["inputs"]] == ["designer-session-store"]
+        assert "mock-stream-buffer" in [dep["id"] for dep in spec["state"]]
+
+    def test_nothing_writes_the_store_from_a_buffer_tick(self) -> None:
+        """The clientside copy of ``buf.complete`` into the store is gone with
+        the duplicated payload it carried; a buffer tick reaches the DOM
+        painter and nothing else. Server callbacks register on the global
+        list, the app's clientside ones on the app itself, so both are read."""
+        from dash._callback import GLOBAL_CALLBACK_LIST
+
+        from spec4.app import app
+
+        outputs = {
+            str(spec["output"]).split("@")[0]
+            for spec in [*GLOBAL_CALLBACK_LIST, *app._callback_list]
+            if any(dep["id"] == "mock-stream-buffer" for dep in spec["inputs"])
+        }
+        assert outputs == {"_designer-fs-dummy.children"}
+
+    def test_a_store_error_at_step5_renders_retry(self) -> None:
         content, _ = self._render(
-            monkeypatch,
-            {"step": 5},
-            {"tokens": 10, "progress": 1, "error": "boom"},
-            [{"prop_id": "mock-stream-buffer.data"}],
+            {"step": 5, "_draw_error": "boom"},
+            {"tokens": 10, "progress": 1, "error": None},
         )
         assert "btn-designer-retry" in str(content)
+        assert "boom" in str(content)
 
-    def test_store_trigger_renders_step6(self, monkeypatch) -> None:
+    def test_a_buffer_error_alone_does_not(self) -> None:
+        """The pair for the test above: the buffer's copy of the error is the
+        retry snapshot's and the counter line's, not the render's."""
+        content, _ = self._render(
+            {"step": 5}, {"tokens": 10, "progress": 1, "error": "boom"}
+        )
+        assert "btn-designer-retry" not in str(content)
+        assert "Generating the mock" in str(content)
+
+    def test_store_trigger_renders_step6(self) -> None:
         """The second output is the step row itself, re-rendered.
 
         It was a `dmc.Stepper`'s `active` index; the plain-text row that
@@ -2030,10 +2168,8 @@ class TestRenderGateSkipsBufferTicks:
         from spec4.layouts.designer import DESIGNER_STEP_CLASS
 
         content, row = self._render(
-            monkeypatch,
             {"step": 6, "mock_html": "<html></html>", "finalized": False},
             {"tokens": 0, "progress": 100, "error": None},
-            [{"prop_id": "designer-session-store.data"}],
         )
         assert content is not no_update
         active_class = step_modifier_class(DESIGNER_STEP_CLASS, STEP_ACTIVE)
@@ -2044,28 +2180,11 @@ class TestRenderGateSkipsBufferTicks:
         ]
         assert marked == ["Preview"]
 
-    def test_delivery_response_updating_both_props_renders(self, monkeypatch) -> None:
+    def test_initial_call_renders(self) -> None:
         from dash import no_update
 
         content, _ = self._render(
-            monkeypatch,
-            {"step": 6, "mock_html": "<html></html>", "finalized": False},
-            {"tokens": 0, "progress": 100, "error": None},
-            [
-                {"prop_id": "mock-stream-buffer.data"},
-                {"prop_id": "designer-session-store.data"},
-            ],
-        )
-        assert content is not no_update
-
-    def test_initial_call_renders(self, monkeypatch) -> None:
-        from dash import no_update
-
-        content, _ = self._render(
-            monkeypatch,
-            {"step": 5},
-            {"tokens": 0, "progress": 0, "error": None},
-            [],
+            {"step": 5}, {"tokens": 0, "progress": 0, "error": None}
         )
         assert content is not no_update
 
@@ -2223,7 +2342,7 @@ class TestProgressBarSizing:
             "expected_chars": 10_000,
         }
         try:
-            buf, _, _ = dmod.on_mock_stream_poll(1, {"step": 5, "_gen_id": gen_id})
+            buf, _, _, _ = dmod.on_mock_stream_poll(1, {"step": 5, "_gen_id": gen_id})
             assert buf["progress"] == 50
         finally:
             dmod._MOCK_BUFFERS.pop(gen_id, None)
@@ -2239,7 +2358,7 @@ class TestProgressBarSizing:
             "text": "y" * 35_000,
         }
         try:
-            buf, _, _ = dmod.on_mock_stream_poll(1, {"step": 5, "_gen_id": gen_id})
+            buf, _, _, _ = dmod.on_mock_stream_poll(1, {"step": 5, "_gen_id": gen_id})
             assert buf["progress"] == 35_000 * 100 // dmod._DEFAULT_EXPECTED_CHARS
         finally:
             dmod._MOCK_BUFFERS.pop(gen_id, None)
@@ -2282,7 +2401,7 @@ class TestGenerationThreadResilience:
             assert "__GENERATION_ERROR__: RuntimeError" in entry["text"]
             assert entry["done"] is True
             # The poll turns the sentinel into the error alert + Retry button.
-            buf, _, disabled = dmod.on_mock_stream_poll(
+            buf, _, disabled, _ = dmod.on_mock_stream_poll(
                 1, {"step": 5, "_gen_id": gen_id}
             )
             assert "RuntimeError" in buf["error"]
@@ -2315,8 +2434,10 @@ class TestGenerationThreadResilience:
             # Persistence failed, but delivery must still happen.
             assert entry.get("final_html") == html
             assert "__GENERATION_ERROR__" not in entry["text"]
-            _, new_store, _ = dmod.on_mock_stream_poll(
-                1, {"step": 5, "_gen_id": gen_id}
+            # The first sight slows the poll; the tick after it delivers.
+            dmod.on_mock_stream_poll(1, {"step": 5, "_gen_id": gen_id})
+            _, new_store, _, _ = dmod.on_mock_stream_poll(
+                2, {"step": 5, "_gen_id": gen_id}
             )
             assert new_store["step"] == 6
             assert new_store["mock_html"] == html
@@ -2384,8 +2505,7 @@ class TestProgressNeverClaimsCompleteMidStream:
             "expected_chars": 70_000,
         }
         try:
-            with patch("spec4.callbacks.designer.ctx"):
-                buf, _, _ = dz.on_mock_stream_poll(1, {"_gen_id": gen_id})
+            buf, _, _, _ = dz.on_mock_stream_poll(1, {"_gen_id": gen_id})
         finally:
             dz._MOCK_BUFFERS.pop(gen_id, None)
         assert buf["tokens"] == 140_000
@@ -2402,8 +2522,7 @@ class TestProgressNeverClaimsCompleteMidStream:
             "expected_chars": 70_000,
         }
         try:
-            with patch("spec4.callbacks.designer.ctx"):
-                buf, _, _ = dz.on_mock_stream_poll(1, {"_gen_id": gen_id})
+            buf, _, _, _ = dz.on_mock_stream_poll(1, {"_gen_id": gen_id})
         finally:
             dz._MOCK_BUFFERS.pop(gen_id, None)
         assert buf["progress"] == 50
@@ -2463,29 +2582,29 @@ class TestDesignerRetryWithADifferentModel:
         session.update(extra)
         return session
 
-    def _buffer(self, error: str | None) -> dict[str, Any]:
-        return {"tokens": 120, "progress": 99, "error": error}
+    _BUF = {"tokens": 120, "progress": 99, "error": None}
+
+    def _failed(self, error: str | None) -> dict[str, Any]:
+        """The store the poll leaves behind: the error rides it (``_draw_error``)."""
+        return {**self._STORE, "_draw_error": error}
 
     def _step(self, store: dict[str, Any], buf: dict[str, Any], session: Any) -> Any:
-        dmod = _dmod()
-        with patch.object(dmod, "ctx") as fake_ctx:
-            fake_ctx.triggered = [{"prop_id": "designer-session-store.data"}]
-            content, _ = dmod.render_designer_step(store, buf, True, session)
+        content, _ = _dmod().render_designer_step(store, buf, True, session)
         return content
 
     def test_a_failed_draw_offers_both_doors(self) -> None:
-        rendered = str(self._step(self._STORE, self._buffer(self._ERROR), {}))
+        rendered = str(self._step(self._failed(self._ERROR), self._BUF, {}))
         assert "btn-designer-retry" in rendered
         assert "btn-designer-retry-model" in rendered
 
     def test_a_healthy_draw_offers_neither(self) -> None:
-        rendered = str(self._step(self._STORE, self._buffer(None), {}))
+        rendered = str(self._step(self._failed(None), self._BUF, {}))
         assert "btn-designer-retry-model" not in rendered
 
     def test_the_snapshot_carries_the_draw(self) -> None:
         dmod = _dmod()
         updated = dmod.on_designer_retry_model(
-            1, self._STORE, self._buffer(self._ERROR), self._session()
+            1, self._failed(self._ERROR), self._session()
         )
         snap = updated["_designer_failed_draw"]
         assert snap["error"] == self._ERROR
@@ -2497,9 +2616,7 @@ class TestDesignerRetryWithADifferentModel:
     def test_no_snapshot_without_an_error(self) -> None:
         dmod = _dmod()
         assert (
-            dmod.on_designer_retry_model(
-                1, self._STORE, self._buffer(None), self._session()
-            )
+            dmod.on_designer_retry_model(1, self._failed(None), self._session())
             is no_update
         )
 
@@ -2511,7 +2628,7 @@ class TestDesignerRetryWithADifferentModel:
 
         dmod = _dmod()
         opened = dmod.on_designer_retry_model(
-            1, self._STORE, self._buffer(self._ERROR), self._session()
+            1, self._failed(self._ERROR), self._session()
         )
         with patch.object(providers, "list_models", return_value=(["gpt-5"], "")):
             opened, _ = on_gate_connect(1, "OpenAI", "sk-new", opened, {})
@@ -2527,7 +2644,7 @@ class TestDesignerRetryWithADifferentModel:
 
         dmod = _dmod()
         opened = dmod.on_designer_retry_model(
-            1, self._STORE, self._buffer(self._ERROR), self._session()
+            1, self._failed(self._ERROR), self._session()
         )
         rendered = str(designer_layout(opened, {}))
         assert "agent-llm-provider" in rendered
@@ -2541,6 +2658,9 @@ class TestDesignerRetryWithADifferentModel:
         assert store["preference_text"] == "warm palette, big hero"
         assert store["_capture_mode"] is True
         assert store["_has_existing_html"] is True
+        # On both: the store's copy re-renders the step, the buffer's is the
+        # counter line's seed.
+        assert store["_draw_error"] == self._ERROR
         assert buf["error"] == self._ERROR
 
     def test_retry_is_clickable_again_after_choosing(self) -> None:
@@ -2717,10 +2837,7 @@ class TestDesignerAutoRetry:
 
         dmod = _dmod()
         opened = dmod.on_designer_retry_model(
-            1,
-            self._STORE,
-            {"tokens": 9, "progress": 99, "error": "unreachable"},
-            self._session(),
+            1, {**self._STORE, "_draw_error": "unreachable"}, self._session()
         )
         with patch.object(providers, "list_models", return_value=(["gpt-5"], "")):
             opened, _ = on_gate_connect(1, "OpenAI", "sk-new", opened, {})
@@ -2865,12 +2982,7 @@ class TestStepFiveImageNotice:
     _NOTICE = "takes no image input"
 
     def _render(self, session: dict[str, Any]) -> str:
-        dmod = _dmod()
-        with patch.object(dmod, "ctx") as fake_ctx:
-            fake_ctx.triggered = [{"prop_id": "designer-session-store.data"}]
-            content, _ = dmod.render_designer_step(
-                self._STORE, self._BUF, True, session
-            )
+        content, _ = _dmod().render_designer_step(self._STORE, self._BUF, True, session)
         return str(content)
 
     def _override(self, image_support: bool | None) -> dict[str, Any]:
@@ -2993,3 +3105,964 @@ class TestToolCallFollowup:
             _designer_tool_call_followup(messages, self._acc("other"), "thinking", None)
         ws.assert_not_called()
         assert messages == [self._assistant_turn("other")]
+
+
+# ---------------------------------------------------------------------------
+# Start Over clears the round's saved design, not only the store
+# ---------------------------------------------------------------------------
+
+
+def _store_of(layout: Any) -> dict[str, Any]:
+    """The designer-session-store's initial data inside a rendered layout."""
+
+    def walk(node: Any) -> Any:
+        if getattr(node, "id", None) == "designer-session-store":
+            return node.data
+        kids = getattr(node, "children", None)
+        if isinstance(kids, list):
+            for k in kids:
+                found = walk(k)
+                if found is not None:
+                    return found
+        elif kids is not None:
+            return walk(kids)
+        return None
+
+    found = walk(layout)
+    assert found is not None
+    return found
+
+
+class TestStartOverClearsTheSavedDesign:
+    """Start Over is a fresh design conversation, and ``designer_layout``
+    rebuilds the wizard store from ``design/session.json`` on every render. The
+    callback used to reset only the in-memory store, so answering the reopened
+    gate put the discarded mock straight back on screen at the preview step.
+    """
+
+    _FILES = ("session.json", "mock.html", "manifest.json")
+
+    def _round(self, tmp_path: Path, version: int) -> Path:
+        from spec4 import project_manager
+
+        d = project_manager.get_version_dir(str(tmp_path), version) / "design"
+        d.mkdir(parents=True, exist_ok=True)
+        save_session(_session(step=6, mock_html="<html>old</html>", finalized=False), d)
+        save_mock("<html>old</html>", d)
+        (d / "manifest.json").write_text('{"screens": ["old"]}')
+        return d
+
+    def _start_over(self, tmp_path: Path, **extra: Any) -> dict[str, Any]:
+        from spec4.session import default_session
+
+        session = default_session()
+        session.update(
+            {
+                "phase": "designer",
+                "working_dir": str(tmp_path),
+                "phase_version": 1,
+                "agent_llm_asked": {"designer": True},
+                **extra,
+            }
+        )
+        store = {"step": 6, "mock_html": "<html>old</html>", "_has_existing_ui": True}
+        new_store, buf, disabled, updated = _dmod().on_designer_start_over(
+            1, store, session
+        )
+        assert new_store["step"] == 2
+        assert buf["text"] == ""
+        assert disabled is True
+        return updated
+
+    def test_the_active_round_s_design_files_are_deleted(self, tmp_path: Path) -> None:
+        d = self._round(tmp_path, 1)
+        assert all((d / name).exists() for name in self._FILES)
+        self._start_over(tmp_path)
+        assert not any((d / name).exists() for name in self._FILES)
+        assert d.is_dir()
+
+    def test_a_prior_round_s_mock_is_left_as_the_revision_baseline(
+        self, tmp_path: Path
+    ) -> None:
+        prior = self._round(tmp_path, 0)
+        self._round(tmp_path, 1)
+        self._start_over(tmp_path)
+        assert all((prior / name).exists() for name in self._FILES)
+        assert (prior / "mock.html").read_text() == "<html>old</html>"
+
+    def test_answering_the_gate_lands_on_the_first_question_not_the_old_mock(
+        self, tmp_path: Path
+    ) -> None:
+        from spec4.callbacks import on_gate_keep
+        from spec4.layouts.designer import designer_layout
+
+        self._round(tmp_path, 1)
+        session = {
+            **self._start_over(tmp_path),
+            "active_agent": "designer",
+        }
+        # Before the fix this re-render found session.json and opened at the
+        # preview step with the mock the developer had just discarded.
+        before = _store_of(
+            designer_layout({**session, "agent_llm_asked": {"designer": True}}, {})
+        )
+        assert before["step"] == 2
+        assert "old" not in before["mock_html"]
+        answered = on_gate_keep(1, session)
+        after = _store_of(designer_layout(answered, {}))
+        assert after["step"] == 2
+        assert after["preference_text"] == ""
+        assert after["screenshots"] == []
+
+    def test_without_a_project_there_is_nothing_on_disk_to_clear(self) -> None:
+        from spec4.session import default_session
+
+        session = default_session()
+        session.update({"phase": "designer", "working_dir": None})
+        new_store, _, _, updated = _dmod().on_designer_start_over(
+            1, {"step": 6, "mock_html": "<p/>"}, session
+        )
+        assert new_store["step"] == 2
+        assert updated["_designer_failed_draw"] is None
+
+
+# ---------------------------------------------------------------------------
+# A draw outlives the page it was started from
+# ---------------------------------------------------------------------------
+
+
+class TestWatchdogReArmsALostDraw:
+    """``render_page`` rebuilds the wizard's two memory stores on every session
+    write and every browser load -- with no ``_gen_id`` and the poll off --
+    while the draw's thread runs on and saves its mock to a page that never
+    hears of it. The watchdog finds the round's draw and turns the poll back
+    on; the poll's own delivery and acknowledgement then finish the job.
+    """
+
+    _GEN_ID = "test-watchdog-gen"
+
+    def _session(self, tmp_path: Path) -> dict[str, Any]:
+        from spec4.session import default_session
+
+        return {
+            **default_session(),
+            "phase": "designer",
+            "working_dir": str(tmp_path),
+            "phase_version": 1,
+            "agent_llm_asked": {"designer": True},
+        }
+
+    def _design_dir(self, tmp_path: Path) -> Path:
+        from spec4 import project_manager
+
+        return project_manager.get_version_dir(str(tmp_path), 1) / "design"
+
+    def _buffer(self, tmp_path: Path, **extra: Any) -> dict[str, Any]:
+        entry: dict[str, Any] = {
+            "done": False,
+            "stop": threading.Event(),
+            "text": "abc",
+            "expected_chars": 1000,
+            "design_dir": str(self._design_dir(tmp_path)),
+            "started": time.monotonic(),
+            **extra,
+        }
+        _dmod()._MOCK_BUFFERS[self._GEN_ID] = entry
+        return entry
+
+    def teardown_method(self) -> None:
+        _dmod()._MOCK_BUFFERS.pop(self._GEN_ID, None)
+
+    def test_a_rebuilt_store_is_pointed_at_the_round_s_draw(
+        self, tmp_path: Path
+    ) -> None:
+        dmod = _dmod()
+        self._buffer(tmp_path)
+        rebuilt = {"step": 2, "_has_existing_ui": True, "_is_revision": False}
+        store, buf, disabled, interval = dmod.on_mock_stream_watchdog(
+            1, rebuilt, True, self._session(tmp_path)
+        )
+        assert store["step"] == 5
+        assert store["_gen_id"] == self._GEN_ID
+        assert store["mock_html"] == ""
+        assert store["screenshots"] == []
+        assert store["refine_images"] == []
+        assert store["finalized"] is False
+        # The rebuilt store's own flags survive, as they do through delivery.
+        assert store["_has_existing_ui"] is True
+        assert buf["tokens"] == 3
+        assert buf["progress"] == 0
+        assert buf["error"] is None
+        assert disabled is False
+        assert interval == dmod.WATCHDOG_MS
+
+    def test_a_store_already_on_the_draw_only_turns_the_poll_on(
+        self, tmp_path: Path
+    ) -> None:
+        dmod = _dmod()
+        self._buffer(tmp_path)
+        out = dmod.on_mock_stream_watchdog(
+            1, {"step": 5, "_gen_id": self._GEN_ID}, True, self._session(tmp_path)
+        )
+        assert out == (no_update, no_update, False, dmod.WATCHDOG_MS)
+
+    def test_a_running_poll_is_left_alone(self, tmp_path: Path) -> None:
+        dmod = _dmod()
+        self._buffer(tmp_path)
+        out = dmod.on_mock_stream_watchdog(
+            1, {"step": 2}, False, self._session(tmp_path)
+        )
+        assert out == (no_update, no_update, no_update, dmod.WATCHDOG_MS)
+
+    def test_no_draw_for_this_round_is_a_no_op(self, tmp_path: Path) -> None:
+        dmod = _dmod()
+        session = self._session(tmp_path)
+        idle = (no_update, no_update, no_update, dmod.WATCHDOG_MS)
+        assert dmod.on_mock_stream_watchdog(1, {"step": 2}, True, session) == idle
+        # Another round's draw is not this page's to poll.
+        self._buffer(tmp_path, design_dir=str(tmp_path / "elsewhere"))
+        assert dmod.on_mock_stream_watchdog(2, {"step": 2}, True, session) == idle
+        # ...whereas the round's own draw is found (the pair for the two above).
+        self._buffer(tmp_path)
+        store, _, disabled, _ = dmod.on_mock_stream_watchdog(
+            3, {"step": 2}, True, session
+        )
+        assert store["_gen_id"] == self._GEN_ID
+        assert disabled is False
+
+    def test_a_finished_draw_is_delivered_on_the_next_poll(
+        self, tmp_path: Path
+    ) -> None:
+        """The reload happened after the thread finished: the rebuilt store came
+        from disk at the preview step with the *saved* mock, and the buffer
+        still holds the delivery. Re-arming hands it to the poll, which
+        delivers it in-band as it would have on the original page."""
+        dmod = _dmod()
+        html = "<!DOCTYPE html><html><body>new</body></html>"
+        self._buffer(tmp_path, done=True, text=html + "__DONE__", final_html=html)
+        from_disk = {"step": 6, "mock_html": html, "finalized": False}
+        rearmed, _, disabled, _ = dmod.on_mock_stream_watchdog(
+            1, from_disk, True, self._session(tmp_path)
+        )
+        assert rearmed["step"] == 5
+        assert disabled is False
+        assert rearmed["_draw_error"] is None
+        # The poll's first sight of the finished draw slows its cadence; the
+        # tick after that delivers.
+        dmod.on_mock_stream_poll(1, rearmed)
+        buf, delivered, _, _ = dmod.on_mock_stream_poll(2, rearmed)
+        assert delivered["step"] == 6
+        assert delivered["mock_html"] == html
+        assert delivered["_gen_id"] == self._GEN_ID
+        assert buf["progress"] == 100
+
+    def test_a_draw_is_findable_until_the_poll_acknowledges_it(
+        self, tmp_path: Path
+    ) -> None:
+        """Delivered but unacknowledged, the draw is still this page's to poll;
+        only the acknowledging tick pops it, and then nothing is found."""
+        dmod = _dmod()
+        html = "<!DOCTYPE html><html><body>ok</body></html>"
+        entry = self._buffer(
+            tmp_path, done=True, text=html + "__DONE__", final_html=html
+        )
+        design_dir = self._design_dir(tmp_path)
+        store = {"step": 5, "_gen_id": self._GEN_ID}
+        assert dmod.find_live_draw({}, design_dir) == (self._GEN_ID, entry)
+        assert dmod.find_live_draw(store, None) == (self._GEN_ID, entry)
+        # Without a round there is nothing to look a nameless store's draw up by.
+        assert dmod.find_live_draw({}, None) is None
+        dmod.on_mock_stream_poll(1, store)  # slows the cadence, delivers nothing
+        assert dmod.find_live_draw({}, design_dir) == (self._GEN_ID, entry)
+        _, delivered, _, _ = dmod.on_mock_stream_poll(2, store)
+        assert delivered["step"] == 6
+        assert dmod.find_live_draw({}, design_dir) == (self._GEN_ID, entry)
+        _, _, disabled, _ = dmod.on_mock_stream_poll(3, delivered)
+        assert disabled is True
+        assert dmod.find_live_draw(delivered, design_dir) is None
+        assert dmod.find_live_draw({}, design_dir) is None
+
+    def test_elapsed_is_zero_for_a_buffer_with_no_start_time(
+        self, tmp_path: Path
+    ) -> None:
+        dmod = _dmod()
+        entry = self._buffer(tmp_path)
+        del entry["started"]
+        assert dmod.stream_progress(entry)["elapsed"] == 0
+        entry["started"] = time.monotonic() - 125
+        assert dmod.stream_progress(entry)["elapsed"] >= 125
+
+    def test_idle_counts_from_the_last_chunk(self, tmp_path: Path) -> None:
+        """The pause notice's input: 0 until a chunk has arrived, then the
+        seconds since the latest one."""
+        dmod = _dmod()
+        entry = self._buffer(tmp_path)
+        assert dmod.stream_progress(entry)["idle"] == 0
+        entry["last_chunk_at"] = time.monotonic() - 40
+        assert dmod.stream_progress(entry)["idle"] >= 40
+        entry["last_chunk_at"] = time.monotonic()
+        assert dmod.stream_progress(entry)["idle"] == 0
+
+    def test_every_chunk_kind_stamps_the_last_chunk_time(self, tmp_path: Path) -> None:
+        """Thinking chunks count too: a model reasoning between output bursts
+        is not paused, and the notice must not say it is."""
+        from spec4.agents.designer import THINKING_MARK
+        from spec4.callbacks.designer._mock_gen import _mock_absorb_chunk
+
+        entry = self._buffer(tmp_path)
+        entry["last_chunk_at"] = time.monotonic() - 40
+        _mock_absorb_chunk(entry, THINKING_MARK + "hmm")
+        assert entry["last_chunk_at"] > time.monotonic() - 1
+        assert entry["text"] == "abc"
+        entry["last_chunk_at"] = time.monotonic() - 40
+        _mock_absorb_chunk(entry, "<p>")
+        assert entry["last_chunk_at"] > time.monotonic() - 1
+        assert entry["text"] == "abc<p>"
+
+    def test_the_painter_says_how_long_the_output_has_paused(self) -> None:
+        """The clientside line is the only reader of ``idle``; pin that it is
+        wired to the threshold the buffer module names."""
+        from spec4.app import app
+        from spec4.callbacks.designer._mock_gen import PAUSE_NOTICE_S
+
+        [painter] = [
+            script for script in app._inline_scripts if "mock-token-count" in script
+        ]
+        assert "no output for" in str(painter)
+        assert f"buf.idle >= {PAUSE_NOTICE_S}" in str(painter)
+
+    def test_the_layout_mounts_it_fast_with_the_poll_off(self, tmp_path: Path) -> None:
+        from spec4.callbacks.designer._mock_gen import DELIVERY_MS
+        from spec4.layouts.designer import POLL_MS, WATCHDOG_FIRST_MS, designer_layout
+
+        dmod = _dmod()
+        layout = designer_layout(self._session(tmp_path), {})
+        watchdog = _component(layout, "mock-stream-watchdog")
+        assert watchdog.interval == WATCHDOG_FIRST_MS
+        assert WATCHDOG_FIRST_MS < dmod.WATCHDOG_MS
+        assert not getattr(watchdog, "disabled", False)
+        # The rebuild itself never arms the poll; that is the watchdog's job.
+        poll = _component(layout, "mock-stream-interval")
+        assert poll.disabled is True
+        # Mounted at the running cadence, which the poll's own ack restores
+        # after a delivery; the delivery cadence is the slower of the two.
+        assert poll.interval == POLL_MS
+        assert POLL_MS < DELIVERY_MS
+
+
+class TestRetryAfterAModelChangeKeepsItsDraw:
+    """The retry writes ``session`` in the response that starts the draw, so
+    the page is rebuilt around a draw the rebuilt store does not name. The
+    watchdog's first tick on that page re-arms the same draw."""
+
+    def test_the_rebuilt_page_re_arms_the_draw_the_retry_started(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        from spec4.callbacks.designer._refine import _rerun_failed_draw
+        from spec4.layouts.designer import designer_layout
+        from spec4.session import default_session
+
+        dmod = _dmod()
+        monkeypatch.setattr(dmod._mock_gen.threading, "Thread", _NoThread)
+        session = {
+            **default_session(),
+            "phase": "designer",
+            "working_dir": str(tmp_path),
+            "phase_version": 1,
+            "project_mode": "new",
+            "provider": "openai",
+            "api_key": "k",
+            "llm_config": {"model": "gpt-5", "api_key": "k"},
+            "agent_llm_asked": {"designer": True},
+            "_designer_failed_draw": {"error": "boom", "auto_retry": True},
+        }
+        store = {"step": 5, "preference_text": "p", "screenshots": [], "mock_html": ""}
+        try:
+            new_store, _, disabled, cleared = _rerun_failed_draw(store, session, True)
+            assert disabled is False
+            gen_id = new_store["_gen_id"]
+            assert cleared["_designer_failed_draw"] is None
+
+            rebuilt = designer_layout(cleared, {})
+            rebuilt_store = _store_of(rebuilt)
+            assert "_gen_id" not in rebuilt_store
+            assert _component(rebuilt, "mock-stream-interval").disabled is True
+
+            rearmed, _, rearmed_disabled, _ = dmod.on_mock_stream_watchdog(
+                1, rebuilt_store, True, cleared
+            )
+            assert rearmed["_gen_id"] == gen_id
+            assert rearmed["step"] == 5
+            assert rearmed_disabled is False
+        finally:
+            dmod._MOCK_BUFFERS.clear()
+
+
+class TestDesignerDrawTimeout:
+    """The draw's time-to-first-token can run past LiteLLM's 600 s fallback, so
+    the call carries its own, longer stall bound."""
+
+    def _chunk(self, text: str) -> Any:
+        from types import SimpleNamespace
+
+        choice = SimpleNamespace(
+            delta=SimpleNamespace(content=text, tool_calls=None), finish_reason=None
+        )
+        return SimpleNamespace(choices=[choice])
+
+    def _draw(self, monkeypatch: Any, chunks: list[Any]) -> dict[str, Any]:
+        import spec4.agents.designer as agent_mod
+
+        captured: dict[str, Any] = {}
+
+        def fake_stream(**kwargs: Any) -> Any:
+            captured.update(kwargs)
+            return iter(chunks)
+
+        monkeypatch.setattr(agent_mod.llm, "stream_completion", fake_stream)
+        monkeypatch.setattr(agent_mod, "build_mock_prompt", lambda *a, **k: [])
+        list(generate_mock_streaming(_session(), "m", "k", [], False))
+        return captured
+
+    def test_the_draw_sends_its_own_stall_bound(self, monkeypatch: Any) -> None:
+        from spec4 import llm
+
+        sent = self._draw(monkeypatch, [])
+        assert sent["timeout"] is llm.DESIGNER_STREAM_TIMEOUT
+        assert llm.DESIGNER_STREAM_TIMEOUT.read is not None
+        assert llm.DESIGNER_STREAM_TIMEOUT.read > 600
+        assert llm.DESIGNER_STREAM_TIMEOUT.read > (llm.LLM_STREAM_TIMEOUT.read or 0)
+
+    def test_time_to_first_token_is_printed_once(
+        self, monkeypatch: Any, capsys: Any
+    ) -> None:
+        self._draw(monkeypatch, [self._chunk("a"), self._chunk("b")])
+        out = capsys.readouterr().out
+        assert out.count("[llm-ttft] designer: first chunk after") == 1
+
+    def test_an_empty_stream_prints_no_time_to_first_token(
+        self, monkeypatch: Any, capsys: Any
+    ) -> None:
+        self._draw(monkeypatch, [])
+        assert "[llm-ttft]" not in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# The 5-series thinks by default: the draw shows the thinking
+# ---------------------------------------------------------------------------
+
+
+class TestDrawYieldsThinkingUnderAMarker:
+    """Reasoning text rides out of the draw under ``THINKING_MARK``, apart from
+    the output, so the page can count it and the buffer can keep it out."""
+
+    def _draw(self, monkeypatch: Any, deltas: list[Any]) -> list[str]:
+        import spec4.agents.designer as agent_mod
+        from tests._chunks import make_stream_chunk
+
+        chunks = []
+        for delta in deltas:
+            chunk = make_stream_chunk()
+            chunk.choices[0].delta = delta
+            chunks.append(chunk)
+        monkeypatch.setattr(
+            agent_mod.llm, "stream_completion", lambda **kwargs: iter(chunks)
+        )
+        monkeypatch.setattr(agent_mod, "build_mock_prompt", lambda *a, **k: [])
+        return list(generate_mock_streaming(_session(), "m", "k", [], False))
+
+    def test_a_reasoning_delta_yields_the_mark_and_nothing_else(
+        self, monkeypatch: Any
+    ) -> None:
+        from spec4.agents.designer import THINKING_MARK
+        from tests._chunks import make_delta
+
+        out = self._draw(monkeypatch, [make_delta(reasoning_content="plan <html>")])
+        assert out == [THINKING_MARK + "plan <html>", "__DONE__"]
+
+    def test_a_content_delta_yields_only_its_content(self, monkeypatch: Any) -> None:
+        from spec4.agents.designer import THINKING_MARK
+        from tests._chunks import make_delta
+
+        out = self._draw(monkeypatch, [make_delta(content="<html>")])
+        assert out == ["<html>", "__DONE__"]
+        assert not any(piece.startswith(THINKING_MARK) for piece in out)
+
+    def test_a_delta_with_both_yields_content_then_the_mark(
+        self, monkeypatch: Any
+    ) -> None:
+        from spec4.agents.designer import THINKING_MARK
+        from tests._chunks import make_delta
+
+        out = self._draw(
+            monkeypatch, [make_delta(content="a", reasoning_content="why")]
+        )
+        assert out == ["a", THINKING_MARK + "why", "__DONE__"]
+
+    def test_an_empty_reasoning_field_yields_nothing(self, monkeypatch: Any) -> None:
+        from tests._chunks import make_delta
+
+        out = self._draw(monkeypatch, [make_delta(reasoning_content="")])
+        assert out == ["__DONE__"]
+
+
+class TestWorkerCountsThinkingSeparately:
+    """The buffer counts thinking characters and never lets the text near the
+    HTML: a reasoning summary can quote a whole document."""
+
+    _HTML = "<!DOCTYPE html><html><body>real</body></html>"
+
+    def _draw(self, monkeypatch: Any, tmp_path: Path, chunks: list[str]) -> Any:
+        dmod = _dmod()
+        monkeypatch.setattr(dmod._mock_gen.threading, "Thread", _SyncThread)
+        monkeypatch.setattr(
+            dmod._mock_gen, "generate_mock_streaming", lambda *a, **k: iter(chunks)
+        )
+        store, _, _ = dmod._start_gen({}, str(tmp_path), "m", "k", None, False)
+        return dmod._MOCK_BUFFERS.pop(store["_gen_id"])
+
+    def test_thinking_is_counted_and_kept_out_of_the_text(
+        self, monkeypatch: Any, tmp_path: Path
+    ) -> None:
+        from spec4.agents.designer import THINKING_MARK
+
+        dmod = _dmod()
+        entry = self._draw(
+            monkeypatch,
+            tmp_path,
+            [THINKING_MARK + "<html>plan", THINKING_MARK + "!", self._HTML, "__DONE__"],
+        )
+        assert entry["thinking_chars"] == len("<html>plan") + 1
+        assert "plan" not in entry["text"]
+        assert entry["text"] == self._HTML + "__DONE__"
+        assert entry["final_html"] == self._HTML
+        assert dmod.stream_progress(entry)["thinking"] == len("<html>plan") + 1
+
+    def test_a_draw_without_thinking_reports_zero(
+        self, monkeypatch: Any, tmp_path: Path
+    ) -> None:
+        dmod = _dmod()
+        entry = self._draw(monkeypatch, tmp_path, [self._HTML, "__DONE__"])
+        assert entry["thinking_chars"] == 0
+        assert dmod.stream_progress(entry)["thinking"] == 0
+        # A buffer from before the field existed reports zero as well.
+        del entry["thinking_chars"]
+        assert dmod.stream_progress(entry)["thinking"] == 0
+
+
+# ---------------------------------------------------------------------------
+# The drawn mock is checked, and its errors go back to the model
+# ---------------------------------------------------------------------------
+
+
+_CLEAN_MOCK = (
+    "<!DOCTYPE html><html><head><style>body{}</style></head>"
+    "<body><p>hi</p><script>var a = `x`;</script></body></html>"
+)
+
+
+class TestCheckMockHtml:
+    """Static, deterministic, advisory: the structural defects the text alone
+    shows. Each rule has its positive and its negative."""
+
+    def _check(self, html: str, **kw: Any) -> list[str]:
+        from spec4.callbacks.designer._mock_gen import check_mock_html
+
+        return check_mock_html(html, **kw)
+
+    def test_a_clean_document_has_no_errors(self) -> None:
+        assert self._check(_CLEAN_MOCK) == []
+
+    def test_truncation_is_reported_with_the_limit(self) -> None:
+        [error] = self._check(_CLEAN_MOCK, truncated=True)
+        assert "cut off at 512 kB" in error
+        assert self._check(_CLEAN_MOCK, truncated=False) == []
+
+    def test_a_document_that_does_not_close_is_reported(self) -> None:
+        broken = _CLEAN_MOCK.replace("</body>", "")
+        assert any("</body> and </html>" in e for e in self._check(broken))
+        assert not any("</body>" in e for e in self._check(_CLEAN_MOCK))
+
+    def test_unbalanced_script_tags_are_counted(self) -> None:
+        broken = _CLEAN_MOCK.replace("</script>", "")
+        [error] = [e for e in self._check(broken) if "<script>" in e]
+        assert "1 opened, 0 closed" in error
+        assert not any("<script>" in e for e in self._check(_CLEAN_MOCK))
+
+    def test_unbalanced_style_tags_are_counted(self) -> None:
+        broken = _CLEAN_MOCK.replace("<style>", "<style><style>")
+        [error] = [e for e in self._check(broken) if "<style>" in e]
+        assert "2 opened, 1 closed" in error
+        assert not any("<style>" in e for e in self._check(_CLEAN_MOCK))
+
+    def test_an_odd_backtick_in_a_script_is_reported(self) -> None:
+        broken = _CLEAN_MOCK.replace("`x`", "`x")
+        [error] = [e for e in self._check(broken) if "template literal" in e]
+        assert error.startswith("Script block 1")
+        assert not any("template literal" in e for e in self._check(_CLEAN_MOCK))
+
+    def test_an_escaped_backtick_is_not_counted(self) -> None:
+        escaped = _CLEAN_MOCK.replace("`x`", "`x\\`y`")
+        assert not any("template literal" in e for e in self._check(escaped))
+
+    def test_tag_matching_ignores_case_and_attributes(self) -> None:
+        odd = _CLEAN_MOCK.replace("<script>", '<SCRIPT type="module">').replace(
+            "</script>", "</SCRIPT >"
+        )
+        assert self._check(odd) == []
+
+
+class TestMockErrorMessages:
+    def test_static_then_runtime_with_lines(self) -> None:
+        from spec4.callbacks.designer._mock_gen import mock_error_list
+
+        store = {"_mock_errors": ["Doc is cut off."]}
+        reported = {
+            "errors": [
+                {"message": "x is not defined", "source": "", "line": 12},
+                {"message": "Failed to load <img> a.png", "line": 0},
+                "not a dict",
+            ]
+        }
+        assert mock_error_list(store, reported) == [
+            "Doc is cut off.",
+            "x is not defined (line 12)",
+            "Failed to load <img> a.png",
+        ]
+        assert mock_error_list({}, None) == []
+
+    def test_the_instruction_has_the_header_and_a_capped_list(self) -> None:
+        from spec4.callbacks.designer._mock_gen import (
+            MOCK_ERROR_LIMIT,
+            format_mock_errors,
+        )
+
+        text = format_mock_errors(["one", "two"])
+        lines = text.splitlines()
+        assert lines[0].startswith("Fix these errors in the current mock")
+        assert "return the whole corrected document" in lines[1]
+        assert lines[2:] == ["- one", "- two"]
+        many = format_mock_errors([f"e{i}" for i in range(MOCK_ERROR_LIMIT + 3)])
+        assert many.count("\n- ") == MOCK_ERROR_LIMIT
+        assert many.endswith("(plus 3 more -- fix the structural issues above first)")
+
+
+class TestFinaliseRecordsStaticErrors:
+    def _finalise(self, accumulated: str, monkeypatch: Any, **kw: Any) -> Any:
+        from spec4.callbacks.designer import _mock_gen
+
+        for name, value in kw.items():
+            monkeypatch.setattr(_mock_gen, name, value)
+        entry: dict[str, Any] = {"text": accumulated}
+        ds = {
+            "step": 5,
+            "preference_text": "",
+            "screenshots": [],
+            "mock_html": "",
+            "finalized": False,
+        }
+        _mock_gen._mock_finalise_draw(accumulated, entry, ds, None, None)
+        return entry
+
+    def test_a_clean_mock_records_an_empty_list(self, monkeypatch: Any) -> None:
+        entry = self._finalise(_CLEAN_MOCK + "__DONE__", monkeypatch)
+        assert entry["final_html"] == _CLEAN_MOCK
+        assert entry["static_errors"] == []
+
+    def test_a_truncated_mock_is_reported_not_silently_shipped(
+        self, monkeypatch: Any
+    ) -> None:
+        entry = self._finalise(
+            _CLEAN_MOCK + "__DONE__", monkeypatch, _MAX_HTML_BYTES=40
+        )
+        assert "output truncated" in entry["final_html"]
+        assert any("cut off" in e for e in entry["static_errors"])
+
+    def test_a_broken_script_is_reported(self, monkeypatch: Any) -> None:
+        entry = self._finalise(
+            _CLEAN_MOCK.replace("</script>", "") + "__DONE__", monkeypatch
+        )
+        assert any("<script>" in e for e in entry["static_errors"])
+
+
+class TestDeliveryCarriesTheStaticErrors:
+    _GEN_ID = "test-static-errors-gen"
+
+    def teardown_method(self) -> None:
+        _dmod()._MOCK_BUFFERS.pop(self._GEN_ID, None)
+
+    def _deliver(self, static_errors: list[str] | None) -> Any:
+        dmod = _dmod()
+        dmod._MOCK_BUFFERS[self._GEN_ID] = {
+            "done": True,
+            "stop": threading.Event(),
+            "text": _CLEAN_MOCK + "__DONE__",
+            "final_html": _CLEAN_MOCK,
+            "slowed": True,
+            **({"static_errors": static_errors} if static_errors is not None else {}),
+        }
+        _, new_store, _, _ = dmod.on_mock_stream_poll(
+            1, {"step": 5, "_gen_id": self._GEN_ID, "_mock_errors": ["stale"]}
+        )
+        return new_store
+
+    def test_the_step6_store_lists_the_errors(self) -> None:
+        assert self._deliver(["Doc is cut off."])["_mock_errors"] == ["Doc is cut off."]
+
+    def test_a_clean_or_older_buffer_delivers_none_and_drops_stale_ones(
+        self,
+    ) -> None:
+        assert self._deliver([])["_mock_errors"] == []
+        assert self._deliver(None)["_mock_errors"] == []
+
+    def test_a_new_draw_and_a_rearmed_page_start_clean(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        dmod = _dmod()
+        monkeypatch.setattr(dmod.threading, "Thread", _NoThread)
+        store, _, _ = dmod._start_gen(
+            {"_mock_errors": ["old"]}, None, "m", "k", None, False
+        )
+        assert store["_mock_errors"] == []
+        dmod._MOCK_BUFFERS.pop(store["_gen_id"], None)
+        from spec4 import project_manager
+        from spec4.session import default_session
+
+        dmod._MOCK_BUFFERS[self._GEN_ID] = {
+            "done": False,
+            "stop": threading.Event(),
+            "text": "",
+            "design_dir": str(
+                project_manager.get_version_dir(str(tmp_path), 1) / "design"
+            ),
+            "started": time.monotonic(),
+        }
+        session = {
+            **default_session(),
+            "phase": "designer",
+            "working_dir": str(tmp_path),
+            "phase_version": 1,
+            "agent_llm_asked": {"designer": True},
+        }
+        rearmed, _, _, _ = dmod.on_mock_stream_watchdog(
+            1, {"step": 6, "_mock_errors": ["old"]}, True, session
+        )
+        assert rearmed["_mock_errors"] == []
+
+
+class TestFixErrorsButton:
+    """One click, one refine draw with the errors quoted back; nothing else."""
+
+    _STORE = {
+        "step": 6,
+        "preference_text": "warm palette",
+        "screenshots": [],
+        "refine_images": [],
+        "mock_html": _CLEAN_MOCK,
+        "finalized": False,
+        "_mock_errors": ["Doc is cut off."],
+    }
+    _REPORTED = {"errors": [{"message": "x is not defined", "line": 12}], "ready": True}
+
+    def _session(self) -> dict[str, Any]:
+        from spec4.session import default_session
+
+        return {
+            **default_session(),
+            "working_dir": None,
+            "phase": "designer",
+            "provider": "anthropic",
+            "api_key": "k",
+            "llm_config": {"model": "claude-sonnet-4-6", "api_key": "k"},
+            "agent_llm_asked": {"designer": True},
+        }
+
+    def _click(self, store: Any, reported: Any, n: int | None = 1) -> Any:
+        dmod = _dmod()
+        with patch.object(
+            dmod._refine, "_start_gen", return_value=({}, {}, False)
+        ) as started:
+            out = dmod.on_designer_fix_errors(n, reported, store, self._session(), True)
+        return out, started
+
+    def test_the_draw_refines_the_mock_on_screen_with_the_errors(self) -> None:
+        out, started = self._click(self._STORE, self._REPORTED)
+        assert out == ({}, {}, False)
+        started.assert_called_once()
+        updated = started.call_args.args[0]
+        assert started.call_args.kwargs["existing_html"] == _CLEAN_MOCK
+        pref = updated["preference_text"]
+        assert pref.startswith("warm palette\n\n--- Fix render errors ---\n")
+        assert "- Doc is cut off." in pref
+        assert "- x is not defined (line 12)" in pref
+        assert "return the whole corrected document" in pref
+
+    def test_no_click_and_no_errors_draw_nothing(self) -> None:
+        idle = (no_update, no_update, no_update)
+        out, started = self._click(self._STORE, self._REPORTED, n=None)
+        assert out == idle
+        out, started = self._click({**self._STORE, "_mock_errors": []}, {"errors": []})
+        assert out == idle
+        out, started = self._click({**self._STORE, "_mock_errors": []}, None)
+        assert out == idle
+        assert not started.called
+        # The pair: with an error from either side alone, the draw starts.
+        _, started = self._click({**self._STORE, "_mock_errors": []}, self._REPORTED)
+        assert started.called
+        _, started = self._click(self._STORE, None)
+        assert started.called
+
+    def test_regenerate_and_fix_compose_the_same_draw(self) -> None:
+        """The factoring: the two buttons differ only in the brief they add."""
+        dmod = _dmod()
+        store = {
+            **self._STORE,
+            "refine_images": [{"data": "img", "annotation": ""}],
+            "screenshots": [{"data": "shot", "annotation": "a"}],
+        }
+        with patch.object(
+            dmod._refine, "_start_gen", return_value=({}, {}, False)
+        ) as regen:
+            dmod.on_designer_regenerate(
+                1, "tighter rows", ["note"], store, self._session(), True
+            )
+        with patch.object(
+            dmod._refine, "_start_gen", return_value=({}, {}, False)
+        ) as fix:
+            dmod.on_designer_fix_errors(1, self._REPORTED, store, self._session(), True)
+        r_store, f_store = regen.call_args.args[0], fix.call_args.args[0]
+        assert regen.call_args.args[1:] == fix.call_args.args[1:]
+        assert regen.call_args.kwargs == fix.call_args.kwargs
+        assert (
+            r_store["preference_text"]
+            == "warm palette\n\n--- Refinement ---\ntighter rows"
+        )
+        assert f_store["preference_text"].startswith(
+            "warm palette\n\n--- Fix render errors ---\n"
+        )
+        # The refine's image annotation was applied; the fix draw, started
+        # from the preview, has no annotations to apply and keeps the images.
+        assert r_store["screenshots"][-1] == {"data": "img", "annotation": "note"}
+        assert f_store["screenshots"][-1] == {"data": "img", "annotation": ""}
+        assert {
+            k: v
+            for k, v in r_store.items()
+            if k not in ("preference_text", "screenshots")
+        } == {
+            k: v
+            for k, v in f_store.items()
+            if k not in ("preference_text", "screenshots")
+        }
+
+
+class TestPreviewRunsTheErrorShim:
+    def test_the_shim_sits_inside_the_head(self) -> None:
+        from spec4.layouts.designer import MOCK_ERROR_SHIM, with_error_shim
+
+        doc = (
+            "<!DOCTYPE html>\n<html lang='en'>\n<head>\n<title>t</title></head>"
+            "<body></body></html>"
+        )
+        shimmed = with_error_shim(doc)
+        assert shimmed.startswith(
+            "<!DOCTYPE html>\n<html lang='en'>\n<head>" + MOCK_ERROR_SHIM
+        )
+        # On the same line as <head>, so the mock's own line numbers are unchanged.
+        assert shimmed.count("\n") == doc.count("\n")
+        assert with_error_shim("<html><body></body></html>").startswith(
+            "<html>" + MOCK_ERROR_SHIM
+        )
+        assert with_error_shim("<p>x</p>") == MOCK_ERROR_SHIM + "<p>x</p>"
+
+    def test_both_preview_steps_run_it_and_offer_the_hidden_fix_button(self) -> None:
+        from spec4.layouts.designer import (
+            MOCK_ERROR_SHIM,
+            step6_content,
+            step7_content,
+        )
+
+        store = {"step": 6, "mock_html": _CLEAN_MOCK, "finalized": False}
+        for content in (step6_content(store), step7_content(store, True)):
+            # The check row stands above the preview, not under it.
+            ids = [getattr(child, "id", None) for child in content.children]
+            assert (
+                ids.index("mock-iframe")
+                > [
+                    i
+                    for i, child in enumerate(content.children)
+                    if "mock-check-status" in str(child)
+                ][0]
+            )
+            frame = _component(content, "mock-iframe")
+            assert MOCK_ERROR_SHIM in frame.srcDoc
+            assert frame.srcDoc.replace(MOCK_ERROR_SHIM, "") == _CLEAN_MOCK
+            assert frame.sandbox == "allow-scripts"
+            status = _component(content, "mock-check-status")
+            assert status.children == "Checking the preview…"
+            # The disclaimer's register, and no verdict colour yet.
+            assert status.className == "dim-line"
+            assert "color" not in (status.style or {})
+            assert (
+                _component(content, "btn-designer-fix-errors").style["display"]
+                == "none"
+            )
+
+    def test_static_errors_show_from_the_first_render(self) -> None:
+        from spec4.layouts.designer import step6_content
+
+        content = step6_content(
+            {"step": 6, "mock_html": _CLEAN_MOCK, "_mock_errors": ["a", "b"]}
+        )
+        from spec4.layouts.designer import MOCK_CHECK_FAIL_COLOR
+
+        status = _component(content, "mock-check-status")
+        assert status.children == "2 errors in the document"
+        assert status.style == {"color": MOCK_CHECK_FAIL_COLOR}
+        assert _component(content, "btn-designer-fix-errors").style["display"] != "none"
+
+    def test_the_saved_mock_carries_no_shim(self, tmp_path: Path) -> None:
+        from spec4.callbacks.designer import _mock_gen
+        from spec4.layouts.designer import MOCK_ERROR_SHIM
+
+        entry: dict[str, Any] = {"text": _CLEAN_MOCK + "__DONE__"}
+        ds = {
+            "step": 5,
+            "preference_text": "",
+            "screenshots": [],
+            "mock_html": "",
+            "finalized": False,
+        }
+        _mock_gen._mock_finalise_draw(entry["text"], entry, ds, tmp_path, None)
+        saved = (tmp_path / "mock.html").read_text()
+        assert saved == _CLEAN_MOCK
+        assert MOCK_ERROR_SHIM not in saved
+
+    def test_the_page_paints_the_check_line_from_the_report_store(self) -> None:
+        from dash._callback import GLOBAL_CALLBACK_LIST
+
+        from spec4.app import app
+
+        fed = [
+            spec
+            for spec in [*GLOBAL_CALLBACK_LIST, *app._callback_list]
+            if any(dep["id"] == "mock-render-errors" for dep in spec["inputs"])
+        ]
+        assert [str(spec["output"]).split("@")[0] for spec in fed] == [
+            "_designer-fs-dummy.children"
+        ]
+        from spec4.layouts.designer import MOCK_CHECK_FAIL_COLOR, MOCK_CHECK_OK_COLOR
+
+        [painter] = [s for s in app._inline_scripts if "mock-check-status" in s]
+        assert "Rendered cleanly" in painter
+        # Green on success, red on failure: the theme's own variables.
+        assert f"txt.style.color = '{MOCK_CHECK_OK_COLOR}'" in painter
+        assert f"txt.style.color = '{MOCK_CHECK_FAIL_COLOR}'" in painter
+        assert "btn-designer-fix-errors" in painter
+        assert "_mock_errors" in painter
+        # The click's callback reads the same store.
+        [fix] = [
+            spec
+            for spec in GLOBAL_CALLBACK_LIST
+            if any(dep["id"] == "btn-designer-fix-errors" for dep in spec["inputs"])
+        ]
+        assert "mock-render-errors" in [dep["id"] for dep in fix["state"]]

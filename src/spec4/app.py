@@ -33,7 +33,11 @@ from spec4.layouts import (
     chat_layout,
     artifact_view_layout,
 )
-from spec4.layouts.designer import designer_layout
+from spec4.layouts.designer import (
+    MOCK_CHECK_FAIL_COLOR,
+    MOCK_CHECK_OK_COLOR,
+    designer_layout,
+)
 
 # ---------------------------------------------------------------------------
 # App setup
@@ -73,6 +77,7 @@ server = app.server  # expose Flask server for gunicorn
 # Register all callbacks (must come after app is created)
 import spec4.callbacks  # noqa: E402, F401
 import spec4.callbacks.designer  # noqa: E402, F401
+from spec4.callbacks.designer._mock_gen import PAUSE_NOTICE_S  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Root layout
@@ -303,17 +308,40 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
     prevent_initial_call=True,
 )
 
-# Step-5 progress paint. render_designer_step deliberately ignores plain
-# buffer ticks (re-rendering the step subtree 4x/sec churned dash-renderer's
-# paths map and could silently drop the completion delivery), so the bar and
-# counter are poked into the DOM here instead.
+# Step-5 progress paint. The buffer is a State, not an Input, of
+# render_designer_step (a tick must not cost a server round trip), so the bar
+# and counter are poked into the DOM here instead. Past PAUSE_NOTICE_S seconds
+# without a chunk the line says so, with the thinking count when there is one:
+# a model reasoning between output bursts sits at the same count for minutes,
+# which otherwise reads exactly like a page that stopped updating.
 app.clientside_callback(  # type: ignore[no-untyped-call]
     """
     function(buf) {
         var nu = window.dash_clientside.no_update;
         if (!buf || typeof buf.tokens !== 'number') return nu;
+        var clock = function(secs) {
+            var m = Math.floor(secs / 60), s = secs % 60;
+            return (m ? m + ' min ' : '') + s + ' s';
+        };
         var txt = document.getElementById('mock-token-count');
-        if (txt) txt.textContent = 'Chars received: ' + buf.tokens;
+        if (txt) {
+            if (buf.tokens === 0 && typeof buf.elapsed === 'number') {
+                txt.textContent = buf.thinking > 0
+                    ? 'Thinking — ' + buf.thinking + ' chars ('
+                        + clock(buf.elapsed) + ')'
+                    : "Waiting for the model's first output — "
+                        + clock(buf.elapsed);
+            } else {
+                var line = 'Chars received: ' + buf.tokens;
+                if (typeof buf.idle === 'number' && buf.idle >= PAUSE_NOTICE_S) {
+                    if (buf.thinking > 0) {
+                        line += ' — thinking, ' + buf.thinking + ' chars';
+                    }
+                    line += ' (no output for ' + clock(buf.idle) + ')';
+                }
+                txt.textContent = line;
+            }
+        }
         var bar = document.getElementById('mock-progress');
         if (bar) {
             var section = bar.querySelector('[class*="Progress-section"]')
@@ -322,31 +350,49 @@ app.clientside_callback(  # type: ignore[no-untyped-call]
         }
         return nu;
     }
-    """,
+    """.replace("PAUSE_NOTICE_S", str(PAUSE_NOTICE_S)),
     Output("_designer-fs-dummy", "children", allow_duplicate=True),
     Input("mock-stream-buffer", "data"),
     prevent_initial_call=True,
 )
 
-# Redundant mock-completion delivery (see note 3 in on_mock_stream_poll).
-# The server response's designer-session-store output is occasionally never
-# applied by the browser while the buffer output of the same response keeps
-# landing, so delivery ticks embed the step-6 store under buf.complete and
-# this browser-side copy applies it. Guards: never fire once the user has
-# moved off step 5 (a stale tick must not bounce a Refine click back to the
-# preview), and never apply a payload from a superseded generation.
+
+# The mock preview's check line. `assets/mock_errors.js` writes what the
+# preview's error shim reported into `mock-render-errors`; this paints the
+# line above the iframe and shows the Fix button when there is something to
+# fix, counting the document's static defects (`_mock_errors` on the store)
+# with the browser's runtime ones. A DOM poke rather than a re-render, like
+# the progress line: the preview must not be replaced while it settles.
 app.clientside_callback(  # type: ignore[no-untyped-call]
     """
-    function(buf, store) {
+    function(data, store) {
         var nu = window.dash_clientside.no_update;
-        if (!buf || !buf.complete || !store) return nu;
-        if (store.step !== 5) return nu;
-        if (store._gen_id !== buf.complete._gen_id) return nu;
-        return buf.complete;
+        var txt = document.getElementById('mock-check-status');
+        var btn = document.getElementById('btn-designer-fix-errors');
+        if (!txt) return nu;
+        var runtime = (data && data.errors) || [];
+        var statics = (store && store._mock_errors) || [];
+        var n = runtime.length + statics.length;
+        if (n > 0) {
+            txt.textContent = n + (n === 1 ? ' error' : ' errors')
+                + ' in the mock \u2014 the model can fix them';
+            txt.style.color = FAIL_COLOR;
+            if (btn) btn.style.display = 'inline-block';
+        } else if (data && data.ready) {
+            txt.textContent = 'Rendered cleanly';
+            txt.style.color = OK_COLOR;
+            if (btn) btn.style.display = 'none';
+        } else {
+            txt.textContent = 'Checking the preview\u2026';
+            txt.style.color = '';
+        }
+        return nu;
     }
-    """,
-    Output("designer-session-store", "data", allow_duplicate=True),
-    Input("mock-stream-buffer", "data"),
+    """.replace("OK_COLOR", repr(MOCK_CHECK_OK_COLOR)).replace(
+        "FAIL_COLOR", repr(MOCK_CHECK_FAIL_COLOR)
+    ),
+    Output("_designer-fs-dummy", "children", allow_duplicate=True),
+    Input("mock-render-errors", "data"),
     State("designer-session-store", "data"),
     prevent_initial_call=True,
 )

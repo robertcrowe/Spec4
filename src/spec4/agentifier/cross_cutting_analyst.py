@@ -11,14 +11,14 @@ Supports both full-analysis (the warranted topic subset) and single-topic revisi
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from spec4.agentifier.pattern_loader import MechanismPattern
 from spec4.agentifier.spec_drafter import _TIER_ORDER
 from spec4.agentifier.subagents import validate_dataclass_input
-from spec4.llm import LLM_STREAM_TIMEOUT, acomplete
+from spec4.llm import LLM_STREAM_TIMEOUT, acomplete, reasoning_text
 
 CROSS_CUTTING_TOPICS = (
     "provider_strategy",
@@ -93,6 +93,10 @@ class CrossCuttingInput:
 
     revision_instruction: str | None = field(default=None)
     """User's revision request when topic is set."""
+
+    on_thinking: Callable[[str], None] | None = field(default=None)
+    """Receives each thinking delta (``llm.reasoning_text``) as it arrives, for
+    the chat's thinking counter; never part of the drained output."""
 
     prior_decisions: dict[str, Any] = field(default_factory=dict)
     """Previously accepted decisions, supplied for single-topic revision context."""
@@ -320,6 +324,11 @@ class CrossCuttingAnalyst:
             timeout=LLM_STREAM_TIMEOUT,
         )
         async for chunk in response:
-            delta = (chunk.choices[0].delta.content or "") if chunk.choices else ""
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta.content or ""
             if delta:
                 yield delta
+            thinking = reasoning_text(chunk.choices[0].delta)
+            if thinking and input.on_thinking is not None:
+                input.on_thinking(thinking)

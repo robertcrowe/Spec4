@@ -23,6 +23,7 @@ from spec4 import project_manager
 from spec4.agents.designer import (
     DesignerSession,
     build_revision_note,
+    clear_session,
     revision_delta,
     save_mock,
     save_session,
@@ -32,6 +33,7 @@ from spec4.callbacks.designer._mock_gen import (
 )
 from spec4.callbacks.designer._mock_gen import (
     _llm_params,
+    _mock_design_dir,
     _planning_ctx,
     _start_gen,
 )
@@ -380,6 +382,14 @@ def on_designer_step_back(n: int | None, store: Any) -> Any:
 def on_designer_start_over(n: int | None, store: Any, session: Any) -> Any:
     """Discard the mock and start Designer again from its first question.
 
+    The mock lives in two places, and both go. The store is replaced below;
+    the round's ``design/`` files — ``session.json``, ``mock.html`` and the
+    manifest — are deleted here, because ``designer_layout`` rebuilds the
+    store from ``session.json`` on every render and would otherwise put the
+    old mock straight back on screen at the preview step the moment the gate
+    is answered. Only the active round's files go: a prior implemented
+    round's mock is the revision baseline, not this design.
+
     Which model to draw with *is* Designer's first question, so starting over
     re-asks it — landing on the wizard intro with the previous choice silently
     still in force is not starting over. The override itself is kept, so the
@@ -398,6 +408,9 @@ def on_designer_start_over(n: int | None, store: Any, session: Any) -> Any:
         if entry:
             entry["stop"].set()
     session = session or {}
+    design_dir = _mock_design_dir(session.get("working_dir"), session)
+    if design_dir is not None:
+        clear_session(design_dir)
     asked = {
         agent: answered
         for agent, answered in (session.get("agent_llm_asked") or {}).items()

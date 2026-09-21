@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pathlib
 from typing import Any
 
@@ -26,6 +28,129 @@ from spec4.agents.designer import (
     load_session,
     revision_delta,
 )
+
+# The watchdog's mount cadence, in ms. Named here rather than imported from
+# the callback that slows it down: layouts never import callbacks.
+WATCHDOG_FIRST_MS = 500
+
+# The poll's running cadence, in ms, the same as the chat poll's. It must be
+# longer than a running tick's round trip: dash-renderer discards the older of
+# two in-flight requests of the same callback, so a response slower than the
+# period never lands (see `on_mock_stream_poll`). The delivery of the finished
+# mock, a far larger response, runs at its own slower cadence set by the poll.
+POLL_MS = 500
+
+# The error reporter the preview runs the mock with. Injected into the
+# preview copy only (never the saved ``mock.html``), as one line right after
+# the document's ``<head>`` so script line numbers are unchanged. The iframe
+# is ``sandbox="allow-scripts"`` without same-origin, so ``postMessage`` to
+# the parent is the only way out; ``assets/mock_errors.js`` listens. Three
+# messages: ``mock-loaded`` (reset), ``mock-error`` (one per distinct error,
+# 20 at most) and ``mock-ready`` (the load event: what has not fired by now
+# is the browser's to find later).
+MOCK_ERROR_SHIM = (
+    "<script>(function(){var seen={},count=0;"
+    'function post(kind,detail){try{parent.postMessage({spec4:kind,detail:detail},"*")}'
+    "catch(e){}}"
+    'function report(message,source,line){var key=message+"@"+(line||0);'
+    "if(seen[key]||count>=20)return;seen[key]=true;count+=1;"
+    'post("mock-error",{message:String(message),source:source?String(source):"",'
+    "line:line||0})}"
+    'post("mock-loaded");'
+    'window.addEventListener("error",function(event){'
+    "var t=event.target;if(t&&t!==window&&t.tagName){"
+    'report("Failed to load <"+t.tagName.toLowerCase()+"> "+(t.src||t.href||""),"",0);'
+    "return}"
+    'report(event.message||"Script error",event.filename,event.lineno)},true);'
+    'window.addEventListener("unhandledrejection",function(event){var r=event.reason;'
+    'report("Unhandled promise rejection: "+(r&&r.message?r.message:String(r)),"",0)});'
+    'window.addEventListener("load",function(){post("mock-ready")});'
+    "})();</script>"
+)
+# The status line's verdict colours, as Mantine's CSS variables so they
+# follow the theme: the accent (D-LR2: the theme's own shade, not a local
+# hex) for a clean render, red for a failed one. The clientside painter in
+# ``app.py`` sets the same two; neither is stated anywhere else.
+MOCK_CHECK_OK_COLOR = "var(--mantine-color-spec4-green-5)"
+MOCK_CHECK_FAIL_COLOR = "var(--mantine-color-red-6)"
+_HEAD_OPEN = re.compile(r"<head\b[^>]*>", re.IGNORECASE)
+_HTML_OPEN = re.compile(r"<html\b[^>]*>", re.IGNORECASE)
+
+
+def with_error_shim(mock_html: str) -> str:
+    """``mock_html`` with ``MOCK_ERROR_SHIM`` inside its head, for the preview.
+
+    Placed right after ``<head>`` (or ``<html>`` when there is no head, or at
+    the front when there is neither) so it runs before any of the mock's own
+    scripts and reports the errors they throw while parsing.
+    """
+    match = _HEAD_OPEN.search(mock_html) or _HTML_OPEN.search(mock_html)
+    if match is None:
+        return MOCK_ERROR_SHIM + mock_html
+    return mock_html[: match.end()] + MOCK_ERROR_SHIM + mock_html[match.end() :]
+
+
+def _mock_preview(store: dict[str, Any]) -> Any:
+    """The preview iframe both mock views render, running the error shim."""
+    return html.Iframe(
+        id="mock-iframe",
+        srcDoc=with_error_shim(store.get("mock_html", "")),
+        sandbox="allow-scripts",
+        style={
+            "width": "100%",
+            "height": "600px",
+            "border": "none",
+            "borderRadius": "8px",
+        },
+    )
+
+
+def mock_check_status(static_errors: list[str]) -> str:
+    """The status line above the preview before the browser has reported.
+
+    The clientside painter in ``app.py`` rewrites it as the shim's messages
+    arrive; this is what it says until then.
+    """
+    if static_errors:
+        n = len(static_errors)
+        return f"{n} error{'s' if n != 1 else ''} in the document"
+    return "Checking the preview\u2026"
+
+
+def _check_row(store: dict[str, Any]) -> Any:
+    """The status line and the Fix button, above the preview.
+
+    The button is hidden until an error is reported: pressing it starts a
+    refine draw that quotes the errors back to the model
+    (``on_designer_fix_errors``). Painted from the browser side, never by a
+    re-render, so a settling preview is not replaced under itself.
+    """
+    static_errors: list[str] = store.get("_mock_errors") or []
+    return dmc.Group(
+        [
+            # The disclaimer's register (`dim-line`) so the two lines read as
+            # one block; the colour is the verdict, set inline so it wins over
+            # the class the same way the painter's inline colour does: red
+            # from the first render when the document is already known to be
+            # broken, grey while the browser is still checking.
+            dmc.Text(
+                mock_check_status(static_errors),
+                id="mock-check-status",
+                className="dim-line",
+                style={"color": MOCK_CHECK_FAIL_COLOR} if static_errors else {},
+            ),
+            dmc.Button(
+                "Fix errors",
+                id="btn-designer-fix-errors",
+                variant="outline",
+                color="red",
+                size="sm",
+                style={"display": "inline-block" if static_errors else "none"},
+            ),
+        ],
+        justify="space-between",
+    )
+
 
 _PLACEHOLDER_HTML = (
     "<!DOCTYPE html><html><head><meta charset='utf-8'>"
@@ -481,17 +606,8 @@ def step6_content(store: dict[str, Any], session: dict[str, Any] | None = None) 
         [
             _fullscreen_row(),
             _dim(MOCK_DISCLAIMER),
-            html.Iframe(
-                id="mock-iframe",
-                srcDoc=store.get("mock_html", ""),
-                sandbox="allow-scripts",
-                style={
-                    "width": "100%",
-                    "height": "600px",
-                    "border": "none",
-                    "borderRadius": "8px",
-                },
-            ),
+            _check_row(store),
+            _mock_preview(store),
         ]
     )
     # The Designer run ends here — every draw and refine lands on this
@@ -563,17 +679,8 @@ def step7_content(store: dict[str, Any], image_support: bool | None = None) -> A
     children: list[Any] = [
         _fullscreen_row(),
         _dim(MOCK_DISCLAIMER),
-        html.Iframe(
-            id="mock-iframe",
-            srcDoc=store.get("mock_html", ""),
-            sandbox="allow-scripts",
-            style={
-                "width": "100%",
-                "height": "600px",
-                "border": "none",
-                "borderRadius": "8px",
-            },
-        ),
+        _check_row(store),
+        _mock_preview(store),
         _dim("Describe the changes you'd like."),
         dmc.Textarea(
             id="designer-refine-input",
@@ -833,6 +940,9 @@ def designer_layout(
             "finalized": False,
             "_capture_mode": bool(failed.get("_capture_mode")),
             "_has_existing_html": bool(failed.get("_has_existing_html")),
+            # The store is what re-renders the step, so the error rides it;
+            # the buffer copy is the counter line's, and the retry snapshot's.
+            "_draw_error": failed["error"],
         }
         buffer_data = {"tokens": 0, "progress": 0, "error": failed["error"]}
 
@@ -848,6 +958,10 @@ def designer_layout(
                 storage_type="memory",
                 data=buffer_data,
             ),
+            # What the preview's error shim reported for the mock on screen:
+            # ``{"errors": [...], "ready": bool, "seq": n}``, written from the
+            # page side by ``assets/mock_errors.js`` and read by the fix draw.
+            dcc.Store(id="mock-render-errors", storage_type="memory"),
             # Fires once when a failed draw has just been given a different
             # model, re-running it without asking for another click. Disabled
             # otherwise. `on_gate_continue` cannot start the draw itself — the
@@ -861,8 +975,18 @@ def designer_layout(
             ),
             dcc.Interval(
                 id="mock-stream-interval",
-                interval=250,
+                interval=POLL_MS,
                 disabled=True,
+            ),
+            # Always on while this page is up. A draw outlives the page it was
+            # started from -- this layout is rebuilt from disk on every session
+            # write and browser load, and rebuilt with the poll above off --
+            # so `on_mock_stream_watchdog` looks the round's draw up and turns
+            # the poll back on. Mounted fast so the recovery is prompt; its
+            # first tick slows it to every few seconds.
+            dcc.Interval(
+                id="mock-stream-watchdog",
+                interval=WATCHDOG_FIRST_MS,
             ),
             # D-LR12, reversing D-LR7's "no title, no introduction, no usage
             # accordion". The pipeline row is the title: it marks Designer

@@ -597,6 +597,67 @@ class TestStreamPollReceivedCounter:
         assert result[0]["_stream_received_chars"] is None
 
 
+class TestStreamPollThinkingCounter:
+    """The thinking-chars scalar rides the received-chars channel: surfaced
+    mid-stream, re-rendered when only it advances, cleared on finalisation."""
+
+    def test_not_done_threads_thinking_scalar(self) -> None:
+        session = _session_with_stream()
+        session["messages"][-1] = {"role": "assistant", "content": ""}
+        agent_sess = default_session()
+        agent_sess["_stream_thinking_chars"] = 480
+        entry = {"text": "", "done": False, "session": agent_sess}
+
+        with patch("spec4.callbacks._chat.streaming.get", return_value=entry):
+            result = on_stream_poll(1, session)
+
+        assert result[0] is not no_update
+        assert result[0]["_stream_thinking_chars"] == 480
+
+    def test_not_done_rerenders_when_only_thinking_advances(self) -> None:
+        session = _session_with_stream()
+        session["messages"][-1] = {"role": "assistant", "content": ""}
+        session["_stream_received_chars"] = 0
+        session["_stream_thinking_chars"] = 100
+        agent_sess = default_session()
+        agent_sess["_stream_received_chars"] = 0
+        agent_sess["_stream_thinking_chars"] = 220
+        entry = {"text": "", "done": False, "session": agent_sess}
+
+        with patch("spec4.callbacks._chat.streaming.get", return_value=entry):
+            result = on_stream_poll(1, session)
+
+        assert result[0] is not no_update
+        assert result[0]["_stream_thinking_chars"] == 220
+
+    def test_not_done_no_update_when_nothing_advances(self) -> None:
+        session = _session_with_stream()
+        session["messages"][-1] = {"role": "assistant", "content": ""}
+        session["_stream_received_chars"] = 0
+        session["_stream_thinking_chars"] = 220
+        agent_sess = default_session()
+        agent_sess["_stream_received_chars"] = 0
+        agent_sess["_stream_thinking_chars"] = 220
+        entry = {"text": "", "done": False, "session": agent_sess}
+
+        with patch("spec4.callbacks._chat.streaming.get", return_value=entry):
+            result = on_stream_poll(1, session)
+
+        assert result[0] is no_update
+
+    def test_done_clears_thinking_scalar(self) -> None:
+        session = _session_with_stream()
+        agent_sess = default_session()
+        agent_sess["_display_override"] = None
+        agent_sess["_stream_thinking_chars"] = 999
+        entry = {"text": "final", "done": True, "session": agent_sess}
+
+        with patch("spec4.callbacks._chat.streaming.get", return_value=entry):
+            result = on_stream_poll(1, session)
+
+        assert result[0]["_stream_thinking_chars"] is None
+
+
 class TestStreamPollStatusLine:
     """The one-line status agents publish to session["_stream_status"] is
     surfaced mid-stream and cleared on finalisation, mirroring the

@@ -340,6 +340,25 @@ def _session_counter(
     return _on_chunk, lambda: total[0]
 
 
+def _session_thinking_counter(session: dict[str, Any]) -> Callable[[str], None]:
+    """Build an ``on_thinking`` hook that publishes the thinking counter.
+
+    The sibling of :func:`_session_counter` for thinking text: each delta's
+    length is added to ``session["_stream_thinking_chars"]``, the key the chat
+    poll reads for its "Thinking — N chars" line. Seeded to 0 at once, like
+    the receipt counter, so a stale value from a prior drain never shows.
+    Thinking is never folded into the receipt total: it is not reply text.
+    """
+    total = [0]
+    session["_stream_thinking_chars"] = 0
+
+    def _on_thinking(delta: str) -> None:
+        total[0] += len(delta)
+        session["_stream_thinking_chars"] = total[0]
+
+    return _on_thinking
+
+
 def _log_composition(
     input_candidates: list[Candidate],
     composed: ComposerOutput,
@@ -598,6 +617,7 @@ def _draft_spec(
         vision_grounding=grounding,
         linked_existing_workflow=existing_workflow_for_entry(entry, candidates_data),
         existing_ai_context=_existing_ai_context(code_review) if code_review else "",
+        on_thinking=_session_thinking_counter(session),
     )
 
     spec: dict[str, Any] | None = None
@@ -782,6 +802,7 @@ def finalize_specs(
         llm_config=llm_config,
         topics=topics,
         code_review=session.get("code_review"),
+        on_thinking=_session_thinking_counter(session),
     )
     analysis = yield from _cc_draw_analysis(
         session,
@@ -1090,6 +1111,7 @@ def _handle_cc_ff_review(
             revision_instruction=instruction,
             prior_decisions=decisions,
             code_review=session.get("code_review"),
+            on_thinking=_session_thinking_counter(session),
         )
         yield f"\n\nRevising **{topic}**…\n\n"
         set_status(session, f"Revising cross-cutting topic: {topic}…")
@@ -1362,6 +1384,7 @@ def _cc_rerun_analysis(
         llm_config=llm_config,
         topics=topics,
         code_review=session.get("code_review"),
+        on_thinking=_session_thinking_counter(session),
     )
     analysis = yield from _cc_draw_analysis(
         session,
@@ -1549,6 +1572,7 @@ def begin_priority_phase(
             llm_config,
             carried,
             on_chunk=_on_chunk,
+            on_thinking=_session_thinking_counter(session),
         )
         overlay, outcome = out.overlay, out.outcome
     except Exception as exc:
@@ -1794,6 +1818,7 @@ def _catalog_scout(
             llm_config,
             revision=_scout_revision,
             on_chunk=_on_chunk,
+            on_thinking=_session_thinking_counter(session),
             brownfield=project_manager.session_is_brownfield(session),
             guidance=_guidance,
         )
@@ -1921,7 +1946,13 @@ def _catalog_link(
     # previous turn's total into this turn's accounting.
     _on_chunk, _drained_total = _session_counter(session, seed=chars)
     try:
-        linker_out = _call_linker(candidates, vision, llm_config, on_chunk=_on_chunk)
+        linker_out = _call_linker(
+            candidates,
+            vision,
+            llm_config,
+            on_chunk=_on_chunk,
+            on_thinking=_session_thinking_counter(session),
+        )
         overlay, linker_outcome = linker_out.overlay, linker_out.outcome
     except Exception as exc:
         if _DEV_MODE:
@@ -2005,7 +2036,13 @@ def _catalog_compose(
     # previous turn's total into this turn's accounting.
     _on_chunk, _drained_total = _session_counter(session, seed=chars)
     try:
-        composed = _call_composer(candidates, vision, llm_config, on_chunk=_on_chunk)
+        composed = _call_composer(
+            candidates,
+            vision,
+            llm_config,
+            on_chunk=_on_chunk,
+            on_thinking=_session_thinking_counter(session),
+        )
     except Exception as exc:
         if _DEV_MODE:
             print(
@@ -2181,6 +2218,7 @@ def _catalog_breadth_turn(
                     llm_config,
                     code_review,
                     on_chunk=_on_chunk,
+                    on_thinking=_session_thinking_counter(session),
                     guidance=_ta_guidance,
                 )
             )
@@ -2855,6 +2893,7 @@ def _cc_revise_input(
         revision_instruction=user_input,
         prior_decisions=prior,
         code_review=session.get("code_review"),
+        on_thinking=_session_thinking_counter(session),
     )
     return cc_input
 

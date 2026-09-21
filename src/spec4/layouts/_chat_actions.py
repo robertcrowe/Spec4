@@ -64,12 +64,22 @@ def streamed_token_count(session: dict[str, Any]) -> int:
 
 
 def token_count_text(session: dict[str, Any]) -> str:
-    """Render text for the chars counter, or empty when it shouldn't show."""
+    """Render text for the chars counter, or empty when it shouldn't show.
+
+    Before the first reply character, a model that reasons first shows its
+    thinking count instead of a counter stuck at 0: the thinking is the
+    liveness. Once reply text arrives the received count takes over, whatever
+    the thinking count did.
+    """
     if session.get("active_agent") not in _TOKEN_COUNTER_AGENTS:
         return ""
-    if not session.get("_stream_id") and streamed_token_count(session) == 0:
+    received = streamed_token_count(session)
+    if not session.get("_stream_id") and received == 0:
         return ""
-    return f"Chars received: {streamed_token_count(session)}"
+    thinking = session.get("_stream_thinking_chars")
+    if received == 0 and isinstance(thinking, int) and thinking > 0:
+        return f"Thinking — {thinking} chars"
+    return f"Chars received: {received}"
 
 
 # Two distinct silences, told apart on screen. "no token count" means calls

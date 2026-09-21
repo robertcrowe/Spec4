@@ -25,6 +25,8 @@ from spec4.callbacks.designer._mock_gen import (
     _planning_ctx,
     _start_gen,
     existing_manifest_for_refine,
+    format_mock_errors,
+    mock_error_list,
 )
 
 
@@ -135,6 +137,61 @@ def on_designer_regenerate(  # noqa: PLR0913  # parameters are the callback's In
     pref: str = store.get("preference_text", "")
     if refine_text and refine_text.strip():
         pref = f"{pref}\n\n--- Refinement ---\n{refine_text.strip()}"
+    return _regenerate(store, session, image_support, pref, annotations)
+
+
+@callback(
+    Output("designer-session-store", "data", allow_duplicate=True),
+    Output("mock-stream-buffer", "data", allow_duplicate=True),
+    Output("mock-stream-interval", "disabled", allow_duplicate=True),
+    Input("btn-designer-fix-errors", "n_clicks"),
+    State("mock-render-errors", "data"),
+    State("designer-session-store", "data"),
+    State("session", "data"),
+    State("image-support-store", "data"),
+    prevent_initial_call=True,
+)
+def on_designer_fix_errors(
+    n: int | None,
+    render_errors: Any,
+    store: Any,
+    session: Any,
+    image_support: bool | None,
+) -> Any:
+    """Redraw the mock with its errors quoted back to the model.
+
+    The errors are the document's static defects (``_mock_errors``, found
+    by ``check_mock_html`` at delivery) and what the preview's shim reported
+    (``mock-render-errors``). They go in as a refinement under their own
+    separator, the way a typed refinement goes in under ``--- Refinement ---``:
+    the one place the model already reads instructions, and the same draw
+    as any refine, so the two cannot diverge. Only a click starts it.
+    """
+    if not n or not store:
+        return no_update, no_update, no_update
+    errors = mock_error_list(store, render_errors)
+    if not errors:
+        return no_update, no_update, no_update
+    pref = (
+        f"{store.get('preference_text', '')}\n\n--- Fix render errors ---\n"
+        f"{format_mock_errors(errors)}"
+    )
+    return _regenerate(store, session, image_support, pref, [])
+
+
+def _regenerate(
+    store: dict[str, Any],
+    session: Any,
+    image_support: bool | None,
+    pref: str,
+    annotations: list[str | None],
+) -> Any:
+    """Start a refine draw of the store's mock with ``pref`` as its brief.
+
+    Shared by the Regenerate button and the Fix-errors button so the two
+    compose the draw identically: the refine images with their annotations
+    join the screenshots, the existing HTML and its manifest are the base.
+    """
     refine_images: list[dict[str, str]] = list(store.get("refine_images", []))
     for i, ann in enumerate(annotations or []):
         if i < len(refine_images):
@@ -275,13 +332,10 @@ def on_designer_revise_stale(
     Output("session", "data", allow_duplicate=True),
     Input("btn-designer-retry-model", "n_clicks"),
     State("designer-session-store", "data"),
-    State("mock-stream-buffer", "data"),
     State("session", "data"),
     prevent_initial_call=True,
 )
-def on_designer_retry_model(
-    n: int | None, store: Any, buffer_data: Any, session: Any
-) -> Any:
+def on_designer_retry_model(n: int | None, store: Any, session: Any) -> Any:
     """Open the model picker from a failed draw, keeping the draw recoverable.
 
     Opening the picker writes `session`, which rebuilds the page and re-creates
@@ -292,11 +346,14 @@ def on_designer_retry_model(
     `designer_layout` rebuilds the error panel from it.
 
     Like the chat button, this only opens the fields — Retry still runs the draw.
+
+    The error is read off the store, where the poll writes it (``_draw_error``)
+    so the step re-renders; the buffer's copy is the counter line's.
     """
     if not n or not store:
         return no_update
     session = session or {}
-    error = (buffer_data or {}).get("error")
+    error = store.get("_draw_error")
     if not error:
         return no_update
     snapshot = {

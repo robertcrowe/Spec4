@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypedDict
@@ -639,6 +640,12 @@ def _designer_accumulate_tool_calls(
                 tool_call_acc[i]["arguments"] += tc.function.arguments
 
 
+# Prefix on a yielded chunk that carries thinking text rather than output. The
+# worker counts these and keeps them out of the HTML buffer: a reasoning
+# summary can quote HTML, and must never reach extraction.
+THINKING_MARK = "__THINKING__:"
+
+
 def _designer_llm_config(
     model: str,
     effort: str,
@@ -646,7 +653,12 @@ def _designer_llm_config(
     api_base: str | None,
     extra_kwargs: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """The per-attempt LiteLLM config for a mock draw."""
+    """The per-attempt LiteLLM config for a mock draw.
+
+    "default" is passed through as it is: the substitution of
+    ``llm.DEFAULT_THINKING_EFFORT`` on a model that accepts the parameter is
+    the shared builder's rule, not this draw's.
+    """
     llm_config: dict[str, Any] = {"model": model, "effort": effort}
     if api_key:
         llm_config["api_key"] = api_key
@@ -704,6 +716,32 @@ def collect_ui_source_files(project_root: Path) -> list[str]:
 _DEBUG_LOGGED_CHUNKS = 3
 
 
+def _designer_thinking_marks(delta: Any) -> Iterator[str]:
+    """The ``THINKING_MARK`` chunk for a delta's reasoning text, if it has any.
+
+    A generator rather than a branch so the draw's loop, already at the
+    complexity limit, takes it with ``yield from``.
+    """
+    text = llm.reasoning_text(delta)
+    if text:
+        yield THINKING_MARK + text
+
+
+def _designer_log_ttft(chunk_count: int, started: float) -> None:
+    """On the first chunk, print the draw's time-to-first-token.
+
+    The same line ``llm.complete_stream`` prints, and the number
+    ``llm.DESIGNER_STREAM_TIMEOUT``'s read bound is tuned from. Called on every
+    chunk so the draw's loop, already at the complexity limit, gains no branch.
+    """
+    if chunk_count != 1:
+        return
+    print(
+        f"[llm-ttft] designer: first chunk after {time.monotonic() - started:.1f}s",
+        flush=True,
+    )
+
+
 def generate_mock_streaming(  # noqa: PLR0913  # the mock-generation contract, shared verbatim with callbacks/designer/_mock_gen.py
     session: DesignerSession,
     model: str,
@@ -746,14 +784,20 @@ def generate_mock_streaming(  # noqa: PLR0913  # the mock-generation contract, s
             extra: dict[str, Any] = {"tools": tools} if tools else {}
 
             # Routed through spec4.llm so the mock draw is captured in the
-            # round's usage log alongside the chat agents' calls.
+            # round's usage log alongside the chat agents' calls. The timeout
+            # is explicit because LiteLLM's default (600 s) is shorter than
+            # this draw's time-to-first-token can be; ``stop_event`` is only
+            # checked per chunk, so a Start Over during that silence leaves
+            # the thread waiting until the read bound trips.
             response = llm.stream_completion(
                 llm_config=llm_config,
                 messages=messages,
                 agent_name="designer",
+                timeout=llm.DESIGNER_STREAM_TIMEOUT,
                 **extra,
             )
             logger.debug("Awaiting first output token")
+            started = time.monotonic()
 
             full_text = ""
             tool_call_acc: dict[int, dict[str, str]] = {}
@@ -762,6 +806,7 @@ def generate_mock_streaming(  # noqa: PLR0913  # the mock-generation contract, s
 
             for chunk in response:
                 chunk_count += 1
+                _designer_log_ttft(chunk_count, started)
                 if stop_event is not None and stop_event.is_set():
                     return
 
@@ -787,6 +832,7 @@ def generate_mock_streaming(  # noqa: PLR0913  # the mock-generation contract, s
                 if content:
                     full_text += content
                     yield content
+                yield from _designer_thinking_marks(delta)
 
                 if tc_deltas:
                     _designer_accumulate_tool_calls(tool_call_acc, tc_deltas)

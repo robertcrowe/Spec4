@@ -63,6 +63,10 @@ class ComposerInput:
     # arrives, so the orchestrator can publish liveness while the response is
     # drained internally. ``None`` drains silently (the prior behavior).
     on_chunk: Callable[[str], None] | None = field(default=None)
+    # Thinking hook: the same shape, for the model's reasoning text
+    # (``llm.reasoning_text``), which is counted on screen but never part of
+    # the drained reply. ``None`` drops it.
+    on_thinking: Callable[[str], None] | None = field(default=None)
 
 
 @dataclass
@@ -106,12 +110,13 @@ def _union_features(members: list[Candidate]) -> list[str]:
     return seen
 
 
-def _synthesize_head_description(
+def _synthesize_head_description(  # noqa: PLR0913  # the head-synthesis call contract: the group, its config, and the two stream hooks
     coordinator: str,
     members: list[Candidate],
     vision_features: list[str],
     llm_config: dict[str, Any],
     on_chunk: Callable[[str], None] | None = None,
+    on_thinking: Callable[[str], None] | None = None,
 ) -> str | None:
     """The one generative act: write a headless coordinator's description.
 
@@ -135,6 +140,7 @@ def _synthesize_head_description(
                 {"role": "user", "content": user_content},
             ],
             agent_name="composer",
+            on_thinking=on_thinking,
         ):
             buf.append(delta)
             if on_chunk is not None:
@@ -225,7 +231,12 @@ class ComposerAgent:
             # Headless group (>=2 guaranteed by the parser). Crown it.
             vision_features = _union_features(members)
             desc = _synthesize_head_description(
-                label, members, vision_features, input.llm_config, input.on_chunk
+                label,
+                members,
+                vision_features,
+                input.llm_config,
+                input.on_chunk,
+                input.on_thinking,
             )
             if desc is None:
                 # Present flat — detach so the members stand alone. Nothing lost.

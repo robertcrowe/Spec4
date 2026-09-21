@@ -524,6 +524,29 @@ class TestOnChunk:
         assert seen == deltas
         assert len(output.candidates) == 2
 
+    def test_on_thinking_receives_reasoning_and_on_chunk_does_not(self) -> None:
+        import asyncio
+
+        seen: list[str] = []
+        thought: list[str] = []
+        inp = ScoutInput(
+            vision=_SAMPLE_VISION,
+            llm_config=_LLM_CONFIG,
+            on_chunk=seen.append,
+            on_thinking=thought.append,
+        )
+
+        def fake_stream(**kw: Any) -> Any:
+            for piece in ("plan", " more"):
+                kw["on_thinking"](piece)
+            return iter([_SAMPLE_CANDIDATES_JSON])
+
+        with patch("spec4.agentifier.scout.complete_stream", side_effect=fake_stream):
+            output = asyncio.run(ScoutAgent().run(inp))
+        assert thought == ["plan", " more"]
+        assert seen == [_SAMPLE_CANDIDATES_JSON]
+        assert output.candidates
+
     def test_on_chunk_default_none_drains_silently(self) -> None:
         import asyncio
 

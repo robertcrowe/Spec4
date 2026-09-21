@@ -10,10 +10,78 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
-## [1.5.1] — unreleased
+## [1.5.2] — 2026-09-21
 
-Prompt caching, and the reporting to tell whether it is working. Present in the
-working tree, not yet committed or tagged.
+Designer reliability: the finished mock reaches the screen, the screen says
+what the model is doing while it draws, and a drawn mock is checked before
+you approve it. Also carries the prompt-caching work below, which the 1.5.1
+tag missed.
+
+### Added
+- **The drawn mock is checked, and its errors go back to the model.** Two
+  deterministic layers. On the server, the extracted document is checked for
+  truncation at the 512 kB cap, a document that does not close, unbalanced
+  `<script>` or `<style>` tags, and an unterminated template literal. In the
+  browser, the preview iframe runs the mock with a one-line error reporter
+  injected after `<head>` (line numbers unchanged, the saved `mock.html`
+  untouched) that captures thrown errors, unhandled promise rejections and
+  failed resource loads. A status line above the preview reads "Checking the
+  preview…", then "Rendered cleanly" in the accent or "N errors in the mock —
+  the model can fix them" in red, with a **Fix errors** button that starts a
+  refine draw quoting the errors back to the model under a
+  `--- Fix render errors ---` separator. Nothing runs without the click. No
+  new runtime dependency: the checking browser is your own.
+- **Thinking is visible.** Reasoning text is counted as it streams: the chat
+  counter reads "Thinking — N chars" until the first reply character, and
+  Designer's shows it while waiting for the first output. On a model that
+  accepts `reasoning_effort`, "default" now sends `medium` rather than
+  nothing, which bounds the silent adaptive thinking and makes the summaries
+  stream (`llm.DEFAULT_THINKING_EFFORT`).
+- **A mid-stream pause is legible.** After 15 seconds without a chunk the
+  Designer counter says so — "Chars received: 12345 — thinking, 8901 chars
+  (no output for 2 min 10 s)" — instead of sitting still, which read exactly
+  like the delivery bug below.
+- **A draw outlives the page it started from.** A watchdog interval re-arms
+  the Designer poll after a page rebuild (a reload, a model change, a tab the
+  browser discarded during a long wait), so the mock the thread went on to
+  save is delivered rather than lost.
+- Explicit stall bounds per call kind: 600 s between chunks for a chat turn,
+  1800 s for a mock draw, whose time-to-first-token on a reasoning model had
+  been observed past LiteLLM's 600 s fallback.
+
+### Fixed
+- **The finished mock was never displayed** on a long draw: the counter froze
+  mid-stream, the server printed `mock delivered` over and over, and the page
+  stayed on the progress bar. Cause, verified in dash-renderer 4.1.0: it keeps
+  the newer of two in-flight requests of the same callback and discards the
+  older one's response, so a poll response slower than the 250 ms interval
+  never landed, and neither did anything after it. The delivery response
+  carried the mock twice, up to a megabyte, and could not fit. The poll now
+  runs at 500 ms, slows itself to 2 s with a small response before sending
+  the mock, re-delivers at that cadence until the browser acknowledges, and
+  the step renderer no longer makes a server round trip on every buffer
+  tick. The duplicate payload and its clientside copy are gone.
+- Start Over now deletes the round's `design/` files as well as the store;
+  `designer_layout` rebuilds the store from `session.json` on every render and
+  was putting the old mock straight back on screen.
+
+### Changed
+- The API-key notice in the setup wizard reads "Stored in this browser only."
+
+### Notes
+- The `v1.5.1` tag sits on the commit *before* the 1.5.1 version bump, so
+  none of the prompt-caching work listed under 1.5.1 reached users at that
+  tag. It ships here. Stated rather than smoothed over, like the two
+  irregularities in the preamble.
+- One pydantic warning from litellm's `ChatCompletionReasoningItem` (a
+  `ReadOnly` TypedDict item it cannot enforce) is filtered in the test
+  configuration, so a warning in the suite's summary is one of ours.
+
+## [1.5.1] — 2026-09-17
+
+Prompt caching, and the reporting to tell whether it is working. The tag
+predates the bump commit (see the 1.5.2 notes): these changes reached users
+in 1.5.2.
 
 ### Added
 - Prompt caching for Anthropic and Bedrock, behind the `SPEC4_PROMPT_CACHING`
@@ -135,7 +203,8 @@ first commit to the eve of 1.0.0. The commit record there is too thin to
 summarise honestly — several releases are a single `cleanup` or `lock` commit,
 and tags are missing for 0.1.0–0.1.3 and 0.1.5. Use `git log` for that period.
 
-[1.5.1]: https://github.com/robertcrowe/Spec4/compare/v1.5.0...HEAD
+[1.5.2]: https://github.com/robertcrowe/Spec4/compare/v1.5.1...v1.5.2
+[1.5.1]: https://github.com/robertcrowe/Spec4/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/robertcrowe/Spec4/compare/v1.0.0...v1.5.0
 [1.1.0]: https://github.com/robertcrowe/Spec4/compare/v1.0.0...cb9f9ae
 [1.0.0]: https://github.com/robertcrowe/Spec4/releases/tag/v1.0.0

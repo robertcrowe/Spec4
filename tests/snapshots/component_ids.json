@@ -966,8 +966,10 @@
       "designer-session-store",
       "designer-step-content",
       "designer-stepper",
+      "mock-render-errors",
       "mock-stream-buffer",
-      "mock-stream-interval"
+      "mock-stream-interval",
+      "mock-stream-watchdog"
     ],
     "pattern_types": [
       "agent-pill"
@@ -981,8 +983,10 @@
       "designer-session-store",
       "designer-step-content",
       "designer-stepper",
+      "mock-render-errors",
       "mock-stream-buffer",
-      "mock-stream-interval"
+      "mock-stream-interval",
+      "mock-stream-watchdog"
     ],
     "pattern_types": [
       "agent-pill"
@@ -996,8 +1000,10 @@
       "designer-session-store",
       "designer-step-content",
       "designer-stepper",
+      "mock-render-errors",
       "mock-stream-buffer",
-      "mock-stream-interval"
+      "mock-stream-interval",
+      "mock-stream-watchdog"
     ],
     "pattern_types": [
       "agent-pill"
@@ -1083,8 +1089,10 @@
   "designer: step 6": {
     "ids": [
       "btn-designer-approve",
+      "btn-designer-fix-errors",
       "btn-designer-refine",
       "btn-designer-start-over",
+      "mock-check-status",
       "mock-fullscreen-btn",
       "mock-iframe"
     ],
@@ -1093,8 +1101,10 @@
   "designer: step 6 (finalized)": {
     "ids": [
       "btn-designer-continue-stack",
+      "btn-designer-fix-errors",
       "btn-designer-refine",
       "btn-designer-start-over",
+      "mock-check-status",
       "mock-fullscreen-btn",
       "mock-iframe"
     ],
@@ -1103,9 +1113,11 @@
   "designer: step 6 (stale)": {
     "ids": [
       "btn-designer-approve",
+      "btn-designer-fix-errors",
       "btn-designer-refine",
       "btn-designer-revise-stale",
       "btn-designer-start-over",
+      "mock-check-status",
       "mock-fullscreen-btn",
       "mock-iframe"
     ],
@@ -1113,10 +1125,12 @@
   },
   "designer: step 7": {
     "ids": [
+      "btn-designer-fix-errors",
       "btn-designer-refine-cancel",
       "btn-designer-regenerate",
       "designer-refine-input",
       "designer-refine-upload",
+      "mock-check-status",
       "mock-fullscreen-btn",
       "mock-iframe"
     ],
@@ -1127,10 +1141,12 @@
   },
   "designer: step 7 (no image support)": {
     "ids": [
+      "btn-designer-fix-errors",
       "btn-designer-refine-cancel",
       "btn-designer-regenerate",
       "designer-refine-input",
       "designer-refine-upload",
+      "mock-check-status",
       "mock-fullscreen-btn",
       "mock-iframe"
     ],

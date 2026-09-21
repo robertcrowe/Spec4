@@ -43,6 +43,7 @@ def stub_prioritizer() -> Iterator[MagicMock]:
         llm_config: dict[str, Any],
         carried_forward: list[dict[str, Any]],
         on_chunk: Any = None,
+        on_thinking: Any = None,
     ) -> PrioritizerOutput:
         overlay = {f["name"]: "mvp" for f in features if f.get("name")}
         return PrioritizerOutput(overlay=overlay, outcome=PrioritizerOutcome.OK)

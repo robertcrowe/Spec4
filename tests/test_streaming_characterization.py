@@ -30,6 +30,8 @@ from dash import no_update
 
 from spec4 import llm, project_manager, streaming
 from spec4.callbacks import designer as dmod
+from spec4.callbacks.designer._mock_gen import DELIVERY_MS
+from spec4.layouts.designer import POLL_MS
 from spec4.callbacks import on_stream_poll
 from spec4.session import default_session as _default_session
 from spec4.streaming import _format_error
@@ -422,7 +424,16 @@ class TestMockBuffers:
 
         assert set(dmod._MOCK_BUFFERS) == {gen_id}
         entry = dmod._MOCK_BUFFERS[gen_id]
-        assert set(entry) == {"done", "stop", "text", "expected_chars"}
+        assert set(entry) == {
+            "done",
+            "stop",
+            "text",
+            "expected_chars",
+            "design_dir",
+            "started",
+            "thinking_chars",
+            "last_chunk_at",
+        }
         assert entry["done"] is False
         assert isinstance(entry["stop"], threading.Event)
         assert not entry["stop"].is_set()
@@ -434,9 +445,10 @@ class TestMockBuffers:
         # Mid-stream: text accumulates, the poll reports progress and nothing else.
         gated.release(0)
         _wait_until(lambda: entry["text"] == "<!DOCTYPE html>")
-        buf, new_store, disabled = dmod.on_mock_stream_poll(1, store)
+        buf, new_store, disabled, interval = dmod.on_mock_stream_poll(1, store)
         assert new_store is no_update
         assert disabled is no_update
+        assert interval == POLL_MS
         assert buf["tokens"] == len("<!DOCTYPE html>")
         # Integer percent of the expected size, so a short stream reads 0%.
         assert buf["progress"] == min(
@@ -455,36 +467,59 @@ class TestMockBuffers:
         saved = project_manager.get_version_dir(tmp_path, 1) / "design" / "mock.html"
         assert saved.read_text() == _HTML
 
-        # First delivery tick at step 5: payload out, buffer kept, counter at 1.
-        buf, new_store, disabled = dmod.on_mock_stream_poll(2, store)
+        self._deliver_and_acknowledge(entry, store, gen_id)
+
+    def _deliver_and_acknowledge(
+        self, entry: dict[str, Any], store: dict[str, Any], gen_id: str
+    ) -> None:
+        """The second half of the flow above: from the finished mock to the ack."""
+        # First sight of the finished mock at step 5: the poll slows itself to
+        # the delivery cadence and sends nothing large; the buffer is kept.
+        buf, new_store, disabled, interval = dmod.on_mock_stream_poll(2, store)
+        assert new_store is no_update
         assert disabled is no_update
+        assert interval == DELIVERY_MS
+        assert entry["slowed"] is True
+        assert "delivered" not in entry
+        assert buf["tokens"] == len(entry["text"])
+        assert buf["progress"] == min(
+            99, len(entry["text"]) * 100 // dmod._DEFAULT_EXPECTED_CHARS
+        )
+        assert buf["error"] is None
+
+        # First delivery tick: payload out, buffer kept, counter at 1.
+        buf, new_store, disabled, interval = dmod.on_mock_stream_poll(3, store)
+        assert disabled is no_update
+        assert interval == DELIVERY_MS
         assert entry["delivered"] == 1
         assert set(dmod._MOCK_BUFFERS) == {gen_id}
         assert new_store["step"] == 6
         assert new_store["mock_html"] == _HTML
         assert new_store["_gen_id"] == gen_id
-        assert buf == {
-            "tokens": len(_HTML),
-            "progress": 100,
-            "error": None,
-            "complete": new_store,
-        }
+        assert buf == {"tokens": len(_HTML), "progress": 100, "error": None}
 
         # Second unacknowledged tick: identical payload, counter at 2.
-        buf2, new_store2, _ = dmod.on_mock_stream_poll(3, store)
+        buf2, new_store2, _, _ = dmod.on_mock_stream_poll(4, store)
         assert new_store2 == new_store
         assert buf2 == buf
         assert entry["delivered"] == 2
 
-        # Acknowledgement (store moved off step 5): buffer popped, interval off.
-        buf3, new_store3, disabled3 = dmod.on_mock_stream_poll(4, new_store)
+        # Acknowledgement (store moved off step 5): buffer popped, interval
+        # off and back at the running cadence, nothing written to the buffer.
+        buf3, new_store3, disabled3, interval3 = dmod.on_mock_stream_poll(5, new_store)
         assert new_store3 is no_update
         assert disabled3 is True
-        assert buf3 == {"tokens": len(_HTML), "progress": 100, "error": None}
+        assert interval3 == POLL_MS
+        assert buf3 is no_update
         assert dmod._MOCK_BUFFERS == {}
 
         # A poll for a gone buffer is a no-op that stops the interval.
-        assert dmod.on_mock_stream_poll(5, new_store) == (no_update, no_update, True)
+        assert dmod.on_mock_stream_poll(6, new_store) == (
+            no_update,
+            no_update,
+            True,
+            POLL_MS,
+        )
 
     def test_an_error_sentinel_pops_the_buffer(
         self, monkeypatch: Any, tmp_path: pathlib.Path
@@ -495,10 +530,12 @@ class TestMockBuffers:
         gated.release(0)
         gated.finish.set()
         _wait_until(lambda: dmod._MOCK_BUFFERS[gen_id].get("done") is True)
-        buf, new_store, disabled = dmod.on_mock_stream_poll(1, store)
+        buf, new_store, disabled, interval = dmod.on_mock_stream_poll(1, store)
         assert buf == {"error": "bad"}
-        assert new_store is no_update
+        # The store carries the error too: it is what re-renders the step.
+        assert new_store == {**store, "_draw_error": "bad"}
         assert disabled is True
+        assert interval == POLL_MS
         assert dmod._MOCK_BUFFERS == {}
 
     def test_no_html_document_becomes_an_error_sentinel(
@@ -513,7 +550,7 @@ class TestMockBuffers:
         entry = dmod._MOCK_BUFFERS[gen_id]
         assert "final_html" not in entry
         assert "__GENERATION_ERROR__:" in entry["text"]
-        buf, _, disabled = dmod.on_mock_stream_poll(1, store)
+        buf, _, disabled, _ = dmod.on_mock_stream_poll(1, store)
         assert buf["error"].startswith("The model did not return a valid HTML")
         assert disabled is True
         assert dmod._MOCK_BUFFERS == {}
@@ -529,7 +566,12 @@ class TestMockBuffers:
         _wait_until(lambda: dmod._MOCK_BUFFERS[gen_id].get("done") is True)
         entry = dmod._MOCK_BUFFERS[gen_id]
         assert "final_html" not in entry
-        assert dmod.on_mock_stream_poll(1, store) == (no_update, no_update, True)
+        assert dmod.on_mock_stream_poll(1, store) == (
+            no_update,
+            no_update,
+            True,
+            POLL_MS,
+        )
         assert dmod._MOCK_BUFFERS == {}
 
     def test_a_new_generation_stops_and_drops_the_previous_one(
@@ -564,8 +606,10 @@ class TestMockBuffers:
         gated.finish.set()
         _wait_until(lambda: dmod._MOCK_BUFFERS[gen_id].get("done") is True)
         dmod._MOCK_BUFFERS[gen_id]["delivered"] = dmod._MAX_DELIVERY_TICKS
-        buf, new_store, disabled = dmod.on_mock_stream_poll(1, store)
+        dmod._MOCK_BUFFERS[gen_id]["slowed"] = True
+        buf, new_store, disabled, _ = dmod.on_mock_stream_poll(1, store)
         assert "Refresh the page" in buf["error"]
-        assert new_store is no_update
+        assert new_store["_draw_error"] == buf["error"]
+        assert new_store["step"] == 5
         assert disabled is True
         assert dmod._MOCK_BUFFERS == {}

@@ -1,6 +1,6 @@
 [project]
 name = "spec4"
-version = "1.5.1"
+version = "1.5.2"
 description = "AI-assisted software project planning — from idea to executable coding phases"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -89,6 +89,14 @@ select = ["E", "F", "C90", "PLR0912", "PLR0913", "PLR0915", "PLR2004", "SIM", "B
 # evals/ is outside the Rule 6 gate for linting and is now outside collection
 # too. See cleanup-complete:CLEANUP_INVENTORY.md 50.0(e) and 50.5(b).
 testpaths = ["tests"]
+# litellm's ``ChatCompletionReasoningItem`` marks ``summary`` PEP 705 ``ReadOnly``;
+# pydantic 2.12 warns, once, when it first builds the schema for litellm's
+# ``Message`` model, that it cannot enforce that on a plain dict. Third-party on
+# both sides and nothing the suite can act on. Filtered by message so the warnings
+# summary stays empty -- a warning that appears there is then one of ours.
+filterwarnings = [
+    "ignore:Item 'summary' on TypedDict class 'ChatCompletionReasoningItem':UserWarning",
+]
 
 [tool.mypy]
 python_version = "3.12"

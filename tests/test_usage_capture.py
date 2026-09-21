@@ -731,7 +731,10 @@ class TestSaveUsageReadModifyWrite:
         # capture -> sink -> persist funnel path.
         session = {**default_session(), "working_dir": str(tmp_path)}
         anthropic_cfg = {"model": "claude-sonnet-4-5-20250929", "api_key": "k"}
-        _stream_one("phaser", 300, 50, cfg=anthropic_cfg)
+        # The probe is pinned off so the record carries "default": this test
+        # is about the file merge, not the effort rule (that is in test_llm).
+        with patch("spec4.llm.litellm.get_supported_openai_params", return_value=[]):
+            _stream_one("phaser", 300, 50, cfg=anthropic_cfg)
         persist_artifacts(session)
 
         data = project_manager.load_usage(tmp_path, 0)

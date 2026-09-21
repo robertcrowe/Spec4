@@ -7,14 +7,14 @@ a human-readable Markdown display for the chat window.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from spec4.agentifier.grounding import render_grounding_for_prompt
 from spec4.agentifier.pattern_loader import MechanismPattern, TierPattern
 from spec4.agentifier.subagents import validate_dataclass_input
-from spec4.llm import LLM_STREAM_TIMEOUT, acomplete
+from spec4.llm import LLM_STREAM_TIMEOUT, acomplete, reasoning_text
 
 # Maps tier name → position on the ladder (1 = cheapest).
 _TIER_ORDER: dict[str, int] = {
@@ -53,6 +53,10 @@ class SpecDrafterInput:
 
     revision_instruction: str | None = field(default=None)
     """Non-None when the user asked to revise a previously drafted spec."""
+
+    on_thinking: Callable[[str], None] | None = field(default=None)
+    """Receives each thinking delta (``llm.reasoning_text``) as it arrives, for
+    the chat's thinking counter; never part of the drained output."""
 
     vision_grounding: dict[str, Any] | None = field(default=None)
     """Product features this AI feature serves, from Brainstormer's confirmed
@@ -384,6 +388,11 @@ class SpecDrafterAgent:
             timeout=LLM_STREAM_TIMEOUT,
         )
         async for chunk in response:
-            delta = (chunk.choices[0].delta.content or "") if chunk.choices else ""
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta.content or ""
             if delta:
                 yield delta
+            thinking = reasoning_text(chunk.choices[0].delta)
+            if thinking and input.on_thinking is not None:
+                input.on_thinking(thinking)

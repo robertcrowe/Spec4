@@ -151,6 +151,7 @@ def _call_scout(  # noqa: PLR0913  # the Scout call contract, threaded straight 
     llm_config: dict[str, Any],
     revision: dict[str, Any] | None = None,
     on_chunk: Callable[[str], None] | None = None,
+    on_thinking: Callable[[str], None] | None = None,
     brownfield: bool = False,
     guidance: dict[str, Any] | None = None,
 ) -> ScoutOutput:
@@ -167,6 +168,7 @@ def _call_scout(  # noqa: PLR0913  # the Scout call contract, threaded straight 
         llm_config=llm_config,
         revision=revision,
         on_chunk=on_chunk,
+        on_thinking=on_thinking,
         brownfield=brownfield,
         guidance=guidance,
     )
@@ -217,6 +219,7 @@ def _call_linker(
     vision: dict[str, Any],
     llm_config: dict[str, Any],
     on_chunk: Callable[[str], None] | None = None,
+    on_thinking: Callable[[str], None] | None = None,
 ) -> LinkerOutput:
     """Invoke the Linker synchronously via the registry, returning its output."""
     li = LinkerInput(
@@ -224,6 +227,7 @@ def _call_linker(
         vision_purpose=_vision_purpose(vision),
         llm_config=llm_config,
         on_chunk=on_chunk,
+        on_thinking=on_thinking,
     )
     linker_output: LinkerOutput = asyncio.run(_registry.run("linker", li))
     return linker_output
@@ -234,6 +238,7 @@ def _call_composer(
     vision: dict[str, Any],
     llm_config: dict[str, Any],
     on_chunk: Callable[[str], None] | None = None,
+    on_thinking: Callable[[str], None] | None = None,
 ) -> ComposerOutput:
     """Invoke Composer synchronously via the registry."""
     ci = ComposerInput(
@@ -241,17 +246,19 @@ def _call_composer(
         vision=vision,
         llm_config=llm_config,
         on_chunk=on_chunk,
+        on_thinking=on_thinking,
     )
     composer_output: ComposerOutput = asyncio.run(_registry.run("composer", ci))
     return composer_output
 
 
-def _call_prioritizer(
+def _call_prioritizer(  # noqa: PLR0913  # the Prioritizer call contract, threaded straight through
     features: list[dict[str, Any]],
     vision: dict[str, Any],
     llm_config: dict[str, Any],
     carried_forward: list[dict[str, Any]],
     on_chunk: Callable[[str], None] | None = None,
+    on_thinking: Callable[[str], None] | None = None,
 ) -> PrioritizerOutput:
     """Invoke the Prioritizer synchronously via the registry, returning its output."""
     pi = PrioritizerInput(
@@ -261,6 +268,7 @@ def _call_prioritizer(
         carried_forward=carried_forward,
         mvp_vision_features=vision_mvp_feature_names(vision),
         on_chunk=on_chunk,
+        on_thinking=on_thinking,
     )
     prioritizer_output: PrioritizerOutput = asyncio.run(
         _registry.run("prioritizer", pi)
@@ -268,11 +276,12 @@ def _call_prioritizer(
     return prioritizer_output
 
 
-def _call_tier_analyst(
+def _call_tier_analyst(  # noqa: PLR0913  # the TierAnalyst call contract, threaded straight through
     candidate: Candidate,
     llm_config: dict[str, Any],
     code_review: dict[str, Any] | None = None,
     on_chunk: Callable[[str], None] | None = None,
+    on_thinking: Callable[[str], None] | None = None,
     guidance: list[str] | None = None,
 ) -> TierAnalystOutput:
     """Invoke TierAnalyst synchronously via the registry.
@@ -289,6 +298,7 @@ def _call_tier_analyst(
         mechanism_patterns=mechanisms,
         guidance=list(guidance or []),
         on_chunk=on_chunk,
+        on_thinking=on_thinking,
     )
     tier_output: TierAnalystOutput = asyncio.run(
         _registry.run("tier_analyst", ta_input)

@@ -20,7 +20,7 @@ import logging
 import os
 import threading
 import time
-from collections.abc import AsyncIterator, Generator
+from collections.abc import AsyncIterator, Callable, Generator
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -40,7 +40,10 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterable, Iterable
 
 __all__ = [
+    "DEFAULT_THINKING_EFFORT",
+    "DESIGNER_STREAM_TIMEOUT",
     "LLM_STREAM_TIMEOUT",
+    "LLM_TURN_TIMEOUT",
     "WEB_SEARCH_ADDENDUM",
     "WEB_SEARCH_TOOL",
     "SearchConfig",
@@ -49,6 +52,7 @@ __all__ = [
     "complete",
     "complete_stream",
     "drain_usage_records",
+    "reasoning_text",
     "search",
     "stream_completion",
     "stream_turn",
@@ -66,6 +70,24 @@ logger = logging.getLogger(__name__)
 # the supported model range (floor: claude-haiku-4-5); tune it from the
 # [llm-ttft] log lines, not by guessing.
 LLM_STREAM_TIMEOUT = httpx.Timeout(connect=15.0, read=180.0, write=30.0, pool=15.0)
+
+# The interactive turn's stall bound (``stream_turn``). Before it was explicit
+# a chat turn ran on LiteLLM's 600 s fallback, a bare float; this keeps that
+# read bound and adds the connect/write/pool ones. The three bounds form a
+# ladder: 180 s for the drained sub-agent calls above, 600 s here, 1800 s for
+# the mock draw below -- each tuned from the [llm-ttft] lines, never guessed.
+LLM_TURN_TIMEOUT = httpx.Timeout(connect=15.0, read=600.0, write=30.0, pool=15.0)
+
+# The mock draw's own stall bound. Same shape as ``LLM_STREAM_TIMEOUT`` -- the
+# read bound is silence between chunks, not total time -- but the draw's
+# time-to-first-token has been observed in the tens of minutes on models that
+# reason at length before writing, and with no explicit value LiteLLM applies
+# its 600 s fallback as a bare float, cutting those draws off before the first
+# byte. Thirty minutes is the ceiling on silence, not a target: a draw that
+# streams stays alive however long it takes.
+DESIGNER_STREAM_TIMEOUT = httpx.Timeout(
+    connect=15.0, read=1800.0, write=30.0, pool=15.0
+)
 
 
 def build_system_prompt(base: str, search_config: SearchConfig | str | None) -> str:
@@ -112,6 +134,15 @@ def is_tool_incompatible_error(exc: Exception) -> bool:
 # imports this module and the reverse edge would be a cycle. A test pins the
 # two equal.
 _DEFAULT_EFFORT = "default"
+
+# What "default" becomes on a model that accepts ``reasoning_effort``. On the
+# models that think whenever nothing is sent (Claude Opus 5, Sonnet 5, Fable 5)
+# "send nothing" meant adaptive thinking at the API's own depth: minutes of
+# silence on a large prompt, with the thinking text omitted from the stream.
+# Sending a level bounds the thinking and makes LiteLLM ask for the summaries.
+# A parameter check rather than a table of those models, so a new generation
+# needs no new row; the models that would not otherwise think get a little.
+DEFAULT_THINKING_EFFORT = "medium"
 
 # Message fragments that mark a rejected *value*. Deliberately broad: a level
 # the fallback fails to recognise costs a failed run, while one it recognises
@@ -313,6 +344,34 @@ def _prompt_caching_enabled(llm_config: dict[str, Any]) -> bool:
     return provider in _CACHE_MARKER_PROVIDERS
 
 
+def _apply_effort(llm_config: dict[str, Any], kwargs: dict[str, Any]) -> None:
+    """Put the effort on ``kwargs`` -- the rule the builder's docstring states.
+
+    A chosen level is sent as ``reasoning_effort`` with ``drop_params``.
+    "default" sends nothing, unless LiteLLM confirms the model accepts the
+    parameter, in which case ``DEFAULT_THINKING_EFFORT`` is sent *without*
+    ``drop_params`` -- the parameter is known to be accepted, and
+    ``drop_params`` would also drop ``tools`` silently on a model LiteLLM
+    believes lacks them. A caller's own ``reasoning_effort`` in ``kwargs``
+    is kept.
+    """
+    effort = str(llm_config.get("effort") or _DEFAULT_EFFORT)
+    substituted = False
+    if (
+        effort == _DEFAULT_EFFORT
+        and supports_reasoning_effort(str(kwargs["model"])) is True
+    ):
+        effort, substituted = DEFAULT_THINKING_EFFORT, True
+    if effort != _DEFAULT_EFFORT:
+        kwargs.setdefault("reasoning_effort", effort)
+    if "reasoning_effort" in kwargs and not substituted:
+        # Scoped to calls that actually carry an effort rather than set once
+        # for every request: `drop_params` makes LiteLLM discard *any*
+        # unsupported parameter silently, and a blanket setting would also
+        # swallow the tool rejection `stream_turn`'s retry depends on seeing.
+        kwargs["drop_params"] = True
+
+
 def _build_completion_kwargs(
     llm_config: dict[str, Any],
     messages: list[dict[str, Any]],
@@ -332,9 +391,15 @@ def _build_completion_kwargs(
     Effort is the one field read out of ``llm_config`` under a different name
     than it is sent: it is stored as ``effort`` and transmitted as LiteLLM's
     ``reasoning_effort``. ``"default"`` means *send nothing* — the parameter is
-    omitted entirely rather than sent as the string "default". This is the only
-    mechanism by which effort ever reaches a provider; no provider-specific
-    thinking or budget parameter is ever constructed (project constraint).
+    omitted entirely rather than sent as the string "default" — except on a
+    model LiteLLM confirms accepts the parameter, where it means
+    ``DEFAULT_THINKING_EFFORT`` (see the note on that constant). A substituted
+    level is sent without ``drop_params``: the parameter is known to be
+    accepted, and ``drop_params`` would also silently drop ``tools`` on a model
+    LiteLLM believes lacks them, defeating the tool rejection ``stream_turn``'s
+    retry depends on seeing. This is the only mechanism by which effort ever
+    reaches a provider; no provider-specific thinking or budget parameter is
+    ever constructed (project constraint).
 
     Prompt caching rides the same rule. On a provider in
     ``_CACHE_MARKER_PROVIDERS`` — and unless ``SPEC4_PROMPT_CACHING`` turns it
@@ -360,15 +425,7 @@ def _build_completion_kwargs(
     if response_format is not None:
         kwargs["response_format"] = response_format
     kwargs.update(extra)
-    effort = str(llm_config.get("effort") or _DEFAULT_EFFORT)
-    if effort != _DEFAULT_EFFORT:
-        kwargs.setdefault("reasoning_effort", effort)
-    if "reasoning_effort" in kwargs:
-        # Scoped to calls that actually carry an effort rather than set once
-        # for every request: `drop_params` makes LiteLLM discard *any*
-        # unsupported parameter silently, and a blanket setting would also
-        # swallow the tool rejection `stream_turn`'s retry depends on seeing.
-        kwargs["drop_params"] = True
+    _apply_effort(llm_config, kwargs)
     if _prompt_caching_enabled(llm_config):
         # setdefault, like the two around it: a caller passing its own points
         # through **extra keeps them. `drop_params` is deliberately not set
@@ -804,13 +861,37 @@ def complete(
     return response
 
 
-def complete_stream(
+def reasoning_text(delta: Any) -> str:
+    """The thinking text a stream delta carries, or "" when it carries none.
+
+    LiteLLM surfaces a provider's thinking summaries as ``reasoning_content``
+    on the delta, beside ``content``. It is never part of the reply: the chat
+    paths count it for the "Thinking — N chars" line and the Designer routes
+    it out of its HTML buffer, and none of them ever yield it as text.
+    """
+    return str(getattr(delta, "reasoning_content", None) or "")
+
+
+def _note_thinking(session: dict[str, Any] | None, delta: Any, total: int) -> int:
+    """Add a delta's thinking text to ``total`` and publish it to the session.
+
+    Writes ``session["_stream_thinking_chars"]`` only when the total grew, so
+    a content-only stream never touches the key after the seed.
+    """
+    grown = total + len(reasoning_text(delta))
+    if grown != total and session is not None:
+        session["_stream_thinking_chars"] = grown
+    return grown
+
+
+def complete_stream(  # noqa: PLR0913  # keyword-only: the one-shot's request fields plus the thinking hook, one each
     *,
     llm_config: dict[str, Any],
     messages: list[dict[str, Any]],
     agent_name: str | None = None,
     response_format: dict[str, Any] | None = None,
     timeout: httpx.Timeout | float = LLM_STREAM_TIMEOUT,
+    on_thinking: Callable[[str], None] | None = None,
     **extra_kwargs: Any,
 ) -> Generator[str, None, None]:
     """Streamed one-shot litellm.completion; yields text deltas.
@@ -821,6 +902,11 @@ def complete_stream(
     unless overridden). Deliberately NOT ``stream_turn``: no tool-call loop,
     no message mutation, no warning text injected into the stream. Errors —
     including a tripped stall timeout mid-stream — propagate unchanged.
+
+    ``on_thinking``, when given, receives each thinking delta
+    (:func:`reasoning_text`) as it arrives; thinking is never yielded. It has
+    the shape of the sub-agents' ``on_chunk`` hook, and for the same reason:
+    this generator has no session to publish to.
     """
     kwargs = _build_completion_kwargs(
         llm_config,
@@ -845,6 +931,9 @@ def complete_stream(
             delta = (chunk.choices[0].delta.content or "") if chunk.choices else ""
             if delta:
                 yield delta
+            thinking = reasoning_text(chunk.choices[0].delta) if chunk.choices else ""
+            if thinking and on_thinking is not None:
+                on_thinking(thinking)
     finally:
         # Close the wrapped stream explicitly so an abandoned generator records
         # its usage now, not whenever the garbage collector gets to it.
@@ -968,7 +1057,11 @@ def stream_turn(  # noqa: C901, PLR0912, PLR0915, PLR0913  # entry guards plus t
     prefills, then the caller's entry status back once content resumes). The
     in-chat search marker alone is not enough: on a suppressed artifact turn the
     marker is swallowed with everything else, leaving the status line as the
-    only sign of what the pipeline is doing.
+    only sign of what the pipeline is doing. It also receives
+    `session["_stream_thinking_chars"]`: seeded to 0 at entry and raised by
+    the length of every thinking delta (:func:`reasoning_text`) across all
+    rounds of the tool loop, so the chat can show that the model is reasoning
+    while no reply text has arrived. Thinking text is never yielded.
 
     `response_format`, when provided, is forwarded to LiteLLM as-is — e.g.
     `{"type": "json_object"}` to force JSON-only output. When set, the
@@ -987,6 +1080,9 @@ def stream_turn(  # noqa: C901, PLR0912, PLR0915, PLR0913  # entry guards plus t
     # Deployer) would otherwise show "Reading search results…" for the rest of
     # the turn.
     entry_status = session.get("_stream_status") if session is not None else None
+    thinking = 0
+    if session is not None:
+        session["_stream_thinking_chars"] = thinking
 
     while True:
         kwargs = _stream_request_kwargs(
@@ -1017,6 +1113,7 @@ def stream_turn(  # noqa: C901, PLR0912, PLR0915, PLR0913  # entry guards plus t
         try:
             for chunk in response:
                 choice = chunk.choices[0]
+                thinking = _note_thinking(session, choice.delta, thinking)
 
                 if choice.delta.tool_calls:
                     tool_call_started = True
@@ -1141,6 +1238,9 @@ def _stream_request_kwargs(
 ) -> dict[str, Any]:
     """One tool-loop round's completion kwargs.
 
+    Carries ``LLM_TURN_TIMEOUT`` unless ``extra`` names a ``timeout``: the
+    stall bound an interactive turn runs under, see the ladder by the constants.
+
     Where a one-shot call marks only the system turn, a conversation round
     marks the last message as well — see
     :func:`_stream_cache_injection_points`. This is the only builder
@@ -1160,6 +1260,7 @@ def _stream_request_kwargs(
     untouched.
     """
     llm_messages = [{"role": "system", "content": system_prompt}] + messages
+    extra.setdefault("timeout", LLM_TURN_TIMEOUT)
     kwargs = _build_completion_kwargs(
         llm_config, llm_messages, response_format=response_format, stream=True, **extra
     )

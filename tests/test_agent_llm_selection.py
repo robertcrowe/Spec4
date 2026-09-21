@@ -944,14 +944,12 @@ class TestPerAgentCapabilityReachesTheDesigner:
             "_has_existing_ui": True,
             "_is_revision": False,
         }
-        with patch("spec4.callbacks.designer.ctx") as fake_ctx:
-            fake_ctx.triggered = [{"prop_id": "designer-session-store.data"}]
-            content, _ = render_designer_step(
-                store,
-                {"tokens": 0, "progress": 0, "error": None},
-                global_flag,
-                session,
-            )
+        content, _ = render_designer_step(
+            store,
+            {"tokens": 0, "progress": 0, "error": None},
+            global_flag,
+            session,
+        )
         return content
 
     def _is_upload(self, content: Any, comp_id: str) -> bool:

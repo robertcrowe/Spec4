@@ -216,3 +216,27 @@ class TestTierAnalystDrainContinuity:
         # top of the progress lines; the orchestrator briefing follows.
         assert published == sorted(published), "counter dipped mid-turn"
         assert spy["_stream_received_chars"] == len(out) + 2 * len(tier_json)
+
+
+class TestThinkingCounter:
+    """``_session_thinking_counter`` is the receipt counter's sibling for
+    thinking text: seeded to 0 at once, advanced per delta, and never folded
+    into ``_stream_received_chars``."""
+
+    def test_seeds_zero_then_advances_per_delta(self) -> None:
+        session: dict[str, Any] = {"_stream_thinking_chars": 999}
+        on_thinking = agentifier._session_thinking_counter(session)
+        assert session["_stream_thinking_chars"] == 0
+        on_thinking("plan")
+        on_thinking(" more")
+        assert session["_stream_thinking_chars"] == len("plan more")
+
+    def test_thinking_never_reaches_the_receipt_total(self) -> None:
+        session: dict[str, Any] = {}
+        on_chunk, total = agentifier._session_counter(session, seed=5)
+        on_thinking = agentifier._session_thinking_counter(session)
+        on_thinking("plan")
+        on_chunk("ab")
+        assert session["_stream_received_chars"] == 7
+        assert total() == 7
+        assert session["_stream_thinking_chars"] == 4

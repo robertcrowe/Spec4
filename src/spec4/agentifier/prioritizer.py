@@ -148,6 +148,10 @@ class PrioritizerInput:
     #: it arrives, so the orchestrator can publish liveness while the response
     #: is drained internally. ``None`` drains silently (the prior behavior).
     on_chunk: Callable[[str], None] | None = field(default=None)
+    # Thinking hook: the same shape, for the model's reasoning text
+    # (``llm.reasoning_text``), which is counted on screen but never part of
+    # the drained reply. ``None`` drops it.
+    on_thinking: Callable[[str], None] | None = field(default=None)
 
 
 class PrioritizerOutcome(str, Enum):
@@ -482,6 +486,7 @@ class PrioritizerAgent:
                     {"role": "user", "content": user_content},
                 ],
                 agent_name="prioritizer",
+                on_thinking=input.on_thinking,
             ):
                 buf.append(delta)
                 if input.on_chunk is not None:

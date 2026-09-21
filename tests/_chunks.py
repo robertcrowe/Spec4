@@ -38,6 +38,7 @@ def make_delta(
     content: str | None = None,
     tool_calls: Any = None,
     role: str | None = None,
+    reasoning_content: str | None = None,
 ) -> SimpleNamespace:
     """One ``Delta``, with every field the real type carries."""
     return SimpleNamespace(
@@ -47,7 +48,7 @@ def make_delta(
         tool_calls=tool_calls,
         audio=None,
         images=None,
-        reasoning_content=None,
+        reasoning_content=reasoning_content,
         thinking_blocks=None,
         provider_specific_fields=None,
     )
@@ -58,6 +59,7 @@ def make_stream_chunk(
     finish_reason: str | None = None,
     tool_calls: Any = None,
     usage: Any = None,
+    reasoning_content: str | None = None,
 ) -> SimpleNamespace:
     """One ``ModelResponseStream``.
 
@@ -75,7 +77,11 @@ def make_stream_chunk(
         choices=[
             SimpleNamespace(
                 index=0,
-                delta=make_delta(content=content, tool_calls=tool_calls),
+                delta=make_delta(
+                    content=content,
+                    tool_calls=tool_calls,
+                    reasoning_content=reasoning_content,
+                ),
                 finish_reason=finish_reason,
                 logprobs=None,
                 enhancements=None,

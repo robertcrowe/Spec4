@@ -283,11 +283,13 @@ def model_effort_display(model: str | None, effort: str | None) -> str:
     same agent.
 
     ``"default"`` means *send nothing* (see :data:`DEFAULT_EFFORT`), so it is
-    not a level and never shows. Every other value does — including the
-    fallback string ``"default (fallback from high)"`` that ``llm`` records
-    when a provider refuses a level, which is not ``"default"`` and is worth
-    seeing. ``usage_report._fmt_models`` already draws the line in that same
-    place.
+    not a level and never shows. On a model that accepts the parameter the
+    request actually carries ``llm.DEFAULT_THINKING_EFFORT``; the usage record
+    shows that, this shows the developer's choice. Every other value does —
+    including the fallback string ``"default (fallback from high)"`` that
+    ``llm`` records when a provider refuses a level, which is not
+    ``"default"`` and is worth seeing. ``usage_report._fmt_models`` already
+    draws the line in that same place.
 
     A blank model stays blank rather than becoming a lone effort: an agent that
     has not run this round has an empty last-model cell, and ``· high`` on its

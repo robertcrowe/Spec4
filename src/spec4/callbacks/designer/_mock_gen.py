@@ -24,6 +24,7 @@ import os
 import pathlib
 import re
 import threading
+import time
 import uuid
 from typing import Any
 
@@ -37,6 +38,7 @@ from spec4.agents._manifest import (
     validate_manifest,
 )
 from spec4.agents.designer import (
+    THINKING_MARK,
     DesignerSession,
     collect_ui_source_files,
     generate_mock_streaming,
@@ -53,19 +55,44 @@ _DEV_MODE = os.environ.get("DASH_DEBUG", "").lower() == "true"
 # a lock.  When _run() finishes extraction, on_mock_stream_poll picks up
 # buf["final_html"] and pushes the completed mock straight to
 # designer-session-store — no intermediary signal store needed.
+#
+# Each entry also records ``design_dir`` (the round it draws for, as a string,
+# or None) and ``started`` (``time.monotonic()`` at launch). The first is how
+# a rebuilt page finds the draw it lost: ``render_page`` recreates the two
+# memory stores from disk on every ``session`` write and every browser load,
+# and the new store carries no ``_gen_id``, so ``find_live_draw`` looks the
+# draw up by round instead. The second is what the poll reports as ``elapsed``
+# while no text has arrived yet. A server restart is still the end of a draw:
+# this dict, and the thread, die with the process.
 MOCK_BUFFERS: dict[str, dict[str, Any]] = {}
 _MAX_HTML_BYTES = 512_000
 # Progress-bar denominator when there is no prior round to size against: the
 # rough character count of a typical mock + manifest stream.
 _DEFAULT_EXPECTED_CHARS = 70_000
-# Safety valve on completion re-delivery: 480 ticks × 250 ms ≈ 2 minutes.
+# The bar's ceiling while text is still arriving; see ``stream_progress``.
+_MAX_LIVE_PROGRESS = 99
+# The poll's cadence, in ms, from the tick that finds the finished mock until
+# the browser acknowledges it. The delivery response carries the whole mock
+# (up to 512 kB), and dash-renderer discards the older of two in-flight
+# requests of the same callback, so the period must exceed the time that
+# response takes to arrive, parse and apply, plus the step-6 render it
+# triggers. `POLL_MS` (layouts.designer) is the running cadence.
+DELIVERY_MS = 2000
+# Safety valve on completion re-delivery: 60 ticks × 2 s ≈ 2 minutes.
 # Delivery is acknowledgement-based (see on_mock_stream_poll) — the payload is
 # re-emitted until the browser's own poll request proves the store applied it —
 # so this cap exists only to stop an unacknowledged loop from re-sending a
 # ~512 kB payload forever (e.g. the tab was closed mid-generation and Dash
 # keeps replaying a stale queued tick).  It is not a delivery window: under
 # normal operation the ack arrives on the first tick after the payload lands.
-_MAX_DELIVERY_TICKS = 480
+_MAX_DELIVERY_TICKS = 60
+# Seconds without a chunk before the counter line says so. A model that
+# reasons between output bursts goes quiet for minutes with the count
+# unchanged, which reads exactly like a page that stopped updating.
+PAUSE_NOTICE_S = 15
+# How many of a broken mock's errors the fix draw quotes back to the model;
+# the rest are counted. The same cap the Phaser retry uses.
+MOCK_ERROR_LIMIT = 15
 
 
 def _llm_params(
@@ -173,6 +200,98 @@ def extract_html(text: str) -> str | None:
     return None
 
 
+_SCRIPT_OPEN = re.compile(r"<script\b[^>]*>", re.IGNORECASE)
+_SCRIPT_CLOSE = re.compile(r"</script\s*>", re.IGNORECASE)
+_STYLE_OPEN = re.compile(r"<style\b[^>]*>", re.IGNORECASE)
+_STYLE_CLOSE = re.compile(r"</style\s*>", re.IGNORECASE)
+_SCRIPT_BODY = re.compile(
+    r"<script\b[^>]*>(.*?)</script\s*>", re.IGNORECASE | re.DOTALL
+)
+_UNESCAPED_BACKTICK = re.compile(r"(?<!\\)`")
+
+
+def check_mock_html(html_text: str, *, truncated: bool = False) -> list[str]:
+    """The structural defects a mock document has, as sentences; [] when clean.
+
+    Deterministic and static: what the text alone can show. Runtime errors
+    -- the exception a script throws, the resource that fails to load -- are
+    the browser's to find, and the preview's shim reports them the same way
+    (``layouts.designer.MOCK_ERROR_SHIM``). Both lists feed the fix draw.
+
+    Advisory: nothing here stops a mock from saving or being shown. A false
+    positive costs the developer one line of text and a button they need not
+    press; a blocked mock costs them the draw.
+    """
+    errors: list[str] = []
+    if truncated:
+        errors.append(
+            f"The document was cut off at {_MAX_HTML_BYTES // 1000} kB and is "
+            "incomplete; it must be shorter."
+        )
+    lower = html_text.lower()
+    if "</body>" not in lower or "</html>" not in lower:
+        errors.append("The document does not end with </body> and </html>.")
+    scripts_open = len(_SCRIPT_OPEN.findall(html_text))
+    scripts_close = len(_SCRIPT_CLOSE.findall(html_text))
+    if scripts_open != scripts_close:
+        errors.append(
+            f"<script> tags are unbalanced: {scripts_open} opened, "
+            f"{scripts_close} closed."
+        )
+    styles_open = len(_STYLE_OPEN.findall(html_text))
+    styles_close = len(_STYLE_CLOSE.findall(html_text))
+    if styles_open != styles_close:
+        errors.append(
+            f"<style> tags are unbalanced: {styles_open} opened, {styles_close} closed."
+        )
+    for index, body in enumerate(_SCRIPT_BODY.findall(html_text), start=1):
+        if len(_UNESCAPED_BACKTICK.findall(body)) % 2:
+            errors.append(
+                f"Script block {index} has an unterminated template literal "
+                "(an odd number of backticks)."
+            )
+    return errors
+
+
+def mock_error_list(store: dict[str, Any], render_errors: Any) -> list[str]:
+    """Every error the mock on screen has, static first, as sentences.
+
+    ``store["_mock_errors"]`` is what ``check_mock_html`` found at delivery;
+    ``render_errors`` is the ``mock-render-errors`` store the preview's shim
+    fills (``{"errors": [{"message", "source", "line"}, ...]}``). A runtime
+    error carries its line when the browser gave one: the shim sits on the
+    same line as ``<head>``, so the number is the saved document's.
+    """
+    errors = [str(error) for error in (store.get("_mock_errors") or [])]
+    for reported in (render_errors or {}).get("errors") or []:
+        if not isinstance(reported, dict):
+            continue
+        message = str(reported.get("message") or "Script error")
+        line = reported.get("line") or 0
+        errors.append(f"{message} (line {line})" if line else message)
+    return errors
+
+
+def format_mock_errors(errors: list[str], limit: int = MOCK_ERROR_LIMIT) -> str:
+    """The fix draw's instruction: a fixed header and the errors as bullets.
+
+    Capped at ``limit`` with a count of the rest, the way the Phaser retry
+    caps its corrective message: past a point, more errors are the same
+    structural fault repeated, and the model fixes it once.
+    """
+    lines = [
+        "Fix these errors in the current mock without changing its design.",
+        "Keep every screen, element and id; return the whole corrected document.",
+        *(f"- {error}" for error in errors[:limit]),
+    ]
+    remaining = len(errors) - limit
+    if remaining > 0:
+        lines.append(
+            f"(plus {remaining} more -- fix the structural issues above first)"
+        )
+    return "\n".join(lines)
+
+
 def persist_manifest(
     accumulated: str,
     planning_context: dict[str, Any] | None,
@@ -245,6 +364,62 @@ def expected_stream_chars(working_dir: str | None) -> int:
     return int((len(prior_mock) + manifest_chars) * 1.1)
 
 
+def find_live_draw(
+    store: dict[str, Any] | None, design_dir: pathlib.Path | None
+) -> tuple[str, dict[str, Any]] | None:
+    """The draw this page should be polling, as ``(gen_id, entry)``; None if none.
+
+    The store's own ``_gen_id`` wins when it still names a buffer. A store that
+    has none -- the memory stores were just rebuilt -- falls back to the entry
+    drawing for ``design_dir``, of which there is at most one: ``_start_gen``
+    stops and evicts the previous draw for a store before launching the next.
+    A draw that has been delivered and acknowledged, errored, or stopped is
+    popped by the poll, so it is never found here; only a buffer the poll has
+    not finished with is. ``done`` without a result still counts -- the poll
+    is what pops it, and it needs to run once more to do so.
+    """
+    gen_id = (store or {}).get("_gen_id")
+    if gen_id and gen_id in MOCK_BUFFERS:
+        return gen_id, MOCK_BUFFERS[gen_id]
+    if design_dir is None:
+        return None
+    wanted = str(design_dir)
+    for candidate, entry in MOCK_BUFFERS.items():
+        if entry.get("design_dir") == wanted:
+            return candidate, entry
+    return None
+
+
+def stream_progress(entry: dict[str, Any]) -> dict[str, Any]:
+    """The running-tick buffer payload for a draw still streaming.
+
+    Shared by the poll and the watchdog so the two cannot report a different
+    number for the same draw. ``progress`` is capped at 99 while the stream is
+    live: the estimate is made before a single character arrives, and a model
+    that writes a draft and then a whole second document blows past it. A bar
+    sitting at 100% while text is still arriving reads as a finished generation
+    that failed to display -- the one thing the developer must not be told
+    wrongly. 100 means delivered. ``elapsed`` is whole seconds since launch
+    and ``thinking`` the characters of reasoning text seen so far, for the
+    line the page paints while ``tokens`` is still 0. ``idle`` is whole
+    seconds since the last chunk of either kind, 0 until the first arrives,
+    for the pause notice the page adds past ``PAUSE_NOTICE_S``.
+    """
+    tokens = len(entry["text"])
+    expected = entry.get("expected_chars") or _DEFAULT_EXPECTED_CHARS
+    now = time.monotonic()
+    started = entry.get("started")
+    last = entry.get("last_chunk_at")
+    return {
+        "tokens": tokens,
+        "progress": min(_MAX_LIVE_PROGRESS, tokens * 100 // expected),
+        "error": None,
+        "elapsed": int(now - started) if started is not None else 0,
+        "thinking": entry.get("thinking_chars", 0),
+        "idle": int(now - last) if last is not None else 0,
+    }
+
+
 def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbatim with agents/designer.py
     store: dict[str, Any],
     working_dir: str | None,
@@ -273,6 +448,14 @@ def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbati
     # 512 kB of HTML) stays in MOCK_BUFFERS for the life of the process.
     _mock_stop_previous(store)
 
+    # Resolve the save dir here in the request thread, with the session so the
+    # pinned phase_version wins. The no-session fallback (latest on-disk
+    # version) can disagree with the pinned round, in which case the thread
+    # would save the mock where none of the readers — which all pass the
+    # session — ever look, silently breaking refresh/approve/retry. A failure
+    # resolving it only skips persistence — delivery must still happen.
+    design_dir_path = _mock_design_dir(working_dir, session)
+
     gen_id = str(uuid.uuid4())
     stop_ev = threading.Event()
     buf_entry: dict[str, Any] = {
@@ -280,6 +463,10 @@ def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbati
         "stop": stop_ev,
         "text": "",
         "expected_chars": expected_stream_chars(working_dir),
+        "design_dir": str(design_dir_path) if design_dir_path is not None else None,
+        "started": time.monotonic(),
+        "thinking_chars": 0,
+        "last_chunk_at": None,
     }
     MOCK_BUFFERS[gen_id] = buf_entry
 
@@ -290,14 +477,6 @@ def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbati
         "mock_html": store.get("mock_html", ""),
         "finalized": False,
     }
-
-    # Resolve the save dir here in the request thread, with the session so the
-    # pinned phase_version wins. The no-session fallback (latest on-disk
-    # version) can disagree with the pinned round, in which case the thread
-    # would save the mock where none of the readers — which all pass the
-    # session — ever look, silently breaking refresh/approve/retry. A failure
-    # resolving it only skips persistence — delivery must still happen.
-    design_dir_path = _mock_design_dir(working_dir, session)
 
     def _run() -> None:
         try:
@@ -318,9 +497,7 @@ def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbati
                 effort=effort,
                 existing_manifest=existing_manifest,
             ):
-                buf_entry["text"] += chunk
-                if _DEV_MODE and not chunk.startswith("__"):
-                    print(chunk, end="", flush=True)
+                _mock_absorb_chunk(buf_entry, chunk)
             if _DEV_MODE:
                 print("\n[Designer] Done.", flush=True)
             if gen_id not in MOCK_BUFFERS:
@@ -374,6 +551,11 @@ def _start_gen(  # noqa: PLR0913  # the mock-generation contract, shared verbati
         "screenshots": [],
         "refine_images": [],
         "finalized": False,
+        # A failed draw's error rides the store (the poll writes it there so
+        # the step re-renders); a new draw starts clean of it, and of the
+        # last mock's static defects.
+        "_draw_error": None,
+        "_mock_errors": [],
     }
     cleared_buffer: dict[str, Any] = {"tokens": 0, "progress": 0, "error": None}
     return updated_store, cleared_buffer, False  # False = not disabled
@@ -431,6 +613,26 @@ def _mock_design_dir(
     return design_dir_path
 
 
+def _mock_absorb_chunk(buf_entry: dict[str, Any], chunk: str) -> None:
+    """Fold one yielded chunk into the buffer.
+
+    Thinking text (``THINKING_MARK``) is counted and dropped: a reasoning
+    summary can quote HTML, so it must never reach ``extract_html``, the
+    manifest extraction or the ``__DONE__`` check. Everything else is output
+    and accumulates. Both kinds stamp ``last_chunk_at``: a model reasoning
+    between output bursts is not paused, and the notice must not say it is.
+    """
+    buf_entry["last_chunk_at"] = time.monotonic()
+    if chunk.startswith(THINKING_MARK):
+        buf_entry["thinking_chars"] = buf_entry.get("thinking_chars", 0) + (
+            len(chunk) - len(THINKING_MARK)
+        )
+        return
+    buf_entry["text"] += chunk
+    if _DEV_MODE and not chunk.startswith("__"):
+        print(chunk, end="", flush=True)
+
+
 def _mock_collect_snippets(
     existing_html: str | None, working_dir: str | None
 ) -> list[str]:
@@ -450,7 +652,11 @@ def _mock_finalise_draw(
     design_dir_path: pathlib.Path | None,
     planning_context: dict[str, Any] | None,
 ) -> None:
-    """Extract the HTML from a finished draw, save it and its manifest."""
+    """Extract the HTML from a finished draw, save it and its manifest.
+
+    Records the document's static defects (``check_mock_html``) on the buffer
+    as ``static_errors`` for the poll to deliver; they never block the save.
+    """
     html_text = accumulated.replace("__DONE__", "").strip()
     extracted = extract_html(html_text)
     if extracted is None:
@@ -460,11 +666,13 @@ def _mock_finalise_draw(
             "description."
         )
     else:
-        if len(extracted) > _MAX_HTML_BYTES:
+        truncated = len(extracted) > _MAX_HTML_BYTES
+        if truncated:
             extracted = (
                 extracted[:_MAX_HTML_BYTES]
                 + "\n<!-- Designer: output truncated at 512 kB -->"
             )
+        buf_entry["static_errors"] = check_mock_html(extracted, truncated=truncated)
         if design_dir_path is not None:
             try:
                 save_ds: DesignerSession = {

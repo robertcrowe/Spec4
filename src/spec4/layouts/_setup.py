@@ -51,7 +51,7 @@ SETUP_STEPS_CLASS = "setup-steps"
 # where a developer typing a key would look for it. It lives in the shared
 # builder rather than in the wizard, so the gate's key field says the same
 # thing in the same place (the design's expanded gate panel draws it there).
-NEVER_STORED_NOTICE = "Stored in this browser only, never on the server or disk."
+NEVER_STORED_NOTICE = "Stored in this browser only."
 
 # What choosing an effort here actually decides. The wizard sets the project
 # *default*, which every agent inherits unless its own gate overrides it —
