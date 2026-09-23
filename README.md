@@ -35,7 +35,7 @@ A round leaves this in your project directory:
     │   ├── phase2.md
     │   └── ...
     ├── deployment-plan.md     # Deployer — infrastructure, CI/CD, config files, Terraform
-    ├── usage.json             # what each agent cost this round, per call
+    ├── usage.json             # what each agent cost this round, per call, cache reads included
     └── IMPLEMENTED            # the coding agent's marker that the round is built
 ```
 
@@ -115,7 +115,7 @@ uv tool upgrade spec4        # PyPI
 git pull && make install     # source
 ```
 
-Upgrades never touch your artifacts: everything lives in `.spec4/` inside your project. Saved credentials live in your browser's localStorage and carry over.
+Spec4 checks the running version against PyPI on launch and says so when a newer one exists. Upgrades never touch your artifacts: everything lives in `.spec4/` inside your project. Saved credentials live in your browser's localStorage and carry over.
 
 ---
 
@@ -137,15 +137,17 @@ Seven agents, in order. Each reads what the ones before it wrote.
 
 **Brainstormer** develops the vision through focused questions — purpose, audiences, MVP features — and, on completion, derives a technology-agnostic behavioral spec for every MVP feature: inputs, outputs, success criteria, failure modes. It searches the web for the standards it names and embeds canonical documentation links.
 
-**Agentifier** looks for places in the vision where an AI feature would serve it and recommends how much AI each one needs: a complexity tier from a nine-tier ladder (deterministic code → embeddings → single call → RAG → tool use → … → multi-agent collaboration) and the mechanisms to build it with. You choose the candidates and decide each tier; it records both and drafts a full spec for each feature you keep. The tiers are the same ones the [Built With Spec4](#built-with-spec4-bws4) gallery demonstrates as working apps.
+**Agentifier** looks for places in the vision where an AI feature would serve it and recommends how much AI each one needs: a complexity tier from a nine-tier ladder (deterministic code → embeddings → single call → RAG → tool use → … → multi-agent collaboration) and the mechanisms to build it with. You choose the candidates and decide each tier; it records both and drafts a full spec for each feature you keep. The tiers are the same ones the [Built With Spec4](#built-with-spec4) gallery demonstrates as working apps.
 
-**Designer** generates a self-contained HTML mock of the application's starting screen from the vision and AI features, with optional reference screenshots. Approve it, refine it with a description of changes, or start over. Phaser directs the coding agent to build to it. [Example mock.](https://spec4.ai/examples/mock.html)
+**Designer** generates a self-contained HTML mock of the application's starting screen from the vision and AI features, with optional reference screenshots. Before you see it, the mock is checked: the extracted document is tested for truncation and unbalanced tags on the server, then run in your browser with an error reporter that catches thrown errors, failed loads and unhandled rejections. The preview reports "Rendered cleanly" or lists the errors, with a **Fix errors** button that sends them back to the model as a refine — nothing runs without your click. Approve the mock, refine it with a description of changes, or start over. Phaser directs the coding agent to build to it. [Example mock.](https://spec4.ai/examples/mock.html)
 
 **StackAdvisor** recommends a technology stack that serves the features and the AI tiers, with canonical documentation links for every library it names.
 
 **Phaser** turns all of it into ordered implementation phases, one file each, written for a coding agent. It treats the stack as the approved component list: a phase that needs something not in it has to ask you first, so a dependency never appears in a plan without your having said yes to it.
 
 **Deployer** asks which coding agent you're using, produces a deployment plan — service, containerization, CI/CD, environment, monitoring, exact commands and complete config files, Terraform if you want it — and can author the project README. [Example plan.](https://spec4.ai/examples/deployment-plan.html)
+
+While any agent works, the screen says what the model is doing: reasoning is counted as it streams ("Thinking — N chars") before the first reply character arrives, and a long silence mid-draw is reported as such rather than left to look like a hang.
 
 ---
 
@@ -180,7 +182,23 @@ A demo needs a happy path. A production system needs the rest, and Spec4's artif
 
 ## What it costs
 
-The three rounds Spec4 has run against itself, planning changes to its own code, with every call recorded. `claude-sonnet-5` was the default; Phaser ran on `claude-opus-5` in all three; Designer ran on `claude-fable-5-1` in `v0` and `v1` and `claude-opus-5` in `v2`.
+Every model call Spec4 makes is recorded in the round's `usage.json`: tokens as the provider reported them, cost as LiteLLM's estimate from its community cost map. Your provider's bill is authoritative.
+
+**A full greenfield round, with prompt caching.** [SnarkCheck](https://github.com/robertcrowe/snarkcheck) — a browser checkers game with a heckling AI opponent, three deployed surfaces, CI-gated deploys — was planned in one round by six of the seven agents (no CodeScanner: there was no code yet). From its committed `.spec4/v0/usage.json`:
+
+| Agent | Model | Calls | Input tokens | Output tokens | Cost |
+|---|---|---|---|---|---|
+| Brainstormer | `claude-opus-5` | 13 | 74k | 11k | $0.38 |
+| Agentifier | `claude-opus-5` | 24 | 154k | 37k | $1.26 |
+| Designer | `claude-sonnet-5` | 1 | 8k | 15k | $0.17 |
+| StackAdvisor | `claude-sonnet-5` | 36 | 1.51M | 31k | $0.76 |
+| Phaser | `claude-sonnet-5` | 4 | 150k | 27k | $0.43 |
+| Deployer | `claude-sonnet-5` | 20 | 658k | 19k | $0.44 |
+| **Total** | | **98** | **2.55M** | **140k** | **$3.44** |
+
+Of the 2.55M input tokens, 2.31M — 90% — were cache reads. StackAdvisor is the clearest case: 1.5M input tokens across 36 calls for 76 cents, because the prompt it re-sends on every search round is served from cache after the first.
+
+**Three brownfield rounds, before caching.** Spec4 planning changes to its own code, `v0`–`v2` in this repository. All three ran before prompt caching existed (Spec4 v1.5.2 and above), so their input tokens were paid in full; they are here because they are revision rounds against a real codebase, which SnarkCheck is not. `claude-sonnet-5` was the default; Phaser ran on `claude-opus-5` in all three; Designer ran on `claude-fable-5-1` in `v0` and `v1` and `claude-opus-5` in `v2`.
 
 | Round | What it planned | Calls | Tokens | Cost | Elapsed |
 |---|---|---|---|---|---|
@@ -188,9 +206,11 @@ The three rounds Spec4 has run against itself, planning changes to its own code,
 | `v1` | the artifacts view and chat frame | 16 | 0.62M | $5.09 | 1 h 18 m |
 | `v2` | the rest of the UI rework — five remaining screens, per-agent effort | 40 | 1.19M | $5.88 | 4 h 17 m |
 
-Elapsed is the first call's start to the last call's end, including the developer's time in the dialogue. Cost is LiteLLM's estimate from its community cost map; your provider's bill is authoritative.
+Elapsed is the first call's start to the last call's end, including the developer's time in the dialogue.
 
-Phaser is the first or second largest line in every round, because it holds every upstream artifact in context while it drafts; the other large lines are long dialogues on the default model. `usage.json` records every call per agent, per round, and the project page shows the totals. Each agent can override the project's default model and effort from its own gate, so you can put a stronger model on Phaser without changing anything else.
+Two things the figures show. Phaser holds every upstream artifact in context while it drafts, so it is a large line in every round; on `claude-opus-5` it cost $1.70–2.09 per round here, and on `claude-sonnet-5` it planned SnarkCheck's seven phases for $0.43. Each agent can override the project's default model and effort from its own gate, so you can put a stronger model on Phaser — or a cheaper one — without changing anything else. And the long dialogues on the default model (Brainstormer, StackAdvisor) are where caching pays: those are the calls that re-send the whole conversation every turn.
+
+**Where caching applies.** Spec4 places cache breakpoints on the system prompt and, in conversations, the latest turn, on Anthropic and AWS Bedrock. OpenAI caches long prompts on its own without a marker, and Spec4 records those reads too. On Gemini, OpenRouter and Nebius, Spec4 sends no marker; whatever caching happens is the provider's default. `SPEC4_PROMPT_CACHING=0` turns the markers off, for A/B measurement. The project page shows per-agent and per-round totals with cache reads beside them, and `spec4-usage` prints the same from the command line.
 
 ---
 
@@ -221,7 +241,17 @@ The project page opens on the latest round with its artifacts and costs. Choose 
 
 ---
 
-## Built With Spec4 (BWS4)
+## Examples
+
+Two projects planned with Spec4 and built by a coding agent from its phase files, each with its full `.spec4/` history committed so every claim in this README can be checked against a file.
+
+### SnarkCheck
+
+**[SnarkCheck](https://github.com/robertcrowe/snarkcheck)** is a browser checkers game whose AI opponent heckles you — a deliberately silly app built as an example of what a *production-deployable* application looks like when the planning is done up front. Three surfaces (a static React client, a Node commentary API, a self-hosted LiteLLM proxy on a private network), infrastructure as code, CI-gated deploys, designed-in fallbacks for every model-backed route, structured logs with alert thresholds taken from the feature specs, 130 tests under strict types. It is a repository, not a hosted app: clone it and run it.
+
+The interesting part is `.spec4/v0/`: the complete output of one planning round — vision, feature and NFR specs, AI catalog with the tier decisions and what was rejected, stack spec, design mock, seven phase files, deployment plan and `usage.json` — committed beside the code, so a line in the server can be traced back to the spec that asked for it. A hand-written `phase7-verification.md` records what was actually run to verify the last phase and what wasn't. The cost table above is from this round.
+
+### Built With Spec4
 
 <img align="right" src="https://github.com/robertcrowe/Spec4/raw/main/BWS4-logos/BWS4-white-100.png" alt="BWS4 logo" width="100" />
 
@@ -246,16 +276,16 @@ The project page opens on the latest round with its artifacts and costs. Choose 
 
 ## Supported model providers
 
-| Provider | Models fetched from |
-|----------|-------------------|
-| Anthropic | `api.anthropic.com/v1/models` |
-| AWS Bedrock | `bedrock.amazonaws.com` |
-| Cohere | `api.cohere.com/v2/models` |
-| Google Gemini | `generativelanguage.googleapis.com` |
-| Mistral | `api.mistral.ai/v1/models` |
-| Nebius | `api.tokenfactory.nebius.com/v1/` |
-| OpenAI | `api.openai.com/v1/models` |
-| OpenRouter | `openrouter.ai/api/v1/models` |
+| Provider | Models fetched from | Prompt caching |
+|----------|-------------------|----------------|
+| Anthropic | `api.anthropic.com/v1/models` | Spec4 sets breakpoints |
+| AWS Bedrock | `bedrock.amazonaws.com` | Spec4 sets breakpoints |
+| Cohere | `api.cohere.com/v2/models` | provider default |
+| Google Gemini | `generativelanguage.googleapis.com` | provider default |
+| Mistral | `api.mistral.ai/v1/models` | provider default |
+| Nebius | `api.tokenfactory.nebius.com/v1/` | provider default |
+| OpenAI | `api.openai.com/v1/models` | automatic; reads recorded |
+| OpenRouter | `openrouter.ai/api/v1/models` | provider default |
 
 Models are fetched live from each provider when you connect, with a hardcoded fallback list if the API is unavailable.
 
@@ -307,7 +337,7 @@ uv add <package>        # Add a dependency — always via uv so it stays in .ven
 uv add --dev <package>
 ```
 
-Eval harnesses in `evals/` make real LLM calls and are never run by `make test`; they measure prompt and pattern changes before and after (see `evals/agentifier/README.md` and `evals/tier_calibration/README.md`).
+Eval harnesses in `evals/` make real LLM calls and are never run by `make test`; they measure prompt and pattern changes before and after (see `evals/agentifier/README.md` and `evals/tier_calibration/README.md`). `evals/caching/` is the exception: a read-only probe over recorded `usage.json` files that reports per-agent cache hit rates, write totals and inter-call gaps, with a guide to reading a healthy draw.
 
 ---
 
