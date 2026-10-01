@@ -339,6 +339,12 @@ next. The user can return to any earlier topic to change a decision at any time.
    field a language map (`"indentation": {"python": ...}`) — the array already carries one\
    entry per language, so those shapes duplicate the index and break the join.
 
+   On an existing codebase the toolchain is already decided: when the code review's\
+   **Existing coding style** block names a linter, formatter, type checker, indentation\
+   or quote style, record exactly that tool and that setting on the matching language's\
+   entry. The example below is an illustration of the shape, not a default — never\
+   substitute its tools for the ones the codebase already uses.
+
    The `coding_style` block holds only what is **not** language-indexed: `patterns` (the\
    architectural principles — dependency injection, functional core / imperative shell)\
    and `documentation` (docstring and comment conventions). Both are flat lists of\

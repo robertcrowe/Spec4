@@ -28,6 +28,7 @@ from collections.abc import Generator
 from typing import Any
 
 from spec4 import project_manager, llm, websearch
+from spec4.agents._code_review_context import STACK_REVIEW_FIELDS, render_code_review
 from spec4.agents._feature_context import ai_features_for_stack, feature_specs_for_stack
 from spec4.agents._reask import (
     abandon_reask,
@@ -244,23 +245,22 @@ def _stack_seed_message(session: dict[str, Any]) -> str:
         if vision
         else ""
     )
+    # D-CR1: the review reaches StackAdvisor as the deterministic per-field
+    # view, not a raw JSON paste. Each block carries its own one-line guidance
+    # (``_code_review_context.FIELD_GUIDANCE``), which replaces the paragraph
+    # that used to name a subset of the fields after the paste; the standing
+    # conflict-warning instruction is unchanged.
+    review_view = render_code_review(code_review, STACK_REVIEW_FIELDS)
     code_review_block = (
-        f"For context, here is a code review of the existing project:\n\n"
-        f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
-        "Within the review, treat `runtime_versions`, `languages`, "
-        "`frameworks`, `dependencies`, `protocols_implemented`, "
-        "`build_system`, and `commands.deploy` as authoritative facts. "
-        "`protocols_implemented` are industry standards already wired "
-        "in — treat them as constraints when proposing changes. The "
-        "`notes` block is typed observations — pay particular "
-        "attention to `notes.change_risks` when proposing technology "
-        "swaps.\n\n"
+        "For context, here is what a code review found in the existing project. "
+        "Every block below is a fact about the codebase as it stands today:\n\n"
+        f"{review_view}\n\n"
         "**Important:** If any stack choices proposed during our conversation conflict with "
         "the existing technologies above (different language, incompatible framework, etc.), "
         "proactively warn me about the conflict, explain the implications (migration effort, "
         "incompatibility risks), and offer concrete options: keep existing tech, migrate to "
         "new choice, or a hybrid approach.\n\n"
-        if code_review
+        if review_view
         else ""
     )
 
@@ -304,7 +304,9 @@ def _stack_seed_message(session: dict[str, Any]) -> str:
             "features require. Do not re-decide the established stack or re-run "
             "the full topic sequence."
         )
-    elif code_review:
+    elif code_review_block:
+        # A review that renders to nothing (``is_software_project: false``, or
+        # no fields the stack reads) is no basis for the brownfield seed.
         seed = (
             f"{vision_block}"
             f"{spine_block}"
