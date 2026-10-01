@@ -31,6 +31,8 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
+    "BRAINSTORMER_FIELD_GUIDANCE",
+    "BRAINSTORMER_REVIEW_FIELDS",
     "EXCLUDED_PATHS",
     "FIELD_GUIDANCE",
     "PHASER_FIELD_GUIDANCE",
@@ -97,6 +99,59 @@ FIELD_GUIDANCE: dict[str, str] = {
 #: nothing in the BWS4 baseline and duplicates ``ui_summary.entry_files`` and
 #: ``directory_map``; the schema still carries it for the transcript.
 EXCLUDED_PATHS: frozenset[str] = frozenset({"entrypoints.ui_root"})
+
+#: What Brainstormer reads from the review, in the order it is rendered. The
+#: vision is about the product, so this is the review's product-facing half:
+#: identity (how the project describes itself, its type, its shape), what is
+#: already built (the UI, the routes, the AI in place, the standards wired in)
+#: and what constrains new features (half-built areas, fragile ones). The
+#: toolchain blocks are StackAdvisor's; commands and paths are Phaser's.
+BRAINSTORMER_REVIEW_FIELDS: tuple[str, ...] = (
+    "existing_self_description",
+    "summary",
+    "project_type",
+    "architecture",
+    "ui_summary",
+    "api_surface",
+    "ai_capabilities",
+    "protocols_implemented",
+    "notes.incomplete_or_dead_code",
+    "notes.change_risks",
+)
+
+#: Brainstormer's per-field rules. Blocks not listed here fall back to
+#: :data:`FIELD_GUIDANCE`.
+BRAINSTORMER_FIELD_GUIDANCE: dict[str, str] = {
+    "existing_self_description": (
+        "How the project describes itself. The vision's identity starts here — "
+        "do not rename the project or re-derive what it is for."
+    ),
+    "summary": "What the scan found, in one paragraph.",
+    "project_type": "Authoritative.",
+    "architecture": (
+        "The existing shape. New features fit into it unless the user asks for a "
+        "restructure."
+    ),
+    "ui_summary": "What users already see. New features extend this surface.",
+    "api_surface": (
+        "What the product already does, route by route — the existing feature "
+        "inventory. Never propose as new a capability that is already here."
+    ),
+    "ai_capabilities": (
+        "AI already in the codebase. These are existing features, not candidates; "
+        "a new AI feature should say how it relates to them."
+    ),
+    "protocols_implemented": (
+        "Standards already implemented. Features that touch them stay compatible."
+    ),
+    "notes.incomplete_or_dead_code": (
+        "Half-built or abandoned areas. Before planning a feature that touches "
+        "one, ask whether to finish it, remove it or leave it."
+    ),
+    "notes.change_risks": (
+        "What is fragile. Respect these when asking about future features."
+    ),
+}
 
 #: What Phaser reads from the review, in the order it is rendered. Phaser
 #: keeps the raw JSON block alongside this view (D-CR1): it hands

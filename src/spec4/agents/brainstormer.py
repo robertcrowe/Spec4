@@ -8,6 +8,11 @@ from typing import Any, Literal
 
 from spec4 import project_manager, llm, websearch
 from spec4.agents import feature_speccer
+from spec4.agents._code_review_context import (
+    BRAINSTORMER_FIELD_GUIDANCE,
+    BRAINSTORMER_REVIEW_FIELDS,
+    render_code_review,
+)
 from spec4.agents._feature_context import slug
 from spec4.agents._reask import (
     abandon_reask,
@@ -763,8 +768,10 @@ def _brainstormer_seed(
         _brainstormer_seed_from_vision(msgs, vision, code_review_block)
     elif prior_vision is not None:
         _brainstormer_seed_from_prior(msgs, prior_vision, code_review_block)
-    elif code_review:
-        _brainstormer_seed_from_review(msgs, code_review)
+    elif code_review_block:
+        # A review that renders to nothing (``is_software_project: false``, or
+        # none of the product-facing fields) is a fresh start, not brownfield.
+        _brainstormer_seed_from_review(msgs, code_review_block)
     else:
         # Fresh start: static greeting
         yield (
@@ -816,17 +823,18 @@ def _brainstormer_seed_context(session: dict[str, Any]) -> tuple[Any, Any, Any, 
         project_manager.load_prior_vision(working_dir) if working_dir else None
     )
 
+    # D-CR1: the review reaches Brainstormer as the deterministic per-field
+    # view, not a raw JSON paste. Each block carries its own one-line rule
+    # (``BRAINSTORMER_FIELD_GUIDANCE``), which replaces the paragraph that used
+    # to name a subset of the fields after the paste.
+    review_view = render_code_review(
+        code_review, BRAINSTORMER_REVIEW_FIELDS, guidance=BRAINSTORMER_FIELD_GUIDANCE
+    )
     code_review_block = (
-        f"\n\nFor context, here is a code review of the existing project:\n\n"
-        f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
-        "Within the review, treat structured fields (`commands`, "
-        "`entrypoints`, `ui_summary`, `runtime_versions`, "
-        "`protocols_implemented`, `existing_self_description`) as "
-        "authoritative facts about the project. The `notes` block is "
-        "typed observations — respect `notes.change_risks` and "
-        "`notes.incomplete_or_dead_code` when asking about future "
-        "features.\n"
-        if code_review
+        "\n\nFor context, here is what a code review found in the existing "
+        "project. Every block below is a fact about the codebase as it stands "
+        f"today:\n\n{review_view}\n"
+        if review_view
         else ""
     )
     return vision, prior_vision, code_review, code_review_block
@@ -885,17 +893,18 @@ def _brainstormer_seed_from_prior(
 
 
 def _brainstormer_seed_from_review(
-    msgs: list[dict[str, Any]], code_review: Any
+    msgs: list[dict[str, Any]], code_review_block: str
 ) -> None:
     """Seed from a code review with no vision yet."""
-    # Existing project with code review but no vision yet
+    # Existing project with code review but no vision yet. The block is the
+    # same rendered view the other two seeds carry (D-CR1); this site used to
+    # paste the raw JSON with no field guidance at all.
     msgs.append(
         {
             "role": "user",
             "content": (
                 "I have an existing software project that I'd like to create a vision "
-                "statement for. Here is a code review of the existing project:\n\n"
-                f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
+                f"statement for.{code_review_block}\n"
                 "Please introduce yourself as Brainstormer. Briefly describe what you "
                 "understand about this project from the code review, then begin your "
                 "usual question-by-question process to develop the vision statement. "

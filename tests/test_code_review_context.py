@@ -18,8 +18,10 @@ from typing import Any
 from unittest.mock import patch
 
 from spec4.agents import stack_advisor
-from spec4.agents import phaser
+from spec4.agents import brainstormer, phaser
 from spec4.agents._code_review_context import (
+    BRAINSTORMER_FIELD_GUIDANCE,
+    BRAINSTORMER_REVIEW_FIELDS,
     EXCLUDED_PATHS,
     FIELD_GUIDANCE,
     PHASER_FIELD_GUIDANCE,
@@ -241,6 +243,29 @@ class TestRenderCodeReview:
         # Every Phaser rule names a field Phaser renders.
         assert set(PHASER_FIELD_GUIDANCE) <= set(PHASER_REVIEW_FIELDS)
 
+    def test_brainstormer_tuple_is_product_facing(self) -> None:
+        for field in (
+            "existing_self_description",
+            "api_surface",
+            "ai_capabilities",
+            "ui_summary",
+            "notes.incomplete_or_dead_code",
+        ):
+            assert field in BRAINSTORMER_REVIEW_FIELDS
+        for field in ("coding_style", "dependencies", "commands", "directory_map"):
+            assert field not in BRAINSTORMER_REVIEW_FIELDS
+        assert set(BRAINSTORMER_FIELD_GUIDANCE) <= set(BRAINSTORMER_REVIEW_FIELDS)
+
+    def test_golden_full_review_brainstormer_view(self) -> None:
+        assert_golden(
+            "code_review_brainstormer_view.md",
+            render_code_review(
+                load_fixture("review_full.json"),
+                BRAINSTORMER_REVIEW_FIELDS,
+                guidance=BRAINSTORMER_FIELD_GUIDANCE,
+            ),
+        )
+
     def test_golden_full_review_phaser_view(self) -> None:
         assert_golden(
             "code_review_phaser_view.md",
@@ -368,3 +393,73 @@ class TestPhaserSeed:
         seed = self._seed(None)
         assert "code review" not in seed
         assert "**Existing" not in seed
+
+
+# ---------------------------------------------------------------------------
+# Brainstormer seeds — both paste sites
+# ---------------------------------------------------------------------------
+
+
+class TestBrainstormerSeeds:
+    def _run(self, session: dict[str, Any]) -> tuple[str, bool]:
+        with patch("spec4.llm.litellm.completion") as mock_llm:
+            mock_llm.return_value = iter(
+                [make_stream_chunk("Ok"), make_stream_chunk("", finish_reason="stop")]
+            )
+            collect(brainstormer.run(None, session, session["llm_config"]))
+            called = mock_llm.called
+        msgs = session["brainstormer_messages"]
+        return (msgs[0]["content"] if msgs else ""), called
+
+    def _review(self) -> dict[str, Any]:
+        return _review(
+            existing_self_description={
+                "text": "A recipe planner.",
+                "source": "README.md",
+            },
+            api_surface=[{"protocol": "http", "path_or_method": "GET /recipes"}],
+            commands={"test": "pytest"},
+            notes={"incomplete_or_dead_code": ["half-built export"]},
+        )
+
+    def test_review_only_seed_carries_the_view_not_the_json(self) -> None:
+        review = self._review()
+        session = make_session(code_review=review, vision_statement=None)
+        seed, called = self._run(session)
+        assert called
+        assert "**Existing self-description**" in seed
+        assert f"_{BRAINSTORMER_FIELD_GUIDANCE['api_surface']}_" in seed
+        assert "- **GET /recipes**" in seed
+        assert "- half-built export" in seed
+        assert "pytest" not in seed  # commands are Phaser's, not the vision's
+        assert json.dumps(review, indent=2) not in seed
+        assert "Use the code review as context" in seed
+
+    def test_existing_vision_seed_carries_the_same_view(self) -> None:
+        review = self._review()
+        session = make_session(
+            code_review=review,
+            vision_statement={"vision_statement": {"name": "Planner"}},
+        )
+        seed, _ = self._run(session)
+        assert "**Existing self-description**" in seed
+        assert "existing vision statement from a previous planning" in seed
+        assert json.dumps(review, indent=2) not in seed
+        assert "treat structured fields" not in seed  # the old paragraph
+
+    def test_not_a_software_project_review_is_a_fresh_start(self) -> None:
+        review = {
+            "code_review": {"is_software_project": False, "summary": "bare manifest"}
+        }
+        session = make_session(code_review=review, vision_statement=None)
+        seed, called = self._run(session)
+        assert not called  # the static greeting, no LLM turn
+        assert seed == "" or "bare manifest" not in seed
+
+    def test_greenfield_has_no_review_block(self) -> None:
+        session = make_session(
+            vision_statement={"vision_statement": {"name": "Planner"}}
+        )
+        seed, _ = self._run(session)
+        assert "**Existing" not in seed
+        assert "code review" not in seed

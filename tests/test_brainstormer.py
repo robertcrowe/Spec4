@@ -479,7 +479,9 @@ class TestBrainstormerBranches:
         )
 
     def test_code_review_seed_calls_llm(self) -> None:
-        review = {"code_review": {"is_software_project": True}}
+        # D-CR1: the seed carries the rendered view, so the review needs at
+        # least one product-facing field to be a brownfield start at all.
+        review = {"code_review": {"is_software_project": True, "project_type": "web"}}
         session = make_session(code_review=review, vision_statement=None)
         with patch("spec4.llm.litellm.completion") as mock_llm:
             mock_llm.return_value = iter(
