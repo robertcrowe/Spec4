@@ -31,7 +31,10 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
+    "EXCLUDED_PATHS",
     "FIELD_GUIDANCE",
+    "PHASER_FIELD_GUIDANCE",
+    "PHASER_REVIEW_FIELDS",
     "STACK_REVIEW_FIELDS",
     "render_code_review",
 ]
@@ -87,6 +90,81 @@ FIELD_GUIDANCE: dict[str, str] = {
     "notes.change_risks": (
         "Typed observations about what is fragile. Weigh them before proposing a "
         "technology swap."
+    ),
+}
+
+#: Sub-keys no consumer view renders (D-CR6). ``entrypoints.ui_root`` reached
+#: nothing in the BWS4 baseline and duplicates ``ui_summary.entry_files`` and
+#: ``directory_map``; the schema still carries it for the transcript.
+EXCLUDED_PATHS: frozenset[str] = frozenset({"entrypoints.ui_root"})
+
+#: What Phaser reads from the review, in the order it is rendered. Phaser
+#: keeps the raw JSON block alongside this view (D-CR1): it hands
+#: ``directory_map`` and ``commands`` through to the coder verbatim and the
+#: raw block is the cheapest lossless carrier. The view is where each block's
+#: planning rule sits next to the data it governs.
+PHASER_REVIEW_FIELDS: tuple[str, ...] = (
+    "architecture",
+    "commands",
+    "entrypoints",
+    "directory_map",
+    "build_system",
+    "persistence",
+    "env_vars",
+    "api_surface",
+    "protocols_implemented",
+    "notes.incomplete_or_dead_code",
+    "notes.change_risks",
+    "notes.test_coverage",
+)
+
+#: Phaser's per-field rules, folded in from the paragraphs that used to follow
+#: the paste (``_phaser_review_instruction``). Blocks not listed here fall back
+#: to :data:`FIELD_GUIDANCE`.
+PHASER_FIELD_GUIDANCE: dict[str, str] = {
+    "commands": (
+        "Authoritative. Use `test` to write each phase's verification criterion; "
+        "`build`, `lint` and `typecheck` are the gates every phase must pass."
+    ),
+    "entrypoints": (
+        "Authoritative. Phase 1 is an integration thread for the existing app "
+        "that starts from these, not a from-scratch scaffold."
+    ),
+    "directory_map": "Ground every instruction in these real paths.",
+    "build_system": "Authoritative. Build and install through this tool and manifest.",
+    "persistence": (
+        "The existing data layer. Phase 1's steel thread must verify the "
+        "connection to every engine listed; every DB-touching phase runs "
+        "migrations via the migration tool against the migrations path. Do not "
+        "propose a different ORM or migration tool without explicit user approval."
+    ),
+    "env_vars": (
+        "List every `required: yes` variable in Phase 1's "
+        "`tech_stack_spec.configurations` and verify it in Phase 1's verification "
+        "step (a clear error when missing). Names only — never values; values "
+        "belong in the developer's secret store. A later phase that depends on a "
+        "variable names it in its own `tech_stack_spec.configurations`."
+    ),
+    "api_surface": (
+        "Anchor any phase that proposes API changes on these routes — extend "
+        "rather than parallel-invent — and match each `protocol`'s conventions "
+        "(HTTP verb+path, gRPC service.method, GraphQL operation) when describing "
+        "new endpoints."
+    ),
+    "protocols_implemented": (
+        "Industry standards the project already implements. Cite each "
+        "protocol's canonical doc URL in the corresponding phase's `references` "
+        "array."
+    ),
+    "notes.incomplete_or_dead_code": (
+        "Do not extend any of this in a phase unless explicitly asked."
+    ),
+    "notes.change_risks": (
+        "Apply each mitigation hint in the phases that touch its area."
+    ),
+    "notes.test_coverage": (
+        "Where tests exist today. A phase that touches an uncovered module adds "
+        "its tests in that phase."
     ),
 }
 
@@ -270,31 +348,52 @@ def _entry_line(entry: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def render_code_review(review: Any, fields: tuple[str, ...]) -> str:
+def _without_excluded(field: str, value: Any) -> Any:
+    """``value`` with every :data:`EXCLUDED_PATHS` entry under ``field`` removed."""
+    if not isinstance(value, dict):
+        return value
+    prefix = field + "."
+    dropped = {p[len(prefix) :] for p in EXCLUDED_PATHS if p.startswith(prefix)}
+    if not dropped:
+        return value
+    return {k: v for k, v in value.items() if str(k) not in dropped}
+
+
+def render_code_review(
+    review: Any,
+    fields: tuple[str, ...],
+    *,
+    guidance: dict[str, str] | None = None,
+) -> str:
     """Render the selected ``fields`` of ``review`` as a markdown block.
 
     ``fields`` are top-level keys or dotted paths (``notes.change_risks``,
     ``commands.deploy``), rendered in the order given under a bold heading
-    each, with that field's :data:`FIELD_GUIDANCE` line when one exists. A
-    field absent from the review, or present but empty, is skipped. Returns
-    ``""`` for a review that is not a dict, not a software project, or
-    contains none of the fields — the caller then emits nothing.
+    each, with that field's guidance line when one exists: ``guidance``
+    overrides :data:`FIELD_GUIDANCE` per field, so a consumer whose use of a
+    block differs (Phaser's ``persistence`` is a Phase 1 verification rule,
+    StackAdvisor's is a carry-forward fact) says so next to the data. A field
+    absent from the review, or present but empty, is skipped, as is any
+    sub-key in :data:`EXCLUDED_PATHS`. Returns ``""`` for a review that is not
+    a dict, not a software project, or contains none of the fields — the
+    caller then emits nothing.
     """
     cr = _unwrap(review)
     if not cr or cr.get("is_software_project") is False:
         return ""
+    lines_for = {**FIELD_GUIDANCE, **(guidance or {})}
     blocks: list[str] = []
     for field in fields:
-        value = _resolve(cr, field)
+        value = _without_excluded(field, _resolve(cr, field))
         if _empty(value):
             continue
         body = _render_value(value, "")
         if not body:
             continue  # present, but every leaf was empty
         lines = [f"**Existing {_heading(field)}**"]
-        guidance = FIELD_GUIDANCE.get(field)
-        if guidance:
-            lines.append(f"_{guidance}_")
+        line = lines_for.get(field)
+        if line:
+            lines.append(f"_{line}_")
         lines.extend(body)
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)

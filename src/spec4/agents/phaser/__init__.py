@@ -36,6 +36,11 @@ from spec4.agents._phase_schema import (
     validate_phase,
 )
 from spec4.agents._seam_check import run_seam_check
+from spec4.agents._code_review_context import (
+    PHASER_FIELD_GUIDANCE,
+    PHASER_REVIEW_FIELDS,
+    render_code_review,
+)
 from spec4.agents._feature_context import (
     ai_features_for_phaser,
     feature_specs_for_phaser,
@@ -315,40 +320,27 @@ def _phaser_vision_and_stack_blocks(
 
 def _phaser_review_instruction(code_review: Any) -> tuple[str, str]:
     """The code-review block and the closing instruction, brownfield or greenfield."""
+    # D-CR1 (keep-alongside): the raw JSON stays — Phaser hands directory_map
+    # and commands through to the coder verbatim and the raw block is the
+    # cheapest lossless carrier — and the deterministic per-field view follows
+    # it, each block carrying the planning rule that used to live in a
+    # paragraph after the paste (``PHASER_FIELD_GUIDANCE``). The BWS4 baseline
+    # showed those paragraph rules reaching Phase 1 unevenly: the DB-connection
+    # verification 3/8 rounds, protocol citations 0/2.
+    review_view = render_code_review(
+        code_review, PHASER_REVIEW_FIELDS, guidance=PHASER_FIELD_GUIDANCE
+    )
     if code_review:
         extra_block = (
             f"Here is a code review of the existing codebase:\n\n"
             f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
-            "Within the review, treat `commands` (build/test/lint/run) and "
-            "`entrypoints` as authoritative — use `commands.test` to write "
-            "each phase's verification criterion, and use `entrypoints` to "
-            "design Phase 1 as an integration thread for the existing app. "
-            "Use `directory_map` to ground every instruction in real paths. "
-            "Respect `notes.incomplete_or_dead_code` (do not extend it in a "
-            "phase unless explicitly asked) and `notes.change_risks` (apply "
-            "the mitigation hints). If `protocols_implemented` is present, "
-            "cite each protocol's canonical doc URL in the corresponding "
-            "phase's `references` array — these are industry standards the "
-            "project already implements.\n\n"
-            "If `persistence` is present, treat its databases / ORM / "
-            "migration tool as the existing data layer — Phase 1's steel "
-            "thread must verify the DB connection using whatever engine is "
-            "listed, and any DB-touching phase must run migrations via "
-            "`persistence.migration_tool` (e.g. Alembic, Flyway) against "
-            "`persistence.migrations_path`. Do not propose a different "
-            "ORM or migration tool without explicit user approval.\n\n"
-            "If `env_vars` is present, list every `required: true` variable "
-            "in Phase 1's `tech_stack_spec.configurations` and verify them "
-            "in Phase 1's verification step (a clear error when missing). "
-            "Reference variable NAMES only — do not invent or include "
-            "values; values belong in the developer's secret store. Later "
-            "phases that depend on a variable must mention it in their own "
-            "`tech_stack_spec.configurations`.\n\n"
-            "If `api_surface` is present, anchor any phase that proposes "
-            "API changes on the existing routes/methods listed — extend "
-            "rather than parallel-invent. Use the `protocol` field to "
-            "match conventions (HTTP verb+path, gRPC service.method, "
-            "GraphQL operation) when describing new endpoints.\n\n"
+            + (
+                "Read it through these blocks — each names what the review found "
+                "and the rule the phases must follow for it:\n\n"
+                f"{review_view}\n\n"
+                if review_view
+                else ""
+            )
         )
         instruction = (
             "Please introduce yourself as Phaser, then analyze the vision, stack, and "

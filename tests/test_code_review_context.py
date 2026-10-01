@@ -18,12 +18,16 @@ from typing import Any
 from unittest.mock import patch
 
 from spec4.agents import stack_advisor
+from spec4.agents import phaser
 from spec4.agents._code_review_context import (
+    EXCLUDED_PATHS,
     FIELD_GUIDANCE,
+    PHASER_FIELD_GUIDANCE,
+    PHASER_REVIEW_FIELDS,
     STACK_REVIEW_FIELDS,
     render_code_review,
 )
-from tests._agent_helpers import collect, make_session
+from tests._agent_helpers import collect, make_session, mock_litellm_stream
 from tests._chunks import make_stream_chunk
 from tests._golden import assert_golden, load_fixture
 
@@ -193,6 +197,60 @@ class TestRenderCodeReview:
         for field in ("commands", "entrypoints", "directory_map", "ui_summary"):
             assert field not in STACK_REVIEW_FIELDS
 
+    def test_guidance_override_replaces_the_shared_line_per_field(self) -> None:
+        review = _review(
+            persistence={"orm": {"name": "SQLAlchemy"}}, auth={"model": "none"}
+        )
+        out = render_code_review(
+            review,
+            ("persistence", "auth"),
+            guidance={"persistence": "Phase 1 verifies it."},
+        )
+        assert "_Phase 1 verifies it._" in out
+        assert f"_{FIELD_GUIDANCE['persistence']}_" not in out
+        assert f"_{FIELD_GUIDANCE['auth']}_" in out  # untouched by the override
+
+    def test_excluded_sub_keys_are_dropped_from_every_view(self) -> None:
+        assert "entrypoints.ui_root" in EXCLUDED_PATHS
+        review = _review(entrypoints={"main": "app.py", "ui_root": "index.html"})
+        out = render_code_review(review, ("entrypoints",))
+        assert "- main: app.py" in out
+        assert "index.html" not in out
+        # The exclusion never mutates the review itself.
+        assert review["code_review"]["entrypoints"]["ui_root"] == "index.html"
+
+    def test_block_of_only_excluded_keys_renders_nothing(self) -> None:
+        review = _review(entrypoints={"ui_root": "index.html"})
+        assert render_code_review(review, ("entrypoints",)) == ""
+
+    def test_phaser_tuple_covers_the_planning_rules(self) -> None:
+        for field in (
+            "commands",
+            "entrypoints",
+            "directory_map",
+            "persistence",
+            "env_vars",
+            "api_surface",
+            "protocols_implemented",
+            "architecture",
+            "notes.incomplete_or_dead_code",
+            "notes.change_risks",
+        ):
+            assert field in PHASER_REVIEW_FIELDS
+        assert "coding_style" not in PHASER_REVIEW_FIELDS
+        # Every Phaser rule names a field Phaser renders.
+        assert set(PHASER_FIELD_GUIDANCE) <= set(PHASER_REVIEW_FIELDS)
+
+    def test_golden_full_review_phaser_view(self) -> None:
+        assert_golden(
+            "code_review_phaser_view.md",
+            render_code_review(
+                load_fixture("review_full.json"),
+                PHASER_REVIEW_FIELDS,
+                guidance=PHASER_FIELD_GUIDANCE,
+            ),
+        )
+
     def test_golden_full_review_stack_view(self) -> None:
         assert_golden(
             "code_review_stack_view.md",
@@ -259,3 +317,54 @@ class TestStackAdvisorSeed:
         seed = _seed_after_run(session)
         assert "**Existing" not in seed
         assert "code review" not in seed
+
+
+# ---------------------------------------------------------------------------
+# Phaser seed
+# ---------------------------------------------------------------------------
+
+
+class TestPhaserSeed:
+    def _seed(self, code_review: Any) -> str:
+        session = make_session(
+            active_agent="phaser",
+            vision_statement={"vision_statement": {"name": "App"}},
+            stack_statement={"stack_spec": {"name": "App"}},
+            code_review=code_review,
+        )
+        with mock_litellm_stream("Planning."):
+            collect(phaser.run(None, session, session["llm_config"]))
+        return session["phaser_messages"][0]["content"]
+
+    def test_brownfield_seed_keeps_the_raw_block_and_adds_the_view(self) -> None:
+        review = _review(
+            commands={"test": "uv run pytest"},
+            persistence={"databases": [{"engine": "PostgreSQL"}]},
+            protocols_implemented=[{"name": "A2A"}],
+            entrypoints={"main": "app/main.py", "ui_root": "index.html"},
+        )
+        seed = self._seed(review)
+        raw = json.dumps(review, indent=2)
+        assert raw in seed  # D-CR1 keep-alongside
+        view_at = seed.index("Read it through these blocks")
+        assert seed.index(raw) < view_at
+        # The rules sit under the data they govern.
+        assert f"_{PHASER_FIELD_GUIDANCE['persistence']}_" in seed
+        assert f"_{PHASER_FIELD_GUIDANCE['protocols_implemented']}_" in seed
+        assert "- test: uv run pytest" in seed
+        assert "- **PostgreSQL**" in seed
+        # The old paragraphs are gone; the raw JSON still carries ui_root.
+        assert "If `persistence` is present" not in seed
+        assert "index.html" not in seed[view_at:]
+        assert "integration/validation thread for the existing code" in seed
+
+    def test_rule_for_an_absent_block_is_not_emitted(self) -> None:
+        seed = self._seed(_review(commands={"test": "pytest"}))
+        assert PHASER_FIELD_GUIDANCE["commands"] in seed
+        assert PHASER_FIELD_GUIDANCE["env_vars"] not in seed
+        assert PHASER_FIELD_GUIDANCE["api_surface"] not in seed
+
+    def test_greenfield_seed_has_no_review_blocks(self) -> None:
+        seed = self._seed(None)
+        assert "code review" not in seed
+        assert "**Existing" not in seed
