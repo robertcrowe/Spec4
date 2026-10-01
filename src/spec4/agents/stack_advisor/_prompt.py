@@ -62,7 +62,11 @@ At the start of the conversation you will receive one or more of the following:
   functional area, or a swap an added feature forces — warning about any conflict with\
   the existing stack. Leave every unaffected choice intact. When the user confirms,\
   output the FULL updated stack spec (the carried-forward stack with this revision's\
-  incremental changes folded in), not a diff.
+  incremental changes folded in), not a diff. Every entry of the established stack —\
+  every language, target, provider, integration, auth mechanism, store, collection,\
+  library, path, decision, and reference — must appear in that full spec unless the\
+  vision delta removed the feature it served or the user asked in this conversation to\
+  drop it; an entry you leave out for any other reason is a silent deletion.
 
 **Topic sequence**
 

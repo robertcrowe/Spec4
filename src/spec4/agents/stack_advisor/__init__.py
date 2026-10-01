@@ -53,6 +53,13 @@ from spec4.app_constants import STATE_STACK_COMPLETE
 
 from spec4.agents.stack_advisor._prompt import SYSTEM_PROMPT
 from spec4.agents.stack_advisor._render import _format_stack_as_text
+from spec4.agents.stack_advisor._revision_diff import (
+    REVISION_REMOVALS_KEY,
+    removals_record,
+    render_revision_receipt,
+    restore_unrequested,
+    revision_removals,
+)
 from spec4.agents.stack_advisor._stack_shape import (
     _extract_stack_json,
     _normalise_stack_shape,
@@ -157,13 +164,49 @@ def run(
                 session,
             )
     if stack_spec:
+        receipt = _reconcile_revision(session, messages, stack_spec)
         # D-SC18a: render BEFORE committing any session state. The COMPLETE flag
         # is the sole gate on save_stack (session.py), so setting it ahead of work
         # that can throw persists the output of a turn that crashed — a formatter
         # AttributeError on a schema-deviant `libraries` wrote a never-rendered
         # stack.json to disk, three attempts running, each looking like a failure
         # to the developer and a success to the pipeline.
-        _stack_commit(session, messages, stack_spec)
+        _stack_commit(session, messages, stack_spec, receipt)
+
+
+def _reconcile_revision(
+    session: dict[str, Any], messages: list[dict[str, Any]], stack_spec: dict[str, Any]
+) -> str:
+    """Diff a revision round's re-emitted stack against the established one.
+
+    Runs only on the commit that ends a revision-mode seed — a prior
+    implemented stack exists, the vision carries a delta, and this round has
+    no stack of its own yet (an update-mode re-entry after a commit is the
+    developer refining or restarting, and must not be reconciled against the
+    old baseline). Deterministic, no LLM call (D-RD1): every established entry
+    the model dropped without a request is put back in place (D-RD2) and the
+    full diff is persisted on the envelope, empty list included, so the
+    instrument reads the same whether or not anything fired (D-RD3). Returns
+    the receipt text for the commit display; empty when nothing was dropped.
+
+    The user turns handed to the diff exclude the seed (``messages[0]``),
+    which pastes the whole prior stack and would make every entry read as
+    discussed.
+    """
+    working_dir = session.get("working_dir")
+    if session.get("stack_statement") is not None or not working_dir:
+        return ""
+    prior_stack = project_manager.load_prior_stack(working_dir)
+    delta = revision_delta(session.get("vision_statement"))
+    if prior_stack is None or delta is None:
+        return ""
+    user_turns = [
+        str(m.get("content") or "") for m in messages[1:] if m.get("role") == "user"
+    ]
+    removals = revision_removals(prior_stack, stack_spec, delta, user_turns)
+    restore_unrequested(stack_spec, removals)
+    stack_spec[REVISION_REMOVALS_KEY] = removals_record(removals)
+    return render_revision_receipt(removals)
 
 
 def _stack_seed_message(session: dict[str, Any]) -> str:
@@ -287,10 +330,13 @@ def _stack_seed_message(session: dict[str, Any]) -> str:
 
 
 def _stack_commit(
-    session: dict[str, Any], messages: list[dict[str, Any]], stack_spec: dict[str, Any]
+    session: dict[str, Any],
+    messages: list[dict[str, Any]],
+    stack_spec: dict[str, Any],
+    revision_receipt: str = "",
 ) -> None:
     """Render first, then commit the stack to the session (D-SC18a)."""
-    display = _format_stack_as_text(stack_spec)
+    display = _format_stack_as_text(stack_spec, revision_receipt=revision_receipt)
     session["stack_advisor_state"] = STATE_STACK_COMPLETE
     session["stack_statement"] = stack_spec
     session["stack_advisor_stale_acknowledged"] = {}

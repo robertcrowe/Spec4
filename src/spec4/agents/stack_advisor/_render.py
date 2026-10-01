@@ -144,7 +144,15 @@ def _render_entry_links(entry: dict[str, Any], lines: list[str], indent: str) ->
             )
 
 
-def _format_stack_as_text(stack: dict[str, Any]) -> str:
+def _format_stack_as_text(stack: dict[str, Any], *, revision_receipt: str = "") -> str:
+    """Render the stack for the chat transcript.
+
+    ``revision_receipt`` is the pre-rendered "Restored to / Removed from the
+    established stack" block a revision commit carries (D-RD2); it lands after
+    the spec and before the hand-off footer, so the developer reads what changed
+    against the baseline before being pointed at Phaser. Empty by default, so
+    the golden-pinned greenfield output is unchanged.
+    """
     ss: dict[str, Any] = stack.get("stack_spec") or stack.get("stack") or stack
     if not isinstance(ss, dict):
         return str(ss)
@@ -166,6 +174,10 @@ def _format_stack_as_text(stack: dict[str, Any]) -> str:
     render_references(ss.get("references", []), lines)
 
     _render_rest(ss, _TOP_LEVEL_HANDLED, lines)
+
+    if revision_receipt:
+        lines.append("---\n")
+        lines.append(revision_receipt)
 
     lines.append(
         "---\n\n"
