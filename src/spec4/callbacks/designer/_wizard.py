@@ -25,9 +25,11 @@ from spec4.agents.designer import (
     build_revision_note,
     clear_session,
     revision_delta,
+    save_manifest,
     save_mock,
     save_session,
 )
+from spec4.app_constants import ARTIFACT_MANIFEST
 from spec4.callbacks.designer._mock_gen import (
     MOCK_BUFFERS as _MOCK_BUFFERS,
 )
@@ -324,7 +326,32 @@ def on_designer_approve(n: int | None, store: Any, session: Any) -> Any:
         }
         save_session(ds, design_dir)
         save_mock(ds["mock_html"], design_dir)
+        _ensure_manifest(design_dir, working_dir)
     return {**store, "step": 6, "finalized": True}
+
+
+def _ensure_manifest(design_dir: Any, working_dir: str) -> None:
+    """Leave the round with a manifest beside its approved mock (D-BB4).
+
+    Only the generating path writes ``manifest.json`` (``_mock_gen`` saves the
+    one the model emits). A round finalized without a draw of its own — a
+    revision that carried the prior approved mock forward and approved it
+    unchanged, or a refine whose reply held no extractable manifest — ends
+    with ``mock.html`` in this round's design dir and no manifest at all, so
+    StackAdvisor's design input (D-SC5c) is silently absent while the freshness
+    graph, which only joins the manifest when present, reports nothing wrong.
+    The manifest that describes the carried mock is the latest implemented
+    round's; copy it forward. A manifest already in the round is left exactly
+    as it is, mtime included — a refine that re-stated an unchanged design
+    lawfully leaves it older than the mock, and nothing here second-guesses
+    that. With no prior manifest either (a first round whose draw emitted
+    none) there is nothing to carry, and the round stays as it was.
+    """
+    if (design_dir / ARTIFACT_MANIFEST).exists():
+        return
+    prior = project_manager.load_prior_manifest(working_dir)
+    if prior is not None:
+        save_manifest(prior, design_dir)
 
 
 @callback(

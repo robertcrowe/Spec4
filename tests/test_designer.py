@@ -4066,3 +4066,76 @@ class TestPreviewRunsTheErrorShim:
             if any(dep["id"] == "btn-designer-fix-errors" for dep in spec["inputs"])
         ]
         assert "mock-render-errors" in [dep["id"] for dep in fix["state"]]
+
+
+# ---------------------------------------------------------------------------
+# D-BB4 — finalize leaves the round with a manifest beside its approved mock
+# ---------------------------------------------------------------------------
+
+
+class TestFinalizeEnsuresManifest:
+    """``on_designer_approve`` must not leave a round with ``mock.html`` and no
+    ``manifest.json``: StackAdvisor reads the manifest (D-SC5c) and the
+    freshness graph joins it only when present, so an absent one is silent.
+    Only the generating path writes the manifest; a revision round that
+    carried the prior mock forward and approved it unchanged produced none.
+    """
+
+    _PRIOR = {"screens": [{"name": "Board"}], "entities": [{"name": "Game"}]}
+
+    def _implement_prior(self, tmp_path: Path) -> None:
+        from spec4 import project_manager
+        from spec4.agents.designer import save_manifest, save_mock
+
+        v0 = project_manager.get_version_dir(str(tmp_path), 0)
+        save_mock("<html>prior</html>", v0 / "design")
+        save_manifest(self._PRIOR, v0 / "design")
+        v0.joinpath("IMPLEMENTED").write_text("")
+
+    def _approve(self, tmp_path: Path, version: int) -> Path:
+        from spec4 import project_manager
+        from spec4.callbacks.designer._wizard import on_designer_approve
+
+        session = {"working_dir": str(tmp_path), "phase_version": version}
+        store = {"step": 6, "mock_html": "<html>carried</html>"}
+        out = on_designer_approve(1, store, session)
+        assert out["finalized"] is True
+        return project_manager.get_version_dir(str(tmp_path), version) / "design"
+
+    def test_carried_forward_round_gets_the_prior_manifest(
+        self, tmp_path: Path
+    ) -> None:
+        self._implement_prior(tmp_path)
+        design_dir = self._approve(tmp_path, 1)
+        assert (design_dir / "mock.html").read_text(encoding="utf-8") == (
+            "<html>carried</html>"
+        )
+        written = json.loads((design_dir / "manifest.json").read_text("utf-8"))
+        assert written == self._PRIOR
+
+    def test_existing_manifest_is_left_untouched(self, tmp_path: Path) -> None:
+        from spec4 import project_manager
+        from spec4.agents.designer import save_manifest
+
+        self._implement_prior(tmp_path)
+        own = {"screens": [{"name": "Lobby"}], "entities": []}
+        v1_design = project_manager.get_version_dir(str(tmp_path), 1) / "design"
+        save_manifest(own, v1_design)
+        path = v1_design / "manifest.json"
+        os.utime(path, (1_000.0, 1_000.0))
+        design_dir = self._approve(tmp_path, 1)
+        assert json.loads((design_dir / "manifest.json").read_text("utf-8")) == own
+        # mtime semantics (D-SC5c) are not second-guessed at finalize.
+        assert path.stat().st_mtime == 1_000.0
+
+    def test_no_prior_manifest_leaves_the_round_as_it_was(self, tmp_path: Path) -> None:
+        design_dir = self._approve(tmp_path, 0)
+        assert (design_dir / "mock.html").exists()
+        assert not (design_dir / "manifest.json").exists()
+
+    def test_no_working_dir_is_a_no_op_on_disk(self, tmp_path: Path) -> None:
+        from spec4.callbacks.designer._wizard import on_designer_approve
+
+        out = on_designer_approve(1, {"step": 6, "mock_html": "<html/>"}, {})
+        assert out["finalized"] is True
+        assert not any(tmp_path.iterdir())
