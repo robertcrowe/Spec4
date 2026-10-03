@@ -1317,3 +1317,113 @@ class TestGreenfieldScanStaysAtV0:
     def test_the_code_review_lands_in_that_round(self, tmp_path: Path) -> None:
         self._scanned(tmp_path, "new")
         assert (tmp_path / ".spec4" / "v0" / "code_review.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# D-PL1 — optional-agent carry-forward walks back past rounds without the artifact
+# ---------------------------------------------------------------------------
+
+
+class TestPriorLoadersWalkBack:
+    """A round can be implemented without the Agentifier, Designer or Deployer
+    having run (BWS4 v8, a hosting migration, ran none of them). The prior
+    loaders for those agents' artifacts must then read the newest implemented
+    round that *has* the artifact, not come back empty — v9's catalog was
+    merged into an empty carried-forward set because v8 had no
+    ``ai_features.json``. Required artifacts (vision, stack) are unchanged:
+    they keep reading the latest implemented round.
+    """
+
+    def _mark(self, tmp_path: Path, version: int) -> None:
+        project_manager.ensure_version_dir(str(tmp_path), version)
+        project_manager.get_version_dir(str(tmp_path), version).joinpath(
+            "IMPLEMENTED"
+        ).write_text("")
+
+    def test_helper_finds_newest_implemented_round_with_the_artifact(
+        self, tmp_path: Path
+    ) -> None:
+        wd = str(tmp_path)
+        project_manager.save_ai_features(wd, {"ai_features": [{"name": "a"}]}, 0)
+        self._mark(tmp_path, 0)
+        project_manager.save_ai_features(wd, {"ai_features": [{"name": "b"}]}, 1)
+        self._mark(tmp_path, 1)
+        self._mark(tmp_path, 2)  # implemented, no catalog
+        project_manager.save_ai_features(wd, {"ai_features": [{"name": "c"}]}, 3)
+        # v3 not implemented: in progress.
+        assert project_manager.latest_implemented_version(wd) == 2
+        assert (
+            project_manager.latest_implemented_version_with(wd, "ai_features.json") == 1
+        )
+        assert (
+            project_manager.latest_implemented_version_with(wd, "nothing.json") is None
+        )
+
+    def test_ai_features_skip_an_implemented_round_without_a_catalog(
+        self, tmp_path: Path
+    ) -> None:
+        wd = str(tmp_path)
+        v7 = {"ai_features": [{"name": "react_search_loop"}], "cross_cutting": {"x": 1}}
+        project_manager.save_ai_features(wd, v7, 7)
+        self._mark(tmp_path, 7)
+        project_manager.save_vision(wd, {"vision_statement": {"name": "App"}}, 8)
+        self._mark(tmp_path, 8)  # the no-AI round
+        assert project_manager.latest_implemented_version(wd) == 8
+        assert project_manager.load_prior_ai_features(wd) == v7
+
+    def test_mock_and_manifest_skip_a_round_without_a_design(
+        self, tmp_path: Path
+    ) -> None:
+        from spec4.agents.designer import save_manifest, save_mock
+
+        wd = str(tmp_path)
+        design = project_manager.get_version_dir(wd, 7) / "design"
+        save_mock("<html>v7</html>", design)
+        save_manifest({"screens": [{"name": "Board"}]}, design)
+        self._mark(tmp_path, 7)
+        self._mark(tmp_path, 8)  # no design dir at all
+        assert project_manager.load_prior_mock(wd) == "<html>v7</html>"
+        assert project_manager.load_prior_manifest(wd) == {
+            "screens": [{"name": "Board"}]
+        }
+
+    def test_mock_and_manifest_are_located_independently(self, tmp_path: Path) -> None:
+        # v8 drew a mock but its reply held no manifest; the mock is v8's, the
+        # manifest is the newest one that exists — v7's.
+        from spec4.agents.designer import save_manifest, save_mock
+
+        wd = str(tmp_path)
+        save_mock("<html>v7</html>", project_manager.get_version_dir(wd, 7) / "design")
+        save_manifest({"v": 7}, project_manager.get_version_dir(wd, 7) / "design")
+        self._mark(tmp_path, 7)
+        save_mock("<html>v8</html>", project_manager.get_version_dir(wd, 8) / "design")
+        self._mark(tmp_path, 8)
+        assert project_manager.load_prior_mock(wd) == "<html>v8</html>"
+        assert project_manager.load_prior_manifest(wd) == {"v": 7}
+
+    def test_deployment_plan_skips_a_round_that_skipped_deployer(
+        self, tmp_path: Path
+    ) -> None:
+        wd = str(tmp_path)
+        project_manager.save_deployment_plan(wd, "# v6 plan\n", 6)
+        self._mark(tmp_path, 6)
+        self._mark(tmp_path, 7)
+        assert project_manager.load_prior_deployment_plan(wd) == "# v6 plan\n"
+
+    def test_in_progress_round_with_the_artifact_is_never_read(
+        self, tmp_path: Path
+    ) -> None:
+        wd = str(tmp_path)
+        self._mark(tmp_path, 8)  # implemented, no catalog
+        project_manager.save_ai_features(wd, {"ai_features": [{"name": "new"}]}, 9)
+        # v9 has the artifact but is not implemented: not "already built".
+        assert project_manager.load_prior_ai_features(wd) is None
+
+    def test_required_artifacts_still_read_the_latest_implemented_round(
+        self, tmp_path: Path
+    ) -> None:
+        wd = str(tmp_path)
+        project_manager.save_stack(wd, {"stack_spec": {"name": "v7"}}, 7)
+        self._mark(tmp_path, 7)
+        self._mark(tmp_path, 8)  # implemented without a stack: a broken round
+        assert project_manager.load_prior_stack(wd) is None

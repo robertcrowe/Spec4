@@ -88,6 +88,33 @@ def latest_implemented_version(working_dir: str | Path) -> int | None:
     return max(implemented) if implemented else None
 
 
+def latest_implemented_version_with(
+    working_dir: str | Path, *relative: str
+) -> int | None:
+    """Highest implemented round whose directory holds ``relative`` (D-PL1).
+
+    The carry-forward loaders for the *optional* agents' artifacts need this
+    rather than :func:`latest_implemented_version`: a round can be implemented
+    without ever running the Agentifier, Designer or Deployer (BWS4 v8, a
+    hosting migration, ran none of them), and the latest implemented round is
+    then the wrong place to look for the catalog, the mock, the manifest or
+    the deployment plan — the established surface is whatever the newest
+    implemented round that *has* the artifact says it is. Walking back only
+    over implemented rounds keeps the "already built" meaning intact; an
+    unimplemented round in between is skipped, not read. Required artifacts
+    (the vision, the stack) keep reading the latest implemented round, since
+    a round cannot be implemented without them. Returns ``None`` when no
+    implemented round holds the artifact.
+    """
+    dirs = _phase_version_dirs(working_dir)
+    candidates = [
+        v
+        for v, d in dirs.items()
+        if (d / "IMPLEMENTED").exists() and d.joinpath(*relative).exists()
+    ]
+    return max(candidates) if candidates else None
+
+
 def active_version(
     working_dir: str | Path, session: dict[str, Any] | None = None
 ) -> int:

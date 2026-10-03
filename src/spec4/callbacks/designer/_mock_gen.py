@@ -350,7 +350,11 @@ def expected_stream_chars(working_dir: str | None) -> int:
     if prior_mock is None:
         return _DEFAULT_EXPECTED_CHARS
     manifest_chars = 0
-    version = project_manager.latest_implemented_version(working_dir)
+    # The round the carried mock actually came from (D-PL1), not merely the
+    # latest implemented round, which may have run no Designer at all.
+    version = project_manager.latest_implemented_version_with(
+        working_dir, "design", "mock.html"
+    )
     if version is not None:
         manifest_path = (
             project_manager.get_version_dir(working_dir, version)

@@ -30,6 +30,7 @@ from spec4.project_manager._paths import (
     ensure_version_dir,
     get_version_dir,
     latest_implemented_version,
+    latest_implemented_version_with,
     latest_phase_version,
 )
 from spec4.project_manager._phase_markdown import (
@@ -358,12 +359,13 @@ def load_prior_ai_features(working_dir: str | Path) -> dict[str, Any] | None:
     completion. Returns ``None`` when no implemented round exists or its
     ``ai_features.json`` is missing/unreadable.
     """
-    version = latest_implemented_version(working_dir)
+    # D-PL1: the newest implemented round that ran the Agentifier, not merely
+    # the newest implemented round — a no-AI round in between (BWS4 v8) has no
+    # catalog of its own and must not empty the carry-forward.
+    version = latest_implemented_version_with(working_dir, ARTIFACT_AI_FEATURES)
     if version is None:
         return None
     path = get_version_dir(working_dir, version) / ARTIFACT_AI_FEATURES
-    if not path.exists():
-        return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else None
@@ -382,7 +384,7 @@ def load_prior_mock(working_dir: str | Path) -> str | None:
     bearing an ``IMPLEMENTED`` marker). Returns ``None`` when no implemented round
     exists or its ``design/mock.html`` is missing/unreadable/empty.
     """
-    version = latest_implemented_version(working_dir)
+    version = latest_implemented_version_with(working_dir, "design", "mock.html")
     if version is None:
         return None
     path = get_version_dir(working_dir, version) / "design" / "mock.html"
@@ -404,7 +406,7 @@ def load_prior_manifest(working_dir: str | Path) -> dict[str, Any] | None:
     so the refine draw can update it rather than re-invent it. Returns ``None``
     when no implemented round exists or its manifest is missing/unreadable.
     """
-    version = latest_implemented_version(working_dir)
+    version = latest_implemented_version_with(working_dir, "design", ARTIFACT_MANIFEST)
     if version is None:
         return None
     return load_design_manifest(working_dir, version)
@@ -472,12 +474,10 @@ def load_prior_deployment_plan(working_dir: str | Path) -> str | None:
     no implemented round exists or its ``deployment-plan.md`` is
     missing/unreadable/empty (the prior round may have skipped Deployer).
     """
-    version = latest_implemented_version(working_dir)
+    version = latest_implemented_version_with(working_dir, "deployment-plan.md")
     if version is None:
         return None
     path = get_version_dir(working_dir, version) / "deployment-plan.md"
-    if not path.exists():
-        return None
     try:
         markdown = path.read_text(encoding="utf-8")
     except OSError:
