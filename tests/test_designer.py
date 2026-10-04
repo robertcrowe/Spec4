@@ -4037,6 +4037,58 @@ class TestPreviewRunsTheErrorShim:
         assert saved == _CLEAN_MOCK
         assert MOCK_ERROR_SHIM not in saved
 
+    def test_the_shim_stands_in_for_what_the_sandbox_withholds(self) -> None:
+        """D-MS1–3: storage, cookie, indexedDB and history, before the mock runs.
+
+        The browser's verdict is the e2e module's
+        (``tests/integration/test_mock_check_e2e.py``); this pins the shim's
+        shape so a rewrite cannot drop a stand-in unnoticed.
+        """
+        from spec4.layouts.designer import MOCK_ERROR_SHIM
+
+        # Stand-ins are installed before the reporter and before the first
+        # message out, so they are in place when the mock's first script runs.
+        installed = MOCK_ERROR_SHIM.index('post("mock-loaded")')
+        for stand_in in (
+            'define(window,"localStorage",{value:mem()',
+            'define(window,"sessionStorage",{value:mem()',
+            'define(document,"cookie",{get:function(){return""},set:function(){}',
+            'define(window,"indexedDB",{value:undefined',
+            "History.prototype.pushState=function(){}",
+            "History.prototype.replaceState=function(){}",
+        ):
+            assert MOCK_ERROR_SHIM.index(stand_in) < installed, stand_in
+        # The in-memory Storage has the whole interface a mock may call.
+        members = ("getItem", "setItem", "removeItem", "clear", "key", "get length")
+        for member in members:
+            assert member in MOCK_ERROR_SHIM
+        # Shadowing, not loosening: the preview's sandbox is unchanged.
+        from spec4.layouts.designer import step6_content
+
+        frame = _component(
+            step6_content({"step": 6, "mock_html": _CLEAN_MOCK, "finalized": False}),
+            "mock-iframe",
+        )
+        assert frame.sandbox == "allow-scripts"
+        # Still one line, so the mock's line numbers still mean what they say.
+        assert "\n" not in MOCK_ERROR_SHIM
+
+    def test_the_shim_drops_sandbox_errors_and_keeps_the_mocks_own(self) -> None:
+        """D-MS4: the backstop filters by message, inside ``report``."""
+        from spec4.layouts.designer import MOCK_ERROR_SHIM
+
+        assert (
+            'var SANDBOX=/sandboxed|allow-same-origin|opaque origin|origin "null"/i;'
+            in MOCK_ERROR_SHIM
+        )
+        report = MOCK_ERROR_SHIM[MOCK_ERROR_SHIM.index("function report(") :]
+        report = report[: report.index('post("mock-loaded")')]
+        # Only a SecurityError that names the sandbox is dropped, and it is
+        # dropped before it can count against the 20-error cap.
+        guard = "if(/SecurityError/.test(message)&&SANDBOX.test(message))return;"
+        assert guard in report
+        assert report.index("SANDBOX.test(message)") < report.index("count+=1")
+
     def test_the_page_paints_the_check_line_from_the_report_store(self) -> None:
         from dash._callback import GLOBAL_CALLBACK_LIST
 

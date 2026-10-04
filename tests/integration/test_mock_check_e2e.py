@@ -44,6 +44,32 @@ _CLEAN_MOCK = (
     "<!DOCTYPE html><html><head><title>t</title></head>"
     "<body><p>hi</p><script>document.title = 'ok';</script></body></html>"
 )
+# A mock that keeps state the way a drawn gallery does: browser storage, a
+# cookie, hash routing. Every one of these throws SecurityError inside the
+# preview's sandbox (no same-origin) and nowhere else, so the shim stands in
+# for them (D-MS1–3) and the check line must call the mock clean. The mock
+# also asserts the stand-ins round-trip, so a stand-in that silently drops
+# writes would surface as a real error; its last script throws the one
+# sandbox error no stand-in covers, which the shim must drop by message.
+_STATEFUL_MOCK = (
+    "<!DOCTYPE html><html><head><title>t</title></head><body><p>hi</p>"
+    "<script>"
+    "localStorage.setItem('k', 'v');"
+    "if (localStorage.getItem('k') !== 'v') throw new Error('localStorage');"
+    "sessionStorage.setItem('s', '1');"
+    "if (sessionStorage.length !== 1) throw new Error('sessionStorage');"
+    "document.cookie = 'a=1';"
+    "if (document.cookie !== '') throw new Error('cookie');"
+    "if (window.indexedDB) throw new Error('indexedDB');"
+    "history.pushState({}, '', '#route');"
+    "history.replaceState({}, '', '#route2');"
+    "document.title = 'ok';"
+    "</script>"
+    # Uncaught, and not covered by a stand-in: the opaque origin may not read
+    # the parent's location. The backstop drops it by message (D-MS4).
+    "<script>window.top.location.href;</script>"
+    "</body></html>"
+)
 
 _SERVER = """
 import logging, sys
@@ -227,5 +253,30 @@ class TestTheCleanMock:
             assert _status(page) == "Rendered cleanly"
             assert _status_color(page) == _GREEN
             assert not _fix_button_visible(page)
+        finally:
+            page.context.close()
+
+
+class TestTheStatefulMock:
+    def test_sandbox_only_errors_are_not_the_mocks(
+        self, browser: Any, base_url: str, tmp_path: pathlib.Path
+    ) -> None:
+        """Storage, cookies and history work in the preview; nothing is reported."""
+        page = _open_preview(browser, base_url, _project(tmp_path, _STATEFUL_MOCK))
+        try:
+            page.wait_for_function(
+                "() => document.querySelector('#mock-check-status')"
+                ".textContent === 'Rendered cleanly'"
+            )
+            assert _status(page) == "Rendered cleanly"
+            assert _status_color(page) == _GREEN
+            assert not _fix_button_visible(page)
+            # The mock ran to its last statement, so the stand-ins did not stop
+            # it; and the preview is still an opaque origin, so the fix is the
+            # shim's, not a loosened sandbox.
+            frame = page.query_selector("#mock-iframe").content_frame()
+            assert frame is not None
+            assert frame.evaluate("() => document.title") == "ok"
+            assert frame.evaluate("() => location.origin") == "null"
         finally:
             page.context.close()

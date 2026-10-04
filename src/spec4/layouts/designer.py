@@ -48,13 +48,44 @@ POLL_MS = 500
 # messages: ``mock-loaded`` (reset), ``mock-error`` (one per distinct error,
 # 20 at most) and ``mock-ready`` (the load event: what has not fired by now
 # is the browser's to find later).
+#
+# The sandbox gives the mock an opaque origin, and an opaque origin has no
+# storage: ``localStorage``, ``sessionStorage``, ``document.cookie``,
+# ``indexedDB.open`` and ``history.pushState`` all throw SecurityError there
+# and nowhere else. A drawn gallery keeps its state in exactly these, so the
+# shim stands in for them before the mock's first script (D-MS1–3): in-memory
+# Storage objects, a cookie that reads empty and ignores writes, no
+# ``indexedDB`` so feature detection fails cleanly, and history writes that
+# are no-ops. The stand-ins shadow the throwing getters (an own property on
+# ``window``/``document`` wins over the prototype's), so the mock runs as it
+# would in a tab. What they do not cover — ``window.top.location`` (blocked
+# for the opaque origin ``"null"``), a future sandbox rule — ``report`` drops
+# by message (D-MS4): no page outside a sandbox says "sandboxed",
+# "allow-same-origin" or ``origin "null"`` in a SecurityError, so nothing of
+# the mock's own is hidden.
 MOCK_ERROR_SHIM = (
     "<script>(function(){var seen={},count=0;"
+    "function mem(){var m=new Map();return{getItem:function(k){k=String(k);"
+    "return m.has(k)?m.get(k):null},setItem:function(k,v){m.set(String(k),String(v))},"
+    "removeItem:function(k){m.delete(String(k))},clear:function(){m.clear()},"
+    "key:function(i){var k=Array.from(m.keys())[i];return k===undefined?null:k},"
+    "get length(){return m.size}}}"
+    "function define(o,n,d){try{Object.defineProperty(o,n,d)}catch(e){}}"
+    'define(window,"localStorage",{value:mem(),configurable:true,writable:true});'
+    'define(window,"sessionStorage",{value:mem(),configurable:true,writable:true});'
+    'define(document,"cookie",{get:function(){return""},set:function(){},'
+    "configurable:true});"
+    'define(window,"indexedDB",{value:undefined,configurable:true,writable:true});'
+    "try{History.prototype.pushState=function(){};"
+    "History.prototype.replaceState=function(){}}catch(e){}"
+    'var SANDBOX=/sandboxed|allow-same-origin|opaque origin|origin "null"/i;'
     'function post(kind,detail){try{parent.postMessage({spec4:kind,detail:detail},"*")}'
     "catch(e){}}"
-    'function report(message,source,line){var key=message+"@"+(line||0);'
+    "function report(message,source,line){message=String(message);"
+    "if(/SecurityError/.test(message)&&SANDBOX.test(message))return;"
+    'var key=message+"@"+(line||0);'
     "if(seen[key]||count>=20)return;seen[key]=true;count+=1;"
-    'post("mock-error",{message:String(message),source:source?String(source):"",'
+    'post("mock-error",{message:message,source:source?String(source):"",'
     "line:line||0})}"
     'post("mock-loaded");'
     'window.addEventListener("error",function(event){'
