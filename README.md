@@ -141,7 +141,7 @@ Seven agents, in order. Each reads what the ones before it wrote.
 
 **Designer** generates a self-contained HTML mock of the application's starting screen from the vision and AI features, with optional reference screenshots. Before you see it, the mock is checked: the extracted document is tested for truncation and unbalanced tags on the server, then run in your browser with an error reporter that catches thrown errors, failed loads and unhandled rejections. The preview reports "Rendered cleanly" or lists the errors, with a **Fix errors** button that sends them back to the model as a refine — nothing runs without your click. Approve the mock, refine it with a description of changes, or start over. Phaser directs the coding agent to build to it. [Example mock.](https://spec4.ai/examples/mock.html)
 
-**StackAdvisor** recommends a technology stack that serves the features and the AI tiers, with canonical documentation links for every library it names.
+**StackAdvisor** recommends a technology stack that serves the features and the AI tiers, with canonical documentation links for every library it names. In a revision round it re-emits the whole established stack with the changes folded in, and every established entry missing from the result is accounted for: an entry the delta or your conversation asked to remove is reported as removed, and one nothing asked for is put back where it was, with a receipt on the commit screen saying so.
 
 **Phaser** turns all of it into ordered implementation phases, one file each, written for a coding agent. It treats the stack as the approved component list: a phase that needs something not in it has to ask you first, so a dependency never appears in a plan without your having said yes to it.
 
@@ -158,9 +158,11 @@ The standard objection to spec-driven development is that it turns into waterfal
 Spec4 is built around the round instead of the spec. A round is one pass over the project — `.spec4/v1/`, `v2/`, `v3/` — and every round after the first starts from the code, not from the previous plan:
 
 - **CodeScanner reads what was actually built — by anyone.** The code review for round N is of the code as it stands, including what the coding agent did that the plan didn't say and whatever you changed yourself in between. Spec4 doesn't assume it's the only thing editing the repository; a hotfix, a refactor, or a week of work done without it is just what the next round plans against.
+- **The review reaches the agents in a shape they read.** Brainstormer, StackAdvisor and Phaser each get a rendered view of exactly the review blocks they use — languages, toolchain, persistence, entry points — with values verbatim and their sources alongside, rather than a JSON paste the model skims, so the linter the review found is the one StackAdvisor is told to carry forward, not the one in its prompt's example.
 - **Brainstormer stamps a delta.** In a revision round it records which features were added, modified and removed, and the downstream agents scope to that delta rather than re-deriving the whole application.
 - **Phaser plans only the change.** Phase 1 of a revision is an integration thread that wires the new surface into the existing code, not a from-scratch steel thread, and no phases are emitted for established, unchanged features.
 - **Stale inputs are flagged, not ignored.** Every artifact is dated against the ones upstream of it. If you re-run Brainstormer after StackAdvisor, the project page shows StackAdvisor as needing an update — and the coding agent's `IMPLEMENTED` marker is what tells Spec4 the round is built and the next one may begin.
+- **A round may skip the optional agents.** A round implemented without the Agentifier, Designer or Deployer doesn't empty what the next round carries forward: the prior AI catalog, mock, manifest and deployment plan come from the newest implemented round that has them.
 
 So the plan is never the source of truth for long. The code is, and each round re-reads it. This repository carries three rounds of Spec4 planning its own changes under `.spec4/`; the phase file quoted above is the first phase of the first of them.
 

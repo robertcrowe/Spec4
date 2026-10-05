@@ -10,6 +10,69 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [1.5.3] — 2026-10-05
+
+Brownfield fidelity: what CodeScanner found reaches the planning agents in a
+shape they read, a revision round cannot silently lose an entry from the
+established stack, and the optional agents' artifacts carry forward across a
+round that skipped them.
+
+### Added
+- **StackAdvisor's revision diff.** In a revision round StackAdvisor re-emits
+  the whole prior `stack.json` with the changes folded in, and re-emitting a
+  large JSON artifact is where a model drops a line nobody asked it to drop —
+  a live round lost an established `SendGrid` entry with no signal anywhere.
+  Every established entry absent from the new spec is now found
+  deterministically and classified: requested by the Brainstormer's delta,
+  requested by you in this round's conversation, or unrequested. Unrequested
+  entries are restored at their prior position, and the commit display carries
+  a receipt — "Restored to the established stack" / "Removed from the
+  established stack" — so the restoration is visible rather than silent. The
+  keys and dispositions are recorded on every revision commit, empty list
+  included, so a probe can measure how often it fires.
+- **Code-review views per consumer.** Brainstormer, StackAdvisor and Phaser
+  used to receive `code_review.json` as a raw JSON paste followed by a
+  field-instruction paragraph that differed per seed. A probe
+  (`evals/code_scanner/review_reach.py`) showed what that cost: fields a seed
+  named reached the plan, fields it did not name mostly did not, and
+  StackAdvisor's stack recorded the prompt exemplar's `ESLint`/`Prettier` in
+  eight rounds out of eight for a codebase whose review said `oxlint`. Each
+  consumer now gets a rendered view of exactly the blocks it reads, each
+  under one line of guidance, values verbatim with their `source` /
+  `inferred_from` provenance in brackets. The renderer is total: a schema
+  field it has no special knowledge of still reaches the seed.
+- `evals/stack_advisor/grounding.py`: a read-only probe over recorded draws
+  listing the integrations, auth mechanisms, stores and collections that cite
+  no feature, capability, NFR or infra id — the measurement a grounding check
+  would be judged against, before any such check exists.
+
+### Fixed
+- **Optional-agent carry-forward walks back past rounds without the
+  artifact.** The prior AI catalog, mock, manifest and deployment plan were
+  read from the latest implemented round only, so a round that was implemented
+  without running the Agentifier, Designer or Deployer (a hosting migration,
+  say) emptied the carry-forward for the round after it. Each loader now reads
+  the newest *implemented* round that holds the artifact; unimplemented rounds
+  in between are skipped, not read. The required artifacts (vision, stack)
+  still read the latest implemented round, since a round cannot be implemented
+  without them.
+- **Designer finalize leaves the round with a manifest.** Only the generating
+  path wrote `manifest.json`, so a revision that carried the prior approved
+  mock forward and approved it unchanged ended with `mock.html` and no
+  manifest, and StackAdvisor's design input was silently absent. Approve now
+  copies the latest implemented round's manifest in when the round has none.
+  A manifest already present is left as it is, mtime included.
+- **The mock preview stands in for what the sandbox withholds.** The preview
+  iframe's opaque origin has no storage, so `localStorage`, `sessionStorage`,
+  `document.cookie`, `indexedDB.open` and `history.pushState` all throw
+  `SecurityError` there — and a drawn gallery keeps its state in exactly
+  these, so a mock that works in a tab reported errors in the preview. The
+  error shim now installs in-memory storage, a cookie that reads empty, no
+  `indexedDB` so feature detection fails cleanly, and no-op history writes
+  before the mock's first script, and drops the sandbox-only `SecurityError`
+  messages it cannot shim. Nothing of the mock's own is hidden: no page
+  outside a sandbox raises those messages.
+
 ## [1.5.2] — 2026-09-21
 
 Designer reliability: the finished mock reaches the screen, the screen says
@@ -203,6 +266,7 @@ first commit to the eve of 1.0.0. The commit record there is too thin to
 summarise honestly — several releases are a single `cleanup` or `lock` commit,
 and tags are missing for 0.1.0–0.1.3 and 0.1.5. Use `git log` for that period.
 
+[1.5.3]: https://github.com/robertcrowe/Spec4/compare/v1.5.2...v1.5.3
 [1.5.2]: https://github.com/robertcrowe/Spec4/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/robertcrowe/Spec4/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/robertcrowe/Spec4/compare/v1.0.0...v1.5.0
