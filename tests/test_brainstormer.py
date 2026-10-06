@@ -9,6 +9,7 @@ from unittest.mock import patch
 from spec4.agents import brainstormer
 from spec4.app_constants import STATE_IN_PROGRESS, STATE_VISION_COMPLETE
 from tests._chunks import make_stream_chunk
+from tests._review_helpers import review_envelope
 from tests._agent_helpers import (
     _reply_sequence,
     collect,
@@ -481,7 +482,7 @@ class TestBrainstormerBranches:
     def test_code_review_seed_calls_llm(self) -> None:
         # D-CR1: the seed carries the rendered view, so the review needs at
         # least one product-facing field to be a brownfield start at all.
-        review = {"code_review": {"is_software_project": True, "project_type": "web"}}
+        review = review_envelope(project_type="web")
         session = make_session(code_review=review, vision_statement=None)
         with patch("spec4.llm.litellm.completion") as mock_llm:
             mock_llm.return_value = iter(

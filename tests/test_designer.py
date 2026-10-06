@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 from dash import no_update
 
+from tests._review_helpers import review_envelope
+
 from spec4.agents.designer import (
     DesignerSession,
     build_mock_prompt,
@@ -47,7 +49,8 @@ class TestDetectNoUi:
         assert detect_no_ui({"purpose": "a CLI tool for batch processing"}, {}) is True
 
     def test_returns_true_for_cli_code_review(self) -> None:
-        assert detect_no_ui({}, {"project_type": "command-line utility"}) is True
+        cr = review_envelope(project_type="command-line utility")
+        assert detect_no_ui({}, cr) is True
 
     def test_returns_true_for_no_ui_keyword(self) -> None:
         assert detect_no_ui({"description": "no ui, headless service"}, {}) is True
@@ -69,29 +72,32 @@ class TestDetectNoUi:
 
     def test_ui_summary_has_ui_false_takes_precedence(self) -> None:
         # ui_summary.has_ui=False wins even when prose says web app
-        cr = {
-            "code_review": {
-                "project_type": "web application",
-                "ui_summary": {"has_ui": False, "kind": "none"},
-            }
-        }
+        cr = review_envelope(
+            project_type="web application",
+            ui_summary={"has_ui": False, "kind": "none"},
+        )
         assert detect_no_ui({}, cr) is True
 
     def test_ui_summary_has_ui_true_takes_precedence(self) -> None:
         # ui_summary.has_ui=True wins even when prose contains 'cli'
-        cr = {
-            "code_review": {
-                "project_type": "cli utility with a web dashboard",
-                "ui_summary": {"has_ui": True, "kind": "spa"},
-            }
-        }
+        cr = review_envelope(
+            project_type="cli utility with a web dashboard",
+            ui_summary={"has_ui": True, "kind": "spa"},
+        )
         assert detect_no_ui({}, cr) is False
 
-    def test_envelope_unwrapping_for_legacy_callers(self) -> None:
-        # Passing the full envelope (as the production layout caller does)
-        # should still resolve the keyword sweep correctly.
-        cr_envelope = {"code_review": {"project_type": "command-line utility"}}
-        assert detect_no_ui({}, cr_envelope) is True
+    def test_only_the_envelope_shape_is_read(self) -> None:
+        # D-EV5: by path only. A bare review dict or the schema-1 envelope
+        # contributes nothing to the sweep; the vision alone decides.
+        assert detect_no_ui({}, {"project_type": "command-line utility"}) is False
+        v1 = {
+            "code_review": {"schema_version": 1, "project_type": "command-line utility"}
+        }
+        assert detect_no_ui({}, v1) is False
+        assert (
+            detect_no_ui({}, review_envelope(project_type="command-line utility"))
+            is True
+        )
 
     def test_vision_ui_surface_matched(self) -> None:
         # Brainstormer captures the UI surface as vision.ui_surface; ensure

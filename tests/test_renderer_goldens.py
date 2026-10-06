@@ -96,7 +96,7 @@ class TestReviewRenderer:
     def test_empty_review_variants(self, cr: dict[str, object], name: str) -> None:
         assert_golden(
             f"render_review_empty_{name}.md",
-            _format_review_as_text({"code_review": cr}),
+            _format_review_as_text({"code_review": {"scan": {}, "review": cr}}),
         )
 
     def test_typed_notes_with_no_tests_and_no_ci(self) -> None:

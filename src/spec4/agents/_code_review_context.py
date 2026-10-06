@@ -31,14 +31,18 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = [
+    "AGENT_REVIEW_VIEWS",
     "BRAINSTORMER_FIELD_GUIDANCE",
     "BRAINSTORMER_REVIEW_FIELDS",
     "EXCLUDED_PATHS",
     "FIELD_GUIDANCE",
     "PHASER_FIELD_GUIDANCE",
     "PHASER_REVIEW_FIELDS",
+    "SCOUT_REVIEW_FIELDS",
     "STACK_REVIEW_FIELDS",
     "render_code_review",
+    "unwrap_review",
+    "unwrap_scan",
 ]
 
 #: Provenance keys: rendered in brackets after the value they annotate.
@@ -153,11 +157,11 @@ BRAINSTORMER_FIELD_GUIDANCE: dict[str, str] = {
     ),
 }
 
-#: What Phaser reads from the review, in the order it is rendered. Phaser
-#: keeps the raw JSON block alongside this view (D-CR1): it hands
-#: ``directory_map`` and ``commands`` through to the coder verbatim and the
-#: raw block is the cheapest lossless carrier. The view is where each block's
-#: planning rule sits next to the data it governs.
+#: What Phaser reads from the review, in the order it is rendered. The view is
+#: Phaser's only carrier of the review (D-EV6 retired the raw JSON block D-CR1
+#: had kept alongside it): ``commands``, ``entrypoints`` and ``directory_map``
+#: render verbatim through the generic walker, so what the coder receives is
+#: still the review's own values, now beside the planning rule each governs.
 PHASER_REVIEW_FIELDS: tuple[str, ...] = (
     "architecture",
     "commands",
@@ -247,17 +251,67 @@ STACK_REVIEW_FIELDS: tuple[str, ...] = (
     "notes.change_risks",
 )
 
+#: What the Agentifier's Scout reads from the review, in the order it is
+#: rendered (D-EV7; replaces the raw JSON paste in ``scout.py``). Scout
+#: catalogues candidate AI capabilities against what the product is and what
+#: AI it already has, so this is the identity half plus the AI-relevant
+#: inventory: the self-description, type and shape; the AI already in place
+#: and the frameworks and dependencies it rides on; the routes and standards
+#: a new capability would attach to; and the half-built areas to avoid.
+SCOUT_REVIEW_FIELDS: tuple[str, ...] = (
+    "existing_self_description",
+    "summary",
+    "project_type",
+    "architecture",
+    "ai_capabilities",
+    "api_surface",
+    "protocols_implemented",
+    "frameworks",
+    "dependencies",
+    "notes.incomplete_or_dead_code",
+)
+
+#: Per-agent view used on the revision path (``_turn_flow``'s "updated code
+#: review" block, D-EV6 a′): the same tuple and guidance that agent's seed
+#: renders, so the revised input is directly comparable to the original.
+#: Keyed by the agent name ``project_manager.detect_stale_inputs`` uses.
+#: Agents absent here (Deployer reads its own excerpt; the Agentifier seeds
+#: through Scout) receive the ``review`` block as raw JSON instead.
+AGENT_REVIEW_VIEWS: dict[str, tuple[tuple[str, ...], dict[str, str] | None]] = {
+    "brainstormer": (BRAINSTORMER_REVIEW_FIELDS, BRAINSTORMER_FIELD_GUIDANCE),
+    "stack_advisor": (STACK_REVIEW_FIELDS, None),
+    "phaser": (PHASER_REVIEW_FIELDS, PHASER_FIELD_GUIDANCE),
+}
+
 
 # ---------------------------------------------------------------------------
 # Shape helpers
 # ---------------------------------------------------------------------------
 
 
-def _unwrap(review: Any) -> dict[str, Any]:
-    if not isinstance(review, dict):
+def _envelope(envelope: Any) -> dict[str, Any]:
+    if not isinstance(envelope, dict):
         return {}
-    inner = review.get("code_review")
-    return inner if isinstance(inner, dict) else review
+    inner = envelope.get("code_review")
+    return inner if isinstance(inner, dict) else {}
+
+
+def unwrap_review(envelope: Any) -> dict[str, Any]:
+    """The ``review`` block of a stored ``code_review`` envelope, else ``{}``.
+
+    By path only (D-EV5): ``envelope["code_review"]["review"]``. A bare v1
+    review, a bare ``review`` dict, or anything that is not the schema-2
+    envelope resolves to ``{}`` — a consumer handed the wrong shape renders
+    nothing rather than a silently degraded view.
+    """
+    review = _envelope(envelope).get("review")
+    return review if isinstance(review, dict) else {}
+
+
+def unwrap_scan(envelope: Any) -> dict[str, Any]:
+    """The computed ``scan`` layer of a stored envelope, else ``{}``."""
+    scan = _envelope(envelope).get("scan")
+    return scan if isinstance(scan, dict) else {}
 
 
 def _resolve(node: Any, dotted: str) -> Any:
@@ -429,11 +483,12 @@ def render_code_review(
     block differs (Phaser's ``persistence`` is a Phase 1 verification rule,
     StackAdvisor's is a carry-forward fact) says so next to the data. A field
     absent from the review, or present but empty, is skipped, as is any
-    sub-key in :data:`EXCLUDED_PATHS`. Returns ``""`` for a review that is not
-    a dict, not a software project, or contains none of the fields — the
-    caller then emits nothing.
+    sub-key in :data:`EXCLUDED_PATHS`. ``review`` is the stored envelope
+    (``session["code_review"]``); it is unwrapped by path. Returns ``""`` for
+    a review that is not the envelope, not a software project, or contains
+    none of the fields — the caller then emits nothing.
     """
-    cr = _unwrap(review)
+    cr = unwrap_review(review)
     if not cr or cr.get("is_software_project") is False:
         return ""
     lines_for = {**FIELD_GUIDANCE, **(guidance or {})}

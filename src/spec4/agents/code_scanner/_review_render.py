@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from spec4.agents._code_review_context import unwrap_review
 from spec4.agents._stack_context import render_coding_style
 
 
@@ -98,7 +99,14 @@ def _format_empty_review(cr: dict[str, Any]) -> str:
 
 
 def format_review_as_text(review: dict[str, Any]) -> str:
-    cr = review.get("code_review", {})
+    """Render a stored ``code_review`` envelope for the chat transcript.
+
+    Renders the ``review`` block; the computed ``scan`` layer is not shown
+    here at schema_version 2's first step (the Scan Summary section arrives
+    with the 1b collectors). An empty or non-envelope input renders the
+    skeleton, as before.
+    """
+    cr = unwrap_review(review)
     if cr.get("is_software_project") is False:
         return _format_empty_review(cr)
 

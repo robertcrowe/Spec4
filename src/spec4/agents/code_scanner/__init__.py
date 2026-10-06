@@ -30,10 +30,12 @@ from collections.abc import Generator
 from typing import Any
 
 from spec4 import llm, project_manager, websearch
+from spec4.agents._code_review_context import unwrap_review
 from spec4.agents._code_review_schema import (
     CODE_REVIEW_SCHEMA_VERSION,
     format_validation_errors_for_retry,
     validate_code_review,
+    validate_review_block,
 )
 from spec4.agents._reask import (
     abandon_reask,
@@ -69,12 +71,50 @@ __all__ = [
     "gather_project_context",
     "run",
     "SYSTEM_PROMPT",
+    "wrap_review",
 ]
 
 
 def extract_review_json(text: str) -> dict[str, Any] | None:
     data = extract_json_block(text)
-    return data if data is not None and "code_review" in data else None
+    return data if data is not None and "review" in data else None
+
+
+def wrap_review(
+    block: dict[str, Any], scan: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Assemble the stored envelope from the LLM's validated ``review`` block.
+
+    ``schema_version`` and ``scan`` are code-owned (D-EV2/D-EV4): the model
+    never emits either. ``scan`` is empty at this step; the 1b–1d collectors
+    fill it here, after validation, so nothing the model wrote is mistaken
+    for a computed fact.
+    """
+    return {
+        "code_review": {
+            "schema_version": CODE_REVIEW_SCHEMA_VERSION,
+            "scan": {} if scan is None else scan,
+            "review": block["review"],
+        }
+    }
+
+
+def _prior_review_for_seed(prior: dict[str, Any]) -> dict[str, Any]:
+    """The review block a seed pastes as prior context.
+
+    The scanner's model sees only the ``review`` layer — never ``scan`` or the
+    version. A review on disk under the *previous* envelope (schema 1 kept
+    its fields directly under ``code_review``) is what the stale-review
+    fresh seed exists to carry (D-SV4), so that one older shape is read here
+    and nowhere else; anything else resolves to ``{}``.
+    """
+    review = unwrap_review(prior)
+    if review:
+        return review
+    inner = prior.get("code_review")
+    if isinstance(inner, dict) and "review" not in inner and "scan" not in inner:
+        return {k: v for k, v in inner.items() if k != "schema_version"}
+    return {}
 
 
 def _extract_and_validate_review(
@@ -107,9 +147,9 @@ def _extract_and_validate_review(
                 data = parsed
     if data is None:
         return None, []
-    if "code_review" not in data:
-        return None, ["<root>: extracted JSON block is missing the 'code_review' key"]
-    errors = validate_code_review(data)
+    if "review" not in data:
+        return None, ["<root>: extracted JSON block is missing the 'review' key"]
+    errors = validate_review_block(data)
     if errors:
         return None, errors
     return data, []
@@ -135,7 +175,7 @@ def build_fresh_scan_seed(
     )
     if prior_review is None:
         return f"{head}{context}"
-    prior_json = json.dumps(prior_review, indent=2)
+    prior_json = json.dumps(_prior_review_for_seed(prior_review), indent=2)
     return (
         f"{head}"
         "**Prior code review on disk (older schema — context only):**\n\n"
@@ -143,8 +183,8 @@ def build_fresh_scan_seed(
         "schema. Treat it as hints about what the project looked like then. "
         "Re-derive every field from the evidence below; do not produce an "
         "update or a diff, and do not carry anything forward that the evidence "
-        f"does not support. Emit the review at schema_version "
-        f"{CODE_REVIEW_SCHEMA_VERSION}.\n\n"
+        "does not support. Emit the `review` block in the shape your operating "
+        "instructions describe.\n\n"
         f"```json\n{prior_json}\n```\n\n"
         "**Project evidence (fresh scan):**\n\n"
         f"{context}"
@@ -157,7 +197,7 @@ def build_update_scan_seed(
     all_files: list[pathlib.Path] | None = None,
 ) -> str:
     context = gather_project_context(working_dir, all_files)
-    prior_json = json.dumps(prior_review, indent=2)
+    prior_json = json.dumps(_prior_review_for_seed(prior_review), indent=2)
     return (
         "Please introduce yourself as CodeScanner. The user has asked you to "
         "re-scan this project, which already has a prior code review on disk.\n\n"
@@ -172,9 +212,8 @@ def build_update_scan_seed(
         "Added / Removed / Changed.\n"
         '- After presenting the changes, ask: "Anything to correct? Reply '
         "'looks good' to merge and finalize.\"\n"
-        "- When the user confirms, emit a complete updated `code_review` JSON block "
-        f"(schema_version {CODE_REVIEW_SCHEMA_VERSION}) reflecting the merged state. "
-        "The block must be "
+        "- When the user confirms, emit a complete updated `review` JSON block "
+        "reflecting the merged state. The block must be "
         "complete — not a diff — so downstream agents always see the full review.\n\n"
         "**Prior code review on disk:**\n\n"
         f"```json\n{prior_json}\n```\n\n"
@@ -458,9 +497,19 @@ def _scanner_reask_failed(
 
 
 def _scanner_commit(
-    session: dict[str, Any], msgs: list[dict[str, Any]], review: dict[str, Any]
+    session: dict[str, Any], msgs: list[dict[str, Any]], block: dict[str, Any]
 ) -> None:
-    """Render first, then commit the review to the session."""
+    """Wrap the validated ``review`` block, render, then commit to the session.
+
+    The envelope is validated once more here (D-EV3): the block already
+    passed ``validate_review_block``, so a failure means the wrapper, not the
+    model, is wrong — and that must not reach disk.
+    """
+    review = wrap_review(block)
+    errors = validate_code_review(review)
+    if errors:
+        msg = "assembled code_review envelope failed validation: " + "; ".join(errors)
+        raise ValueError(msg)
     display = format_review_as_text(review)
     session["code_scanner_state"] = STATE_REVIEW_COMPLETE
     session["code_review"] = review

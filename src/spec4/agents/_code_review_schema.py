@@ -1,20 +1,31 @@
-"""JSON Schema for the CodeScanner `code_review` artifact (schema_version 1).
+"""JSON Schemas for the CodeScanner `code_review` artifact (schema_version 2).
 
-The schema captures the *structural* contract that downstream agents depend on:
-closed canonical key vocabularies for `commands` and `entrypoints`, the
-`ui_summary.kind` enum, the closed `notes.*` shape, and entry-array item
-shapes. It does NOT enforce conditional required fields (`project_type`,
-`languages`, etc. when `is_software_project` is true) — those are guidance
-in the prompt, and a soft miss should not trigger a costly retry.
+Two shapes, one property vocabulary:
 
-The schema is consumed in two places:
+- `REVIEW_BLOCK_SCHEMA` — what the LLM emits: `{"review": {...}}`.
+- `CODE_REVIEW_SCHEMA` — what is stored: `{"code_review": {"schema_version",
+  "scan", "review"}}`. `scan` is computed by code and never shown to the
+  scanner's model; `review` is the model's block, attached at commit.
 
-1. `validate_code_review(data)` — called after every JSON extraction in
+The `review` vocabulary captures the *structural* contract that downstream
+agents depend on: closed canonical key vocabularies for `commands` and
+`entrypoints`, the `ui_summary.kind` enum, the closed `notes.*` shape, and
+entry-array item shapes. It does NOT enforce conditional required fields
+(`project_type`, `languages`, etc. when `is_software_project` is true) —
+those are guidance in the prompt, and a soft miss should not trigger a
+costly retry.
+
+The schemas are consumed in three places:
+
+1. `validate_review_block(data)` — called after every JSON extraction in
    `code_scanner.run()`. If validation fails, the agent re-streams once
    with `response_format={"type": "json_object"}` and a corrective user
    message listing the specific errors, on providers that support it.
 
-2. Tests assert structural rules survive prompt edits.
+2. `validate_code_review(data)` — called on the assembled envelope at
+   `_scanner_commit`, so a wrapping bug fails loudly.
+
+3. Tests assert structural rules survive prompt edits.
 """
 
 from __future__ import annotations
@@ -29,7 +40,8 @@ import jsonschema
 # against. A review written under an older value is not read as current: the
 # /agents page gates the round until CodeScanner re-scans (D-SV1). Bumped only
 # when the artifact's shape changes in a way downstream consumers must follow.
-CODE_REVIEW_SCHEMA_VERSION = 1
+# 2: the ``{scan, review}`` envelope (CodeScanner v2 step 1a).
+CODE_REVIEW_SCHEMA_VERSION = 2
 
 
 _PROVENANCE_FIELDS: dict[str, dict[str, str]] = {
@@ -250,279 +262,324 @@ _AI_CAPABILITIES_SCHEMA: dict[str, Any] = {
 }
 
 
+# The ``review`` field set — the v1 property vocabulary, unchanged in shape.
+# It is the LLM's judgment about the codebase; every entry carries its own
+# ``source``/``inferred_from`` provenance. Shared by the two schemas below.
+_REVIEW_PROPERTIES: dict[str, Any] = {
+    "is_software_project": {"type": "boolean"},
+    # Empty-project branch
+    "summary": {"type": "string"},
+    # Full-project branch
+    "project_type": {"type": "string"},
+    "existing_self_description": {
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+            "source": {"type": "string"},
+        },
+        "required": ["text", "source"],
+        "additionalProperties": False,
+    },
+    "architecture": {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "pattern": {"type": "string"},
+            **_PROVENANCE_FIELDS,
+        },
+        "additionalProperties": False,
+    },
+    "languages": {
+        "type": "array",
+        "items": _NAMED_WITH_PROVENANCE,
+    },
+    "frameworks": {
+        "type": "array",
+        "items": _NAMED_WITH_PROVENANCE,
+    },
+    "protocols_implemented": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "version": {"type": "string"},
+                "location": {"type": "string"},
+                **_PROVENANCE_FIELDS,
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    "runtime_versions": {
+        "type": "object",
+        "additionalProperties": {"type": "string"},
+    },
+    "build_system": {
+        "type": "object",
+        "properties": {
+            "tool": {"type": "string"},
+            "manifest": {"type": "string"},
+            "build_backend": {"type": "string"},
+        },
+        "additionalProperties": False,
+    },
+    "dependencies": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "purpose": {"type": "string"},
+                **_PROVENANCE_FIELDS,
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    # Persistence layer — DB engine + ORM + migration tool. The
+    # DB engine has no home in `dependencies` (an ORM SDK is a
+    # library; the engine is infrastructure), so without this
+    # field Phaser writes weaker DB setup/verification phases.
+    "persistence": _PERSISTENCE_SCHEMA,
+    # Required environment variables — NAMES only, never values.
+    # Names belong in the artifact so Deployer/Phaser can write
+    # accurate env-setup and verification steps; values are a
+    # security boundary and stay in the developer's secret store.
+    "env_vars": {
+        "type": "array",
+        "items": _ENV_VAR_ITEM,
+    },
+    # Deployment infra signals — Dockerfile, compose, k8s
+    # manifests, PaaS configs, IaC. Already harvested in the
+    # seed prompt but previously had no schema home; Deployer
+    # had to reconstruct from directory_map heuristics.
+    "deployment": _DEPLOYMENT_SCHEMA,
+    # Exposed API surface — routes, gRPC methods, GraphQL ops.
+    # `protocols_implemented` captures the protocol itself; this
+    # captures the endpoint shape Phaser needs when proposing
+    # API changes. Sampled, not exhaustive.
+    "api_surface": {
+        "type": "array",
+        "items": _API_SURFACE_ITEM,
+    },
+    # Auth model — previously tangled across protocols_implemented
+    # and security_observations. Closed enum + free-text provider
+    # and library keeps the discriminator stable while letting the
+    # long tail of IdPs and libraries live as string values.
+    "auth": _AUTH_SCHEMA,
+    # Existing AI/ML usage — first-class so Agentifier's reuse
+    # bias does not depend on keyword-matching dependency names.
+    "ai_capabilities": _AI_CAPABILITIES_SCHEMA,
+    # CLOSED canonical key set — load-bearing for Phaser lookups.
+    "commands": {
+        "type": "object",
+        "properties": {
+            "build": {"type": "string"},
+            "test": {"type": "string"},
+            "lint": {"type": "string"},
+            "typecheck": {"type": "string"},
+            "run": {"type": "string"},
+            "dev": {"type": "string"},
+            "deploy": {"type": "string"},
+        },
+        "additionalProperties": False,
+    },
+    # CLOSED canonical key set — load-bearing for Phaser lookups.
+    "entrypoints": {
+        "type": "object",
+        "properties": {
+            "main": {"type": "string"},
+            "wsgi_app": {"type": "string"},
+            "cli_script": {"type": "string"},
+            "dev_server": {"type": "string"},
+            "ui_root": {"type": "string"},
+        },
+        "additionalProperties": False,
+    },
+    "directory_map": {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "role": {"type": "string"},
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+    },
+    "ui_summary": {
+        "type": "object",
+        "required": ["has_ui"],
+        "additionalProperties": False,
+        "properties": {
+            "has_ui": {"type": "boolean"},
+            # CLOSED enum — load-bearing for Designer routing.
+            "kind": {
+                "type": "string",
+                "enum": [
+                    "spa",
+                    "mpa",
+                    "mobile",
+                    "desktop",
+                    "tui",
+                    "none",
+                ],
+            },
+            "framework": {"type": "string"},
+            "styling": {"type": "string"},
+            "routing": {"type": "string"},
+            "entry_files": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+        },
+    },
+    "coding_style": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "linter": _STYLE_FIELD,
+            "formatter": _STYLE_FIELD,
+            "type_checker": _STYLE_FIELD,
+            "indentation": _STYLE_FIELD,
+            "quotes": _STYLE_FIELD,
+            "line_length": _STYLE_FIELD,
+            "naming_conventions": {
+                "type": "object",
+                "additionalProperties": _STYLE_FIELD,
+            },
+            "other_rules": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "patterns": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+        },
+    },
+    "notes": {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "test_coverage": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "has_tests": {"type": "boolean"},
+                    "framework": {"type": "string"},
+                    "covered_modules": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "uncovered_modules": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "coverage_summary": {"type": "string"},
+                    **_PROVENANCE_FIELDS,
+                },
+            },
+            "ci_cd": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["present"],
+                "properties": {
+                    "present": {"type": "boolean"},
+                    "type": {"type": ["string", "null"]},
+                    "path": {"type": ["string", "null"]},
+                },
+            },
+            "incomplete_or_dead_code": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "change_risks": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "area": {"type": "string"},
+                        "risk": {"type": "string"},
+                        "mitigation_hint": {"type": "string"},
+                    },
+                },
+            },
+            "security_observations": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+            "other_notes": {
+                "type": "array",
+                "items": {"type": "string"},
+            },
+        },
+    },
+}
+
+
+_REVIEW_OBJECT: dict[str, Any] = {
+    "type": "object",
+    "required": ["is_software_project"],
+    "additionalProperties": False,
+    "properties": _REVIEW_PROPERTIES,
+}
+
+
+# What the CodeScanner LLM emits: the ``review`` block alone. ``schema_version``
+# and ``scan`` are code-owned metadata the model never sees or writes — they
+# are attached at ``_scanner_commit`` (D-EV2/D-EV4).
+REVIEW_BLOCK_SCHEMA: dict[str, Any] = {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Spec4 CodeScanner review block",
+    "type": "object",
+    "required": ["review"],
+    "additionalProperties": False,
+    "properties": {"review": _REVIEW_OBJECT},
+}
+
+
+# What is stored in ``session["code_review"]`` and written to
+# ``.spec4/v{N}/code_review.json``: the envelope. ``scan`` is the computed,
+# deterministic layer (empty at schema_version 2's first step; filled by the
+# 1b–1d collectors); ``review`` is the LLM's block. Consumers unwrap by path
+# through ``_code_review_context.unwrap_review`` / ``unwrap_scan`` — never by
+# falling back to the outer dict (D-EV5).
 CODE_REVIEW_SCHEMA: dict[str, Any] = {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Spec4 code_review (schema_version 1)",
+    "title": "Spec4 code_review (schema_version 2)",
     "type": "object",
     "required": ["code_review"],
     "additionalProperties": False,
     "properties": {
         "code_review": {
             "type": "object",
-            "required": ["schema_version", "is_software_project"],
+            "required": ["schema_version", "scan", "review"],
             "additionalProperties": False,
             "properties": {
                 "schema_version": {"const": CODE_REVIEW_SCHEMA_VERSION},
-                "is_software_project": {"type": "boolean"},
-                # Empty-project branch
-                "summary": {"type": "string"},
-                # Full-project branch
-                "project_type": {"type": "string"},
-                "existing_self_description": {
-                    "type": "object",
-                    "properties": {
-                        "text": {"type": "string"},
-                        "source": {"type": "string"},
-                    },
-                    "required": ["text", "source"],
-                    "additionalProperties": False,
-                },
-                "architecture": {
-                    "type": "object",
-                    "properties": {
-                        "summary": {"type": "string"},
-                        "pattern": {"type": "string"},
-                        **_PROVENANCE_FIELDS,
-                    },
-                    "additionalProperties": False,
-                },
-                "languages": {
-                    "type": "array",
-                    "items": _NAMED_WITH_PROVENANCE,
-                },
-                "frameworks": {
-                    "type": "array",
-                    "items": _NAMED_WITH_PROVENANCE,
-                },
-                "protocols_implemented": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "version": {"type": "string"},
-                            "location": {"type": "string"},
-                            **_PROVENANCE_FIELDS,
-                        },
-                        "required": ["name"],
-                        "additionalProperties": False,
-                    },
-                },
-                "runtime_versions": {
-                    "type": "object",
-                    "additionalProperties": {"type": "string"},
-                },
-                "build_system": {
-                    "type": "object",
-                    "properties": {
-                        "tool": {"type": "string"},
-                        "manifest": {"type": "string"},
-                        "build_backend": {"type": "string"},
-                    },
-                    "additionalProperties": False,
-                },
-                "dependencies": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "purpose": {"type": "string"},
-                            **_PROVENANCE_FIELDS,
-                        },
-                        "required": ["name"],
-                        "additionalProperties": False,
-                    },
-                },
-                # Persistence layer — DB engine + ORM + migration tool. The
-                # DB engine has no home in `dependencies` (an ORM SDK is a
-                # library; the engine is infrastructure), so without this
-                # field Phaser writes weaker DB setup/verification phases.
-                "persistence": _PERSISTENCE_SCHEMA,
-                # Required environment variables — NAMES only, never values.
-                # Names belong in the artifact so Deployer/Phaser can write
-                # accurate env-setup and verification steps; values are a
-                # security boundary and stay in the developer's secret store.
-                "env_vars": {
-                    "type": "array",
-                    "items": _ENV_VAR_ITEM,
-                },
-                # Deployment infra signals — Dockerfile, compose, k8s
-                # manifests, PaaS configs, IaC. Already harvested in the
-                # seed prompt but previously had no schema home; Deployer
-                # had to reconstruct from directory_map heuristics.
-                "deployment": _DEPLOYMENT_SCHEMA,
-                # Exposed API surface — routes, gRPC methods, GraphQL ops.
-                # `protocols_implemented` captures the protocol itself; this
-                # captures the endpoint shape Phaser needs when proposing
-                # API changes. Sampled, not exhaustive.
-                "api_surface": {
-                    "type": "array",
-                    "items": _API_SURFACE_ITEM,
-                },
-                # Auth model — previously tangled across protocols_implemented
-                # and security_observations. Closed enum + free-text provider
-                # and library keeps the discriminator stable while letting the
-                # long tail of IdPs and libraries live as string values.
-                "auth": _AUTH_SCHEMA,
-                # Existing AI/ML usage — first-class so Agentifier's reuse
-                # bias does not depend on keyword-matching dependency names.
-                "ai_capabilities": _AI_CAPABILITIES_SCHEMA,
-                # CLOSED canonical key set — load-bearing for Phaser lookups.
-                "commands": {
-                    "type": "object",
-                    "properties": {
-                        "build": {"type": "string"},
-                        "test": {"type": "string"},
-                        "lint": {"type": "string"},
-                        "typecheck": {"type": "string"},
-                        "run": {"type": "string"},
-                        "dev": {"type": "string"},
-                        "deploy": {"type": "string"},
-                    },
-                    "additionalProperties": False,
-                },
-                # CLOSED canonical key set — load-bearing for Phaser lookups.
-                "entrypoints": {
-                    "type": "object",
-                    "properties": {
-                        "main": {"type": "string"},
-                        "wsgi_app": {"type": "string"},
-                        "cli_script": {"type": "string"},
-                        "dev_server": {"type": "string"},
-                        "ui_root": {"type": "string"},
-                    },
-                    "additionalProperties": False,
-                },
-                "directory_map": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "path": {"type": "string"},
-                            "role": {"type": "string"},
-                        },
-                        "required": ["path"],
-                        "additionalProperties": False,
-                    },
-                },
-                "ui_summary": {
-                    "type": "object",
-                    "required": ["has_ui"],
-                    "additionalProperties": False,
-                    "properties": {
-                        "has_ui": {"type": "boolean"},
-                        # CLOSED enum — load-bearing for Designer routing.
-                        "kind": {
-                            "type": "string",
-                            "enum": [
-                                "spa",
-                                "mpa",
-                                "mobile",
-                                "desktop",
-                                "tui",
-                                "none",
-                            ],
-                        },
-                        "framework": {"type": "string"},
-                        "styling": {"type": "string"},
-                        "routing": {"type": "string"},
-                        "entry_files": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                    },
-                },
-                "coding_style": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "properties": {
-                        "linter": _STYLE_FIELD,
-                        "formatter": _STYLE_FIELD,
-                        "type_checker": _STYLE_FIELD,
-                        "indentation": _STYLE_FIELD,
-                        "quotes": _STYLE_FIELD,
-                        "line_length": _STYLE_FIELD,
-                        "naming_conventions": {
-                            "type": "object",
-                            "additionalProperties": _STYLE_FIELD,
-                        },
-                        "other_rules": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                        "patterns": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                    },
-                },
-                "notes": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "properties": {
-                        "test_coverage": {
-                            "type": "object",
-                            "additionalProperties": False,
-                            "properties": {
-                                "has_tests": {"type": "boolean"},
-                                "framework": {"type": "string"},
-                                "covered_modules": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                },
-                                "uncovered_modules": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                },
-                                "coverage_summary": {"type": "string"},
-                                **_PROVENANCE_FIELDS,
-                            },
-                        },
-                        "ci_cd": {
-                            "type": "object",
-                            "additionalProperties": False,
-                            "required": ["present"],
-                            "properties": {
-                                "present": {"type": "boolean"},
-                                "type": {"type": ["string", "null"]},
-                                "path": {"type": ["string", "null"]},
-                            },
-                        },
-                        "incomplete_or_dead_code": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                        "change_risks": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "additionalProperties": False,
-                                "properties": {
-                                    "area": {"type": "string"},
-                                    "risk": {"type": "string"},
-                                    "mitigation_hint": {"type": "string"},
-                                },
-                            },
-                        },
-                        "security_observations": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                        "other_notes": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                    },
-                },
+                "scan": {"type": "object"},
+                "review": _REVIEW_OBJECT,
             },
         }
     },
 }
 
 
-def validate_code_review(data: dict[str, Any]) -> list[str]:
-    """Validate an extracted code review against CODE_REVIEW_SCHEMA.
+def _errors(schema: dict[str, Any], data: dict[str, Any]) -> list[str]:
+    validator = jsonschema.Draft7Validator(schema)
+    errors: list[str] = []
+    for err in validator.iter_errors(data):
+        path = ".".join(str(p) for p in err.absolute_path) or "<root>"
+        errors.append(f"{path}: {err.message}")
+    return errors
+
+
+def validate_review_block(data: dict[str, Any]) -> list[str]:
+    """Validate the LLM's ``{"review": {...}}`` block against REVIEW_BLOCK_SCHEMA.
 
     Returns a list of human-readable error messages (each formatted as
     "<path>: <message>"). Returns an empty list when the data validates.
@@ -530,12 +587,17 @@ def validate_code_review(data: dict[str, Any]) -> list[str]:
     The errors list is what the CodeScanner agent surfaces back to the LLM
     on its retry turn, so phrasing must be specific enough to act on.
     """
-    validator = jsonschema.Draft7Validator(CODE_REVIEW_SCHEMA)
-    errors: list[str] = []
-    for err in validator.iter_errors(data):
-        path = ".".join(str(p) for p in err.absolute_path) or "<root>"
-        errors.append(f"{path}: {err.message}")
-    return errors
+    return _errors(REVIEW_BLOCK_SCHEMA, data)
+
+
+def validate_code_review(data: dict[str, Any]) -> list[str]:
+    """Validate a stored ``code_review`` envelope against CODE_REVIEW_SCHEMA.
+
+    Same error format as ``validate_review_block``. Run at commit on the
+    envelope the scanner assembled, so a wrapping bug fails loudly rather
+    than writing a shape no consumer can read.
+    """
+    return _errors(CODE_REVIEW_SCHEMA, data)
 
 
 def format_validation_errors_for_retry(errors: list[str], limit: int = 15) -> str:

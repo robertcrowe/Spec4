@@ -26,16 +26,16 @@ from spec4.agents._code_review_context import (
     FIELD_GUIDANCE,
     PHASER_FIELD_GUIDANCE,
     PHASER_REVIEW_FIELDS,
+    SCOUT_REVIEW_FIELDS,
     STACK_REVIEW_FIELDS,
     render_code_review,
+    unwrap_review,
+    unwrap_scan,
 )
 from tests._agent_helpers import collect, make_session, mock_litellm_stream
 from tests._chunks import make_stream_chunk
 from tests._golden import assert_golden, load_fixture
-
-
-def _review(**fields: Any) -> dict[str, Any]:
-    return {"code_review": {"schema_version": 1, "is_software_project": True, **fields}}
+from tests._review_helpers import review_envelope as _review
 
 
 # ---------------------------------------------------------------------------
@@ -50,14 +50,41 @@ class TestRenderCodeReview:
         assert render_code_review({"code_review": {}}, STACK_REVIEW_FIELDS) == ""
         assert render_code_review("not a dict", STACK_REVIEW_FIELDS) == ""
 
-    def test_not_a_software_project_renders_empty(self) -> None:
-        review = {
-            "code_review": {
-                "is_software_project": False,
-                "summary": "only a bare manifest",
-                "languages": [{"name": "Python"}],
-            }
+    def test_only_the_envelope_shape_is_read(self) -> None:
+        # D-EV5: by path only. A bare review dict, a bare ``review`` block
+        # and the schema-1 envelope all render nothing; the envelope renders.
+        fields = {"languages": [{"name": "Go"}]}
+        assert render_code_review(fields, ("languages",)) == ""
+        assert render_code_review({"review": fields}, ("languages",)) == ""
+        v1 = {"code_review": {"schema_version": 1, **fields}}
+        assert render_code_review(v1, ("languages",)) == ""
+        assert "**Go**" in render_code_review(_review(**fields), ("languages",))
+
+    def test_unwrap_by_path(self) -> None:
+        env = _review(
+            languages=[{"name": "Go"}], scan={"inventory": {"files_total": 1}}
+        )
+        assert unwrap_review(env) == {
+            "is_software_project": True,
+            "languages": [{"name": "Go"}],
         }
+        assert unwrap_scan(env) == {"inventory": {"files_total": 1}}
+        for wrong in (
+            None,
+            "x",
+            {},
+            {"code_review": "x"},
+            {"code_review": {"review": "x"}},
+        ):
+            assert unwrap_review(wrong) == {}
+            assert unwrap_scan(wrong) == {}
+
+    def test_not_a_software_project_renders_empty(self) -> None:
+        review = _review(
+            is_software_project=False,
+            summary="only a bare manifest",
+            languages=[{"name": "Python"}],
+        )
         assert render_code_review(review, STACK_REVIEW_FIELDS) == ""
 
     def test_renders_only_the_tuple_fields_in_tuple_order(self) -> None:
@@ -75,10 +102,6 @@ class TestRenderCodeReview:
         assert "pytest" not in out  # commands.test is not in the tuple
         assert "app.py" not in out
         assert "src/" not in out
-
-    def test_bare_review_without_envelope_is_accepted(self) -> None:
-        out = render_code_review({"languages": [{"name": "Go"}]}, ("languages",))
-        assert "**Go**" in out
 
     def test_absent_and_empty_fields_are_skipped(self) -> None:
         review = _review(
@@ -219,7 +242,7 @@ class TestRenderCodeReview:
         assert "- main: app.py" in out
         assert "index.html" not in out
         # The exclusion never mutates the review itself.
-        assert review["code_review"]["entrypoints"]["ui_root"] == "index.html"
+        assert review["code_review"]["review"]["entrypoints"]["ui_root"] == "index.html"
 
     def test_block_of_only_excluded_keys_renders_nothing(self) -> None:
         review = _review(entrypoints={"ui_root": "index.html"})
@@ -255,6 +278,17 @@ class TestRenderCodeReview:
         for field in ("coding_style", "dependencies", "commands", "directory_map"):
             assert field not in BRAINSTORMER_REVIEW_FIELDS
         assert set(BRAINSTORMER_FIELD_GUIDANCE) <= set(BRAINSTORMER_REVIEW_FIELDS)
+
+    def test_scout_tuple_is_identity_plus_the_ai_inventory(self) -> None:
+        # D-EV7: what Scout catalogues against, and not Phaser's or the stack's.
+        for field in ("ai_capabilities", "frameworks", "dependencies", "api_surface"):
+            assert field in SCOUT_REVIEW_FIELDS
+        for field in ("commands", "directory_map", "coding_style", "env_vars"):
+            assert field not in SCOUT_REVIEW_FIELDS
+        assert_golden(
+            "code_review_scout_view.md",
+            render_code_review(load_fixture("review_full.json"), SCOUT_REVIEW_FIELDS),
+        )
 
     def test_golden_full_review_brainstormer_view(self) -> None:
         assert_golden(
@@ -314,14 +348,13 @@ class TestStackAdvisorSeed:
         assert "- linter: oxlint [package.json]" in seed
         assert json.dumps(review, indent=2) not in seed
         assert '```json\n{\n  "code_review"' not in seed
+        assert '```json\n{\n  "review"' not in seed
         # The conflict-warning instruction and the brownfield ask are kept.
         assert "proactively warn me about the conflict" in seed
         assert "draft an initial stack spec" in seed
 
     def test_not_a_software_project_review_uses_the_greenfield_seed(self) -> None:
-        review = {
-            "code_review": {"is_software_project": False, "summary": "bare manifest"}
-        }
+        review = _review(is_software_project=False, summary="bare manifest")
         session = make_session(
             active_agent="stack_advisor",
             vision_statement={"vision_statement": {"name": "App"}},
@@ -361,7 +394,7 @@ class TestPhaserSeed:
             collect(phaser.run(None, session, session["llm_config"]))
         return session["phaser_messages"][0]["content"]
 
-    def test_brownfield_seed_keeps_the_raw_block_and_adds_the_view(self) -> None:
+    def test_brownfield_seed_carries_the_view_not_the_json(self) -> None:
         review = _review(
             commands={"test": "uv run pytest"},
             persistence={"databases": [{"engine": "PostgreSQL"}]},
@@ -369,18 +402,25 @@ class TestPhaserSeed:
             entrypoints={"main": "app/main.py", "ui_root": "index.html"},
         )
         seed = self._seed(review)
-        raw = json.dumps(review, indent=2)
-        assert raw in seed  # D-CR1 keep-alongside
-        view_at = seed.index("Read it through these blocks")
-        assert seed.index(raw) < view_at
+        # D-EV6: the raw block D-CR1 kept alongside the view is gone.
+        assert json.dumps(review, indent=2) not in seed
+        assert '```json\n{\n  "code_review"' not in seed
+        assert "existing codebase, by block" in seed
         # The rules sit under the data they govern.
         assert f"_{PHASER_FIELD_GUIDANCE['persistence']}_" in seed
         assert f"_{PHASER_FIELD_GUIDANCE['protocols_implemented']}_" in seed
         assert "- test: uv run pytest" in seed
         assert "- **PostgreSQL**" in seed
-        # The old paragraphs are gone; the raw JSON still carries ui_root.
+        assert "- main: app/main.py" in seed
+        # The old paragraphs are gone; ui_root is excluded and now reaches nothing.
         assert "If `persistence` is present" not in seed
-        assert "index.html" not in seed[view_at:]
+        assert "index.html" not in seed
+        assert "integration/validation thread for the existing code" in seed
+
+    def test_review_with_nothing_in_the_tuple_still_names_itself(self) -> None:
+        seed = self._seed(_review(languages=[{"name": "Go"}]))
+        assert "none of its blocks relevant to phasing carry content" in seed
+        assert "**Existing" not in seed
         assert "integration/validation thread for the existing code" in seed
 
     def test_rule_for_an_absent_block_is_not_emitted(self) -> None:
@@ -448,9 +488,7 @@ class TestBrainstormerSeeds:
         assert "treat structured fields" not in seed  # the old paragraph
 
     def test_not_a_software_project_review_is_a_fresh_start(self) -> None:
-        review = {
-            "code_review": {"is_software_project": False, "summary": "bare manifest"}
-        }
+        review = _review(is_software_project=False, summary="bare manifest")
         session = make_session(code_review=review, vision_statement=None)
         seed, called = self._run(session)
         assert not called  # the static greeting, no LLM turn

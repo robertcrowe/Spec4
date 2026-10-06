@@ -16,6 +16,7 @@ from spec4 import project_manager
 from spec4.agents import deployer
 from spec4.app_constants import STATE_DEPLOYER_COMPLETE
 from tests._chunks import make_stream_chunk
+from tests._review_helpers import review_envelope
 from tests._agent_helpers import (
     _phaser_revision_vision,
     collect,
@@ -36,19 +37,16 @@ class TestDeployerExistingInfra:
     def test_build_existing_infra_block_emits_only_present_fields(self) -> None:
         from spec4.agents.deployer import _build_existing_infra_block
 
-        code_review = {
-            "code_review": {
-                "is_software_project": True,
-                "deployment": {
-                    "containerization": {
-                        "tool": "docker",
-                        "dockerfile_path": "Dockerfile",
-                    },
+        code_review = review_envelope(
+            deployment={
+                "containerization": {
+                    "tool": "docker",
+                    "dockerfile_path": "Dockerfile",
                 },
-                "env_vars": [{"name": "DATABASE_URL", "required": True}],
-                # persistence and auth absent
-            }
-        }
+            },
+            env_vars=[{"name": "DATABASE_URL", "required": True}],
+            # persistence and auth absent
+        )
         block = _build_existing_infra_block(code_review)
         assert "deployment-relevant excerpt" in block
         # Inspect the JSON body, not the prose instructions (which mention
@@ -66,13 +64,7 @@ class TestDeployerExistingInfra:
         from spec4.agents.deployer import _build_existing_infra_block
 
         # Code review present but no deployment-relevant blocks.
-        cr = {
-            "code_review": {
-                "is_software_project": True,
-                "project_type": "CLI tool",
-                "languages": [{"name": "Python"}],
-            }
-        }
+        cr = review_envelope(project_type="CLI tool", languages=[{"name": "Python"}])
         assert _build_existing_infra_block(cr) == ""
 
     def test_build_existing_infra_block_empty_when_no_review(self) -> None:
@@ -80,15 +72,24 @@ class TestDeployerExistingInfra:
 
         assert _build_existing_infra_block({}) == ""
 
-    def test_build_existing_infra_block_accepts_unwrapped_form(self) -> None:
-        """Works whether code_review is wrapped in the LLM envelope or not."""
+    def test_build_existing_infra_block_reads_only_the_envelope(self) -> None:
+        """D-EV5: a bare review dict or the schema-1 envelope yields nothing."""
         from spec4.agents.deployer import _build_existing_infra_block
 
-        unwrapped = {
-            "is_software_project": True,
-            "auth": {"model": "jwt", "library": "authlib"},
+        auth = {"model": "jwt", "library": "authlib"}
+        assert (
+            _build_existing_infra_block({"is_software_project": True, "auth": auth})
+            == ""
+        )
+        v1 = {
+            "code_review": {
+                "schema_version": 1,
+                "is_software_project": True,
+                "auth": auth,
+            }
         }
-        block = _build_existing_infra_block(unwrapped)
+        assert _build_existing_infra_block(v1) == ""
+        block = _build_existing_infra_block(review_envelope(auth=auth))
         assert "auth" in block
         assert "jwt" in block
 
@@ -97,18 +98,15 @@ class TestDeployerExistingInfra:
             active_agent="deployer",
             phases=[{"phase_number": 1, "phase_title": "Steel thread"}],
             _deployer_readme_optin_done=True,
-            code_review={
-                "code_review": {
-                    "is_software_project": True,
-                    "deployment": {
-                        "containerization": {
-                            "tool": "docker",
-                            "dockerfile_path": "Dockerfile",
-                        },
+            code_review=review_envelope(
+                deployment={
+                    "containerization": {
+                        "tool": "docker",
+                        "dockerfile_path": "Dockerfile",
                     },
-                    "env_vars": [{"name": "API_KEY", "required": True}],
-                }
-            },
+                },
+                env_vars=[{"name": "API_KEY", "required": True}],
+            ),
         )
         with mock_litellm_stream("Hi! I'm Deployer."):
             collect(deployer.run(None, session, session["llm_config"]))
@@ -124,12 +122,7 @@ class TestDeployerExistingInfra:
             active_agent="deployer",
             phases=[{"phase_number": 1, "phase_title": "Steel thread"}],
             _deployer_readme_optin_done=True,
-            code_review={
-                "code_review": {
-                    "is_software_project": True,
-                    "project_type": "library",
-                }
-            },
+            code_review=review_envelope(project_type="library"),
         )
         with mock_litellm_stream("Hi! I'm Deployer."):
             collect(deployer.run(None, session, session["llm_config"]))

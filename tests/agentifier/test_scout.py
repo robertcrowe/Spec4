@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tests._review_helpers import review_envelope
 from spec4.agentifier.scout import (
     ScoutAgent,
     ScoutInput,
@@ -203,7 +204,7 @@ class TestScoutAgentRun:
         assert "FoodieApp" in user_content
 
     def test_passes_code_review_when_provided(self) -> None:
-        code_review = {"is_software_project": True, "languages": []}
+        code_review = review_envelope(project_type="web application")
         mock_response = _make_mock_response("[]")
         with patch(
             "spec4.agentifier.scout.complete_stream", return_value=mock_response

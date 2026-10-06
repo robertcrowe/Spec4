@@ -10,6 +10,46 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.0.0] — unreleased
+
+**Breaking.** The code review artifact changes shape. A `code_review.json`
+written by any earlier version is no longer read: the 1.6.0 gate fires on it,
+CodeScanner shows as *Required*, and one re-scan brings the round back. No
+other artifact in the round is affected.
+
+### Changed
+- **`code_review.json` is a two-layer envelope.** `code_review` now holds
+  `schema_version: 2`, a `scan` object and a `review` object. `review` is the
+  model's judgment — the schema-1 field set, unchanged — and `scan` is the
+  layer Spec4 computes from the tree itself. It is empty in this release; the
+  collectors that fill it (inventory and coverage, git history, the module
+  graph, the prior round) land in the 2.x series. The model never sees or
+  emits `scan` or the version: CodeScanner's model emits a bare `review`
+  block, validated on its own, and the envelope is assembled and validated
+  again at commit — a wrapping fault fails before it reaches disk.
+- **Consumers read the envelope by path only.** Brainstormer, StackAdvisor,
+  Phaser, Deployer, Designer's no-UI detection and the Agentifier's
+  TierAnalyst all resolve `code_review.review` through one helper. The
+  readers that used to fall back to the outer dict when the inner one was
+  missing are gone; under the new shape that fallback would have found the
+  envelope and read every field as absent, silently.
+- **No raw review JSON reaches a downstream model.** The Agentifier's Scout
+  now reads the review through its own field view (self-description, type,
+  architecture, AI in place, frameworks and dependencies, routes, standards,
+  half-built areas), the same treatment the other agents received in 1.5.3.
+  Phaser's raw block — kept alongside its view since 1.5.3 as the verbatim
+  carrier for `directory_map` and `commands` — is retired; the view renders
+  those values verbatim already. On the revision path ("your code review
+  input has been updated"), an agent that reads the review through a view
+  receives the update through the same view, so the two are directly
+  comparable in its history; Deployer and the Agentifier receive the `review`
+  block alone, never `scan`.
+- The CodeScanner seeds paste only the `review` layer of a prior review. The
+  stale-review fresh seed still reads a schema-1 file for that one purpose —
+  the older review as context — and nowhere else.
+- The review-reach probe (`evals/code_scanner/review_reach.py`) reads both
+  shapes, so the v1–v8 baseline still runs.
+
 ## [1.6.0] — unreleased
 
 Groundwork for the CodeScanner v2 review format: a round whose code review was

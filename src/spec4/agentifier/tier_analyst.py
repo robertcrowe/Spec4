@@ -14,6 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from spec4.agents._code_review_context import unwrap_review
 from spec4.agentifier.pattern_loader import (
     MechanismPattern,
     TierPattern,
@@ -262,11 +263,7 @@ def _existing_ai_context(code_review: dict[str, Any]) -> str:
     keyword scan is retained as a fallback and appended alongside — old
     artifacts and reviews without the section still surface what they can.
     """
-    cr = (
-        code_review.get("code_review", code_review)
-        if isinstance(code_review, dict)
-        else {}
-    )
+    cr = unwrap_review(code_review)
     found: list[str] = []
     cap_lines: list[str] = []
     for c in cr.get("ai_capabilities") or []:

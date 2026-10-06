@@ -20,6 +20,11 @@ from collections.abc import Generator
 from typing import Any
 
 from spec4 import project_manager
+from spec4.agents._code_review_context import (
+    AGENT_REVIEW_VIEWS,
+    render_code_review,
+    unwrap_review,
+)
 from spec4.agents._stack_context import design_manifest_for_stack, load_design_manifest
 
 
@@ -71,11 +76,17 @@ def stale_phrase(stale: list[str]) -> str:
     return ", ".join(stale[:-1]) + f", and {stale[-1]}"
 
 
-def build_revision_context(session: dict[str, Any], stale: list[str]) -> str:
+def build_revision_context(
+    session: dict[str, Any], stale: list[str], agent: str | None = None
+) -> str:
     """Build a synthetic user message containing the latest upstream artifacts.
 
     Injected into the conversation history alongside the staleness question so
     the LLM has the new content available when the user asks for a revision.
+    ``agent`` selects the code-review view (D-EV6 a′): an agent listed in
+    ``AGENT_REVIEW_VIEWS`` sees the updated review rendered through the same
+    field tuple its seed used, so the two are directly comparable; any other
+    agent, or none, receives the ``review`` block as JSON.
     """
     parts: list[str] = [
         "[Spec4 system note: the following upstream inputs have been updated "
@@ -84,6 +95,7 @@ def build_revision_context(session: dict[str, Any], stale: list[str]) -> str:
     ]
 
     _revision_artifact_blocks(session, stale, parts)
+    _revision_review_block(session, stale, parts, agent)
     _revision_phase_blocks(session, stale, parts)
     _revision_design_blocks(session, stale, parts)
 
@@ -93,7 +105,7 @@ def build_revision_context(session: dict[str, Any], stale: list[str]) -> str:
 def _revision_artifact_blocks(
     session: dict[str, Any], stale: list[str], parts: list[str]
 ) -> None:
-    """The four JSON artifact blocks: vision, AI features, stack, code review."""
+    """The three JSON artifact blocks: vision, AI features, stack."""
     if "vision" in stale:
         v = session.get("vision_statement")
         if v is not None:
@@ -112,12 +124,31 @@ def _revision_artifact_blocks(
             parts.append(
                 f"Updated stack spec:\n\n```json\n{json.dumps(s, indent=2)}\n```"
             )
-    if "code review" in stale:
-        cr = session.get("code_review")
-        if cr is not None:
-            parts.append(
-                f"Updated code review:\n\n```json\n{json.dumps(cr, indent=2)}\n```"
-            )
+
+
+def _revision_review_block(
+    session: dict[str, Any],
+    stale: list[str],
+    parts: list[str],
+    agent: str | None,
+) -> None:
+    """The updated code review, through the agent's own view when it has one."""
+    if "code review" not in stale:
+        return
+    cr = session.get("code_review")
+    if cr is None:
+        return
+    view = AGENT_REVIEW_VIEWS.get(agent or "")
+    if view is not None:
+        fields, guidance = view
+        rendered = render_code_review(cr, fields, guidance=guidance)
+        if rendered:
+            parts.append(f"Updated code review, by block:\n\n{rendered}")
+            return
+    parts.append(
+        "Updated code review:\n\n```json\n"
+        f"{json.dumps(unwrap_review(cr), indent=2)}\n```"
+    )
 
 
 def _revision_phase_blocks(
@@ -202,7 +233,10 @@ def maybe_inject_staleness_question(
         "either way)"
     )
     messages.append(
-        {"role": "user", "content": build_revision_context(session, stale_names)}
+        {
+            "role": "user",
+            "content": build_revision_context(session, stale_names, agent),
+        }
     )
     messages.append({"role": "assistant", "content": question})
     session[ack_key] = dict(stale)

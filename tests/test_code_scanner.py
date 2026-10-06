@@ -10,7 +10,9 @@ from typing import Any
 from unittest.mock import patch
 import pytest
 from spec4.agents import code_scanner
+from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
 from spec4.app_constants import STATE_IN_PROGRESS, STATE_REVIEW_COMPLETE
+from tests._review_helpers import review_envelope
 from tests._agent_helpers import (
     _chunkify_stream,
     collect,
@@ -85,16 +87,13 @@ class TestCodeScanner:
                 {"role": "assistant", "content": "draft"},
             ]
         )
-        review_response = (
-            '```json\n{"code_review": {"schema_version": 1, '
-            '"is_software_project": true}}\n```'
-        )
+        review_response = '```json\n{"review": {"is_software_project": true}}\n```'
         with mock_litellm_stream(review_response):
             collect(code_scanner.run("Confirm", session, session["llm_config"]))
         assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
-        assert session["code_review"] == {
-            "code_review": {"schema_version": 1, "is_software_project": True}
-        }
+        # D-EV2/D-EV4: the model emitted the bare ``review`` block; the stored
+        # envelope carries the code-owned version and an empty ``scan``.
+        assert session["code_review"] == review_envelope()
 
     def test_non_review_response_stays_in_progress(self) -> None:
         session = make_session(
@@ -111,12 +110,10 @@ class TestCodeScanner:
     def test_extract_review_json_valid(self) -> None:
         from spec4.agents.code_scanner import extract_review_json
 
-        text = '```json\n{"code_review": {"is_software_project": true}}\n```'
-        assert extract_review_json(text) == {
-            "code_review": {"is_software_project": True}
-        }
+        text = '```json\n{"review": {"is_software_project": true}}\n```'
+        assert extract_review_json(text) == {"review": {"is_software_project": True}}
 
-    def test_extract_review_json_no_code_review_key_returns_none(self) -> None:
+    def test_extract_review_json_no_review_key_returns_none(self) -> None:
         from spec4.agents.code_scanner import extract_review_json
 
         assert extract_review_json('```json\n{"name": "App"}\n```') is None
@@ -140,7 +137,11 @@ class TestCodeScanner:
 
     def test_brownfield_display_shows_existing_review_without_llm(self) -> None:
         review = {
-            "code_review": {"is_software_project": True, "project_type": "CLI tool"}
+            "code_review": {
+                "schema_version": 2,
+                "scan": {},
+                "review": {"is_software_project": True, "project_type": "CLI tool"},
+            }
         }
         session = make_session(
             code_review=review,
@@ -159,7 +160,13 @@ class TestCodeScanner:
         # Simulate a session persisted from before format_review_as_text was
         # fixed: msgs already has the synthetic pair but the assistant content
         # was generated from notes-as-string (single-char bullets).
-        review = {"code_review": {"notes": "Directory is flat"}}
+        review = {
+            "code_review": {
+                "schema_version": 2,
+                "scan": {},
+                "review": {"notes": "Directory is flat"},
+            }
+        }
         stale_content = (
             "**Code Review Complete**\n\n**Notable Observations:**\n- D\n- i\n"
         )
@@ -180,7 +187,11 @@ class TestCodeScanner:
 
     def test_brownfield_display_replay_on_reentry(self) -> None:
         review = {
-            "code_review": {"is_software_project": True, "project_type": "web app"}
+            "code_review": {
+                "schema_version": 2,
+                "scan": {},
+                "review": {"is_software_project": True, "project_type": "web app"},
+            }
         }
         session = make_session(
             code_review=review,
@@ -198,7 +209,13 @@ class TestCodeScanner:
     def test_format_review_notes_as_string_renders_as_single_bullet(self) -> None:
         from spec4.agents.code_scanner import format_review_as_text
 
-        review = {"code_review": {"notes": "Directory is flat, no CI found"}}
+        review = {
+            "code_review": {
+                "schema_version": 2,
+                "scan": {},
+                "review": {"notes": "Directory is flat, no CI found"},
+            }
+        }
         result = format_review_as_text(review)
         assert "- Directory is flat, no CI found" in result
         assert "- D\n" not in result
@@ -206,7 +223,13 @@ class TestCodeScanner:
     def test_format_review_langs_as_string_renders_correctly(self) -> None:
         from spec4.agents.code_scanner import format_review_as_text
 
-        review = {"code_review": {"languages": "Python", "frameworks": []}}
+        review = {
+            "code_review": {
+                "schema_version": 2,
+                "scan": {},
+                "review": {"languages": "Python", "frameworks": []},
+            }
+        }
         result = format_review_as_text(review)
         assert "Python" in result
         assert "- P\n" not in result
@@ -216,58 +239,65 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "schema_version": 1,
-                "is_software_project": True,
-                "project_type": "web application",
-                "existing_self_description": {
-                    "text": "A planning tool.",
-                    "source": "README.md",
-                },
-                "architecture": {
-                    "summary": "Layered Dash app.",
-                    "pattern": "layered",
-                    "inferred_from": "src/spec4/app.py",
-                },
-                "languages": [{"name": "Python", "source": "pyproject.toml"}],
-                "frameworks": [{"name": "Dash", "source": "pyproject.toml"}],
-                "runtime_versions": {"python": ">=3.12"},
-                "build_system": {"tool": "uv", "manifest": "pyproject.toml"},
-                "dependencies": [
-                    {"name": "dash", "purpose": "Web UI", "source": "pyproject.toml"}
-                ],
-                "commands": {"test": "make test", "lint": "make lint"},
-                "entrypoints": {
-                    "main": "src/spec4/app.py",
-                    "wsgi_app": "spec4.app:server",
-                },
-                "directory_map": [
-                    {"path": "src/spec4/agents/", "role": "pipeline agents"}
-                ],
-                "ui_summary": {
-                    "has_ui": True,
-                    "kind": "spa",
-                    "framework": "Dash",
-                },
-                "coding_style": {
-                    "linter": {"value": "ruff", "source": "pyproject.toml"},
-                    "naming_conventions": {
-                        "functions": {
-                            "value": "snake_case",
-                            "inferred_from": "src/spec4/session.py",
-                        }
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "project_type": "web application",
+                    "existing_self_description": {
+                        "text": "A planning tool.",
+                        "source": "README.md",
                     },
-                },
-                "notes": {
-                    "test_coverage": {"has_tests": True, "framework": "pytest"},
-                    "ci_cd": {"present": False},
-                    "change_risks": [
+                    "architecture": {
+                        "summary": "Layered Dash app.",
+                        "pattern": "layered",
+                        "inferred_from": "src/spec4/app.py",
+                    },
+                    "languages": [{"name": "Python", "source": "pyproject.toml"}],
+                    "frameworks": [{"name": "Dash", "source": "pyproject.toml"}],
+                    "runtime_versions": {"python": ">=3.12"},
+                    "build_system": {"tool": "uv", "manifest": "pyproject.toml"},
+                    "dependencies": [
                         {
-                            "area": "session",
-                            "risk": "shared mutation",
-                            "mitigation_hint": "use {**session, key: val}",
+                            "name": "dash",
+                            "purpose": "Web UI",
+                            "source": "pyproject.toml",
                         }
                     ],
-                    "other_notes": ["py.typed marker present"],
+                    "commands": {"test": "make test", "lint": "make lint"},
+                    "entrypoints": {
+                        "main": "src/spec4/app.py",
+                        "wsgi_app": "spec4.app:server",
+                    },
+                    "directory_map": [
+                        {"path": "src/spec4/agents/", "role": "pipeline agents"}
+                    ],
+                    "ui_summary": {
+                        "has_ui": True,
+                        "kind": "spa",
+                        "framework": "Dash",
+                    },
+                    "coding_style": {
+                        "linter": {"value": "ruff", "source": "pyproject.toml"},
+                        "naming_conventions": {
+                            "functions": {
+                                "value": "snake_case",
+                                "inferred_from": "src/spec4/session.py",
+                            }
+                        },
+                    },
+                    "notes": {
+                        "test_coverage": {"has_tests": True, "framework": "pytest"},
+                        "ci_cd": {"present": False},
+                        "change_risks": [
+                            {
+                                "area": "session",
+                                "risk": "shared mutation",
+                                "mitigation_hint": "use {**session, key: val}",
+                            }
+                        ],
+                        "other_notes": ["py.typed marker present"],
+                    },
                 },
             }
         }
@@ -300,9 +330,12 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "schema_version": 1,
-                "is_software_project": False,
-                "summary": "Directory is empty.",
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": False,
+                    "summary": "Directory is empty.",
+                },
             }
         }
         out = format_review_as_text(review)
@@ -315,21 +348,25 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "is_software_project": True,
-                "protocols_implemented": [
-                    {
-                        "name": "A2A Protocol",
-                        "version": "1.0",
-                        "location": "arrg/a2a/",
-                        "source": "README.md",
-                    },
-                    {
-                        "name": "MCP",
-                        "version": "2025-11-25",
-                        "location": "arrg/mcp/",
-                        "source": "arrg/mcp/server.py",
-                    },
-                ],
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "protocols_implemented": [
+                        {
+                            "name": "A2A Protocol",
+                            "version": "1.0",
+                            "location": "arrg/a2a/",
+                            "source": "README.md",
+                        },
+                        {
+                            "name": "MCP",
+                            "version": "2025-11-25",
+                            "location": "arrg/mcp/",
+                            "source": "arrg/mcp/server.py",
+                        },
+                    ],
+                },
             }
         }
         out = format_review_as_text(review)
@@ -339,7 +376,13 @@ class TestCodeScanner:
         assert "MCP v2025-11-25" in out
         assert "`arrg/mcp/`" in out
         # Absent → heading omitted.
-        bare = {"code_review": {"is_software_project": True, "project_type": "CLI"}}
+        bare = {
+            "code_review": {
+                "schema_version": 2,
+                "scan": {},
+                "review": {"is_software_project": True, "project_type": "CLI"},
+            }
+        }
         assert "**Protocols Implemented:**" not in format_review_as_text(bare)
 
     def test_format_review_renders_ai_capabilities(self) -> None:
@@ -347,17 +390,21 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "is_software_project": True,
-                "ai_capabilities": [
-                    {
-                        "name": "anthropic",
-                        "kind": "llm_api",
-                        "description": "Claude client drafting replies",
-                        "location": "src/app/ai/reply_drafter.py",
-                        "source": "pyproject.toml",
-                    },
-                    {"name": "chromadb"},
-                ],
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "ai_capabilities": [
+                        {
+                            "name": "anthropic",
+                            "kind": "llm_api",
+                            "description": "Claude client drafting replies",
+                            "location": "src/app/ai/reply_drafter.py",
+                            "source": "pyproject.toml",
+                        },
+                        {"name": "chromadb"},
+                    ],
+                },
             }
         }
         out = format_review_as_text(review)
@@ -367,7 +414,13 @@ class TestCodeScanner:
         assert "`src/app/ai/reply_drafter.py`" in out
         assert "- chromadb" in out
         # Absent → heading omitted.
-        bare = {"code_review": {"is_software_project": True, "project_type": "CLI"}}
+        bare = {
+            "code_review": {
+                "schema_version": 2,
+                "scan": {},
+                "review": {"is_software_project": True, "project_type": "CLI"},
+            }
+        }
         assert "**AI Capabilities:**" not in format_review_as_text(bare)
 
     def test_system_prompt_documents_ai_capabilities(self) -> None:
@@ -384,15 +437,19 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "is_software_project": True,
-                "persistence": {
-                    "databases": [
-                        {"engine": "PostgreSQL", "role": "primary"},
-                        {"engine": "Redis", "role": "cache"},
-                    ],
-                    "orm": {"name": "SQLAlchemy", "source": "pyproject.toml"},
-                    "migration_tool": {"name": "Alembic"},
-                    "migrations_path": "migrations/",
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "persistence": {
+                        "databases": [
+                            {"engine": "PostgreSQL", "role": "primary"},
+                            {"engine": "Redis", "role": "cache"},
+                        ],
+                        "orm": {"name": "SQLAlchemy", "source": "pyproject.toml"},
+                        "migration_tool": {"name": "Alembic"},
+                        "migrations_path": "migrations/",
+                    },
                 },
             }
         }
@@ -404,7 +461,13 @@ class TestCodeScanner:
         assert "migrations: Alembic" in out
         assert "`migrations/`" in out
         # Absent → heading omitted.
-        bare = {"code_review": {"is_software_project": True, "project_type": "CLI"}}
+        bare = {
+            "code_review": {
+                "schema_version": 2,
+                "scan": {},
+                "review": {"is_software_project": True, "project_type": "CLI"},
+            }
+        }
         assert "**Persistence:**" not in format_review_as_text(bare)
 
     def test_format_review_renders_env_vars(self) -> None:
@@ -412,16 +475,20 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "is_software_project": True,
-                "env_vars": [
-                    {
-                        "name": "DATABASE_URL",
-                        "purpose": "Postgres connection string",
-                        "required": True,
-                    },
-                    {"name": "DASH_DEBUG", "required": False},
-                    {"name": "API_KEY"},
-                ],
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "env_vars": [
+                        {
+                            "name": "DATABASE_URL",
+                            "purpose": "Postgres connection string",
+                            "required": True,
+                        },
+                        {"name": "DASH_DEBUG", "required": False},
+                        {"name": "API_KEY"},
+                    ],
+                },
             }
         }
         out = format_review_as_text(review)
@@ -437,8 +504,12 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "is_software_project": True,
-                "env_vars": [{"name": "SECRET_KEY", "value": "leaked-secret"}],
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "env_vars": [{"name": "SECRET_KEY", "value": "leaked-secret"}],
+                },
             }
         }
         out = format_review_as_text(review)
@@ -450,15 +521,19 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "is_software_project": True,
-                "deployment": {
-                    "containerization": {
-                        "tool": "docker",
-                        "dockerfile_path": "Dockerfile",
-                        "base_image": "python:3.12-slim",
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "deployment": {
+                        "containerization": {
+                            "tool": "docker",
+                            "dockerfile_path": "Dockerfile",
+                            "base_image": "python:3.12-slim",
+                        },
+                        "paas": {"platform": "fly.io", "config_path": "fly.toml"},
+                        "iac": {"tool": "terraform", "path": "infra/"},
                     },
-                    "paas": {"platform": "fly.io", "config_path": "fly.toml"},
-                    "iac": {"tool": "terraform", "path": "infra/"},
                 },
             }
         }
@@ -472,7 +547,13 @@ class TestCodeScanner:
         assert "IaC: terraform" in out
         assert "`infra/`" in out
         # Absent → heading omitted.
-        bare = {"code_review": {"is_software_project": True}}
+        bare = {
+            "code_review": {
+                "schema_version": 2,
+                "scan": {},
+                "review": {"is_software_project": True},
+            }
+        }
         assert "**Deployment:**" not in format_review_as_text(bare)
 
     def test_format_review_renders_api_surface(self) -> None:
@@ -480,19 +561,23 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "is_software_project": True,
-                "api_surface": [
-                    {
-                        "protocol": "http",
-                        "path_or_method": "GET /users/:id",
-                        "handler": "users.get_user",
-                    },
-                    {
-                        "protocol": "grpc",
-                        "path_or_method": "UserService.GetUser",
-                        "summary": "Fetch a user by ID",
-                    },
-                ],
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "api_surface": [
+                        {
+                            "protocol": "http",
+                            "path_or_method": "GET /users/:id",
+                            "handler": "users.get_user",
+                        },
+                        {
+                            "protocol": "grpc",
+                            "path_or_method": "UserService.GetUser",
+                            "summary": "Fetch a user by ID",
+                        },
+                    ],
+                },
             }
         }
         out = format_review_as_text(review)
@@ -507,11 +592,15 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "is_software_project": True,
-                "auth": {
-                    "model": "oauth",
-                    "provider": "Auth0",
-                    "library": "authlib",
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "auth": {
+                        "model": "oauth",
+                        "provider": "Auth0",
+                        "library": "authlib",
+                    },
                 },
             }
         }
@@ -521,7 +610,13 @@ class TestCodeScanner:
         assert "Auth0" in out
         assert "authlib" in out
         # Absent → heading omitted.
-        bare = {"code_review": {"is_software_project": True}}
+        bare = {
+            "code_review": {
+                "schema_version": 2,
+                "scan": {},
+                "review": {"is_software_project": True},
+            }
+        }
         assert "**Authentication:**" not in format_review_as_text(bare)
 
     def test_format_review_test_coverage_summary_preferred_over_lists(self) -> None:
@@ -529,14 +624,20 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "is_software_project": True,
-                "notes": {
-                    "test_coverage": {
-                        "has_tests": True,
-                        "framework": "pytest",
-                        "coverage_summary": "10 modules covered; UI layer uncovered",
-                        "covered_modules": ["should_be_ignored"],
-                    }
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "notes": {
+                        "test_coverage": {
+                            "has_tests": True,
+                            "framework": "pytest",
+                            "coverage_summary": (
+                                "10 modules covered; UI layer uncovered"
+                            ),
+                            "covered_modules": ["should_be_ignored"],
+                        }
+                    },
                 },
             }
         }
@@ -549,8 +650,12 @@ class TestCodeScanner:
 
         review = {
             "code_review": {
-                "is_software_project": True,
-                "ui_summary": {"has_ui": False, "kind": "none"},
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "ui_summary": {"has_ui": False, "kind": "none"},
+                },
             }
         }
         out = format_review_as_text(review)
@@ -559,17 +664,71 @@ class TestCodeScanner:
     def test_update_mode_seeds_with_prior_review(self) -> None:
         from spec4.agents.code_scanner import build_update_scan_seed
 
-        prior = {"code_review": {"is_software_project": True, "project_type": "CLI"}}
+        prior = review_envelope(
+            project_type="CLI", scan={"inventory": {"files_total": 9}}
+        )
         seed = build_update_scan_seed("/tmp/does-not-matter", prior)
         assert "Update mode instructions" in seed
         assert "Prior code review on disk" in seed
         assert "project_type" in seed
         assert "Added / Removed / Changed" in seed
+        assert "updated `review` JSON block" in seed
+        # D-EV6: the scanner's model sees the ``review`` layer only.
+        assert "files_total" not in seed
+        assert '"scan"' not in seed
+        assert '"schema_version"' not in seed
+        assert '"code_review"' not in seed
+
+    def test_seed_prior_review_reader_handles_each_shape(self) -> None:
+        from spec4.agents.code_scanner import _prior_review_for_seed
+
+        v2 = review_envelope(project_type="CLI", scan={"x": 1})
+        assert _prior_review_for_seed(v2) == {
+            "is_software_project": True,
+            "project_type": "CLI",
+        }
+        v1 = {"code_review": {"schema_version": 1, "project_type": "CLI"}}
+        assert _prior_review_for_seed(v1) == {"project_type": "CLI"}
+        assert _prior_review_for_seed({"code_review": "x"}) == {}
+        assert _prior_review_for_seed({}) == {}
+
+    def test_wrap_review_attaches_the_code_owned_layers(self) -> None:
+        from spec4.agents.code_scanner import wrap_review
+
+        block = {"review": {"is_software_project": True, "project_type": "CLI"}}
+        assert wrap_review(block) == review_envelope(project_type="CLI")
+        scan = {"inventory": {"files_total": 2}}
+        assert wrap_review(block, scan) == review_envelope(
+            project_type="CLI", scan=scan
+        )
+
+    def test_commit_refuses_an_envelope_that_fails_validation(self) -> None:
+        # D-EV3: the block passed its own check; a wrapper bug must not reach
+        # the session or disk.
+        from spec4.agents.code_scanner import _scanner_commit
+
+        session = make_session(
+            code_scanner_messages=[{"role": "assistant", "content": ""}]
+        )
+        bad = {"code_review": {"schema_version": 1, "is_software_project": True}}
+        with (
+            patch("spec4.agents.code_scanner.wrap_review", return_value=bad),
+            pytest.raises(ValueError, match="failed validation"),
+        ):
+            _scanner_commit(session, session["code_scanner_messages"], {"review": {}})
+        assert session["code_review"] is None
+        assert session["code_scanner_state"] != STATE_REVIEW_COMPLETE
 
     def test_rescan_enters_update_mode_when_review_exists(self) -> None:
         # Simulate the state immediately after on_rescan_project: prior review
         # is kept in session but state and msgs are reset.
-        review = {"code_review": {"is_software_project": True, "project_type": "web"}}
+        review = {
+            "code_review": {
+                "schema_version": 2,
+                "scan": {},
+                "review": {"is_software_project": True, "project_type": "web"},
+            }
+        }
         session = make_session(
             code_review=review,
             code_scanner_state=STATE_IN_PROGRESS,
@@ -589,8 +748,6 @@ class TestCodeScanner:
         # into the session as complete, exactly as a current one is — but the
         # first entry must scan rather than display it, and the seed is the
         # fresh one carrying the prior review as context, never the update seed.
-        from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
-
         stale = {
             "code_review": {
                 "schema_version": CODE_REVIEW_SCHEMA_VERSION - 1,
@@ -615,20 +772,14 @@ class TestCodeScanner:
         assert "Added / Removed / Changed" not in seed
         assert "older schema" in seed
         assert '"project_type": "CLI"' in seed
-        assert f"schema_version {CODE_REVIEW_SCHEMA_VERSION}" in seed
+        # The schema-1 inner dict is pasted as the review, minus its version.
+        assert '"schema_version"' not in seed
+        assert "Emit the `review` block" in seed
 
     def test_current_schema_still_displays_existing_review(self, tmp_path: Any) -> None:
         # The inverse: a review under the current schema keeps the display
         # short-circuit — no scan, no seed appended.
-        from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
-
-        current = {
-            "code_review": {
-                "schema_version": CODE_REVIEW_SCHEMA_VERSION,
-                "is_software_project": True,
-                "project_type": "CLI",
-            }
-        }
+        current = review_envelope(project_type="CLI")
         v0 = tmp_path / ".spec4" / "v0"
         v0.mkdir(parents=True)
         (v0 / "code_review.json").write_text(json.dumps(current), encoding="utf-8")
@@ -743,45 +894,42 @@ class TestGatherProjectContext:
 
 
 class TestCodeReviewSchemaValidation:
-    """Direct tests of the validate_code_review() schema check."""
+    """Direct tests of the validate_review_block() schema check (the LLM's block)."""
 
     def test_minimal_valid_review_passes(self) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
-        data = {"code_review": {"schema_version": 1, "is_software_project": True}}
-        assert validate_code_review(data) == []
+        data = {"review": {"is_software_project": True}}
+        assert validate_review_block(data) == []
 
     def test_empty_project_review_passes(self) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         data = {
-            "code_review": {
-                "schema_version": 1,
+            "review": {
                 "is_software_project": False,
                 "summary": "Directory contained only a CNAME file.",
             }
         }
-        assert validate_code_review(data) == []
+        assert validate_review_block(data) == []
 
     def test_valid_ui_kind_enum_passes(self) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         for kind in ("spa", "mpa", "mobile", "desktop", "tui", "none"):
             data = {
-                "code_review": {
-                    "schema_version": 1,
+                "review": {
                     "is_software_project": True,
                     "ui_summary": {"has_ui": kind != "none", "kind": kind},
                 }
             }
-            assert validate_code_review(data) == [], f"kind={kind} should pass"
+            assert validate_review_block(data) == [], f"kind={kind} should pass"
 
     def test_protocols_implemented_entry_validates(self) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         data = {
-            "code_review": {
-                "schema_version": 1,
+            "review": {
                 "is_software_project": True,
                 "protocols_implemented": [
                     {
@@ -793,14 +941,13 @@ class TestCodeReviewSchemaValidation:
                 ],
             }
         }
-        assert validate_code_review(data) == []
+        assert validate_review_block(data) == []
 
     def test_persistence_block_validates(self) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         data = {
-            "code_review": {
-                "schema_version": 1,
+            "review": {
                 "is_software_project": True,
                 "persistence": {
                     "databases": [
@@ -818,14 +965,13 @@ class TestCodeReviewSchemaValidation:
                 },
             }
         }
-        assert validate_code_review(data) == []
+        assert validate_review_block(data) == []
 
     def test_env_vars_block_validates(self) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         data = {
-            "code_review": {
-                "schema_version": 1,
+            "review": {
                 "is_software_project": True,
                 "env_vars": [
                     {
@@ -838,14 +984,13 @@ class TestCodeReviewSchemaValidation:
                 ],
             }
         }
-        assert validate_code_review(data) == []
+        assert validate_review_block(data) == []
 
     def test_deployment_block_validates(self) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         data = {
-            "code_review": {
-                "schema_version": 1,
+            "review": {
                 "is_software_project": True,
                 "deployment": {
                     "containerization": {
@@ -873,14 +1018,13 @@ class TestCodeReviewSchemaValidation:
                 },
             }
         }
-        assert validate_code_review(data) == []
+        assert validate_review_block(data) == []
 
     def test_api_surface_block_validates(self) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         data = {
-            "code_review": {
-                "schema_version": 1,
+            "review": {
                 "is_software_project": True,
                 "api_surface": [
                     {
@@ -901,10 +1045,10 @@ class TestCodeReviewSchemaValidation:
                 ],
             }
         }
-        assert validate_code_review(data) == []
+        assert validate_review_block(data) == []
 
     def test_auth_block_validates(self) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         models = (
             "session",
@@ -919,8 +1063,7 @@ class TestCodeReviewSchemaValidation:
         )
         for model in models:
             data = {
-                "code_review": {
-                    "schema_version": 1,
+                "review": {
                     "is_software_project": True,
                     "auth": {
                         "model": model,
@@ -930,14 +1073,13 @@ class TestCodeReviewSchemaValidation:
                     },
                 }
             }
-            assert validate_code_review(data) == [], f"auth.model={model} should pass"
+            assert validate_review_block(data) == [], f"auth.model={model} should pass"
 
     def test_full_realistic_review_passes(self) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         data = {
-            "code_review": {
-                "schema_version": 1,
+            "review": {
                 "is_software_project": True,
                 "project_type": "web application — Dash SPA",
                 "existing_self_description": {
@@ -1052,14 +1194,13 @@ class TestCodeReviewSchemaValidation:
                 },
             }
         }
-        assert validate_code_review(data) == []
+        assert validate_review_block(data) == []
 
     def test_ai_capabilities_block_validates(self) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         data = {
-            "code_review": {
-                "schema_version": 1,
+            "review": {
                 "is_software_project": True,
                 "ai_capabilities": [
                     {
@@ -1079,7 +1220,7 @@ class TestCodeReviewSchemaValidation:
                 ],
             }
         }
-        assert validate_code_review(data) == []
+        assert validate_review_block(data) == []
 
     def test_retry_message_lists_ai_capability_kinds(self) -> None:
         from spec4.agents._code_review_schema import (
@@ -1129,16 +1270,15 @@ class TestCodeReviewSchemaValidation:
     def test_closed_shape_rejects_custom_key(
         self, section: str, value: Any, bad_key: str
     ) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         data = {
-            "code_review": {
-                "schema_version": 1,
+            "review": {
                 "is_software_project": True,
                 section: value,
             }
         }
-        errors = validate_code_review(data)
+        errors = validate_review_block(data)
         assert any(section in e and bad_key in e for e in errors)
 
     @pytest.mark.parametrize(
@@ -1162,16 +1302,15 @@ class TestCodeReviewSchemaValidation:
     def test_missing_required_field_fails(
         self, section: str, value: Any, needle: str
     ) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         data = {
-            "code_review": {
-                "schema_version": 1,
+            "review": {
                 "is_software_project": True,
                 section: value,
             }
         }
-        errors = validate_code_review(data)
+        errors = validate_review_block(data)
         assert any(needle in e for e in errors)
 
     @pytest.mark.parametrize(
@@ -1198,30 +1337,51 @@ class TestCodeReviewSchemaValidation:
     def test_enum_violation_fails(
         self, section: str, value: Any, needles: tuple[str, str]
     ) -> None:
-        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents._code_review_schema import validate_review_block
 
         data = {
-            "code_review": {
-                "schema_version": 1,
+            "review": {
                 "is_software_project": True,
                 section: value,
             }
         }
-        errors = validate_code_review(data)
+        errors = validate_review_block(data)
         assert any(all(n in e for n in needles) for e in errors)
 
+    def test_review_block_rejects_code_owned_fields(self) -> None:
+        # D-EV2: ``schema_version`` and ``scan`` are never the model's to emit.
+        from spec4.agents._code_review_schema import validate_review_block
+
+        for extra in ({"schema_version": 2}, {"scan": {}}):
+            errors = validate_review_block(
+                {"review": {"is_software_project": True, **extra}}
+            )
+            assert any(next(iter(extra)) in e for e in errors)
+
     @pytest.mark.parametrize(
-        "review",
+        "inner",
         [
-            {"is_software_project": True},  # schema_version missing
-            {"schema_version": 2, "is_software_project": True},  # wrong const
+            {"scan": {}, "review": {"is_software_project": True}},  # version missing
+            {"schema_version": 1, "scan": {}, "review": {"is_software_project": True}},
         ],
     )
-    def test_schema_version_constraint_fails(self, review: dict[str, Any]) -> None:
+    def test_envelope_schema_version_constraint_fails(
+        self, inner: dict[str, Any]
+    ) -> None:
         from spec4.agents._code_review_schema import validate_code_review
 
-        errors = validate_code_review({"code_review": review})
+        errors = validate_code_review({"code_review": inner})
         assert any("schema_version" in e for e in errors)
+
+    def test_envelope_requires_scan_and_review(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        v1_shaped = {"code_review": {"schema_version": 2, "is_software_project": True}}
+        errors = validate_code_review(v1_shaped)
+        assert any("'scan' is a required property" in e for e in errors)
+        assert any("'review' is a required property" in e for e in errors)
+        assert validate_code_review(review_envelope()) == []
+        assert validate_code_review(review_envelope(is_software_project=False)) == []
 
 
 # ---------------------------------------------------------------------------
@@ -1233,14 +1393,14 @@ class TestCodeScannerValidationRetry:
     """Integration tests for the validate-and-retry behavior in run()."""
 
     def _valid_review_text(self) -> str:
-        return (
-            '```json\n{"code_review": {"schema_version": 1, '
-            '"is_software_project": true}}\n```'
-        )
+        return '```json\n{"review": {"is_software_project": true}}\n```'
 
     def _invalid_review_text(self) -> str:
-        # Missing schema_version → fails validation.
-        return '```json\n{"code_review": {"is_software_project": true}}\n```'
+        # ``commands`` is a closed key set → fails validation.
+        return (
+            '```json\n{"review": {"is_software_project": true, '
+            '"commands": {"bogus": "x"}}}\n```'
+        )
 
     def test_valid_review_does_not_retry(self) -> None:
         session = make_session(
@@ -1285,7 +1445,10 @@ class TestCodeScannerValidationRetry:
         assert len(retry_msgs) == 1
         # Final review committed.
         assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
-        assert session["code_review"]["code_review"]["schema_version"] == 1
+        assert (
+            session["code_review"]["code_review"]["schema_version"]
+            == CODE_REVIEW_SCHEMA_VERSION
+        )
 
     def test_retry_drained_silently_not_yielded(self) -> None:
         # The retry stream's body (raw or fenced JSON) must not be yielded
@@ -1417,9 +1580,7 @@ class TestCodeScannerValidationRetry:
                 {"role": "assistant", "content": "draft"},
             ]
         )
-        raw_valid = (
-            '{"code_review": {"schema_version": 1, "is_software_project": true}}'
-        )
+        raw_valid = '{"review": {"is_software_project": true}}'
         chunk_seqs = [
             list(_chunkify_stream(self._invalid_review_text())),
             list(_chunkify_stream(raw_valid)),
@@ -1438,7 +1599,10 @@ class TestCodeScannerValidationRetry:
             collect(code_scanner.run("Confirm", session, session["llm_config"]))
 
         assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
-        assert session["code_review"]["code_review"]["schema_version"] == 1
+        assert (
+            session["code_review"]["code_review"]["schema_version"]
+            == CODE_REVIEW_SCHEMA_VERSION
+        )
 
 
 class TestCodeScannerUnparseableArtifact:
@@ -1456,13 +1620,10 @@ class TestCodeScannerUnparseableArtifact:
     def _truncated_review_text(self) -> str:
         # Opens with a fence (so it is suppressed) but never closes it — the
         # fenced-block regex cannot match, and the body does not start with '{'.
-        return '```json\n{"code_review": {"schema_version": 1, "is_soft'
+        return '```json\n{"review": {"is_soft'
 
     def _valid_review_text(self) -> str:
-        return (
-            '```json\n{"code_review": {"schema_version": 1, '
-            '"is_software_project": true}}\n```'
-        )
+        return '```json\n{"review": {"is_software_project": true}}\n```'
 
     def _session(self) -> dict[str, Any]:
         return make_session(
@@ -1488,7 +1649,10 @@ class TestCodeScannerUnparseableArtifact:
     def test_truncated_block_is_retried(self) -> None:
         session, _ = self._run(self._truncated_review_text(), self._valid_review_text())
         assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
-        assert session["code_review"]["code_review"]["schema_version"] == 1
+        assert (
+            session["code_review"]["code_review"]["schema_version"]
+            == CODE_REVIEW_SCHEMA_VERSION
+        )
 
     def test_retry_message_names_the_parse_failure(self) -> None:
         session, _ = self._run(self._truncated_review_text(), self._valid_review_text())

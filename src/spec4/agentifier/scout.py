@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from spec4.agents._code_review_context import SCOUT_REVIEW_FIELDS, render_code_review
 from spec4.agentifier.subagents import validate_dataclass_input
 from spec4.llm import complete_stream
 
@@ -512,10 +513,13 @@ class ScoutAgent:
         )
 
         vision_text = json.dumps(input.vision, indent=2)
+        # D-EV6/D-EV7: the review reaches Scout through its field view, not a
+        # raw paste — the same treatment Brainstormer, StackAdvisor and
+        # Phaser received (``_code_review_context``).
+        review_view = render_code_review(input.code_review, SCOUT_REVIEW_FIELDS)
         code_review_block = (
-            f"\n\nCode review of existing project:\n```json\n"
-            f"{json.dumps(input.code_review, indent=2)}\n```"
-            if input.code_review
+            f"\n\nCode review of existing project, by block:\n\n{review_view}"
+            if review_view
             else ""
         )
         revision_block = _format_scout_revision_block(revision) if revision else ""

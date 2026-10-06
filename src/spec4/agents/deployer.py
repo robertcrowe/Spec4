@@ -5,6 +5,7 @@ from collections.abc import Generator
 from typing import Any, Literal, cast
 
 from spec4 import project_manager, llm, websearch
+from spec4.agents._code_review_context import unwrap_review
 from spec4.agents._feature_context import ai_features_for_deployer
 from spec4.agents._reask import drain_stream, stream_counting
 from spec4.agents._revision import revision_delta
@@ -374,9 +375,7 @@ def _build_existing_infra_block(code_review: dict[str, Any]) -> str:
     nothing — the prompt's default behavior (decide from stack + phases)
     still applies.
     """
-    cr = code_review.get("code_review", code_review) if code_review else {}
-    if not isinstance(cr, dict):
-        return ""
+    cr = unwrap_review(code_review)
     excerpt: dict[str, Any] = {}
     for key in ("deployment", "env_vars", "persistence", "auth"):
         if cr.get(key):

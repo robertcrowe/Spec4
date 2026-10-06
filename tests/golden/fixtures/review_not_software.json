@@ -1,9 +1,13 @@
 {
   "code_review": {
-    "is_software_project": false,
-    "notes": [
-      "Only images here.",
-      "No source files."
-    ]
+    "schema_version": 2,
+    "scan": {},
+    "review": {
+      "is_software_project": false,
+      "notes": [
+        "Only images here.",
+        "No source files."
+      ]
+    }
   }
 }

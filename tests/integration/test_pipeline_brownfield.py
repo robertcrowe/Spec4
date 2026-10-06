@@ -26,43 +26,59 @@ _LLM_CONFIG = {"model": "gpt-4o-mini", "api_key": "sk-test"}
 
 _CODE_REVIEW_WITH_AI = {
     "code_review": {
-        "schema_version": 1,
-        "is_software_project": True,
-        "languages": [{"name": "Python", "version": "3.12"}],
-        "frameworks": [{"name": "FastAPI", "area": "backend"}],
-        "dependencies": [
-            {"name": "openai", "version": "1.x", "source": "pyproject.toml"},
-            {"name": "chromadb", "version": "0.4.x", "source": "pyproject.toml"},
-            {"name": "langchain", "version": "0.1.x", "source": "pyproject.toml"},
-        ],
-        "build_system": "uv",
-        "commands": {"build": "uv build", "test": "pytest", "run": "uvicorn app:app"},
-        "notes": {
-            "incomplete_or_dead_code": [],
-            "change_risks": [],
-            "test_coverage": {"has_tests": True, "coverage_summary": "60% coverage"},
-            "other_notes": [],
+        "schema_version": 2,
+        "scan": {},
+        "review": {
+            "is_software_project": True,
+            "languages": [{"name": "Python", "version": "3.12"}],
+            "frameworks": [{"name": "FastAPI", "area": "backend"}],
+            "dependencies": [
+                {"name": "openai", "version": "1.x", "source": "pyproject.toml"},
+                {"name": "chromadb", "version": "0.4.x", "source": "pyproject.toml"},
+                {"name": "langchain", "version": "0.1.x", "source": "pyproject.toml"},
+            ],
+            "build_system": "uv",
+            "commands": {
+                "build": "uv build",
+                "test": "pytest",
+                "run": "uvicorn app:app",
+            },
+            "notes": {
+                "incomplete_or_dead_code": [],
+                "change_risks": [],
+                "test_coverage": {
+                    "has_tests": True,
+                    "coverage_summary": "60% coverage",
+                },
+                "other_notes": [],
+            },
         },
     }
 }
 
 _CODE_REVIEW_NO_AI = {
     "code_review": {
-        "schema_version": 1,
-        "is_software_project": True,
-        "languages": [{"name": "Python", "version": "3.12"}],
-        "frameworks": [{"name": "Django", "area": "backend"}],
-        "dependencies": [
-            {"name": "django", "version": "5.x", "source": "requirements.txt"},
-            {"name": "psycopg2", "version": "2.x", "source": "requirements.txt"},
-        ],
-        "build_system": "pip",
-        "commands": {"test": "pytest", "run": "python manage.py runserver"},
-        "notes": {
-            "incomplete_or_dead_code": [],
-            "change_risks": [],
-            "test_coverage": {"has_tests": True, "coverage_summary": "45% coverage"},
-            "other_notes": ["Manual category classification in views.py"],
+        "schema_version": 2,
+        "scan": {},
+        "review": {
+            "is_software_project": True,
+            "languages": [{"name": "Python", "version": "3.12"}],
+            "frameworks": [{"name": "Django", "area": "backend"}],
+            "dependencies": [
+                {"name": "django", "version": "5.x", "source": "requirements.txt"},
+                {"name": "psycopg2", "version": "2.x", "source": "requirements.txt"},
+            ],
+            "build_system": "pip",
+            "commands": {"test": "pytest", "run": "python manage.py runserver"},
+            "notes": {
+                "incomplete_or_dead_code": [],
+                "change_risks": [],
+                "test_coverage": {
+                    "has_tests": True,
+                    "coverage_summary": "45% coverage",
+                },
+                "other_notes": ["Manual category classification in views.py"],
+            },
         },
     }
 }
@@ -191,7 +207,12 @@ class TestScoutBrownfield:
                     )
                 )
             )
-        assert "code review" in captured[0].lower()
+        assert "code review of existing project, by block" in captured[0].lower()
+        assert "**Existing frameworks**" in captured[0]
+        assert "- **FastAPI**" in captured[0]
+        # D-EV6: the review reaches Scout as its field view, not raw JSON.
+        assert '"code_review"' not in captured[0]
+        assert '```json\n{\n  "review"' not in captured[0]
 
     def test_scout_uses_base_prompt_when_no_code_review(self) -> None:
         captured_systems: list[str] = []
@@ -236,17 +257,20 @@ class TestTierAnalystBrownfield:
         # matches the keyword scan (in-house pipeline, non-obvious package).
         review = {
             "code_review": {
-                "schema_version": 1,
-                "is_software_project": True,
-                "dependencies": [{"name": "requests", "source": "pyproject.toml"}],
-                "ai_capabilities": [
-                    {
-                        "name": "in-house tagger",
-                        "kind": "ml_model",
-                        "description": "Custom scikit-learn classifier tagging tickets",
-                        "location": "src/app/tagging.py",
-                    },
-                ],
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "dependencies": [{"name": "requests", "source": "pyproject.toml"}],
+                    "ai_capabilities": [
+                        {
+                            "name": "in-house tagger",
+                            "kind": "ml_model",
+                            "description": "Custom scikit-learn classifier tagging tickets",
+                            "location": "src/app/tagging.py",
+                        },
+                    ],
+                },
             }
         }
         ctx = _existing_ai_context(review)
@@ -257,7 +281,7 @@ class TestTierAnalystBrownfield:
 
     def test_existing_ai_context_combines_capabilities_and_deps(self) -> None:
         review = json.loads(json.dumps(_CODE_REVIEW_WITH_AI))
-        review["code_review"]["ai_capabilities"] = [
+        review["code_review"]["review"]["ai_capabilities"] = [
             {
                 "name": "chromadb",
                 "kind": "vector_store",
@@ -273,13 +297,16 @@ class TestTierAnalystBrownfield:
     def test_existing_ai_context_detects_new_keywords(self) -> None:
         review = {
             "code_review": {
-                "schema_version": 1,
-                "is_software_project": True,
-                "dependencies": [
-                    {"name": "faiss-cpu", "source": "pyproject.toml"},
-                    {"name": "pgvector", "source": "pyproject.toml"},
-                    {"name": "ollama", "source": "pyproject.toml"},
-                ],
+                "schema_version": 2,
+                "scan": {},
+                "review": {
+                    "is_software_project": True,
+                    "dependencies": [
+                        {"name": "faiss-cpu", "source": "pyproject.toml"},
+                        {"name": "pgvector", "source": "pyproject.toml"},
+                        {"name": "ollama", "source": "pyproject.toml"},
+                    ],
+                },
             }
         }
         ctx = _existing_ai_context(review)

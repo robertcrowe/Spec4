@@ -31,7 +31,9 @@ reach, not of correct use; a miss on a prose field is weaker evidence than a
 miss on a name.
 
 Reads one or more draw directories, each holding ``code_review.json``
-(required; the ``{"code_review": {...}}`` envelope or the bare object) plus
+(required; the schema-2 ``{"code_review": {"scan", "review"}}`` envelope, the
+schema-1 ``{"code_review": {...}}`` envelope of the v1–v8 baseline, or the bare
+object) plus
 any of ``stack.json`` and ``phases/phase*.md`` (or ``phase*.md`` at the top
 level — the ``evals/phaser/_load`` convention). Run from the repo root::
 
@@ -122,8 +124,21 @@ _SPLIT_SECOND_LEVEL = {
 
 
 def _unwrap(review: dict[str, Any]) -> dict[str, Any]:
+    """The review's field set, whichever envelope carries it.
+
+    Schema 2 nests the model's block under ``review`` beside the computed
+    ``scan`` layer; only ``review`` is measured — ``scan`` never reaches a
+    downstream prompt as such. Schema 1 (the archived baseline) kept the
+    fields directly under ``code_review``. The eval keeps the lenient read
+    the product gave up (D-EV5/D-EV9) because the baseline is immutable.
+    """
     inner = review.get("code_review")
-    return inner if isinstance(inner, dict) else review
+    if not isinstance(inner, dict):
+        return review
+    nested = inner.get("review")
+    if isinstance(nested, dict) and "scan" in inner:
+        return nested
+    return inner
 
 
 def _field_of(path: list[str]) -> str:

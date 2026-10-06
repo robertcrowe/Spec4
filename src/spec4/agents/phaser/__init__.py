@@ -320,27 +320,25 @@ def _phaser_vision_and_stack_blocks(
 
 def _phaser_review_instruction(code_review: Any) -> tuple[str, str]:
     """The code-review block and the closing instruction, brownfield or greenfield."""
-    # D-CR1 (keep-alongside): the raw JSON stays — Phaser hands directory_map
-    # and commands through to the coder verbatim and the raw block is the
-    # cheapest lossless carrier — and the deterministic per-field view follows
-    # it, each block carrying the planning rule that used to live in a
-    # paragraph after the paste (``PHASER_FIELD_GUIDANCE``). The BWS4 baseline
-    # showed those paragraph rules reaching Phase 1 unevenly: the DB-connection
-    # verification 3/8 rounds, protocol citations 0/2.
+    # The deterministic per-field view is the review's only carrier here
+    # (D-EV6 retired the raw JSON block D-CR1 had kept alongside it: the view
+    # renders ``directory_map`` and ``commands`` verbatim, so the coder still
+    # receives the review's own values). Each block carries the planning rule
+    # that used to live in a paragraph after the paste
+    # (``PHASER_FIELD_GUIDANCE``). The BWS4 baseline showed those paragraph
+    # rules reaching Phase 1 unevenly: the DB-connection verification 3/8
+    # rounds, protocol citations 0/2.
     review_view = render_code_review(
         code_review, PHASER_REVIEW_FIELDS, guidance=PHASER_FIELD_GUIDANCE
     )
     if code_review:
         extra_block = (
-            f"Here is a code review of the existing codebase:\n\n"
-            f"```json\n{json.dumps(code_review, indent=2)}\n```\n\n"
-            + (
-                "Read it through these blocks — each names what the review found "
-                "and the rule the phases must follow for it:\n\n"
-                f"{review_view}\n\n"
-                if review_view
-                else ""
-            )
+            "Here is a code review of the existing codebase, by block — each "
+            "names what the review found and the rule the phases must follow "
+            f"for it:\n\n{review_view}\n\n"
+            if review_view
+            else "A code review of the existing codebase exists, but none of its "
+            "blocks relevant to phasing carry content.\n\n"
         )
         instruction = (
             "Please introduce yourself as Phaser, then analyze the vision, stack, and "

@@ -185,12 +185,15 @@ minimal JSON (see Empty Project Format below). Do not ask follow-up questions.
    the fenced JSON code block — no preface, no narration. The block must validate
    against the schema below.
 
-**JSON Output Schema (schema_version = 1):**
+**JSON Output Schema (the `review` block):**
+
+Emit only the `review` block. Spec4 attaches the schema version and its own
+computed scan data around it when it stores the artifact — do not include a
+`schema_version` or `scan` field, and do not wrap the block in anything else.
 
 ```json
 {
-  "code_review": {
-    "schema_version": 1,
+  "review": {
     "is_software_project": true,
     "project_type": "string — concise label, e.g. 'web application — Dash SPA' or 'CLI tool'",
     "existing_self_description": {
@@ -393,8 +396,7 @@ minimal JSON (see Empty Project Format below). Do not ask follow-up questions.
 
 ```json
 {
-  "code_review": {
-    "schema_version": 1,
+  "review": {
     "is_software_project": false,
     "summary": "string — one or two sentences describing what was found (or that the directory is empty)"
   }
@@ -403,7 +405,7 @@ minimal JSON (see Empty Project Format below). Do not ask follow-up questions.
 
 **Field rules:**
 
-- `schema_version`, `is_software_project` are REQUIRED in every review.
+- `is_software_project` is REQUIRED in every review.
 - When `is_software_project` is true, these are REQUIRED: `project_type`, `languages`,
   `frameworks`, `build_system`, `commands`, `entrypoints`, `ui_summary`, `notes`.
 - `protocols_implemented` is OPTIONAL — include it only when the project ships
