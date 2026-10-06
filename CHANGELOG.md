@@ -10,6 +10,35 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [1.6.0] — unreleased
+
+Groundwork for the CodeScanner v2 review format: a round whose code review was
+written under an older schema is gated explicitly rather than read as empty.
+
+### Added
+- **Stale-review gate on /agents.** The review schema now carries a declared
+  version (`CODE_REVIEW_SCHEMA_VERSION`), and `code_review_needs_rescan`
+  compares the active round's `code_review.json` against it. When the file
+  was written under an older version the page behaves exactly as it does for
+  a pending brownfield round — CodeScanner is *Required*, every other agent is
+  *Not Ready* — and a notice names the round's `.spec4/v{N}/` folder, says the
+  review predates this Spec4 version, that nothing else in the round is lost,
+  and that a re-scan unlocks the rest. Without this, the next schema change
+  would have loaded an older review as a set of empty views in every
+  downstream agent, with no signal anywhere. Only a review that parses and
+  names a different `schema_version` is stale; a missing, corrupt or shapeless
+  file behaves as before.
+- **Re-scan of a stale review starts fresh.** Opening CodeScanner on a stale
+  review no longer displays it; it scans, and the seed is the fresh-scan seed
+  with the old review appended as context only — never the update seed, which
+  asks for a merge into a shape the current schema does not read.
+
+### Changed
+- The seeds name the schema version from the constant rather than a literal.
+- Nothing is visible yet at the current version (1): every review on disk
+  already carries `schema_version: 1`. The gate first fires when the version
+  moves.
+
 ## [1.5.3] — 2026-10-05
 
 Brownfield fidelity: what CodeScanner found reaches the planning agents in a

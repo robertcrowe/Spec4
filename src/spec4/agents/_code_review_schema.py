@@ -24,6 +24,14 @@ from typing import Any
 import jsonschema
 
 
+# The ``schema_version`` every review this Spec4 writes carries, and the one
+# ``project_manager.code_review_needs_rescan`` compares a round's on-disk review
+# against. A review written under an older value is not read as current: the
+# /agents page gates the round until CodeScanner re-scans (D-SV1). Bumped only
+# when the artifact's shape changes in a way downstream consumers must follow.
+CODE_REVIEW_SCHEMA_VERSION = 1
+
+
 _PROVENANCE_FIELDS: dict[str, dict[str, str]] = {
     "source": {"type": "string"},
     "inferred_from": {"type": "string"},
@@ -254,7 +262,7 @@ CODE_REVIEW_SCHEMA: dict[str, Any] = {
             "required": ["schema_version", "is_software_project"],
             "additionalProperties": False,
             "properties": {
-                "schema_version": {"const": 1},
+                "schema_version": {"const": CODE_REVIEW_SCHEMA_VERSION},
                 "is_software_project": {"type": "boolean"},
                 # Empty-project branch
                 "summary": {"type": "string"},

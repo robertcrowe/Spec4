@@ -29,8 +29,9 @@ import pathlib
 from collections.abc import Generator
 from typing import Any
 
-from spec4 import llm, websearch
+from spec4 import llm, project_manager, websearch
 from spec4.agents._code_review_schema import (
+    CODE_REVIEW_SCHEMA_VERSION,
     format_validation_errors_for_retry,
     validate_code_review,
 )
@@ -115,13 +116,37 @@ def _extract_and_validate_review(
 
 
 def build_fresh_scan_seed(
-    working_dir: str, all_files: list[pathlib.Path] | None = None
+    working_dir: str,
+    all_files: list[pathlib.Path] | None = None,
+    prior_review: dict[str, Any] | None = None,
 ) -> str:
+    """The seed for a scan drawn from the evidence alone.
+
+    With ``prior_review`` (D-SV4), a review written under an older schema is
+    appended as context — hints, not a baseline. It is never the update seed:
+    that one asks for a diff against the prior review and a merged re-emission,
+    and a review the current schema does not read cannot be merged into.
+    """
     context = gather_project_context(working_dir, all_files)
-    return (
+    head = (
         "Please introduce yourself as CodeScanner, then analyze this project "
         "directory and produce the full draft review in one shot as described in "
         "your operating instructions.\n\n"
+    )
+    if prior_review is None:
+        return f"{head}{context}"
+    prior_json = json.dumps(prior_review, indent=2)
+    return (
+        f"{head}"
+        "**Prior code review on disk (older schema — context only):**\n\n"
+        "This review was written by an earlier version of Spec4 against an older "
+        "schema. Treat it as hints about what the project looked like then. "
+        "Re-derive every field from the evidence below; do not produce an "
+        "update or a diff, and do not carry anything forward that the evidence "
+        f"does not support. Emit the review at schema_version "
+        f"{CODE_REVIEW_SCHEMA_VERSION}.\n\n"
+        f"```json\n{prior_json}\n```\n\n"
+        "**Project evidence (fresh scan):**\n\n"
         f"{context}"
     )
 
@@ -148,7 +173,8 @@ def build_update_scan_seed(
         '- After presenting the changes, ask: "Anything to correct? Reply '
         "'looks good' to merge and finalize.\"\n"
         "- When the user confirms, emit a complete updated `code_review` JSON block "
-        "(schema_version 1) reflecting the merged state. The block must be "
+        f"(schema_version {CODE_REVIEW_SCHEMA_VERSION}) reflecting the merged state. "
+        "The block must be "
         "complete — not a diff — so downstream agents always see the full review.\n\n"
         "**Prior code review on disk:**\n\n"
         f"```json\n{prior_json}\n```\n\n"
@@ -244,8 +270,17 @@ def _scanner_first_entry(
     Returns the running total of characters yielded before the draw.
     """
     existing_review = session.get("code_review")
+    working_dir = session.get("working_dir")
+    # D-SV3: a review loaded from disk under an older schema still arrives
+    # here as `code_review` with the state complete, so without this check the
+    # branch below would show it and return — the re-scan the /agents gate
+    # requires would never start. Decided from the file, as the gate is.
+    stale = bool(working_dir) and project_manager.code_review_needs_rescan(
+        working_dir, session
+    )
     if (
         existing_review is not None
+        and not stale
         and session.get("code_scanner_state") == STATE_REVIEW_COMPLETE
     ):
         display = format_review_as_text(existing_review)
@@ -261,7 +296,6 @@ def _scanner_first_entry(
         yield display
         return None
 
-    working_dir = session.get("working_dir")
     if not working_dir:
         yield (
             "I'm the **CodeScanner**. I analyze your project directory to "
@@ -292,7 +326,7 @@ def _scanner_first_entry(
     pre_stream_chars += len(count_line)
     yield count_line
 
-    seed = _scanner_seed(msgs, working_dir, existing_review, all_files)
+    seed = _scanner_seed(msgs, working_dir, existing_review, all_files, stale)
 
     # D-SC-P2: what follows is a single completion call, and the wait
     # before its first token is dominated by prefill over this request.
@@ -376,9 +410,17 @@ def _scanner_seed(
     working_dir: str,
     existing_review: Any,
     all_files: list[Any],
+    stale: bool = False,
 ) -> str:
-    """Build and append the scan seed; re-scan variant when a prior review exists."""
-    if existing_review is not None:
+    """Build and append the scan seed.
+
+    A prior review under the current schema opens the update scan; one under an
+    older schema (``stale``) opens a fresh scan that carries it as context only
+    (D-SV4); none opens a fresh scan.
+    """
+    if existing_review is not None and stale:
+        seed = build_fresh_scan_seed(working_dir, all_files, existing_review)
+    elif existing_review is not None:
         seed = build_update_scan_seed(working_dir, existing_review, all_files)
     else:
         seed = build_fresh_scan_seed(working_dir, all_files)

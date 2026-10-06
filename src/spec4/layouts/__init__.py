@@ -419,6 +419,9 @@ def agent_select_layout(session: dict[str, Any]) -> html.Div:
     review_in_spec4 = bool(
         version_dir and (version_dir / ARTIFACT_CODE_REVIEW).exists()
     )
+    stale_review = bool(working_dir) and project_manager.code_review_needs_rescan(
+        working_dir, session
+    )
 
     mock_loaded = bool(version_dir and (version_dir / "design" / "mock.html").exists())
 
@@ -484,7 +487,9 @@ def agent_select_layout(session: dict[str, Any]) -> html.Div:
     if error:
         children.append(_error(error))
 
-    _append_new_round_children(children, session, new_round, review_in_spec4)
+    _append_new_round_children(
+        children, session, new_round, review_in_spec4, stale_review
+    )
 
     _append_loaded_children(children, loaded_items, new_round)
 
@@ -517,6 +522,7 @@ def _append_new_round_children(
     session: dict[str, Any],
     new_round: bool,
     review_in_spec4: bool,
+    stale_review: bool = False,
 ) -> None:
     """The new-round block: what a fresh round carries forward and what it rescans."""
     working_dir = session.get("working_dir")
@@ -532,6 +538,24 @@ def _append_new_round_children(
                 f"{prior} has been implemented, and you may also have made "
                 "additional changes yourself. You are now starting a new version, "
                 "so you must begin by scanning your existing code with CodeScanner.",
+                mb="xs",
+            )
+        )
+    elif stale_review and working_dir:
+        # D-SV5: a gate, like the new round above it, so it outranks the
+        # project-mode guidance below — with `project_mode == existing` the
+        # yellow "consider running CodeScanner" would otherwise win over the
+        # one notice that explains why every other button is disabled. The
+        # "Loaded from .spec4/" summary is deliberately *not* suppressed here:
+        # unlike a new round, the rest of this round's artifacts stay active.
+        round_number = project_manager.active_version(working_dir, session)
+        children.append(
+            dmc.Alert(
+                f"The code review in .spec4/v{round_number}/ was written by an "
+                "earlier version of Spec4 and predates its current review format. "
+                "Nothing has been lost — the rest of this round is still loaded — "
+                "but CodeScanner must re-scan before the other agents can "
+                "continue. The re-scan reads the previous review as context.",
                 mb="xs",
             )
         )

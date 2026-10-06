@@ -5,6 +5,7 @@ Split out of ``tests/test_agents.py`` by source module, with every class unchang
 (Phase 8, D9: ``PHASE8_RECORD.md`` §25).
 """
 
+import json
 from typing import Any
 from unittest.mock import patch
 import pytest
@@ -580,6 +581,68 @@ class TestCodeScanner:
         seed = session["code_scanner_messages"][0]["content"]
         assert "Update mode" in seed
         assert "Prior code review on disk" in seed
+
+    def test_stale_schema_seeds_fresh_scan_with_prior_as_context(
+        self, tmp_path: Any
+    ) -> None:
+        # D-SV3/D-SV4: a review on disk under an older schema_version is loaded
+        # into the session as complete, exactly as a current one is — but the
+        # first entry must scan rather than display it, and the seed is the
+        # fresh one carrying the prior review as context, never the update seed.
+        from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
+
+        stale = {
+            "code_review": {
+                "schema_version": CODE_REVIEW_SCHEMA_VERSION - 1,
+                "is_software_project": True,
+                "project_type": "CLI",
+            }
+        }
+        v0 = tmp_path / ".spec4" / "v0"
+        v0.mkdir(parents=True)
+        (v0 / "code_review.json").write_text(json.dumps(stale), encoding="utf-8")
+        session = make_session(
+            code_review=stale,
+            code_scanner_state=STATE_REVIEW_COMPLETE,
+            code_scanner_messages=[],
+            working_dir=str(tmp_path),
+        )
+        with mock_litellm_stream("(LLM fresh response)"):
+            out = collect(code_scanner.run(None, session, session["llm_config"]))
+        assert "Re-scanning" in out
+        seed = session["code_scanner_messages"][0]["content"]
+        assert "Update mode" not in seed
+        assert "Added / Removed / Changed" not in seed
+        assert "older schema" in seed
+        assert '"project_type": "CLI"' in seed
+        assert f"schema_version {CODE_REVIEW_SCHEMA_VERSION}" in seed
+
+    def test_current_schema_still_displays_existing_review(self, tmp_path: Any) -> None:
+        # The inverse: a review under the current schema keeps the display
+        # short-circuit — no scan, no seed appended.
+        from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
+
+        current = {
+            "code_review": {
+                "schema_version": CODE_REVIEW_SCHEMA_VERSION,
+                "is_software_project": True,
+                "project_type": "CLI",
+            }
+        }
+        v0 = tmp_path / ".spec4" / "v0"
+        v0.mkdir(parents=True)
+        (v0 / "code_review.json").write_text(json.dumps(current), encoding="utf-8")
+        session = make_session(
+            code_review=current,
+            code_scanner_state=STATE_REVIEW_COMPLETE,
+            code_scanner_messages=[],
+            working_dir=str(tmp_path),
+        )
+        out = collect(code_scanner.run(None, session, session["llm_config"]))
+        assert "Re-scanning" not in out
+        assert session["code_scanner_messages"][0]["content"] == (
+            "[Spec4: displaying existing code review]"
+        )
 
 
 # ---------------------------------------------------------------------------

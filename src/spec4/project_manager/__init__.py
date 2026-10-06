@@ -26,10 +26,13 @@ imported from this module at all.
 
 from __future__ import annotations
 
+import contextlib
+import json
 import os
 from pathlib import Path
 from typing import Any
 
+from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
 from spec4.app_constants import (
     ARTIFACT_AI_FEATURES,
     ARTIFACT_CODE_REVIEW,
@@ -109,6 +112,7 @@ __all__ = [
     "agent_button_state",
     "_artifact_button_state",
     "brownfield_new_round_pending",
+    "code_review_needs_rescan",
     "cost_summary",
     "detect_stale_inputs",
     "directory_has_content",
@@ -349,6 +353,42 @@ def brownfield_new_round_pending(working_dir: str | Path | None) -> bool:
     return (get_version_dir(working_dir, latest) / "IMPLEMENTED").exists()
 
 
+def code_review_needs_rescan(
+    working_dir: str | Path | None, session: dict[str, Any] | None = None
+) -> bool:
+    """True when the active round's ``code_review.json`` was written under an
+    older ``schema_version`` than this Spec4 writes (D-SV1).
+
+    Downstream agents read the review through views keyed to the current
+    schema, so an older review would resolve to empty views in every consumer
+    — silent degradation. This turns it into the same explicit gate a pending
+    brownfield round has: CodeScanner *required*, everything else *not ready*,
+    until a re-scan rewrites the file under the current version.
+
+    Only a review that parses to a dict carrying a ``schema_version`` different
+    from the current one is stale. A missing file is the ordinary "not scanned
+    yet" state, and an unparseable or shapeless file keeps today's behaviour
+    (``load_spec4_artifacts`` already reads it as absent) — the notice this
+    gate puts on the page says the review predates this Spec4 version, which
+    would be the wrong thing to say about a corrupt file.
+    """
+    if not working_dir:
+        return False
+    path = (
+        get_version_dir(working_dir, active_version(working_dir, session))
+        / ARTIFACT_CODE_REVIEW
+    )
+    data: Any = None
+    with contextlib.suppress(OSError, json.JSONDecodeError):
+        data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return False
+    inner = data.get("code_review")
+    if not isinstance(inner, dict) or "schema_version" not in inner:
+        return False
+    return bool(inner["schema_version"] != CODE_REVIEW_SCHEMA_VERSION)
+
+
 def directory_has_content(working_dir: str | Path | None) -> bool:
     """True when the working directory holds anything of the developer's own.
 
@@ -449,8 +489,10 @@ def agent_button_state(
 
     CodeScanner has no inputs: ``start`` with no ``code_review.json`` in the
     active version, ``modify`` once one exists. During a pending brownfield
-    round it is ``required`` while every other agent is ``not_ready``. With no
-    working directory yet, artifacts are treated as absent (empty project).
+    round, or while the active round's review predates the current schema
+    (`code_review_needs_rescan`), it is ``required`` while every other agent
+    is ``not_ready``. With no working directory yet, artifacts are treated as
+    absent (empty project).
 
     One state is read from the session rather than from disk. ``start`` means
     "nothing on disk yet", which is also true of an agent the developer is
@@ -473,7 +515,9 @@ def _artifact_button_state(  # noqa: C901, E501  # the branches are the document
     session: dict[str, Any] | None = None,
 ) -> str:
     """The state machine above, decided from the artifacts alone."""
-    if brownfield_new_round_pending(working_dir):
+    if brownfield_new_round_pending(working_dir) or code_review_needs_rescan(
+        working_dir, session
+    ):
         return AGENT_BTN_REQUIRED if agent == "code_scanner" else AGENT_BTN_NOT_READY
 
     base = (

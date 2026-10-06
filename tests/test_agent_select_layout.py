@@ -17,6 +17,8 @@ import pathlib
 from typing import Any
 
 from spec4 import project_manager
+from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
+from spec4.app_constants import PROJECT_MODE_EXISTING
 from spec4.layouts import (
     PROJECT_INTRO_BODY_ID,
     PROJECT_INTRO_TOGGLE_ID,
@@ -96,6 +98,67 @@ class TestNewRoundAlerts:
         session = load_working_dir(str(tmp_path), _base_session())
         texts = _alert_texts(agent_select_layout(session))
         assert any("Your previous version has been implemented" in t for t in texts)
+
+
+def _in_flight_v0_with_review(tmp_path: pathlib.Path, schema_version: int) -> None:
+    """A round with a review, a vision and a mock on disk (not implemented)."""
+    v0 = tmp_path / ".spec4" / "v0"
+    (v0 / "design").mkdir(parents=True)
+    (v0 / "vision.json").write_text(json.dumps({"name": "ShelfLife"}))
+    (v0 / "design" / "mock.html").write_text("<html></html>")
+    (v0 / "code_review.json").write_text(
+        json.dumps(
+            {
+                "code_review": {
+                    "schema_version": schema_version,
+                    "is_software_project": True,
+                }
+            }
+        )
+    )
+
+
+class TestStaleReviewAlert:
+    """D-SV5/D-SV6: a review under an older schema gets the one notice that
+    explains why every other button is disabled, in place of the yellow
+    "purely optional" re-scan suggestion — and the "Loaded from" summary stays,
+    because the rest of the round is still active."""
+
+    def test_shows_stale_notice_naming_the_round(self, tmp_path: pathlib.Path) -> None:
+        _in_flight_v0_with_review(tmp_path, CODE_REVIEW_SCHEMA_VERSION - 1)
+        session = load_working_dir(str(tmp_path), _base_session())
+        session["project_mode"] = PROJECT_MODE_EXISTING
+        texts = _alert_texts(agent_select_layout(session))
+        assert any(
+            ".spec4/v0/" in t
+            and "earlier version of Spec4" in t
+            and "Nothing has been lost" in t
+            and "CodeScanner must re-scan" in t
+            for t in texts
+        )
+        assert not any("Purely optional" in t for t in texts)
+        assert not any("Consider running CodeScanner first" in t for t in texts)
+        assert any("Loaded from .spec4/" in t for t in texts)
+
+    def test_current_review_keeps_the_optional_suggestion(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _in_flight_v0_with_review(tmp_path, CODE_REVIEW_SCHEMA_VERSION)
+        session = load_working_dir(str(tmp_path), _base_session())
+        session["project_mode"] = PROJECT_MODE_EXISTING
+        texts = _alert_texts(agent_select_layout(session))
+        assert not any("earlier version of Spec4" in t for t in texts)
+        assert any("Consider running CodeScanner first" in t for t in texts)
+
+    def test_new_round_outranks_stale_notice(self, tmp_path: pathlib.Path) -> None:
+        # Both gates true at once (the implemented round's review is stale):
+        # the new-round message wins, and only one gate notice is shown.
+        _in_flight_v0_with_review(tmp_path, CODE_REVIEW_SCHEMA_VERSION - 1)
+        (tmp_path / ".spec4" / "v0" / "IMPLEMENTED").write_text("")
+        session = load_working_dir(str(tmp_path), _base_session())
+        texts = _alert_texts(agent_select_layout(session))
+        assert any("has been implemented" in t for t in texts)
+        assert not any("earlier version of Spec4" in t for t in texts)
 
 
 # ---------------------------------------------------------------------------

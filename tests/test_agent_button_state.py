@@ -1,16 +1,20 @@
 """Behavioral tests for the /agents page button-state resolver.
 
 Each agent's button reflects the artifacts in the active ``.spec4/v{N}/``
-directory. States: start / modify / needs_update / not_ready / required.
+directory. States: start / modify / needs_update / not_ready / required. The
+``required`` gate fires for a pending brownfield round and for a review written
+under an older ``schema_version`` (D-SV1).
 Mtimes are set explicitly so the freshness-chain ordering is unambiguous.
 """
 
+import json
 import os
 from pathlib import Path
 
 import pytest
 
 from spec4 import project_manager as pm
+from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
 from spec4.project_manager import (
     AGENT_BTN_MODIFY,
     AGENT_BTN_NEEDS_UPDATE,
@@ -270,6 +274,93 @@ def test_active_round_is_highest_unimplemented(tmp_path):
     assert agent_button_state(tmp_path, "code_scanner") == AGENT_BTN_MODIFY
     assert agent_button_state(tmp_path, "brainstormer") == AGENT_BTN_MODIFY
     assert agent_button_state(tmp_path, "agentifier") == AGENT_BTN_START
+
+
+_HEALTHY_SANS_REVIEW = {k: v for k, v in _HEALTHY.items() if k != "code_review.json"}
+
+
+# ---------------------------------------------------------------------------
+# Stale review gate — active round's code_review.json under an older schema
+# ---------------------------------------------------------------------------
+
+
+def _write_review(
+    tmp_path: Path, version: int, schema_version: int, mtime: float = 100
+) -> None:
+    """A parseable review at the mtime ``_HEALTHY`` gives ``code_review.json``."""
+    vdir = tmp_path / ".spec4" / f"v{version}"
+    vdir.mkdir(parents=True, exist_ok=True)
+    path = vdir / "code_review.json"
+    path.write_text(
+        json.dumps(
+            {
+                "code_review": {
+                    "schema_version": schema_version,
+                    "is_software_project": True,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.utime(path, (mtime, mtime))
+
+
+def test_stale_review_requires_codescanner(tmp_path):
+    # Mirrors the new-round gate: the round is otherwise healthy and in flight,
+    # but its review predates the current schema, so only CodeScanner runs.
+    _make_round(tmp_path, 0, _HEALTHY_SANS_REVIEW)
+    _write_review(tmp_path, 0, CODE_REVIEW_SCHEMA_VERSION - 1)
+    assert pm.brownfield_new_round_pending(tmp_path) is False
+    assert pm.code_review_needs_rescan(tmp_path) is True
+    assert agent_button_state(tmp_path, "code_scanner") == AGENT_BTN_REQUIRED
+    for agent in (
+        "brainstormer",
+        "agentifier",
+        "designer",
+        "stack_advisor",
+        "phaser",
+        "deployer",
+    ):
+        assert agent_button_state(tmp_path, agent) == AGENT_BTN_NOT_READY
+
+
+def test_current_review_is_not_stale(tmp_path):
+    _make_round(tmp_path, 0, _HEALTHY_SANS_REVIEW)
+    _write_review(tmp_path, 0, CODE_REVIEW_SCHEMA_VERSION)
+    assert pm.code_review_needs_rescan(tmp_path) is False
+    assert agent_button_state(tmp_path, "code_scanner") == AGENT_BTN_MODIFY
+    assert agent_button_state(tmp_path, "brainstormer") == AGENT_BTN_MODIFY
+
+
+def test_missing_shapeless_or_unparseable_review_is_not_stale(tmp_path):
+    # D-SV1: only a parsed review that names a different schema_version is
+    # stale. Absent is "not scanned yet"; "{}" and "x" keep today's behaviour.
+    assert pm.code_review_needs_rescan(tmp_path) is False
+    vdir = tmp_path / ".spec4" / "v0"
+    vdir.mkdir(parents=True)
+    (vdir / "code_review.json").write_text("{}", encoding="utf-8")
+    assert pm.code_review_needs_rescan(tmp_path) is False
+    (vdir / "code_review.json").write_text("x", encoding="utf-8")
+    assert pm.code_review_needs_rescan(tmp_path) is False
+    assert agent_button_state(tmp_path, "code_scanner") == AGENT_BTN_MODIFY
+
+
+def test_stale_gate_reads_the_active_round(tmp_path):
+    # v0 implemented with a stale review (read by no consumer), v1 in flight
+    # with a current one: not gated. The session's pinned version is honoured.
+    _make_round(tmp_path, 0, _HEALTHY)
+    _write_review(tmp_path, 0, CODE_REVIEW_SCHEMA_VERSION - 1)
+    (tmp_path / ".spec4" / "v0" / "IMPLEMENTED").write_text("", encoding="utf-8")
+    _make_round(tmp_path, 1, {"vision.json": 301})
+    _write_review(tmp_path, 1, CODE_REVIEW_SCHEMA_VERSION, mtime=300)
+    assert pm.code_review_needs_rescan(tmp_path) is False
+    assert pm.code_review_needs_rescan(tmp_path, {"phase_version": 0}) is True
+    assert agent_button_state(tmp_path, "brainstormer", {"phase_version": 1}) == (
+        AGENT_BTN_MODIFY
+    )
+    assert agent_button_state(tmp_path, "brainstormer", {"phase_version": 0}) == (
+        AGENT_BTN_NOT_READY
+    )
 
 
 # ---------------------------------------------------------------------------
