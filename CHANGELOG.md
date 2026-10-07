@@ -10,6 +10,46 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.1.0] — unreleased
+
+The first of the `scan` collectors. A `code_review.json` written by 2.0.0
+still reads — its `scan` is `{}` and renders as before — but a re-scan is
+what fills it.
+
+### Added
+- **`scan.inventory`** — the census of the walked tree: file and line counts
+  per extension (binary and oversized files counted but not measured), the
+  first 2,000 paths, and every directory the walk pruned (`unscanned_dirs`),
+  so a consumer can tell "not there" from "not looked at".
+- **`scan.coverage`** — what the seed actually showed the model: the README,
+  manifests, CI and deployment files whose contents were pasted, the source
+  files sampled, and the source total they were drawn from. The record is
+  kept by the code that pastes, not re-derived afterwards.
+- **`scan.git`** — present when the project root is itself a repository
+  (a `.git` entry at the root; a subdirectory of a larger repository gets no
+  block): head, branch, dirty flag, untracked count; the commits since the
+  last Spec4 round — after the latest `IMPLEMENTED` marker, else after the
+  prior `code_review.json`, else absent on a first scan — with their date
+  range, author names (never emails), per-top-directory touch counts and
+  whether any carries a coding-agent trailer (evidence only); and the last
+  commit per top-level directory. Dormancy is not classified here. Logs are
+  capped at 500 commits and say so. `git` is Spec4's first subprocess call;
+  any failure — no binary, a timeout, an empty repository — stores
+  `{"available": false}` and never fails the scan.
+- **Scan Summary** leads the rendered review: files and lines, skipped
+  directories, what the model was shown, and the git line. Absent for a
+  review whose `scan` is empty, so 2.0.0 artifacts render unchanged.
+- `scan` is typed in the artifact schema: each block optional, each closed.
+  A collector emitting a key the schema does not name fails at commit, as a
+  bad envelope does.
+
+### Changed
+- The measured layer is taken from the same walk the model is shown and held
+  in the session (`code_scanner_scan`) until the model's `review` block is
+  committed — the commit may be turns later. It is cleared on commit; a
+  commit with no walk behind it is refused rather than stored with an empty
+  `scan`.
+
 ## [2.0.0] — unreleased
 
 **Breaking.** The code review artifact changes shape. A `code_review.json`

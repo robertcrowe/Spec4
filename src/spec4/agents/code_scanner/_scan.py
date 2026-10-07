@@ -10,12 +10,19 @@ no LLM, no session, no Dash.
 of the budgets: the same display-only sizing that the ``_MAX_*`` constants
 above enforce, reported back to the user (D-SC-P2).
 
+``SampleRecord`` is the ledger of what the formatters below actually pasted
+into that block. ``gather_project_context`` fills one when handed it, and the
+1b ``coverage`` collector turns it into the stored ``scan.coverage`` — so the
+record of what the model was shown comes from the code that showed it, not
+from a second pass re-deriving the same selection (D-SC1b-4).
+
 Split out of ``code_scanner.py`` in Phase 4c; the package ``__init__``
 re-exports every name below under its original spelling.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 
 
@@ -132,6 +139,29 @@ _SOURCE_EXTENSIONS = {
 _ENTRYPOINT_NAME_STEMS = {"main", "app", "index", "server", "cli", "__main__"}
 
 
+@dataclasses.dataclass
+class SampleRecord:
+    """What ``gather_project_context`` pasted, as root-relative POSIX paths.
+
+    Every list holds only files whose *contents* reached the seed; a file that
+    was listed in the tree but never read is not sampled. ``tree_listed`` is
+    the number of paths the file tree showed before its cap.
+    """
+
+    tree_listed: int = 0
+    tree_truncated: bool = False
+    readme: str | None = None
+    manifests: list[str] = dataclasses.field(default_factory=list)
+    ci: list[str] = dataclasses.field(default_factory=list)
+    deploy: list[str] = dataclasses.field(default_factory=list)
+    sampled: list[str] = dataclasses.field(default_factory=list)
+    source_files_total: int = 0
+
+
+def _rel(root: pathlib.Path, path: pathlib.Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
 def _is_entrypoint_candidate(path: pathlib.Path) -> bool:
     stem = path.stem.lower()
     return stem in _ENTRYPOINT_NAME_STEMS
@@ -163,10 +193,19 @@ def collect_files(root: pathlib.Path) -> list[pathlib.Path]:
 
 
 def gather_project_context(
-    working_dir: str, all_files: list[pathlib.Path] | None = None
+    working_dir: str,
+    all_files: list[pathlib.Path] | None = None,
+    record: SampleRecord | None = None,
 ) -> str:
+    """The evidence block a scan seed carries.
+
+    With ``record``, every formatter notes what it pasted (D-SC1b-4); the
+    output text is the same either way.
+    """
     root = pathlib.Path(working_dir)
     lines: list[str] = [f"## Project Directory: `{root}`\n"]
+    if record is None:
+        record = SampleRecord()
 
     if all_files is None:
         all_files = collect_files(root)
@@ -175,33 +214,37 @@ def gather_project_context(
         lines.append("The directory appears to be empty (no non-hidden files found).\n")
         return "\n".join(lines)
 
-    _file_tree_lines(root, all_files, lines)
+    _file_tree_lines(root, all_files, lines, record)
 
-    readme_lines = _format_readme_block(root, all_files)
+    readme_lines = _format_readme_block(root, all_files, record)
     if readme_lines:
         lines.extend(readme_lines)
 
-    _manifest_file_lines(root, all_files, lines)
+    _manifest_file_lines(root, all_files, lines, record)
 
-    ci_block = _format_ci_block(root, all_files)
+    ci_block = _format_ci_block(root, all_files, record)
     if ci_block:
         lines.extend(ci_block)
 
-    deploy_block = _format_deployment_signals(root, all_files)
+    deploy_block = _format_deployment_signals(root, all_files, record)
     if deploy_block:
         lines.extend(deploy_block)
 
     lines.append("### Source File Samples\n")
     source_files = [f for f in all_files if f.suffix in _SOURCE_EXTENSIONS]
+    record.source_files_total = len(source_files)
 
     priority_files = _priority_source_files(root, source_files)
-    _source_sample_lines(root, priority_files, lines)
+    _source_sample_lines(root, priority_files, lines, record)
 
     return "\n".join(lines)
 
 
 def _file_tree_lines(
-    root: pathlib.Path, all_files: list[pathlib.Path], lines: list[str]
+    root: pathlib.Path,
+    all_files: list[pathlib.Path],
+    lines: list[str],
+    record: SampleRecord,
 ) -> None:
     """The truncated file tree."""
     lines.append("### File Tree\n```")
@@ -212,10 +255,15 @@ def _file_tree_lines(
             f"... and {len(all_files) - _MAX_TREE_FILES} more files (truncated)"
         )
     lines.append("```\n")
+    record.tree_listed = min(len(all_files), _MAX_TREE_FILES)
+    record.tree_truncated = len(all_files) > _MAX_TREE_FILES
 
 
 def _manifest_file_lines(
-    root: pathlib.Path, all_files: list[pathlib.Path], lines: list[str]
+    root: pathlib.Path,
+    all_files: list[pathlib.Path],
+    lines: list[str],
+    record: SampleRecord,
 ) -> None:
     """Config and manifest file contents, within the character budget."""
     lines.append("### Config and Manifest Files\n")
@@ -227,6 +275,7 @@ def _manifest_file_lines(
                 continue
             lines.append(f"#### `{f.relative_to(root)}`\n```\n{content}\n```\n")
             manifest_chars += len(content)
+            record.manifests.append(_rel(root, f))
 
 
 def _is_test_path(root: pathlib.Path, p: pathlib.Path) -> bool:
@@ -247,7 +296,10 @@ def _priority_source_files(
 
 
 def _source_sample_lines(
-    root: pathlib.Path, priority_files: list[pathlib.Path], lines: list[str]
+    root: pathlib.Path,
+    priority_files: list[pathlib.Path],
+    lines: list[str],
+    record: SampleRecord,
 ) -> None:
     """Head samples of the priority source files, within the character budget."""
     source_chars = 0
@@ -266,10 +318,11 @@ def _source_sample_lines(
             f"```\n{sample}\n```\n"
         )
         source_chars += len(sample)
+        record.sampled.append(_rel(root, f))
 
 
 def _format_readme_block(
-    root: pathlib.Path, all_files: list[pathlib.Path]
+    root: pathlib.Path, all_files: list[pathlib.Path], record: SampleRecord
 ) -> list[str]:
     readme = next(
         (f for f in all_files if f.name in _README_NAMES and f.parent == root),
@@ -281,6 +334,7 @@ def _format_readme_block(
         text = readme.read_text(errors="replace")
     except OSError:
         return []
+    record.readme = _rel(root, readme)
     sample_lines = text.splitlines()[:_MAX_README_LINES]
     sample = "\n".join(sample_lines)
     return [
@@ -290,7 +344,9 @@ def _format_readme_block(
     ]
 
 
-def _format_ci_block(root: pathlib.Path, all_files: list[pathlib.Path]) -> list[str]:
+def _format_ci_block(
+    root: pathlib.Path, all_files: list[pathlib.Path], record: SampleRecord
+) -> list[str]:
     ci_files: list[pathlib.Path] = []
     for f in all_files:
         rel_parts = f.relative_to(root).parts
@@ -307,11 +363,12 @@ def _format_ci_block(root: pathlib.Path, all_files: list[pathlib.Path]) -> list[
         if content is None:
             continue
         out.append(f"#### `{f.relative_to(root)}`\n```\n{content}\n```\n")
+        record.ci.append(_rel(root, f))
     return out
 
 
 def _format_deployment_signals(
-    root: pathlib.Path, all_files: list[pathlib.Path]
+    root: pathlib.Path, all_files: list[pathlib.Path], record: SampleRecord
 ) -> list[str]:
     deploy_files: list[pathlib.Path] = []
     has_terraform = False
@@ -333,6 +390,7 @@ def _format_deployment_signals(
             out.append(f"- `{f.relative_to(root)}` present\n")
             continue
         out.append(f"#### `{f.relative_to(root)}`\n```\n{content}\n```\n")
+        record.deploy.append(_rel(root, f))
     if has_terraform:
         out.append(
             "- Terraform configuration detected under infrastructure directory\n"

@@ -86,6 +86,9 @@ def default_session() -> dict[str, Any]:
         "active_agent": "brainstormer",
         "code_scanner_state": STATE_IN_PROGRESS,
         "code_scanner_messages": [],
+        # The measured `scan` layer from the last walk, held until the review
+        # block it belongs to is committed; `None` otherwise (D-SC1b-1).
+        "code_scanner_scan": None,
         "code_review": None,
         "brainstormer_state": STATE_IN_PROGRESS,
         "brainstormer_messages": [],

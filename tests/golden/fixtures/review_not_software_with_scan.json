@@ -1,0 +1,42 @@
+{
+  "code_review": {
+    "schema_version": 2,
+    "scan": {
+      "inventory": {
+        "files_total": 9,
+        "files_listed": 9,
+        "truncated": false,
+        "loc_total": 0,
+        "by_extension": {
+          ".jpg": {
+            "files": 9,
+            "loc": 0,
+            "unmeasured": 9
+          }
+        },
+        "listed": [
+          "a.jpg"
+        ],
+        "unscanned_dirs": []
+      },
+      "coverage": {
+        "tree_listed": 9,
+        "tree_truncated": false,
+        "readme": null,
+        "manifests": [],
+        "ci": [],
+        "deploy": [],
+        "sampled": [],
+        "source_files_total": 0,
+        "source_files_sampled": 0
+      },
+      "git": {
+        "available": false
+      }
+    },
+    "review": {
+      "is_software_project": false,
+      "summary": "A folder of holiday photos."
+    }
+  }
+}

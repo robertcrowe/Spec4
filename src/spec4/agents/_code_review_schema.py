@@ -542,12 +542,159 @@ REVIEW_BLOCK_SCHEMA: dict[str, Any] = {
 }
 
 
+def _str_list() -> dict[str, Any]:
+    return {"type": "array", "items": {"type": "string"}}
+
+
+def _int_map() -> dict[str, Any]:
+    return {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+
+
+def _closed(required: list[str], properties: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "required": required,
+        "additionalProperties": False,
+        "properties": properties,
+    }
+
+
+_NON_NEGATIVE = {"type": "integer", "minimum": 0}
+_NULLABLE_STRING = {"type": ["string", "null"]}
+
+# The computed ``scan`` layer (D-SC1b-9): each block is optional, so a later
+# step adds its own without touching this version, but a block that is present
+# is closed — a collector emitting a key this schema does not name is a code
+# fault, caught at commit like a bad envelope (D-EV3). ``git`` is absent for a
+# project that is not a repository root, and ``{"available": false}`` for one
+# where ``git`` could not be run.
+_SCAN_INVENTORY = _closed(
+    [
+        "files_total",
+        "files_listed",
+        "truncated",
+        "loc_total",
+        "by_extension",
+        "listed",
+        "unscanned_dirs",
+    ],
+    {
+        "files_total": _NON_NEGATIVE,
+        "files_listed": _NON_NEGATIVE,
+        "truncated": {"type": "boolean"},
+        "loc_total": _NON_NEGATIVE,
+        "by_extension": {
+            "type": "object",
+            "additionalProperties": _closed(
+                ["files", "loc", "unmeasured"],
+                {
+                    "files": _NON_NEGATIVE,
+                    "loc": _NON_NEGATIVE,
+                    "unmeasured": _NON_NEGATIVE,
+                },
+            ),
+        },
+        "listed": _str_list(),
+        "unscanned_dirs": _str_list(),
+    },
+)
+
+_SCAN_COVERAGE = _closed(
+    [
+        "tree_listed",
+        "tree_truncated",
+        "readme",
+        "manifests",
+        "ci",
+        "deploy",
+        "sampled",
+        "source_files_total",
+        "source_files_sampled",
+    ],
+    {
+        "tree_listed": _NON_NEGATIVE,
+        "tree_truncated": {"type": "boolean"},
+        "readme": _NULLABLE_STRING,
+        "manifests": _str_list(),
+        "ci": _str_list(),
+        "deploy": _str_list(),
+        "sampled": _str_list(),
+        "source_files_total": _NON_NEGATIVE,
+        "source_files_sampled": _NON_NEGATIVE,
+    },
+)
+
+_SCAN_GIT_SINCE = _closed(
+    [
+        "boundary_kind",
+        "boundary",
+        "commits",
+        "truncated",
+        "first",
+        "last",
+        "authors",
+        "touched_top_dirs",
+        "agent_trailers_present",
+    ],
+    {
+        "boundary_kind": {"enum": ["implemented", "prior_review"]},
+        "boundary": {"type": "string"},
+        "commits": _NON_NEGATIVE,
+        "truncated": {"type": "boolean"},
+        "first": _NULLABLE_STRING,
+        "last": _NULLABLE_STRING,
+        "authors": _str_list(),
+        "touched_top_dirs": _int_map(),
+        "agent_trailers_present": {"type": "boolean"},
+    },
+)
+
+_SCAN_GIT_ACTIVITY = _closed(
+    ["commits_scanned", "truncated", "last_commit_per_top_dir"],
+    {
+        "commits_scanned": _NON_NEGATIVE,
+        "truncated": {"type": "boolean"},
+        "last_commit_per_top_dir": {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+        },
+    },
+)
+
+_SCAN_GIT = {
+    "oneOf": [
+        _closed(["available"], {"available": {"const": False}}),
+        _closed(
+            ["available", "head", "branch", "dirty", "untracked_count", "activity"],
+            {
+                "available": {"const": True},
+                "head": {"type": "string"},
+                "branch": {"type": "string"},
+                "dirty": {"type": "boolean"},
+                "untracked_count": _NON_NEGATIVE,
+                "activity": _SCAN_GIT_ACTIVITY,
+                "since_last_round": _SCAN_GIT_SINCE,
+            },
+        ),
+    ]
+}
+
+SCAN_SCHEMA: dict[str, Any] = _closed(
+    [],
+    {
+        "inventory": _SCAN_INVENTORY,
+        "coverage": _SCAN_COVERAGE,
+        "git": _SCAN_GIT,
+    },
+)
+
+
 # What is stored in ``session["code_review"]`` and written to
 # ``.spec4/v{N}/code_review.json``: the envelope. ``scan`` is the computed,
-# deterministic layer (empty at schema_version 2's first step; filled by the
-# 1b–1d collectors); ``review`` is the LLM's block. Consumers unwrap by path
-# through ``_code_review_context.unwrap_review`` / ``unwrap_scan`` — never by
-# falling back to the outer dict (D-EV5).
+# deterministic layer (``SCAN_SCHEMA``; the 1b blocks today, 1c–1d's to come);
+# ``review`` is the LLM's block. Consumers unwrap by path through
+# ``_code_review_context.unwrap_review`` / ``unwrap_scan`` — never by falling
+# back to the outer dict (D-EV5).
 CODE_REVIEW_SCHEMA: dict[str, Any] = {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "Spec4 code_review (schema_version 2)",
@@ -561,7 +708,7 @@ CODE_REVIEW_SCHEMA: dict[str, Any] = {
             "additionalProperties": False,
             "properties": {
                 "schema_version": {"const": CODE_REVIEW_SCHEMA_VERSION},
-                "scan": {"type": "object"},
+                "scan": SCAN_SCHEMA,
                 "review": _REVIEW_OBJECT,
             },
         }

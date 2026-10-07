@@ -17,8 +17,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from spec4.agents._code_review_context import unwrap_review
+import collections
+
+from spec4.agents._code_review_context import unwrap_review, unwrap_scan
 from spec4.agents._stack_context import render_coding_style
+
+_TOP_EXTENSIONS = 5
+_MAX_UNSCANNED_SHOWN = 6
 
 
 def _as_str_list(value: Any) -> list[str]:
@@ -75,9 +80,106 @@ def _normalize_style_for_renderer(style: dict[str, Any]) -> dict[str, Any]:
     return flat
 
 
-def _format_empty_review(cr: dict[str, Any]) -> str:
+def _render_scan_summary(scan: dict[str, Any], lines: list[str]) -> None:
+    """The Scan Summary: what was measured and what the model was shown (1b).
+
+    Renders nothing for a ``scan`` without an ``inventory`` — the schema-2
+    envelopes 1a wrote carry ``{}``, and their display is pinned.
+    """
+    inventory = scan.get("inventory")
+    if not isinstance(inventory, dict):
+        return
+    lines.append("**Scan Summary**\n")
+    lines.append(_scan_files_line(inventory))
+    unscanned = inventory.get("unscanned_dirs") or []
+    if unscanned:
+        lines.append(f"- Skipped: {_skipped_summary(unscanned)}")
+    coverage = scan.get("coverage")
+    if isinstance(coverage, dict):
+        lines.append(_scan_coverage_line(coverage))
+    git = scan.get("git")
+    if isinstance(git, dict):
+        lines.append(_scan_git_line(git))
+    lines.append("")
+
+
+def _skipped_summary(unscanned: list[str]) -> str:
+    """Pruned directories grouped by name — fourteen ``__pycache__`` read as one."""
+    counts = collections.Counter(d.rsplit("/", 1)[-1] for d in unscanned)
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    parts = [f"`{name}`" + (f" ×{n}" if n > 1 else "") for name, n in ranked]
+    shown = ", ".join(parts[:_MAX_UNSCANNED_SHOWN])
+    more = len(parts) - _MAX_UNSCANNED_SHOWN
+    return shown + (f" and {more} more" if more > 0 else "")
+
+
+def _scan_files_line(inventory: dict[str, Any]) -> str:
+    by_ext = inventory.get("by_extension") or {}
+    ranked = sorted(by_ext.items(), key=lambda kv: (-kv[1].get("files", 0), kv[0]))
+    top = ", ".join(f"{v.get('files', 0)} {k}" for k, v in ranked[:_TOP_EXTENSIONS])
+    detail = f" ({top})" if top else ""
+    return (
+        f"- Files: {inventory.get('files_total', 0):,}{detail} — "
+        f"{inventory.get('loc_total', 0):,} lines"
+    )
+
+
+def _scan_coverage_line(coverage: dict[str, Any]) -> str:
+    bits = [
+        f"{coverage.get('source_files_sampled', 0)} of "
+        f"{coverage.get('source_files_total', 0)} source files sampled",
+        f"{len(coverage.get('manifests') or [])} manifests",
+    ]
+    if coverage.get("readme"):
+        bits.append("README")
+    ci = len(coverage.get("ci") or [])
+    if ci:
+        bits.append(f"{ci} CI")
+    deploy = len(coverage.get("deploy") or [])
+    if deploy:
+        bits.append(f"{deploy} deployment")
+    return "- Shown to the model: " + ", ".join(bits)
+
+
+def _scan_git_line(git: dict[str, Any]) -> str:
+    if not git.get("available"):
+        return "- Git: repository present, but `git` could not be run"
+    state = "dirty" if git.get("dirty") else "clean"
+    untracked = git.get("untracked_count", 0)
+    if untracked:
+        state += f", {untracked} untracked"
+    line = f"- Git: `{git.get('branch')}` @ `{git.get('head')}`, {state}"
+    since = git.get("since_last_round")
+    if isinstance(since, dict):
+        line += "; " + _since_summary(since)
+    return line
+
+
+def _since_summary(since: dict[str, Any]) -> str:
+    n = since.get("commits", 0)
+    boundary = str(since.get("boundary", ""))[:10]
+    kind = (
+        "the last implemented round"
+        if since.get("boundary_kind") == "implemented"
+        else "the prior scan"
+    )
+    if not n:
+        return f"no commits since {kind} ({boundary})"
+    authors = len(since.get("authors") or [])
+    text = (
+        f"{n} commit{'' if n == 1 else 's'} since {kind} ({boundary})"
+        f", {authors} author{'' if authors == 1 else 's'}"
+    )
+    dirs = ", ".join(f"`{d}`" for d in (since.get("touched_top_dirs") or {}))
+    if dirs:
+        text += f", touching {dirs}"
+    return text
+
+
+def _format_empty_review(cr: dict[str, Any], scan: dict[str, Any]) -> str:
     """Render the is_software_project=false display."""
     lines = ["**Code Review Complete**\n"]
+    _render_scan_summary(scan, lines)
     summary = cr.get("summary")
     notes = cr.get("notes")
     if summary:
@@ -101,16 +203,17 @@ def _format_empty_review(cr: dict[str, Any]) -> str:
 def format_review_as_text(review: dict[str, Any]) -> str:
     """Render a stored ``code_review`` envelope for the chat transcript.
 
-    Renders the ``review`` block; the computed ``scan`` layer is not shown
-    here at schema_version 2's first step (the Scan Summary section arrives
-    with the 1b collectors). An empty or non-envelope input renders the
+    The Scan Summary (the computed ``scan`` layer) leads when there is one;
+    the ``review`` block follows. An empty or non-envelope input renders the
     skeleton, as before.
     """
     cr = unwrap_review(review)
+    scan = unwrap_scan(review)
     if cr.get("is_software_project") is False:
-        return _format_empty_review(cr)
+        return _format_empty_review(cr, scan)
 
     lines: list[str] = ["**Code Review Complete**\n"]
+    _render_scan_summary(scan, lines)
 
     if "project_type" in cr:
         lines.append(f"**Project Type:** {cr['project_type']}\n")

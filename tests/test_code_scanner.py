@@ -69,10 +69,11 @@ class TestCodeScanner:
 
     def test_user_input_calls_llm(self) -> None:
         session = make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
         with mock_litellm_stream("Here is my review."):
             output = collect(
@@ -82,10 +83,11 @@ class TestCodeScanner:
 
     def test_review_json_sets_state_complete(self) -> None:
         session = make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
         review_response = '```json\n{"review": {"is_software_project": true}}\n```'
         with mock_litellm_stream(review_response):
@@ -97,10 +99,11 @@ class TestCodeScanner:
 
     def test_non_review_response_stays_in_progress(self) -> None:
         session = make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
         with mock_litellm_stream("Tell me about section 1."):
             collect(code_scanner.run("Go on", session, session["llm_config"]))
@@ -125,10 +128,11 @@ class TestCodeScanner:
 
     def test_initialises_code_scanner_messages_if_missing(self) -> None:
         session = make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
         del session["code_scanner_messages"]
         with mock_litellm_stream("Ok"):
@@ -708,7 +712,8 @@ class TestCodeScanner:
         from spec4.agents.code_scanner import _scanner_commit
 
         session = make_session(
-            code_scanner_messages=[{"role": "assistant", "content": ""}]
+            code_scanner_scan={},
+            code_scanner_messages=[{"role": "assistant", "content": ""}],
         )
         bad = {"code_review": {"schema_version": 1, "is_software_project": True}}
         with (
@@ -1404,10 +1409,11 @@ class TestCodeScannerValidationRetry:
 
     def test_valid_review_does_not_retry(self) -> None:
         session = make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
         with mock_litellm_stream(self._valid_review_text()) as mock_llm:
             collect(code_scanner.run("Confirm", session, session["llm_config"]))
@@ -1419,10 +1425,11 @@ class TestCodeScannerValidationRetry:
         # First LLM call returns invalid JSON; second returns valid JSON.
         # The retry user message must appear in msgs and reference the error.
         session = make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
         chunk_seqs = [
             list(_chunkify_stream(self._invalid_review_text())),
@@ -1455,10 +1462,11 @@ class TestCodeScannerValidationRetry:
         # to the user. The original suppression already swallows fenced JSON;
         # here we verify the retry pass adds nothing to the visible output.
         session = make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
         chunk_seqs = [
             list(_chunkify_stream(self._invalid_review_text())),
@@ -1480,10 +1488,11 @@ class TestCodeScannerValidationRetry:
         # Both turns emit invalid JSON; the agent should drop the retry
         # exchange and surface a brief recoverable error.
         session = make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
         chunk_seqs = [
             list(_chunkify_stream(self._invalid_review_text())),
@@ -1513,10 +1522,11 @@ class TestCodeScannerValidationRetry:
 
     def test_retry_uses_response_format_when_supported(self) -> None:
         session = make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
         chunk_seqs = [
             list(_chunkify_stream(self._invalid_review_text())),
@@ -1543,10 +1553,11 @@ class TestCodeScannerValidationRetry:
 
     def test_retry_skips_response_format_when_unsupported(self) -> None:
         session = make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
         chunk_seqs = [
             list(_chunkify_stream(self._invalid_review_text())),
@@ -1575,10 +1586,11 @@ class TestCodeScannerValidationRetry:
         # without a ```json fence. _extract_and_validate_review must
         # still pick it up.
         session = make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
         raw_valid = '{"review": {"is_software_project": true}}'
         chunk_seqs = [
@@ -1627,10 +1639,11 @@ class TestCodeScannerUnparseableArtifact:
 
     def _session(self) -> dict[str, Any]:
         return make_session(
+            code_scanner_scan={},
             code_scanner_messages=[
                 {"role": "user", "content": "seed"},
                 {"role": "assistant", "content": "draft"},
-            ]
+            ],
         )
 
     def _run(self, *replies: str) -> tuple[dict[str, Any], str]:

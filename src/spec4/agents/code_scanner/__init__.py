@@ -9,6 +9,9 @@ self-contained concerns into siblings, one module each:
 
 * :mod:`spec4.agents.code_scanner._scan` -- the repo walk, the project-context
   block the seeds carry, and the size budgets that bound both.
+* :mod:`spec4.agents.code_scanner._collect` -- the code-owned ``scan`` layer
+  (schema_version 2): inventory, coverage, and git, computed after the walk
+  and merged at commit (D-EV2).
 * :mod:`spec4.agents.code_scanner._prompt` -- the frozen ``SYSTEM_PROMPT``.
 * :mod:`spec4.agents.code_scanner._review_render` --
   ``format_review_as_text`` and its section renderers.
@@ -52,9 +55,11 @@ from spec4.agents._turn_flow import (
 )
 from spec4.app_constants import STATE_REVIEW_COMPLETE
 
+from spec4.agents.code_scanner._collect import collect_scan
 from spec4.agents.code_scanner._prompt import SYSTEM_PROMPT
 from spec4.agents.code_scanner._review_render import format_review_as_text
 from spec4.agents.code_scanner._scan import (
+    SampleRecord,
     approx_tokens,
     collect_files,
     gather_project_context,
@@ -65,6 +70,7 @@ __all__ = [
     "build_fresh_scan_seed",
     "build_update_scan_seed",
     "collect_files",
+    "collect_scan",
     "_extract_and_validate_review",
     "extract_review_json",
     "format_review_as_text",
@@ -86,9 +92,9 @@ def wrap_review(
     """Assemble the stored envelope from the LLM's validated ``review`` block.
 
     ``schema_version`` and ``scan`` are code-owned (D-EV2/D-EV4): the model
-    never emits either. ``scan`` is empty at this step; the 1b–1d collectors
-    fill it here, after validation, so nothing the model wrote is mistaken
-    for a computed fact.
+    never emits either. ``scan`` is what ``collect_scan`` measured at walk
+    time, attached here after validation, so nothing the model wrote is
+    mistaken for a computed fact.
     """
     return {
         "code_review": {
@@ -159,6 +165,7 @@ def build_fresh_scan_seed(
     working_dir: str,
     all_files: list[pathlib.Path] | None = None,
     prior_review: dict[str, Any] | None = None,
+    record: SampleRecord | None = None,
 ) -> str:
     """The seed for a scan drawn from the evidence alone.
 
@@ -166,8 +173,9 @@ def build_fresh_scan_seed(
     appended as context — hints, not a baseline. It is never the update seed:
     that one asks for a diff against the prior review and a merged re-emission,
     and a review the current schema does not read cannot be merged into.
+    ``record``, when given, is filled with what the evidence block pasted.
     """
-    context = gather_project_context(working_dir, all_files)
+    context = gather_project_context(working_dir, all_files, record)
     head = (
         "Please introduce yourself as CodeScanner, then analyze this project "
         "directory and produce the full draft review in one shot as described in "
@@ -195,8 +203,9 @@ def build_update_scan_seed(
     working_dir: str,
     prior_review: dict[str, Any],
     all_files: list[pathlib.Path] | None = None,
+    record: SampleRecord | None = None,
 ) -> str:
-    context = gather_project_context(working_dir, all_files)
+    context = gather_project_context(working_dir, all_files, record)
     prior_json = json.dumps(_prior_review_for_seed(prior_review), indent=2)
     return (
         "Please introduce yourself as CodeScanner. The user has asked you to "
@@ -365,7 +374,11 @@ def _scanner_first_entry(
     pre_stream_chars += len(count_line)
     yield count_line
 
-    seed = _scanner_seed(msgs, working_dir, existing_review, all_files, stale)
+    seed, record = _scanner_seed(msgs, working_dir, existing_review, all_files, stale)
+    # D-SC1b-1: the measured layer is taken from the same walk the model is
+    # about to see and held in the session until the review block arrives —
+    # the commit may be turns away (a chat first, or the re-ask path).
+    session["code_scanner_scan"] = collect_scan(working_dir, all_files, record, session)
 
     # D-SC-P2: what follows is a single completion call, and the wait
     # before its first token is dominated by prefill over this request.
@@ -450,21 +463,22 @@ def _scanner_seed(
     existing_review: Any,
     all_files: list[Any],
     stale: bool = False,
-) -> str:
-    """Build and append the scan seed.
+) -> tuple[str, SampleRecord]:
+    """Build and append the scan seed; return it with the record of what it pasted.
 
     A prior review under the current schema opens the update scan; one under an
     older schema (``stale``) opens a fresh scan that carries it as context only
     (D-SV4); none opens a fresh scan.
     """
+    record = SampleRecord()
     if existing_review is not None and stale:
-        seed = build_fresh_scan_seed(working_dir, all_files, existing_review)
+        seed = build_fresh_scan_seed(working_dir, all_files, existing_review, record)
     elif existing_review is not None:
-        seed = build_update_scan_seed(working_dir, existing_review, all_files)
+        seed = build_update_scan_seed(working_dir, existing_review, all_files, record)
     else:
-        seed = build_fresh_scan_seed(working_dir, all_files)
+        seed = build_fresh_scan_seed(working_dir, all_files, record=record)
     msgs.append({"role": "user", "content": seed})
-    return seed
+    return seed, record
 
 
 def _scanner_retry_prompt(
@@ -501,11 +515,22 @@ def _scanner_commit(
 ) -> None:
     """Wrap the validated ``review`` block, render, then commit to the session.
 
+    The ``scan`` layer is the one ``_scanner_first_entry`` stashed under
+    ``code_scanner_scan`` (D-SC1b-1); a missing stash is a code fault — a
+    commit with no walk behind it — and is refused rather than written as an
+    empty ``scan`` that would pass for a measured one. The stash is cleared on
+    success so the envelope is the only copy and a live stash always means a
+    scan awaiting its review.
+
     The envelope is validated once more here (D-EV3): the block already
-    passed ``validate_review_block``, so a failure means the wrapper, not the
-    model, is wrong — and that must not reach disk.
+    passed ``validate_review_block``, so a failure means the wrapper or a
+    collector, not the model, is wrong — and that must not reach disk.
     """
-    review = wrap_review(block)
+    scan = session.get("code_scanner_scan")
+    if not isinstance(scan, dict):
+        msg = "code_review commit with no scan stashed from the walk"
+        raise ValueError(msg)
+    review = wrap_review(block, scan)
     errors = validate_code_review(review)
     if errors:
         msg = "assembled code_review envelope failed validation: " + "; ".join(errors)
@@ -513,6 +538,7 @@ def _scanner_commit(
     display = format_review_as_text(review)
     session["code_scanner_state"] = STATE_REVIEW_COMPLETE
     session["code_review"] = review
+    session["code_scanner_scan"] = None
     msgs[-1]["content"] = display
     session["_display_override"] = display
     session["code_scanner_artifact_msg_count"] = len(msgs)
