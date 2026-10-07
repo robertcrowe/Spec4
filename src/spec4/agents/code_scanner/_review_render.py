@@ -24,6 +24,7 @@ from spec4.agents._stack_context import render_coding_style
 
 _TOP_EXTENSIONS = 5
 _MAX_UNSCANNED_SHOWN = 6
+_TOP_CANDIDATES_SHOWN = 5
 
 
 def _as_str_list(value: Any) -> list[str]:
@@ -100,7 +101,29 @@ def _render_scan_summary(scan: dict[str, Any], lines: list[str]) -> None:
     git = scan.get("git")
     if isinstance(git, dict):
         lines.append(_scan_git_line(git))
+    graph = scan.get("module_graph")
+    if isinstance(graph, dict):
+        candidates_line = _scan_candidates_line(graph)
+        if candidates_line:
+            lines.append(candidates_line)
     lines.append("")
+
+
+def _scan_candidates_line(graph: dict[str, Any]) -> str | None:
+    """The top candidates by fan-in (1c, D-SC1c-9); ``None`` when there are none."""
+    candidates = graph.get("load_bearing_candidates") or []
+    shown = ", ".join(
+        f"`{c.get('path')}` ({c.get('fan_in', 0)})"
+        for c in candidates[:_TOP_CANDIDATES_SHOWN]
+    )
+    if not shown:
+        return None
+    more = len(candidates) - _TOP_CANDIDATES_SHOWN
+    return (
+        "- Load-bearing candidates: "
+        + shown
+        + (f" and {more} more" if more > 0 else "")
+    )
 
 
 def _skipped_summary(unscanned: list[str]) -> str:

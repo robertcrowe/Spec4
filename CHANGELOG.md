@@ -10,6 +10,37 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.2.0] — unreleased
+
+The second pair of `scan` collectors: the import graph and the signatures of
+what it ranks. Both feed the steps that follow (sampling and the
+`load_bearing` judgment); for now the only visible change is one line in the
+Scan Summary.
+
+### Added
+- **`scan.module_graph`** — import edges between the project's own source
+  files, resolved for Python (through `ast`, so `from pkg import mod` lands
+  on `pkg/mod.py`, not the package), JavaScript/TypeScript (relative
+  specifiers, with the usual extension and `index` probing) and Go (in-module
+  packages via `go.mod`). Other source languages are nodes without edges.
+  Test files are outside the graph on both ends — under a test directory, or
+  named as a test beside the code (`_test.go`, `.test.ts`, `test_*.py`).
+  Stored: per-node fan-in and fan-out counts (never the edge list), the top
+  ten modules by fan-in with at least two importers as
+  `load_bearing_candidates`, each with its consumers, and the imports that
+  resolve to nothing in the tree, counted by top-level name (Python's
+  stdlib filtered; capped at fifty, with a flag).
+- **`scan.signatures`** — for the candidates and the entrypoint candidates:
+  public top-level definitions with the first line of their docstring
+  (Python `def`/`class` via `ast`; JavaScript/TypeScript `export`s; Go's
+  exported `func`s and `type`s), plus the module docstring. The first `scan`
+  block whose size follows the code, so it is budgeted: forty symbols per
+  file, 32 KB in all, taken in rank order, with `truncated` flags at both
+  levels.
+- **Scan Summary** gains a line naming the top five candidates by fan-in,
+  present only when the scan carries a graph. Every existing golden is
+  unchanged.
+
 ## [2.1.0] — unreleased
 
 The first of the `scan` collectors. A `code_review.json` written by 2.0.0

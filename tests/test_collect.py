@@ -447,7 +447,13 @@ class TestScanSchema:
         (tmp_path / ".git").mkdir()
         with patch.object(_collect, "_run_git", _canned()):
             scan = _scan(tmp_path)
-        assert set(scan) == {"inventory", "coverage", "git"}
+        assert set(scan) == {
+            "inventory",
+            "coverage",
+            "git",
+            "module_graph",
+            "signatures",
+        }
         assert validate_code_review(review_envelope(scan=scan)) == []
         json.dumps(scan)  # the stash and the artifact are both JSON
 

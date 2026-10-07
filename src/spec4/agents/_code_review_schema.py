@@ -679,19 +679,86 @@ _SCAN_GIT = {
     ]
 }
 
+# 1c: the import graph and the signatures of what it ranks. ``fan_in`` and
+# ``fan_out`` carry only non-zero counts; the edge list is not stored
+# (D-SC1c-2). ``signatures.files`` is keyed by root-relative path.
+_SCAN_MODULE_GRAPH = _closed(
+    [
+        "languages",
+        "nodes",
+        "edges",
+        "fan_in",
+        "fan_out",
+        "load_bearing_candidates",
+        "unresolved",
+        "unresolved_truncated",
+    ],
+    {
+        "languages": _str_list(),
+        "nodes": _NON_NEGATIVE,
+        "edges": _NON_NEGATIVE,
+        "fan_in": _int_map(),
+        "fan_out": _int_map(),
+        "load_bearing_candidates": {
+            "type": "array",
+            "items": _closed(
+                ["path", "fan_in", "consumers"],
+                {
+                    "path": {"type": "string"},
+                    "fan_in": _NON_NEGATIVE,
+                    "consumers": _str_list(),
+                },
+            ),
+        },
+        "unresolved": _int_map(),
+        "unresolved_truncated": {"type": "boolean"},
+    },
+)
+
+_SCAN_SIGNATURE_FILE = _closed(
+    ["language", "doc", "symbols", "truncated"],
+    {
+        "language": {"type": "string"},
+        "doc": _NULLABLE_STRING,
+        "symbols": {
+            "type": "array",
+            "items": _closed(
+                ["kind", "name", "signature", "doc"],
+                {
+                    "kind": {"type": "string"},
+                    "name": {"type": "string"},
+                    "signature": {"type": "string"},
+                    "doc": _NULLABLE_STRING,
+                },
+            ),
+        },
+        "truncated": {"type": "boolean"},
+    },
+)
+
+_SCAN_SIGNATURES = _closed(
+    ["files", "truncated"],
+    {
+        "files": {"type": "object", "additionalProperties": _SCAN_SIGNATURE_FILE},
+        "truncated": {"type": "boolean"},
+    },
+)
+
 SCAN_SCHEMA: dict[str, Any] = _closed(
     [],
     {
         "inventory": _SCAN_INVENTORY,
         "coverage": _SCAN_COVERAGE,
         "git": _SCAN_GIT,
+        "module_graph": _SCAN_MODULE_GRAPH,
+        "signatures": _SCAN_SIGNATURES,
     },
 )
 
 
 # What is stored in ``session["code_review"]`` and written to
 # ``.spec4/v{N}/code_review.json``: the envelope. ``scan`` is the computed,
-# deterministic layer (``SCAN_SCHEMA``; the 1b blocks today, 1c–1d's to come);
+# deterministic layer (``SCAN_SCHEMA``; the 1b and 1c blocks today, 1d's to come);
 # ``review`` is the LLM's block. Consumers unwrap by path through
 # ``_code_review_context.unwrap_review`` / ``unwrap_scan`` — never by falling
 # back to the outer dict (D-EV5).

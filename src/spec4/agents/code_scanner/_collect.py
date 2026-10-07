@@ -20,6 +20,9 @@ the CodeScanner v2 plan ships three blocks:
   judgment and is not classified here — step 3 derives it from
   ``activity.last_commit_per_top_dir`` once it knows what it needs.
 
+Step 1c adds ``module_graph`` and ``signatures``, computed in ``_graph`` and
+assembled here.
+
 ``_run_git`` is the one seam to the ``git`` binary, and the first subprocess
 call in Spec4. Tests patch it by name (AGENTS.md: the module-level seam, not
 ``subprocess.run``); every failure mode — no binary, a timeout, a non-zero
@@ -38,6 +41,7 @@ import subprocess
 from typing import TYPE_CHECKING, Any
 
 from spec4 import project_manager
+from spec4.agents.code_scanner._graph import module_graph_block, signatures_block
 from spec4.agents.code_scanner._scan import _SKIP_DIRS, SampleRecord
 from spec4.app_constants import ARTIFACT_CODE_REVIEW
 
@@ -383,12 +387,17 @@ def collect_scan(
     """The whole ``scan`` layer for one walk; stashed until commit.
 
     ``git`` is present only for a repository root. ``session`` reaches
-    ``active_version`` for the round boundary and nothing else.
+    ``active_version`` for the round boundary and nothing else. The graph
+    feeds the signatures: the candidates it ranks are the files whose
+    signatures are kept (1c).
     """
     root = pathlib.Path(working_dir)
+    graph = module_graph_block(root, all_files)
     scan: dict[str, Any] = {
         "inventory": inventory_block(root, all_files),
         "coverage": coverage_block(record),
+        "module_graph": graph,
+        "signatures": signatures_block(root, all_files, graph),
     }
     if is_repo_root(root):
         scan["git"] = git_block(root, round_boundary(working_dir, session))
