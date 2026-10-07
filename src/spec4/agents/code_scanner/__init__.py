@@ -53,7 +53,7 @@ from spec4.agents._turn_flow import (
     maybe_inject_resume_summary,
     replay_last_assistant,
 )
-from spec4.app_constants import STATE_REVIEW_COMPLETE
+from spec4.app_constants import STATE_IN_PROGRESS, STATE_REVIEW_COMPLETE
 
 from spec4.agents.code_scanner._collect import collect_scan
 from spec4.agents.code_scanner._prompt import SYSTEM_PROMPT
@@ -326,6 +326,14 @@ def _scanner_first_entry(
     stale = bool(working_dir) and project_manager.code_review_needs_rescan(
         working_dir, session
     )
+    if stale:
+        # The loaded state says complete, but the review it describes is the
+        # one being replaced. Until the new block is committed the chat action
+        # row would otherwise offer Open / Download / Continue for the stale
+        # file (they key on this state alone). `on_rescan_project` flips the
+        # same key for the button-driven re-scan; `code_review` stays, as the
+        # seed's prior context.
+        session["code_scanner_state"] = STATE_IN_PROGRESS
     if (
         existing_review is not None
         and not stale

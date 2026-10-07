@@ -12,6 +12,7 @@ import pytest
 from spec4.agents import code_scanner
 from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
 from spec4.app_constants import STATE_IN_PROGRESS, STATE_REVIEW_COMPLETE
+from spec4.layouts._chat_actions import _code_scanner_action_buttons
 from tests._review_helpers import review_envelope
 from tests._agent_helpers import (
     _chunkify_stream,
@@ -780,6 +781,39 @@ class TestCodeScanner:
         # The schema-1 inner dict is pasted as the review, minus its version.
         assert '"schema_version"' not in seed
         assert "Emit the `review` block" in seed
+
+    def test_stale_rescan_drops_the_complete_state_until_commit(
+        self, tmp_path: Any
+    ) -> None:
+        # The loaded state is complete (the file on disk parsed), and the chat
+        # action row keys on that state alone — so during the correction turn
+        # it offered Open / Download / Continue for the stale file. The stale
+        # branch now flips the state as the Re-scan button does, keeping
+        # `code_review` as the seed's prior context; the commit restores it.
+        stale = {
+            "code_review": {
+                "schema_version": CODE_REVIEW_SCHEMA_VERSION - 1,
+                "is_software_project": True,
+                "project_type": "CLI",
+            }
+        }
+        v0 = tmp_path / ".spec4" / "v0"
+        v0.mkdir(parents=True)
+        (v0 / "code_review.json").write_text(json.dumps(stale), encoding="utf-8")
+        session = make_session(
+            code_review=stale,
+            code_scanner_state=STATE_REVIEW_COMPLETE,
+            code_scanner_messages=[],
+            working_dir=str(tmp_path),
+        )
+        with mock_litellm_stream("Anything to correct?"):
+            collect(code_scanner.run(None, session, session["llm_config"]))
+        assert session["code_scanner_state"] == STATE_IN_PROGRESS
+        assert session["code_review"] == stale
+        ids = {getattr(b, "id", None) for b in _code_scanner_action_buttons(session)}
+        assert "btn-review-to-brainstormer" not in ids
+        assert "btn-dl-review" not in ids
+        assert "chat-token-count" in ids
 
     def test_current_schema_still_displays_existing_review(self, tmp_path: Any) -> None:
         # The inverse: a review under the current schema keeps the display

@@ -41,6 +41,13 @@ Scan Summary.
   present only when the scan carries a graph. Every existing golden is
   unchanged.
 
+### Fixed
+- A re-scan forced by the schema gate (a `code_review.json` from an older
+  Spec4) kept the loaded *complete* state while the new review was still
+  being discussed, so the chat action row offered Open / Download / Continue
+  for the stale file. The gate-driven re-scan now drops that state as the
+  Re-scan button does, until the new review is committed.
+
 ## [2.1.0] — unreleased
 
 The first of the `scan` collectors. A `code_review.json` written by 2.0.0
