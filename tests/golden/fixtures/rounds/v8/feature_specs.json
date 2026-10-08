@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "features": [
+    {
+      "id": "landing_page",
+      "name": "Landing_Page"
+    },
+    {
+      "id": "rag_example_app",
+      "name": "RAG_Example_App"
+    },
+    {
+      "id": "shared_framework_services",
+      "name": "Shared_Framework_Services"
+    },
+    {
+      "id": "tool_use_integration",
+      "name": "Tool_Use_Integration"
+    },
+    {
+      "id": "embeddings_example_app",
+      "name": "Embeddings_Example_App"
+    },
+    {
+      "id": "single_call_example_app",
+      "name": "Single_Call_Example_App"
+    },
+    {
+      "id": "chained_calls_example_app",
+      "name": "Chained_Calls_Example_App"
+    },
+    {
+      "id": "planning_agent_example_app",
+      "name": "Planning_Agent_Example_App"
+    },
+    {
+      "id": "orchestrated_subagents_example_app",
+      "name": "Orchestrated_Subagents_Example_App"
+    },
+    {
+      "id": "multi_agent_collaboration_example_app",
+      "name": "Multi_Agent_Collaboration_Example_App"
+    },
+    {
+      "id": "react_loop_example_app",
+      "name": "ReAct_Loop_Example_App"
+    },
+    {
+      "id": "self_hosted_deployment",
+      "name": "Self_Hosted_Deployment"
+    }
+  ],
+  "nfr_goals": []
+}

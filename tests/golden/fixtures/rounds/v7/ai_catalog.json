@@ -1,0 +1,16 @@
+{
+  "ai_catalog": [
+    {
+      "name": "react_search_loop",
+      "scope": "feature"
+    },
+    {
+      "name": "react_question_suitability_check",
+      "scope": "feature"
+    },
+    {
+      "name": "hop_source_annotation",
+      "scope": "feature"
+    }
+  ]
+}

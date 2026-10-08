@@ -1,0 +1,104 @@
+{
+  "ai_features": [
+    {
+      "id": "rag_example_app",
+      "name": "rag_example_app",
+      "kind": "feature",
+      "scope": "feature",
+      "tier": "rag",
+      "linked_vision_features": [
+        "rag_example_app"
+      ],
+      "requires": [
+        "chunking_pipeline",
+        "retriever",
+        "embedding_pipeline",
+        "vector_index"
+      ],
+      "composed_under": "",
+      "introduced_in_version": 0,
+      "phase_priority": "steel_thread"
+    },
+    {
+      "id": "custom_text_semantic_placement",
+      "name": "custom_text_semantic_placement",
+      "kind": "feature",
+      "scope": "feature",
+      "tier": "embeddings",
+      "linked_vision_features": [
+        "embeddings_example_app"
+      ],
+      "requires": [
+        "embedding_pipeline",
+        "vector_index"
+      ],
+      "composed_under": "",
+      "introduced_in_version": 1,
+      "phase_priority": "v2"
+    },
+    {
+      "id": "single_call_generation",
+      "name": "single_call_generation",
+      "kind": "feature",
+      "scope": "feature",
+      "tier": "single_call",
+      "linked_vision_features": [
+        "single_call_example_app"
+      ],
+      "requires": [],
+      "composed_under": "",
+      "introduced_in_version": 2,
+      "phase_priority": "steel_thread"
+    },
+    {
+      "id": "chained_role_play_generation",
+      "name": "chained_role_play_generation",
+      "kind": "feature",
+      "scope": "feature",
+      "tier": "chained_calls",
+      "linked_vision_features": [
+        "Chained_Calls_Example_App"
+      ],
+      "requires": [
+        "pipeline_runner"
+      ],
+      "composed_under": "",
+      "introduced_in_version": 3,
+      "phase_priority": "steel_thread"
+    },
+    {
+      "id": "trip_day_planning_agent",
+      "name": "trip_day_planning_agent",
+      "kind": "feature",
+      "scope": "feature",
+      "tier": "planning_agent",
+      "linked_vision_features": [
+        "planning_agent_example_app"
+      ],
+      "requires": [
+        "agent_loop_runtime",
+        "tool_execution_harness"
+      ],
+      "composed_under": "",
+      "introduced_in_version": 4,
+      "phase_priority": "steel_thread"
+    },
+    {
+      "id": "orchestrated_specialist_answer",
+      "name": "orchestrated_specialist_answer",
+      "kind": "feature",
+      "scope": "feature",
+      "tier": "orchestrated_subagents",
+      "linked_vision_features": [
+        "orchestrated_subagents_example_app"
+      ],
+      "requires": [
+        "question_moderation",
+        "subagent_orchestration_runtime"
+      ],
+      "composed_under": "",
+      "introduced_in_version": 5,
+      "phase_priority": "mvp"
+    }
+  ]
+}

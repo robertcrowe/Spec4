@@ -1,0 +1,1329 @@
+{
+  "code_review": {
+    "schema_version": 2,
+    "scan": {
+      "inventory": {
+        "files_total": 2412,
+        "files_listed": 2000,
+        "truncated": true,
+        "loc_total": 188340,
+        "by_extension": {
+          "(none)": {
+            "files": 4,
+            "loc": 120,
+            "unmeasured": 0
+          },
+          ".md": {
+            "files": 31,
+            "loc": 4210,
+            "unmeasured": 0
+          },
+          ".png": {
+            "files": 12,
+            "loc": 0,
+            "unmeasured": 12
+          },
+          ".py": {
+            "files": 1890,
+            "loc": 171002,
+            "unmeasured": 0
+          },
+          ".toml": {
+            "files": 3,
+            "loc": 208,
+            "unmeasured": 0
+          },
+          ".ts": {
+            "files": 402,
+            "loc": 12800,
+            "unmeasured": 0
+          },
+          ".yml": {
+            "files": 70,
+            "loc": 0,
+            "unmeasured": 70
+          }
+        },
+        "listed": [
+          "README.md",
+          "src/app/models.py",
+          "src/app/new.py"
+        ],
+        "unscanned_dirs": [
+          ".git",
+          ".venv",
+          "node_modules",
+          "src/app/__pycache__",
+          "tests/__pycache__",
+          "web/node_modules",
+          "web/dist"
+        ]
+      },
+      "coverage": {
+        "tree_listed": 150,
+        "tree_truncated": true,
+        "readme": "README.md",
+        "manifests": [
+          "pyproject.toml",
+          "web/package.json",
+          "Makefile"
+        ],
+        "ci": [
+          ".github/workflows/ci.yml"
+        ],
+        "deploy": [
+          "Dockerfile",
+          "fly.toml"
+        ],
+        "sampled": [
+          "src/app/main.py",
+          "src/app/cli.py",
+          "src/app/server.py",
+          "src/app/models.py"
+        ],
+        "source_files_total": 2292,
+        "source_files_sampled": 4
+      },
+      "git": {
+        "available": true,
+        "head": "9f3c2ab",
+        "branch": "main",
+        "dirty": true,
+        "untracked_count": 2,
+        "activity": {
+          "commits_scanned": 500,
+          "truncated": true,
+          "last_commit_per_top_dir": {
+            ".": "2026-09-30T10:12:00-07:00",
+            "src": "2026-10-04T16:40:11-07:00",
+            "tests": "2026-10-04T16:40:11-07:00",
+            "web": "2026-07-02T09:01:44-07:00"
+          }
+        },
+        "since_last_round": {
+          "boundary_kind": "implemented",
+          "boundary": "2026-09-28T17:00:00+00:00",
+          "commits": 14,
+          "truncated": false,
+          "first": "2026-09-29T08:15:02-07:00",
+          "last": "2026-10-04T16:40:11-07:00",
+          "authors": [
+            "A. Developer",
+            "B. Reviewer"
+          ],
+          "touched_top_dirs": {
+            ".": 1,
+            "src": 12,
+            "tests": 9
+          },
+          "agent_trailers_present": true
+        },
+        "working_tree": {
+          "modified_top_dirs": {
+            "src": 3
+          },
+          "untracked_top_dirs": {
+            ".": 1,
+            "docs": 1
+          }
+        }
+      },
+      "module_graph": {
+        "languages": [
+          "python",
+          "typescript"
+        ],
+        "nodes": 2210,
+        "edges": 5120,
+        "fan_in": {
+          "src/app/models.py": 41,
+          "src/app/config.py": 30,
+          "src/app/db.py": 22,
+          "src/app/auth.py": 9,
+          "src/app/http.py": 7,
+          "src/app/util.py": 4,
+          "web/src/api.ts": 3,
+          "src/app/main.py": 1
+        },
+        "fan_out": {
+          "src/app/main.py": 12,
+          "src/app/server.py": 9,
+          "web/src/api.ts": 2
+        },
+        "load_bearing_candidates": [
+          {
+            "path": "src/app/models.py",
+            "fan_in": 41,
+            "consumers": [
+              "src/app/consumer_0.py",
+              "src/app/consumer_1.py",
+              "src/app/consumer_2.py"
+            ]
+          },
+          {
+            "path": "src/app/config.py",
+            "fan_in": 30,
+            "consumers": [
+              "src/app/consumer_0.py",
+              "src/app/consumer_1.py",
+              "src/app/consumer_2.py"
+            ]
+          },
+          {
+            "path": "src/app/db.py",
+            "fan_in": 22,
+            "consumers": [
+              "src/app/consumer_0.py",
+              "src/app/consumer_1.py",
+              "src/app/consumer_2.py"
+            ]
+          },
+          {
+            "path": "src/app/auth.py",
+            "fan_in": 9,
+            "consumers": [
+              "src/app/consumer_0.py",
+              "src/app/consumer_1.py",
+              "src/app/consumer_2.py"
+            ]
+          },
+          {
+            "path": "src/app/http.py",
+            "fan_in": 7,
+            "consumers": [
+              "src/app/consumer_0.py",
+              "src/app/consumer_1.py",
+              "src/app/consumer_2.py"
+            ]
+          },
+          {
+            "path": "src/app/util.py",
+            "fan_in": 4,
+            "consumers": [
+              "src/app/consumer_0.py",
+              "src/app/consumer_1.py",
+              "src/app/consumer_2.py"
+            ]
+          },
+          {
+            "path": "web/src/api.ts",
+            "fan_in": 3,
+            "consumers": [
+              "src/app/consumer_0.py",
+              "src/app/consumer_1.py",
+              "src/app/consumer_2.py"
+            ]
+          }
+        ],
+        "unresolved": {
+          "dash": 92,
+          "sqlalchemy": 40,
+          "react": 12
+        },
+        "unresolved_truncated": false
+      },
+      "signatures": {
+        "files": {
+          "src/app/models.py": {
+            "language": "python",
+            "doc": "ORM models.",
+            "symbols": [
+              {
+                "kind": "class",
+                "name": "User",
+                "signature": "class User(Base)",
+                "doc": "A user."
+              },
+              {
+                "kind": "function",
+                "name": "session",
+                "signature": "def session() -> Session",
+                "doc": null
+              }
+            ],
+            "truncated": false
+          },
+          "web/src/api.ts": {
+            "language": "typescript",
+            "doc": null,
+            "symbols": [
+              {
+                "kind": "function",
+                "name": "fetchUser",
+                "signature": "export async function fetchUser(id: string): Promise<User>",
+                "doc": "Fetches one user."
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "truncated": true
+      },
+      "dependencies": {
+        "files": {
+          "pyproject.toml": {
+            "fastapi": ">=0.110",
+            "uvicorn": "",
+            "pydantic-ai": "",
+            "structlog": "",
+            "pytest-cov": ""
+          },
+          "web/package.json": {
+            "react": "^18",
+            "react-router": "^7",
+            "@tanstack/react-query": "^5",
+            "tailwindcss": "^4",
+            "oxlint": "^1"
+          }
+        },
+        "truncated": false
+      },
+      "prior_round": {
+        "version": 8,
+        "implemented": "2025-10-01T23:30:22+00:00",
+        "artifacts_present": [
+          "phases",
+          "stack",
+          "vision",
+          "feature_specs",
+          "code_review",
+          "deployment_plan"
+        ],
+        "phases": [
+          {
+            "number": 1,
+            "title": "Integration Thread \u2014 VPS Baseline Bring-Up and Environment Contract Relocation",
+            "summary": "Prove the existing BWS4 repository builds, migrates and boots warm on the netcup VPS 500 G12 with the carried-over environment contract read from a root-owned 0600 secrets file outside the repository tree, verified through a single loopback health check. No Caddy, no TLS, no public exposure, and no application code change \u2014 this phase establishes that the existing codebase runs unmodified on the n",
+            "verification": "All of the following must hold on the VPS. (1) `uv run alembic -c backend/alembic.ini current` reports the same revision as `heads`, confirming Neon with pgvector is reachable and at the repository's schema head. (2) With the environment sourced from /etc/bws4/bws4.env, `uv run uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --workers 1` boots and the structlog JSON boot output contains",
+            "features": [
+              {
+                "id": "self_hosted_deployment",
+                "role": "introduced"
+              },
+              {
+                "id": "shared_framework_services",
+                "role": "introduced"
+              }
+            ],
+            "capabilities": [],
+            "dependencies": [
+              "Python 3.12",
+              "uv",
+              "Node 20",
+              "FastAPI",
+              "uvicorn",
+              "SQLAlchemy",
+              "asyncpg",
+              "Alembic",
+              "pgvector",
+              "Pydantic",
+              "pydantic-settings",
+              "sentence-transformers",
+              "torch",
+              "scikit-learn",
+              "numpy",
+              "structlog",
+              "sentry-sdk",
+              "pytest",
+              "Ruff",
+              "mypy"
+            ]
+          },
+          {
+            "number": 2,
+            "title": "Process Supervision \u2014 systemd Unit, Warm-at-Boot, Restart Survival",
+            "summary": "Place the single-worker Uvicorn process under a systemd service unit with Restart=always, boot enablement, and an EnvironmentFile pointing at the root-owned 0600 secrets file, then prove the embedding model and fitted PCA projection are rebuilt warm and retained for the process lifetime across both a crash and a full host reboot. This replaces the retired managed platform's process lifecycle and i",
+            "verification": "All of the following must hold. (1) `systemctl is-active bws4-api` reports active and `systemctl is-enabled bws4-api` reports enabled. (2) `journalctl -u bws4-api --no-pager` contains structlog JSON records including an explicit embedding-model-load and PCA-projection-fit success for the current boot, with no swallowed warm-up exception \u2014 satisfying nfr_immediately_responsive_on_a_visitor_s_first_",
+            "features": [
+              {
+                "id": "self_hosted_deployment",
+                "role": "extended"
+              },
+              {
+                "id": "shared_framework_services",
+                "role": "extended"
+              }
+            ],
+            "capabilities": [],
+            "dependencies": [
+              "systemd",
+              "uv",
+              "uvicorn",
+              "FastAPI",
+              "Python 3.12",
+              "sentence-transformers",
+              "torch",
+              "scikit-learn",
+              "numpy",
+              "structlog",
+              "sentry-sdk",
+              "pydantic-settings"
+            ]
+          }
+        ],
+        "stack": {
+          "languages": [
+            {
+              "name": "Python",
+              "version": "3.12"
+            },
+            {
+              "name": "TypeScript",
+              "version": "5.9"
+            }
+          ],
+          "libraries": [
+            {
+              "name": "FastAPI",
+              "category": "web framework"
+            },
+            {
+              "name": "uvicorn",
+              "category": "asgi server"
+            },
+            {
+              "name": "SQLAlchemy",
+              "category": "orm"
+            },
+            {
+              "name": "asyncpg",
+              "category": "database driver"
+            },
+            {
+              "name": "Alembic",
+              "category": "database migrations"
+            },
+            {
+              "name": "httpx",
+              "category": "http client"
+            },
+            {
+              "name": "Pydantic",
+              "category": "validation"
+            },
+            {
+              "name": "LiteLLM",
+              "category": "ai"
+            },
+            {
+              "name": "PydanticAI",
+              "category": "agent framework"
+            },
+            {
+              "name": "sse-starlette",
+              "category": "streaming"
+            },
+            {
+              "name": "tenacity",
+              "category": "resilience"
+            },
+            {
+              "name": "sentence-transformers",
+              "category": "ai"
+            },
+            {
+              "name": "torch",
+              "category": "ai"
+            },
+            {
+              "name": "scikit-learn",
+              "category": "machine learning"
+            },
+            {
+              "name": "numpy",
+              "category": "numerics"
+            },
+            {
+              "name": "pgvector",
+              "category": "database client"
+            },
+            {
+              "name": "pydantic-settings",
+              "category": "configuration"
+            },
+            {
+              "name": "structlog",
+              "category": "logging and observability"
+            },
+            {
+              "name": "sentry-sdk",
+              "category": "logging and observability"
+            },
+            {
+              "name": "pytest",
+              "category": "testing"
+            },
+            {
+              "name": "Ruff",
+              "category": "linting and formatting"
+            },
+            {
+              "name": "mypy",
+              "category": "type checking"
+            },
+            {
+              "name": "React",
+              "category": "ui framework"
+            },
+            {
+              "name": "Vite",
+              "category": "build tool"
+            },
+            {
+              "name": "React Router",
+              "category": "routing"
+            },
+            {
+              "name": "TanStack Query",
+              "category": "data fetching"
+            },
+            {
+              "name": "@microsoft/fetch-event-source",
+              "category": "streaming"
+            },
+            {
+              "name": "Tailwind CSS",
+              "category": "styling"
+            },
+            {
+              "name": "react-markdown",
+              "category": "markdown rendering"
+            },
+            {
+              "name": "remark-gfm",
+              "category": "markdown rendering"
+            },
+            {
+              "name": "plotly.js",
+              "category": "visualization"
+            },
+            {
+              "name": "react-plotly.js",
+              "category": "visualization"
+            },
+            {
+              "name": "Vitest",
+              "category": "testing"
+            },
+            {
+              "name": "React Testing Library",
+              "category": "testing"
+            },
+            {
+              "name": "Playwright",
+              "category": "testing"
+            },
+            {
+              "name": "@sentry/react",
+              "category": "logging and observability"
+            }
+          ],
+          "deployment_targets": [
+            {
+              "name": "web_client",
+              "kind": "spa"
+            },
+            {
+              "name": "api",
+              "kind": "rest_api"
+            }
+          ],
+          "persistence_primary": "Neon (serverless Postgres) + pgvector",
+          "provider_names": [
+            "OpenRouter (via LiteLLM)",
+            "OpenRouter (via PydanticAI)"
+          ],
+          "infrastructure_keys": [
+            "agent_loop_runtime",
+            "agent_message_bus",
+            "chunking_pipeline",
+            "embedding_pipeline",
+            "pipeline_runner",
+            "process_supervision",
+            "protocol_runtime",
+            "release_delivery",
+            "retriever",
+            "subagent_orchestration_runtime",
+            "tls_termination_and_static_serving",
+            "tool_execution_harness"
+          ],
+          "integrations": [
+            {
+              "name": "Exa Search API",
+              "kind": "third_party_api"
+            },
+            {
+              "name": "OpenAI Moderation API (omni-moderation-latest)",
+              "kind": "third_party_api"
+            }
+          ]
+        },
+        "vision": {
+          "name": "Built with Spec4 (BWS4)",
+          "feature_ids": [
+            "landing_page",
+            "rag_example_app",
+            "shared_framework_services",
+            "tool_use_integration",
+            "embeddings_example_app",
+            "single_call_example_app",
+            "chained_calls_example_app",
+            "planning_agent_example_app",
+            "orchestrated_subagents_example_app",
+            "multi_agent_collaboration_example_app",
+            "react_loop_example_app",
+            "self_hosted_deployment"
+          ],
+          "revision_count": 8
+        },
+        "feature_specs": {
+          "version": 1,
+          "feature_ids": [
+            "landing_page",
+            "rag_example_app",
+            "shared_framework_services",
+            "tool_use_integration",
+            "embeddings_example_app",
+            "single_call_example_app",
+            "chained_calls_example_app",
+            "planning_agent_example_app",
+            "orchestrated_subagents_example_app",
+            "multi_agent_collaboration_example_app",
+            "react_loop_example_app",
+            "self_hosted_deployment"
+          ]
+        },
+        "capabilities": [
+          {
+            "id": "rag_example_app",
+            "kind": "feature",
+            "tier": "rag",
+            "introduced_in_version": 0,
+            "linked_vision_features": [
+              "rag_example_app"
+            ],
+            "requires": [
+              "chunking_pipeline",
+              "retriever",
+              "embedding_pipeline",
+              "vector_index"
+            ]
+          },
+          {
+            "id": "custom_text_semantic_placement",
+            "kind": "feature",
+            "tier": "embeddings",
+            "introduced_in_version": 1,
+            "linked_vision_features": [
+              "embeddings_example_app"
+            ],
+            "requires": [
+              "embedding_pipeline",
+              "vector_index"
+            ]
+          },
+          {
+            "id": "single_call_generation",
+            "kind": "feature",
+            "tier": "single_call",
+            "introduced_in_version": 2,
+            "linked_vision_features": [
+              "single_call_example_app"
+            ],
+            "requires": []
+          },
+          {
+            "id": "chained_role_play_generation",
+            "kind": "feature",
+            "tier": "chained_calls",
+            "introduced_in_version": 3,
+            "linked_vision_features": [
+              "Chained_Calls_Example_App"
+            ],
+            "requires": [
+              "pipeline_runner"
+            ]
+          },
+          {
+            "id": "trip_day_planning_agent",
+            "kind": "feature",
+            "tier": "planning_agent",
+            "introduced_in_version": 4,
+            "linked_vision_features": [
+              "planning_agent_example_app"
+            ],
+            "requires": [
+              "agent_loop_runtime",
+              "tool_execution_harness"
+            ]
+          },
+          {
+            "id": "orchestrated_specialist_answer",
+            "kind": "feature",
+            "tier": "orchestrated_subagents",
+            "introduced_in_version": 5,
+            "linked_vision_features": [
+              "orchestrated_subagents_example_app"
+            ],
+            "requires": [
+              "question_moderation",
+              "subagent_orchestration_runtime"
+            ]
+          }
+        ],
+        "capabilities_from_version": 7,
+        "review": {
+          "path": ".spec4/v8/code_review.json",
+          "schema_version": 1,
+          "bytes": 4710,
+          "project_type": "full-stack web application \u2014 FastAPI backend + React/Vite SPA gallery of AI-pattern example apps",
+          "commands": {
+            "build": "npm run build",
+            "test": "uv run pytest",
+            "lint": "uv run ruff check .",
+            "typecheck": "uv run mypy backend",
+            "run": "uv run uvicorn backend.app.main:app",
+            "dev": "npm run dev"
+          },
+          "deployment": [
+            {
+              "kind": "paas",
+              "name": "render"
+            }
+          ],
+          "dependency_names": [
+            "fastapi",
+            "uvicorn",
+            "sqlalchemy",
+            "asyncpg",
+            "alembic",
+            "pgvector",
+            "pydantic",
+            "pydantic-settings",
+            "pydantic-ai",
+            "litellm",
+            "sentence-transformers",
+            "torch",
+            "scikit-learn",
+            "numpy",
+            "httpx",
+            "sse-starlette",
+            "structlog",
+            "tenacity",
+            "sentry-sdk",
+            "mypy",
+            "pytest",
+            "ruff",
+            "react",
+            "react-dom",
+            "react-router",
+            "@tanstack/react-query",
+            "@microsoft/fetch-event-source",
+            "plotly.js",
+            "react-plotly.js",
+            "react-markdown",
+            "@sentry/react",
+            "typescript",
+            "vite",
+            "@vitejs/plugin-react",
+            "vitest",
+            "jsdom",
+            "@testing-library/react",
+            "@testing-library/jest-dom",
+            "@testing-library/user-event",
+            "oxlint",
+            "tailwindcss",
+            "postcss",
+            "autoprefixer",
+            "@types/node",
+            "@types/react",
+            "@types/react-dom"
+          ]
+        }
+      },
+      "plan_drift": {
+        "prior_version": 8,
+        "planned": 40,
+        "declared": 10,
+        "planned_in_manifests": [
+          {
+            "name": "FastAPI",
+            "sources": [
+              "stack",
+              "phase:1",
+              "phase:2"
+            ],
+            "declared_as": "fastapi",
+            "manifest": "pyproject.toml"
+          },
+          {
+            "name": "PydanticAI",
+            "sources": [
+              "stack"
+            ],
+            "declared_as": "pydantic-ai",
+            "manifest": "pyproject.toml"
+          },
+          {
+            "name": "React",
+            "sources": [
+              "stack"
+            ],
+            "declared_as": "react",
+            "manifest": "web/package.json"
+          },
+          {
+            "name": "React Router",
+            "sources": [
+              "stack"
+            ],
+            "declared_as": "react-router",
+            "manifest": "web/package.json"
+          },
+          {
+            "name": "structlog",
+            "sources": [
+              "stack",
+              "phase:1",
+              "phase:2"
+            ],
+            "declared_as": "structlog",
+            "manifest": "pyproject.toml"
+          },
+          {
+            "name": "Tailwind CSS",
+            "sources": [
+              "stack"
+            ],
+            "declared_as": "tailwindcss",
+            "manifest": "web/package.json"
+          },
+          {
+            "name": "TanStack Query",
+            "sources": [
+              "stack"
+            ],
+            "declared_as": "@tanstack/react-query",
+            "manifest": "web/package.json"
+          },
+          {
+            "name": "uvicorn",
+            "sources": [
+              "stack",
+              "phase:1",
+              "phase:2"
+            ],
+            "declared_as": "uvicorn",
+            "manifest": "pyproject.toml"
+          }
+        ],
+        "planned_only_imported": [
+          {
+            "name": "remark-gfm",
+            "sources": [
+              "stack"
+            ],
+            "imported_as": "remark_gfm",
+            "imports": 2
+          }
+        ],
+        "planned_unmatched": [
+          {
+            "name": "@microsoft/fetch-event-source",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "@sentry/react",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "Alembic",
+            "sources": [
+              "stack",
+              "phase:1"
+            ]
+          },
+          {
+            "name": "asyncpg",
+            "sources": [
+              "stack",
+              "phase:1"
+            ]
+          },
+          {
+            "name": "httpx",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "LiteLLM",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "mypy",
+            "sources": [
+              "stack",
+              "phase:1"
+            ]
+          },
+          {
+            "name": "Node 20",
+            "sources": [
+              "phase:1"
+            ]
+          },
+          {
+            "name": "numpy",
+            "sources": [
+              "stack",
+              "phase:1",
+              "phase:2"
+            ]
+          },
+          {
+            "name": "pgvector",
+            "sources": [
+              "stack",
+              "phase:1"
+            ]
+          },
+          {
+            "name": "Playwright",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "plotly.js",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "Pydantic",
+            "sources": [
+              "stack",
+              "phase:1"
+            ]
+          },
+          {
+            "name": "pydantic-settings",
+            "sources": [
+              "stack",
+              "phase:1",
+              "phase:2"
+            ]
+          },
+          {
+            "name": "pytest",
+            "sources": [
+              "stack",
+              "phase:1"
+            ]
+          },
+          {
+            "name": "Python 3.12",
+            "sources": [
+              "phase:1",
+              "phase:2"
+            ]
+          },
+          {
+            "name": "React Testing Library",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "react-markdown",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "react-plotly.js",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "Ruff",
+            "sources": [
+              "stack",
+              "phase:1"
+            ]
+          },
+          {
+            "name": "scikit-learn",
+            "sources": [
+              "stack",
+              "phase:1",
+              "phase:2"
+            ]
+          },
+          {
+            "name": "sentence-transformers",
+            "sources": [
+              "stack",
+              "phase:1",
+              "phase:2"
+            ]
+          },
+          {
+            "name": "sentry-sdk",
+            "sources": [
+              "stack",
+              "phase:1",
+              "phase:2"
+            ]
+          },
+          {
+            "name": "SQLAlchemy",
+            "sources": [
+              "stack",
+              "phase:1"
+            ]
+          },
+          {
+            "name": "sse-starlette",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "systemd",
+            "sources": [
+              "phase:2"
+            ]
+          },
+          {
+            "name": "tenacity",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "torch",
+            "sources": [
+              "stack",
+              "phase:1",
+              "phase:2"
+            ]
+          },
+          {
+            "name": "uv",
+            "sources": [
+              "phase:1",
+              "phase:2"
+            ]
+          },
+          {
+            "name": "Vite",
+            "sources": [
+              "stack"
+            ]
+          },
+          {
+            "name": "Vitest",
+            "sources": [
+              "stack"
+            ]
+          }
+        ],
+        "declared_not_planned": [
+          {
+            "name": "oxlint",
+            "manifest": "web/package.json"
+          },
+          {
+            "name": "pytest-cov",
+            "manifest": "pyproject.toml"
+          }
+        ],
+        "truncated": false
+      },
+      "delta": {
+        "prior": {
+          "kind": "prior_review",
+          "version": 2,
+          "head": "1234abc"
+        },
+        "files": {
+          "added": [
+            "src/app/new.py"
+          ],
+          "removed": [
+            "src/app/old.py"
+          ],
+          "partial": true,
+          "truncated": false
+        },
+        "dependencies": {
+          "pyproject.toml": {
+            "added": [
+              "pydantic-ai",
+              "pytest-cov",
+              "structlog"
+            ],
+            "removed": [
+              "gone"
+            ],
+            "bumped": [
+              "fastapi"
+            ],
+            "truncated": false
+          },
+          "web/package.json": {
+            "added": [],
+            "removed": [],
+            "bumped": [],
+            "truncated": false
+          }
+        },
+        "candidates": {
+          "entered": [],
+          "left": []
+        },
+        "signatures": {
+          "src/app/models.py": {
+            "added": [],
+            "removed": [],
+            "changed": [],
+            "truncated": false
+          },
+          "web/src/api.ts": {
+            "added": [],
+            "removed": [],
+            "changed": [],
+            "truncated": false
+          }
+        }
+      }
+    },
+    "review": {
+      "is_software_project": true,
+      "project_type": "web app",
+      "existing_self_description": {
+        "text": "A Dash app for planning.",
+        "source": "README.md"
+      },
+      "architecture": {
+        "pattern": "monolith",
+        "summary": "one Flask process"
+      },
+      "languages": [
+        {
+          "name": "Python",
+          "source": "pyproject.toml"
+        },
+        "JavaScript"
+      ],
+      "frameworks": [
+        "Dash"
+      ],
+      "protocols_implemented": [
+        {
+          "name": "MCP",
+          "version": "2025-06",
+          "location": "src/mcp"
+        },
+        {
+          "name": "A2A"
+        },
+        "plain text"
+      ],
+      "runtime_versions": {
+        "python": "3.12",
+        "node": "20",
+        "_ignored": "x",
+        "empty": ""
+      },
+      "build_system": {
+        "tool": "uv",
+        "manifest": "pyproject.toml",
+        "build_backend": "uv_build"
+      },
+      "dependencies": [
+        {
+          "name": "dash",
+          "purpose": "UI",
+          "source": "pyproject.toml"
+        },
+        {
+          "name": "litellm"
+        },
+        "requests"
+      ],
+      "commands": {
+        "build": "uv build",
+        "test": "uv run pytest",
+        "lint": "",
+        "run": "spec4"
+      },
+      "entrypoints": {
+        "main": "src/spec4/app.py",
+        "cli_script": "spec4",
+        "ui_root": ""
+      },
+      "directory_map": [
+        {
+          "path": "src/spec4",
+          "role": "package"
+        },
+        {
+          "role": "no path"
+        },
+        "docs/"
+      ],
+      "persistence": {
+        "databases": [
+          {
+            "engine": "SQLite",
+            "role": "cache"
+          },
+          {
+            "engine": "Postgres"
+          },
+          "bad"
+        ],
+        "orm": {
+          "name": "SQLAlchemy"
+        },
+        "migration_tool": {
+          "name": "alembic"
+        },
+        "migrations_path": "migrations/"
+      },
+      "env_vars": [
+        {
+          "name": "OPENAI_API_KEY",
+          "purpose": "LLM access",
+          "required": true
+        },
+        {
+          "name": "DASH_DEBUG",
+          "required": false
+        },
+        {
+          "name": "PORT"
+        },
+        {
+          "purpose": "nameless"
+        },
+        "RAW_STRING"
+      ],
+      "deployment": {
+        "containerization": {
+          "tool": "Docker",
+          "dockerfile_path": "Dockerfile",
+          "compose_path": "compose.yml",
+          "base_image": "python:3.12-slim"
+        },
+        "orchestration": {
+          "tool": "Kubernetes",
+          "manifests_path": "k8s/"
+        },
+        "paas": {
+          "platform": "Fly.io",
+          "config_path": "fly.toml"
+        },
+        "iac": {
+          "tool": "Terraform",
+          "path": "infra/"
+        }
+      },
+      "api_surface": [
+        {
+          "protocol": "HTTP",
+          "path_or_method": "/api/plan",
+          "handler": "plan_view",
+          "summary": "creates a plan"
+        },
+        {
+          "protocol": "gRPC"
+        },
+        "raw"
+      ],
+      "auth": {
+        "model": "session",
+        "provider": "self",
+        "library": "flask-login"
+      },
+      "ai_capabilities": [
+        {
+          "name": "summariser",
+          "kind": "llm",
+          "description": "summarises threads",
+          "location": "src/ai.py"
+        },
+        {
+          "name": "nameless-kind"
+        },
+        "raw"
+      ],
+      "ui_summary": {
+        "has_ui": true,
+        "kind": "SPA",
+        "framework": "Dash",
+        "styling": "CSS"
+      },
+      "coding_style": {
+        "formatter": {
+          "value": "ruff",
+          "source": "pyproject.toml"
+        },
+        "line_length": {
+          "value": 88,
+          "inferred_from": "ruff config"
+        },
+        "naming_conventions": {
+          "functions": {
+            "value": "snake_case"
+          },
+          "classes": "PascalCase"
+        },
+        "docstrings": "Google style"
+      },
+      "notes": {
+        "test_coverage": {
+          "has_tests": true,
+          "framework": "pytest",
+          "covered_modules": [
+            "app"
+          ],
+          "uncovered_modules": [
+            "cli"
+          ]
+        },
+        "ci_cd": {
+          "present": true,
+          "path": ".github/workflows/ci.yml"
+        },
+        "incomplete_or_dead_code": [
+          "old_view() is unused"
+        ],
+        "change_risks": [
+          {
+            "area": "app.py",
+            "risk": "import order is load-bearing",
+            "mitigation_hint": "keep the noqa"
+          },
+          "a bare risk"
+        ],
+        "security_observations": [
+          "secrets read from env"
+        ],
+        "other_notes": [
+          "README is stale"
+        ]
+      }
+    }
+  }
+}

@@ -283,7 +283,68 @@ class TestGitBlock:
             git = _collect.git_block(tmp_path, ("prior_review", 0.0))
         assert git["dirty"] is False
         assert git["untracked_count"] == 0
+        assert git["working_tree"] == {
+            "modified_top_dirs": {},
+            "untracked_top_dirs": {},
+        }
         assert git["since_last_round"]["agent_trailers_present"] is False
+
+    def test_working_tree_counts_files_per_top_dir(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # D-SC1d-8: a file count, not a directory count, per top-level dir.
+        status = (
+            " M src/app/main.py\n"
+            "M  src/app/cli.py\n"
+            "\n"
+            "?? notes.txt\n"
+            "?? docs/a.md\n"
+            "?? docs/b.md\n"
+        )
+        with patch.object(_collect, "_run_git", _canned(status=status)):
+            git = _collect.git_block(tmp_path, None)
+        assert git["dirty"] is True
+        assert git["untracked_count"] == 3
+        assert git["working_tree"] == {
+            "modified_top_dirs": {"src": 2},
+            "untracked_top_dirs": {".": 1, "docs": 2},
+        }
+
+    def test_spec4_output_is_not_project_change(self, tmp_path: pathlib.Path) -> None:
+        # D-SC1d-8: a round's artifacts are Spec4's record of the project, not
+        # a change to it — BWS4's "1 untracked" was its own ``.spec4/v9/``.
+        status = (
+            "?? .spec4/v9/code_review.json\n"
+            "?? .spec4/v9/phases/phase1.md\n"
+            " M .spec4/v8/stack.json\n"
+            "?? .spec4rc\n"
+        )
+        with patch.object(_collect, "_run_git", _canned(status=status)):
+            git = _collect.git_block(tmp_path, None)
+        assert git["dirty"] is False
+        assert git["untracked_count"] == 1
+        assert git["working_tree"]["untracked_top_dirs"] == {".": 1}
+        assert git["working_tree"]["modified_top_dirs"] == {}
+
+    def test_a_rename_counts_under_its_new_path(self, tmp_path: pathlib.Path) -> None:
+        with patch.object(
+            _collect, "_run_git", _canned(status="R  old/a.py -> src/a.py\n")
+        ):
+            git = _collect.git_block(tmp_path, None)
+        assert git["working_tree"]["modified_top_dirs"] == {"src": 1}
+
+    def test_status_asks_for_every_untracked_file(self, tmp_path: pathlib.Path) -> None:
+        seen: list[list[str]] = []
+        canned = _canned()
+
+        def _run(args: list[str], cwd: pathlib.Path) -> str | None:
+            seen.append(args)
+            return canned(args, cwd)
+
+        with patch.object(_collect, "_run_git", _run):
+            _collect.git_block(tmp_path, None)
+        status_calls = [a for a in seen if a[0] == "status"]
+        assert status_calls == [["status", "--porcelain", "--untracked-files=all"]]
 
     def test_log_cap_is_reported_as_truncation(self, tmp_path: pathlib.Path) -> None:
         with (
@@ -382,6 +443,8 @@ class TestRunGit:
             "second\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
         )
         (tmp_path / "untracked.txt").write_text("\n")
+        (tmp_path / ".spec4" / "v1").mkdir(parents=True)
+        (tmp_path / ".spec4" / "v1" / "vision.json").write_text("{}\n")
 
         git_block = _collect.git_block(tmp_path, ("prior_review", 0.0))
         assert git_block["available"] is True
@@ -389,6 +452,7 @@ class TestRunGit:
         assert len(git_block["head"]) >= 7
         assert git_block["dirty"] is False
         assert git_block["untracked_count"] == 1
+        assert git_block["working_tree"]["untracked_top_dirs"] == {".": 1}
         assert git_block["activity"]["last_commit_per_top_dir"].keys() == {"src"}
         since = git_block["since_last_round"]
         assert since["commits"] == 2
@@ -447,12 +511,16 @@ class TestScanSchema:
         (tmp_path / ".git").mkdir()
         with patch.object(_collect, "_run_git", _canned()):
             scan = _scan(tmp_path)
+        # No round is implemented and no prior scan is on disk, so the 1d
+        # blocks that need one (``prior_round``, ``plan_drift``, ``delta``)
+        # are absent; ``dependencies`` is on every scan.
         assert set(scan) == {
             "inventory",
             "coverage",
             "git",
             "module_graph",
             "signatures",
+            "dependencies",
         }
         assert validate_code_review(review_envelope(scan=scan)) == []
         json.dumps(scan)  # the stash and the artifact are both JSON

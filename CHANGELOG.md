@@ -10,6 +10,82 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.3.0] — unreleased
+
+The last of the step-1 `scan` collectors: what the prior Spec4 round planned,
+how the tree's manifests compare to that plan, and what changed since the
+previous scan. With these, a scan carries its own history; downstream
+consumers no longer need to open `.spec4/` to know what was built last time.
+The visible change is one more Scan Summary line.
+
+### Added
+- **`scan.prior_round`** — the latest implemented round as an *extract*,
+  never a pass-through (a round's artifacts run to hundreds of kilobytes;
+  the extract is ~15 KB on BWS4): per phase its number, title, clipped
+  summary and verification, feature and capability declarations (`{id,
+  role}`) and `tech_stack_spec` dependency names; the stack's languages,
+  libraries (`{name, category}`), deployment targets, primary persistence
+  choice, provider and infrastructure keys and integrations; the vision's
+  name, feature ids and revision count; the feature specs' version and ids;
+  the AI catalog's nodes reduced to `{id, kind, tier, introduced_in_version,
+  linked_vision_features, requires}`; and the prior `code_review.json` by
+  reference (`path`, `schema_version`, `bytes`) with a small extract of what
+  the comparisons read (`project_type`, `commands`, deployment kinds,
+  dependency names). One version, one directory: a file missing from that
+  round is `null` or `[]`, never a value from another round — except the
+  catalog, which falls back to the newest implemented round that has one
+  (a round can be implemented without the Agentifier having run), with
+  `capabilities_from_version` saying which. `artifacts_present` names the
+  files the directory holds, so "absent" and "unreadable" read differently.
+- **`scan.dependencies`** — the dependencies each `pyproject.toml`
+  (`[project].dependencies` and optional groups), `package.json`
+  (`dependencies`, `devDependencies`) and `go.mod` (`require`) declares, by
+  manifest path, as `{name: specifier}`. On every scan, since the next
+  scan's `delta` reads this one's. Nothing else in a manifest is read.
+- **`scan.plan_drift`** — the prior plan's dependencies (the stack's
+  libraries and every phase's `tech_stack_spec.dependencies`, each entry
+  tagged with its sources) against `scan.dependencies`, in four buckets:
+  `planned_in_manifests`, `planned_only_imported` (never declared, but in
+  `module_graph.unresolved` — a smell), `planned_unmatched` (systemd, Caddy,
+  uv: what a manifest cannot see, or a plan the code never followed) and
+  `declared_not_planned`. Names are compared after lowercasing, stripping a
+  trailing version token (`Python 3.12`) and folding non-alphanumerics, so
+  StackAdvisor's `PydanticAI` meets Phaser's `pydantic-ai`; the scoped npm
+  names that defeat the fold (`@tanstack/react-query` for `TanStack Query`)
+  match on word-token subset. No alias table. Which bucket means drift is
+  the consumer's judgment.
+- **`scan.delta`** — this scan against the prior one, scan to scan and
+  never through `git`: paths added and removed (with `partial` when either
+  listing was capped), dependencies added, removed and bumped per manifest
+  in both scans, load-bearing candidates that entered or left, and public
+  symbols added, removed or changed (by name; `changed` when the signature
+  text differs) for files in both signature blocks. The prior is the latest
+  implemented round's review when it carries a measured 2.x `scan`, else the
+  active round's prior review — the same precedence as
+  `git.since_last_round`. An identical scan yields a present, empty block.
+- **Scan Summary** gains a line naming the prior round, its phase count and
+  implementation date, the catalog's round when it differs, and the drift
+  counts — present only when the scan carries a `prior_round`. Every
+  existing golden is unchanged.
+
+### Changed
+- `scan.git` excludes Spec4's own `.spec4/` from the dirty and untracked
+  counts (a round's artifacts are its record of the project, not a change
+  to it — every BWS4 scan read "1 untracked" for its own `v9/`), counts
+  untracked *files* rather than collapsed directories, and adds
+  `working_tree: {modified_top_dirs, untracked_top_dirs}` in the shape of
+  `since_last_round.touched_top_dirs`. The Scan Summary's git line reads
+  "3 modified, 2 untracked" from it; a 2.1/2.2 block keeps its "dirty"
+  wording.
+- `scan.signatures` lists public module-level assignments as
+  `kind: "variable"` — the name and its annotation, never the value
+  (Python `ast.Assign`/`AnnAssign`; `export const` was already covered) —
+  so `settings: Settings` and `async_session_factory` appear beside the
+  `def`s and `class`es that use them. JavaScript/TypeScript signatures now
+  see `export default <Identifier>` (`kind: "default"`) and `export { a, b
+  as c }` lists (`kind: "export"`); BWS4's `App.tsx` and `main.tsx` had no
+  symbols without them.
+
 ## [2.2.0] — unreleased
 
 The second pair of `scan` collectors: the import graph and the signatures of

@@ -21,7 +21,10 @@ the CodeScanner v2 plan ships three blocks:
   ``activity.last_commit_per_top_dir`` once it knows what it needs.
 
 Step 1c adds ``module_graph`` and ``signatures``, computed in ``_graph`` and
-assembled here.
+assembled here. Step 1d adds ``dependencies`` (``_manifests``), ``prior_round``
+(``_prior``), ``plan_drift`` (``_drift``) and ``delta`` (``_delta``), and
+gives ``git`` a ``working_tree`` block with Spec4's own ``.spec4/`` output
+excluded from the dirty and untracked counts (D-SC1d-8).
 
 ``_run_git`` is the one seam to the ``git`` binary, and the first subprocess
 call in Spec4. Tests patch it by name (AGENTS.md: the module-level seam, not
@@ -41,7 +44,11 @@ import subprocess
 from typing import TYPE_CHECKING, Any
 
 from spec4 import project_manager
+from spec4.agents.code_scanner._delta import delta_block, prior_scan
+from spec4.agents.code_scanner._drift import plan_drift_block
 from spec4.agents.code_scanner._graph import module_graph_block, signatures_block
+from spec4.agents.code_scanner._manifests import dependencies_block
+from spec4.agents.code_scanner._prior import prior_round_block
 from spec4.agents.code_scanner._scan import _SKIP_DIRS, SampleRecord
 from spec4.app_constants import ARTIFACT_CODE_REVIEW
 
@@ -56,6 +63,9 @@ _MAX_LOG_COMMITS = 500
 _GIT_TIMEOUT_SECONDS = 10
 _NO_EXTENSION = "(none)"
 _ROOT_DIR = "."
+_SPEC4_DIR = ".spec4"
+_UNTRACKED_CODE = "??"
+_STATUS_CODE_WIDTH = 2  # porcelain v1: two status columns, a space, the path
 
 # Record and unit separators keep ``git log`` parseable whatever a commit
 # message holds; ``%(trailers)`` is the raw trailer block, matched below.
@@ -336,13 +346,40 @@ def _activity(root: pathlib.Path) -> dict[str, Any] | None:
     }
 
 
-def _status(root: pathlib.Path) -> tuple[bool, int] | None:
-    out = _run_git(["status", "--porcelain", "--untracked-files=normal"], root)
+def _status_path(line: str) -> str:
+    """The path of one porcelain status line; a rename's *new* name."""
+    path = line[_STATUS_CODE_WIDTH:].strip()
+    _, arrow, renamed = path.rpartition(" -> ")
+    return renamed if arrow else path
+
+
+def _status(root: pathlib.Path) -> tuple[list[str], list[str]] | None:
+    """``(modified paths, untracked paths)``, Spec4's own output excluded.
+
+    ``--untracked-files=all`` lists files, not collapsed directories, so the
+    count is a file count (D-SC1d-8). Anything under ``.spec4/`` is left out
+    of both: a round's artifacts are Spec4's record of the project, not a
+    change to it, and they are what made every BWS4 scan read as "1
+    untracked".
+    """
+    out = _run_git(["status", "--porcelain", "--untracked-files=all"], root)
     if out is None:
         return None
-    lines = [line for line in out.splitlines() if line.strip()]
-    untracked = sum(1 for line in lines if line.startswith("??"))
-    return (len(lines) > untracked, untracked)
+    modified: list[str] = []
+    untracked: list[str] = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        path = _status_path(line)
+        if path == _SPEC4_DIR or path.startswith(_SPEC4_DIR + "/"):
+            continue
+        (untracked if line.startswith(_UNTRACKED_CODE) else modified).append(path)
+    return modified, untracked
+
+
+def _top_dir_counts(paths: Iterable[str]) -> dict[str, int]:
+    counts = collections.Counter(_top_dir(p) for p in paths)
+    return dict(sorted(counts.items()))
 
 
 def git_block(root: pathlib.Path, boundary: tuple[str, float] | None) -> dict[str, Any]:
@@ -357,13 +394,17 @@ def git_block(root: pathlib.Path, boundary: tuple[str, float] | None) -> dict[st
     activity = _activity(root)
     if head is None or branch is None or status is None or activity is None:
         return {"available": False}
-    dirty, untracked = status
+    modified, untracked = status
     block: dict[str, Any] = {
         "available": True,
         "head": head.strip(),
         "branch": branch.strip(),
-        "dirty": dirty,
-        "untracked_count": untracked,
+        "dirty": bool(modified),
+        "untracked_count": len(untracked),
+        "working_tree": {
+            "modified_top_dirs": _top_dir_counts(modified),
+            "untracked_top_dirs": _top_dir_counts(untracked),
+        },
         "activity": activity,
     }
     if boundary is not None:
@@ -387,18 +428,31 @@ def collect_scan(
     """The whole ``scan`` layer for one walk; stashed until commit.
 
     ``git`` is present only for a repository root. ``session`` reaches
-    ``active_version`` for the round boundary and nothing else. The graph
-    feeds the signatures: the candidates it ranks are the files whose
-    signatures are kept (1c).
+    ``active_version`` for the round boundary and the prior scan, and nothing
+    else. The graph feeds the signatures: the candidates it ranks are the
+    files whose signatures are kept (1c). ``prior_round`` and ``plan_drift``
+    are present when a round is implemented; ``delta`` when an earlier 2.x
+    scan is on disk to compare against (1d). ``dependencies`` is on every scan,
+    since the next scan's ``delta`` reads this one's.
     """
     root = pathlib.Path(working_dir)
     graph = module_graph_block(root, all_files)
+    dependencies = dependencies_block(root, all_files)
     scan: dict[str, Any] = {
         "inventory": inventory_block(root, all_files),
         "coverage": coverage_block(record),
+        "dependencies": dependencies,
         "module_graph": graph,
         "signatures": signatures_block(root, all_files, graph),
     }
     if is_repo_root(root):
         scan["git"] = git_block(root, round_boundary(working_dir, session))
+    prior = prior_round_block(working_dir)
+    if prior is not None:
+        scan["prior_round"] = prior
+        scan["plan_drift"] = plan_drift_block(prior, dependencies, graph)
+    found = prior_scan(working_dir, session)
+    if found is not None:
+        descriptor, earlier = found
+        scan["delta"] = delta_block(scan, earlier, descriptor)
     return scan

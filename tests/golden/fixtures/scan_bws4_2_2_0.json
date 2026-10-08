@@ -1,0 +1,434 @@
+{
+  "code_review": {
+    "schema_version": 2,
+    "scan": {
+      "inventory": {
+        "files_total": 41,
+        "files_listed": 41,
+        "truncated": false,
+        "loc_total": 96722,
+        "by_extension": {
+          "(none)": {
+            "files": 7,
+            "loc": 325,
+            "unmeasured": 0
+          },
+          ".css": {
+            "files": 1,
+            "loc": 4,
+            "unmeasured": 0
+          },
+          ".example": {
+            "files": 1,
+            "loc": 29,
+            "unmeasured": 0
+          },
+          ".html": {
+            "files": 1,
+            "loc": 95,
+            "unmeasured": 0
+          },
+          ".ini": {
+            "files": 1,
+            "loc": 39,
+            "unmeasured": 0
+          },
+          ".js": {
+            "files": 2,
+            "loc": 19,
+            "unmeasured": 0
+          },
+          ".json": {
+            "files": 17,
+            "loc": 12680,
+            "unmeasured": 0
+          },
+          ".lock": {
+            "files": 1,
+            "loc": 3747,
+            "unmeasured": 0
+          },
+          ".mako": {
+            "files": 1,
+            "loc": 27,
+            "unmeasured": 0
+          },
+          ".md": {
+            "files": 38,
+            "loc": 3080,
+            "unmeasured": 0
+          },
+          ".png": {
+            "files": 2,
+            "loc": 0,
+            "unmeasured": 2
+          },
+          ".py": {
+            "files": 202,
+            "loc": 53380,
+            "unmeasured": 0
+          },
+          ".service": {
+            "files": 1,
+            "loc": 77,
+            "unmeasured": 0
+          },
+          ".sh": {
+            "files": 1,
+            "loc": 281,
+            "unmeasured": 0
+          },
+          ".svg": {
+            "files": 3,
+            "loc": 57,
+            "unmeasured": 0
+          },
+          ".toml": {
+            "files": 1,
+            "loc": 244,
+            "unmeasured": 0
+          },
+          ".ts": {
+            "files": 52,
+            "loc": 7106,
+            "unmeasured": 0
+          },
+          ".tsx": {
+            "files": 91,
+            "loc": 15459,
+            "unmeasured": 0
+          },
+          ".txt": {
+            "files": 1,
+            "loc": 9,
+            "unmeasured": 0
+          },
+          ".xml": {
+            "files": 1,
+            "loc": 64,
+            "unmeasured": 0
+          }
+        },
+        "listed": [
+          ".claude/settings.json",
+          ".env.example",
+          ".gitignore",
+          ".python-version",
+          "BWS4-white-100.png",
+          "CLA.md",
+          "CLAUDE.md",
+          "CONTRIBUTING.md",
+          "LICENSE",
+          "README.md",
+          "backend/__init__.py",
+          "backend/alembic.ini",
+          "backend/app/__init__.py",
+          "backend/app/api/__init__.py",
+          "backend/app/api/chained_calls.py",
+          "backend/app/api/collab.py",
+          "backend/app/api/embeddings.py",
+          "backend/app/api/health.py",
+          "backend/app/api/orchestrated.py",
+          "backend/app/api/planning.py",
+          "backend/app/api/rag.py",
+          "backend/app/api/react.py",
+          "backend/app/api/single_call.py",
+          "backend/app/api/tools.py",
+          "backend/app/chained_calls/__init__.py",
+          "backend/app/chained_calls/overlap.py",
+          "backend/app/chained_calls/pipeline.py",
+          "backend/app/chained_calls/prompt_loader.py",
+          "backend/app/chained_calls/prompts/critic_v1.md",
+          "backend/app/chained_calls/prompts/writer_v1.md",
+          "backend/app/collab/agents.py",
+          "backend/app/collab/counterfactual.py",
+          "backend/app/collab/runtime.py",
+          "backend/app/collab/scenarios.py",
+          "backend/app/collab/service.py",
+          "backend/app/core/config.py",
+          "backend/app/core/observability.py",
+          "backend/app/db/migrations/env.py",
+          "backend/app/db/models.py",
+          "backend/app/db/session.py",
+          "backend/app/services/agent_runtime.py"
+        ],
+        "unscanned_dirs": [
+          ".git",
+          ".spec4"
+        ]
+      },
+      "coverage": {
+        "tree_listed": 150,
+        "tree_truncated": true,
+        "readme": "README.md",
+        "manifests": [
+          "frontend/package-lock.json",
+          "frontend/package.json",
+          "frontend/tsconfig.json",
+          "pyproject.toml"
+        ],
+        "ci": [],
+        "deploy": [],
+        "sampled": [
+          "backend/app/main.py",
+          "frontend/src/App.tsx",
+          "frontend/src/main.tsx",
+          "backend/__init__.py",
+          "backend/app/__init__.py",
+          "backend/app/api/__init__.py",
+          "backend/app/api/chained_calls.py",
+          "backend/app/api/collab.py"
+        ],
+        "source_files_total": 347,
+        "source_files_sampled": 8
+      },
+      "module_graph": {
+        "languages": [
+          "javascript",
+          "python",
+          "typescript"
+        ],
+        "nodes": 246,
+        "edges": 495,
+        "fan_in": {
+          "backend/app/api/chained_calls.py": 1,
+          "backend/app/api/collab.py": 1,
+          "backend/app/api/health.py": 1,
+          "backend/app/api/rag.py": 1,
+          "backend/app/chained_calls/pipeline.py": 2,
+          "backend/app/collab/agents.py": 1,
+          "backend/app/collab/counterfactual.py": 3,
+          "backend/app/collab/runtime.py": 4,
+          "backend/app/collab/scenarios.py": 13,
+          "backend/app/collab/service.py": 1,
+          "backend/app/core/config.py": 15,
+          "backend/app/core/observability.py": 8,
+          "backend/app/db/models.py": 12,
+          "backend/app/db/session.py": 12,
+          "backend/app/services/agent_runtime.py": 15
+        },
+        "fan_out": {
+          "backend/app/api/chained_calls.py": 6,
+          "backend/app/api/collab.py": 4,
+          "backend/app/api/health.py": 1,
+          "backend/app/api/rag.py": 8,
+          "backend/app/chained_calls/pipeline.py": 2,
+          "backend/app/collab/agents.py": 7,
+          "backend/app/collab/counterfactual.py": 2,
+          "backend/app/collab/runtime.py": 1,
+          "backend/app/collab/scenarios.py": 1,
+          "backend/app/collab/service.py": 12,
+          "backend/app/core/observability.py": 1,
+          "backend/app/db/migrations/env.py": 4,
+          "backend/app/db/models.py": 2,
+          "backend/app/db/session.py": 1,
+          "backend/app/services/agent_runtime.py": 2
+        },
+        "load_bearing_candidates": [
+          {
+            "path": "backend/app/core/config.py",
+            "fan_in": 15,
+            "consumers": [
+              "backend/app/collab/service.py",
+              "backend/app/core/observability.py",
+              "backend/app/db/migrations/env.py"
+            ]
+          },
+          {
+            "path": "backend/app/services/agent_runtime.py",
+            "fan_in": 15,
+            "consumers": [
+              "backend/app/chained_calls/pipeline.py",
+              "backend/app/collab/agents.py",
+              "backend/app/collab/runtime.py"
+            ]
+          },
+          {
+            "path": "backend/app/collab/scenarios.py",
+            "fan_in": 13,
+            "consumers": [
+              "backend/app/api/collab.py",
+              "backend/app/collab/agents.py",
+              "backend/app/collab/counterfactual.py"
+            ]
+          },
+          {
+            "path": "backend/app/db/models.py",
+            "fan_in": 12,
+            "consumers": [
+              "backend/app/api/rag.py",
+              "backend/app/collab/service.py",
+              "backend/app/db/migrations/env.py"
+            ]
+          },
+          {
+            "path": "backend/app/db/session.py",
+            "fan_in": 12,
+            "consumers": [
+              "backend/app/api/chained_calls.py",
+              "backend/app/api/collab.py",
+              "backend/app/api/health.py"
+            ]
+          }
+        ],
+        "unresolved": {
+          "sqlalchemy": 65,
+          "pydantic": 56,
+          "structlog": 45,
+          "react": 30,
+          "fastapi": 29,
+          "pydantic_ai": 20,
+          "alembic": 14,
+          "@tanstack/react-query": 12,
+          "react-router": 8,
+          "sse_starlette": 8
+        },
+        "unresolved_truncated": false
+      },
+      "signatures": {
+        "files": {
+          "backend/app/core/config.py": {
+            "language": "python",
+            "doc": null,
+            "symbols": [
+              {
+                "kind": "class",
+                "name": "Settings",
+                "signature": "class Settings(BaseSettings)",
+                "doc": "Application configuration loaded from environment variables/.env."
+              },
+              {
+                "kind": "function",
+                "name": "get_settings",
+                "signature": "def get_settings() -> Settings",
+                "doc": "Return the cached, validated application settings."
+              }
+            ],
+            "truncated": false
+          },
+          "backend/app/services/agent_runtime.py": {
+            "language": "python",
+            "doc": "The PydanticAI lane: shared substrate for any example app that coordinates",
+            "symbols": [
+              {
+                "kind": "class",
+                "name": "AgentLaneError",
+                "signature": "class AgentLaneError(Exception)",
+                "doc": "Raised when a typed agent step could not be completed."
+              },
+              {
+                "kind": "class",
+                "name": "StepRequestLimitExceeded",
+                "signature": "class StepRequestLimitExceeded(AgentLaneError)",
+                "doc": "Raised when a step used up its `request_limit` without producing output."
+              },
+              {
+                "kind": "class",
+                "name": "ProviderAdapter",
+                "signature": "class ProviderAdapter",
+                "doc": "How to reach one provider through PydanticAI."
+              },
+              {
+                "kind": "function",
+                "name": "register_provider",
+                "signature": "def register_provider(adapter: ProviderAdapter) -> None",
+                "doc": "Make a provider reachable from this lane."
+              },
+              {
+                "kind": "function",
+                "name": "registered_providers",
+                "signature": "def registered_providers() -> frozenset[str]",
+                "doc": "Return every provider this lane knows how to construct a model for."
+              },
+              {
+                "kind": "function",
+                "name": "openai_compatible_adapter",
+                "signature": "def openai_compatible_adapter(*, name: str, base_url: str) -> ProviderAdapter",
+                "doc": "Build an adapter for any provider exposing an OpenAI-shaped API."
+              }
+            ],
+            "truncated": false
+          },
+          "backend/app/collab/scenarios.py": {
+            "language": "python",
+            "doc": "The collaboration slice's fixed cast: one buyer, two rival sellers.",
+            "symbols": [
+              {
+                "kind": "class",
+                "name": "CollabAgent",
+                "signature": "class CollabAgent",
+                "doc": "One participant: its address, its presentation, and its published card."
+              },
+              {
+                "kind": "class",
+                "name": "AxisId",
+                "signature": "class AxisId(StrEnum)",
+                "doc": "The four negotiable term axes, identical across every scenario."
+              },
+              {
+                "kind": "class",
+                "name": "AxisDirection",
+                "signature": "class AxisDirection(StrEnum)",
+                "doc": "Which way is better on an axis."
+              },
+              {
+                "kind": "class",
+                "name": "TermAxis",
+                "signature": "class TermAxis",
+                "doc": "One negotiable dimension of a scenario, with the range it is scored over."
+              },
+              {
+                "kind": "class",
+                "name": "BuyerPosition",
+                "signature": "class BuyerPosition",
+                "doc": "The buyer's own sealed position for one scenario."
+              },
+              {
+                "kind": "class",
+                "name": "Scenario",
+                "signature": "class Scenario",
+                "doc": "One pre-tuned procurement situation the visitor can select."
+              }
+            ],
+            "truncated": false
+          }
+        },
+        "truncated": false
+      },
+      "git": {
+        "available": true,
+        "head": "861c009",
+        "branch": "dev",
+        "dirty": false,
+        "untracked_count": 1,
+        "activity": {
+          "commits_scanned": 33,
+          "truncated": false,
+          "last_commit_per_top_dir": {
+            ".": "2026-08-19T11:22:15-07:00",
+            ".claude": "2026-08-16T15:20:08-07:00",
+            ".spec4": "2026-08-19T12:06:51-07:00",
+            "backend": "2026-08-19T12:06:51-07:00",
+            "deploy": "2026-08-19T12:06:51-07:00",
+            "frontend": "2026-08-19T11:27:42-07:00"
+          }
+        },
+        "since_last_round": {
+          "boundary_kind": "implemented",
+          "boundary": "2026-10-01T23:30:22+00:00",
+          "commits": 0,
+          "truncated": false,
+          "first": null,
+          "last": null,
+          "authors": [],
+          "touched_top_dirs": {},
+          "agent_trailers_present": false
+        }
+      }
+    },
+    "review": {
+      "is_software_project": true,
+      "project_type": "full-stack web application \u2014 React SPA + FastAPI backend (gallery of AI-pattern example apps)"
+    }
+  }
+}

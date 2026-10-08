@@ -106,7 +106,33 @@ def _render_scan_summary(scan: dict[str, Any], lines: list[str]) -> None:
         candidates_line = _scan_candidates_line(graph)
         if candidates_line:
             lines.append(candidates_line)
+    prior = scan.get("prior_round")
+    if isinstance(prior, dict):
+        lines.append(_scan_prior_line(prior, scan.get("plan_drift")))
     lines.append("")
+
+
+def _scan_prior_line(prior: dict[str, Any], drift: Any) -> str:
+    """The prior round and the plan drift against it (1d, D-SC1d-10)."""
+    phases = len(prior.get("phases") or [])
+    bits = [f"{phases} phase{'' if phases == 1 else 's'}"]
+    implemented = prior.get("implemented")
+    if isinstance(implemented, str):
+        bits.append(f"implemented {implemented[:10]}")
+    catalog_from = prior.get("capabilities_from_version")
+    if isinstance(catalog_from, int) and catalog_from != prior.get("version"):
+        bits.append(f"catalog from v{catalog_from}")
+    line = f"- Prior round: v{prior.get('version')} ({'; '.join(bits)})"
+    if isinstance(drift, dict):
+        unmatched = len(drift.get("planned_unmatched") or [])
+        imported = len(drift.get("planned_only_imported") or [])
+        unplanned = len(drift.get("declared_not_planned") or [])
+        parts = [f"{unmatched} planned dep{'' if unmatched == 1 else 's'} unmatched"]
+        if imported:
+            parts.append(f"{imported} imported but undeclared")
+        parts.append(f"{unplanned} declared but unplanned")
+        line += "; plan drift: " + ", ".join(parts)
+    return line
 
 
 def _scan_candidates_line(graph: dict[str, Any]) -> str | None:
@@ -167,15 +193,31 @@ def _scan_coverage_line(coverage: dict[str, Any]) -> str:
 def _scan_git_line(git: dict[str, Any]) -> str:
     if not git.get("available"):
         return "- Git: repository present, but `git` could not be run"
-    state = "dirty" if git.get("dirty") else "clean"
-    untracked = git.get("untracked_count", 0)
-    if untracked:
-        state += f", {untracked} untracked"
-    line = f"- Git: `{git.get('branch')}` @ `{git.get('head')}`, {state}"
+    line = f"- Git: `{git.get('branch')}` @ `{git.get('head')}`, {_tree_state(git)}"
     since = git.get("since_last_round")
     if isinstance(since, dict):
         line += "; " + _since_summary(since)
     return line
+
+
+def _tree_state(git: dict[str, Any]) -> str:
+    """``clean``, or the modified and untracked counts (1d, D-SC1d-8).
+
+    A 2.1/2.2 block has no ``working_tree``; it keeps its ``dirty`` wording,
+    so the goldens that carry one are unchanged.
+    """
+    untracked = git.get("untracked_count", 0)
+    tree = git.get("working_tree")
+    if isinstance(tree, dict):
+        modified = sum((tree.get("modified_top_dirs") or {}).values())
+        parts = []
+        if modified:
+            parts.append(f"{modified} modified")
+        if untracked:
+            parts.append(f"{untracked} untracked")
+        return ", ".join(parts) if parts else "clean"
+    state = "dirty" if git.get("dirty") else "clean"
+    return f"{state}, {untracked} untracked" if untracked else state
 
 
 def _since_summary(since: dict[str, Any]) -> str:

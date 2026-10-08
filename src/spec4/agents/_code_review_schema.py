@@ -661,6 +661,14 @@ _SCAN_GIT_ACTIVITY = _closed(
     },
 )
 
+# 1d (D-SC1d-8): the working tree's modified and untracked files per top-level
+# directory, in the shape of ``since_last_round.touched_top_dirs``. Optional,
+# so a 2.1/2.2 block still validates.
+_SCAN_GIT_WORKING_TREE = _closed(
+    ["modified_top_dirs", "untracked_top_dirs"],
+    {"modified_top_dirs": _int_map(), "untracked_top_dirs": _int_map()},
+)
+
 _SCAN_GIT = {
     "oneOf": [
         _closed(["available"], {"available": {"const": False}}),
@@ -672,6 +680,7 @@ _SCAN_GIT = {
                 "branch": {"type": "string"},
                 "dirty": {"type": "boolean"},
                 "untracked_count": _NON_NEGATIVE,
+                "working_tree": _SCAN_GIT_WORKING_TREE,
                 "activity": _SCAN_GIT_ACTIVITY,
                 "since_last_round": _SCAN_GIT_SINCE,
             },
@@ -744,6 +753,259 @@ _SCAN_SIGNATURES = _closed(
     },
 )
 
+# 1d: declared dependencies per manifest, the prior round's extract, the
+# plan-versus-manifests classification and the scan-to-scan delta.
+_NULLABLE_INT = {"type": ["integer", "null"]}
+_STR_MAP = {"type": "object", "additionalProperties": {"type": "string"}}
+
+
+def _named_list(second: str) -> dict[str, Any]:
+    """A list of ``{name, <second>}`` pairs, the second nullable."""
+    return {
+        "type": "array",
+        "items": _closed(
+            ["name", second], {"name": {"type": "string"}, second: _NULLABLE_STRING}
+        ),
+    }
+
+
+_SCAN_DEPENDENCIES = _closed(
+    ["files", "truncated"],
+    {
+        "files": {"type": "object", "additionalProperties": _STR_MAP},
+        "truncated": {"type": "boolean"},
+    },
+)
+
+_PRIOR_DECLARATION = _closed(
+    ["id", "role"], {"id": {"type": "string"}, "role": _NULLABLE_STRING}
+)
+
+_PRIOR_PHASE = _closed(
+    [
+        "number",
+        "title",
+        "summary",
+        "verification",
+        "features",
+        "capabilities",
+        "dependencies",
+    ],
+    {
+        "number": _NULLABLE_INT,
+        "title": _NULLABLE_STRING,
+        "summary": _NULLABLE_STRING,
+        "verification": _NULLABLE_STRING,
+        "features": {"type": "array", "items": _PRIOR_DECLARATION},
+        "capabilities": {"type": "array", "items": _PRIOR_DECLARATION},
+        "dependencies": _str_list(),
+    },
+)
+
+_PRIOR_STACK = _closed(
+    [
+        "languages",
+        "libraries",
+        "deployment_targets",
+        "persistence_primary",
+        "provider_names",
+        "infrastructure_keys",
+        "integrations",
+    ],
+    {
+        "languages": _named_list("version"),
+        "libraries": _named_list("category"),
+        "deployment_targets": _named_list("kind"),
+        "persistence_primary": _NULLABLE_STRING,
+        "provider_names": _str_list(),
+        "infrastructure_keys": _str_list(),
+        "integrations": _named_list("kind"),
+    },
+)
+
+_PRIOR_VISION = _closed(
+    ["name", "feature_ids", "revision_count"],
+    {
+        "name": _NULLABLE_STRING,
+        "feature_ids": _str_list(),
+        "revision_count": _NON_NEGATIVE,
+    },
+)
+
+_PRIOR_FEATURE_SPECS = _closed(
+    ["version", "feature_ids"],
+    {"version": _NULLABLE_INT, "feature_ids": _str_list()},
+)
+
+_PRIOR_CAPABILITY = _closed(
+    [
+        "id",
+        "kind",
+        "tier",
+        "introduced_in_version",
+        "linked_vision_features",
+        "requires",
+    ],
+    {
+        "id": {"type": "string"},
+        "kind": _NULLABLE_STRING,
+        "tier": _NULLABLE_STRING,
+        "introduced_in_version": _NULLABLE_INT,
+        "linked_vision_features": _str_list(),
+        "requires": _str_list(),
+    },
+)
+
+_PRIOR_REVIEW = _closed(
+    [
+        "path",
+        "schema_version",
+        "bytes",
+        "project_type",
+        "commands",
+        "deployment",
+        "dependency_names",
+    ],
+    {
+        "path": {"type": "string"},
+        "schema_version": _NULLABLE_INT,
+        "bytes": _NON_NEGATIVE,
+        "project_type": _NULLABLE_STRING,
+        "commands": _STR_MAP,
+        "deployment": {
+            "type": "array",
+            "items": _closed(
+                ["kind", "name"], {"kind": {"type": "string"}, "name": _NULLABLE_STRING}
+            ),
+        },
+        "dependency_names": _str_list(),
+    },
+)
+
+_SCAN_PRIOR_ROUND = _closed(
+    [
+        "version",
+        "implemented",
+        "artifacts_present",
+        "phases",
+        "stack",
+        "vision",
+        "feature_specs",
+        "capabilities",
+        "capabilities_from_version",
+        "review",
+    ],
+    {
+        "version": _NON_NEGATIVE,
+        "implemented": _NULLABLE_STRING,
+        "artifacts_present": _str_list(),
+        "phases": {"type": "array", "items": _PRIOR_PHASE},
+        "stack": {"anyOf": [_PRIOR_STACK, {"type": "null"}]},
+        "vision": {"anyOf": [_PRIOR_VISION, {"type": "null"}]},
+        "feature_specs": {"anyOf": [_PRIOR_FEATURE_SPECS, {"type": "null"}]},
+        "capabilities": {"type": "array", "items": _PRIOR_CAPABILITY},
+        "capabilities_from_version": _NULLABLE_INT,
+        "review": {"anyOf": [_PRIOR_REVIEW, {"type": "null"}]},
+    },
+)
+
+_DRIFT_PLANNED = {"name": {"type": "string"}, "sources": _str_list()}
+
+_SCAN_PLAN_DRIFT = _closed(
+    [
+        "prior_version",
+        "planned",
+        "declared",
+        "planned_in_manifests",
+        "planned_only_imported",
+        "planned_unmatched",
+        "declared_not_planned",
+        "truncated",
+    ],
+    {
+        "prior_version": _NULLABLE_INT,
+        "planned": _NON_NEGATIVE,
+        "declared": _NON_NEGATIVE,
+        "planned_in_manifests": {
+            "type": "array",
+            "items": _closed(
+                ["name", "sources", "declared_as", "manifest"],
+                {
+                    **_DRIFT_PLANNED,
+                    "declared_as": {"type": "string"},
+                    "manifest": {"type": "string"},
+                },
+            ),
+        },
+        "planned_only_imported": {
+            "type": "array",
+            "items": _closed(
+                ["name", "sources", "imported_as", "imports"],
+                {
+                    **_DRIFT_PLANNED,
+                    "imported_as": {"type": "string"},
+                    "imports": _NON_NEGATIVE,
+                },
+            ),
+        },
+        "planned_unmatched": {
+            "type": "array",
+            "items": _closed(["name", "sources"], dict(_DRIFT_PLANNED)),
+        },
+        "declared_not_planned": {
+            "type": "array",
+            "items": _closed(
+                ["name", "manifest"],
+                {"name": {"type": "string"}, "manifest": {"type": "string"}},
+            ),
+        },
+        "truncated": {"type": "boolean"},
+    },
+)
+
+
+def _delta_lists(*keys: str) -> dict[str, Any]:
+    """A per-path delta entry: the named string lists plus ``truncated``."""
+    return _closed(
+        [*keys, "truncated"],
+        {**{k: _str_list() for k in keys}, "truncated": {"type": "boolean"}},
+    )
+
+
+_SCAN_DELTA = _closed(
+    ["prior", "files", "dependencies", "candidates", "signatures"],
+    {
+        "prior": _closed(
+            ["kind", "version", "head"],
+            {
+                "kind": {"enum": ["implemented", "prior_review"]},
+                "version": _NON_NEGATIVE,
+                "head": _NULLABLE_STRING,
+            },
+        ),
+        "files": _closed(
+            ["added", "removed", "partial", "truncated"],
+            {
+                "added": _str_list(),
+                "removed": _str_list(),
+                "partial": {"type": "boolean"},
+                "truncated": {"type": "boolean"},
+            },
+        ),
+        "dependencies": {
+            "type": "object",
+            "additionalProperties": _delta_lists("added", "removed", "bumped"),
+        },
+        "candidates": _closed(
+            ["entered", "left"], {"entered": _str_list(), "left": _str_list()}
+        ),
+        "signatures": {
+            "type": "object",
+            "additionalProperties": _delta_lists("added", "removed", "changed"),
+        },
+    },
+)
+
 SCAN_SCHEMA: dict[str, Any] = _closed(
     [],
     {
@@ -752,13 +1014,17 @@ SCAN_SCHEMA: dict[str, Any] = _closed(
         "git": _SCAN_GIT,
         "module_graph": _SCAN_MODULE_GRAPH,
         "signatures": _SCAN_SIGNATURES,
+        "dependencies": _SCAN_DEPENDENCIES,
+        "prior_round": _SCAN_PRIOR_ROUND,
+        "plan_drift": _SCAN_PLAN_DRIFT,
+        "delta": _SCAN_DELTA,
     },
 )
 
 
 # What is stored in ``session["code_review"]`` and written to
 # ``.spec4/v{N}/code_review.json``: the envelope. ``scan`` is the computed,
-# deterministic layer (``SCAN_SCHEMA``; the 1b and 1c blocks today, 1d's to come);
+# deterministic layer (``SCAN_SCHEMA``; the 1b, 1c and 1d blocks);
 # ``review`` is the LLM's block. Consumers unwrap by path through
 # ``_code_review_context.unwrap_review`` / ``unwrap_scan`` — never by falling
 # back to the outer dict (D-EV5).

@@ -80,6 +80,16 @@ _JS_EXPORT_RE = re.compile(
     r"(function\*?|class|const|let|var|interface|type|enum)[ \t]+(\w+)",
     re.M,
 )
+# 1d (D-SC1d-7): the two export forms 1c missed — ``export default App`` (a
+# bare identifier, which is how a React entry file exports its component) and
+# the re-export list ``export { a, b as c }``. A ``default`` whose identifier
+# is itself a keyword (``export default function () {}``) is anonymous and
+# stays unlisted: the trailing anchor refuses the parameter list.
+_JS_DEFAULT_IDENT_RE = re.compile(
+    r"^[ \t]*export[ \t]+default[ \t]+(\w+)[ \t]*;?[ \t]*$", re.M
+)
+_JS_EXPORT_LIST_RE = re.compile(r"^[ \t]*export[ \t]*(?:type[ \t]+)?\{([^}]*)\}", re.M)
+_JS_EXPORT_ITEM_RE = re.compile(r"^(?:type[ \t]+)?(\w+)(?:[ \t]+as[ \t]+(\w+))?$")
 _JS_COMMENT_MARKERS = ("//", "/*", "*")
 _GO_IMPORT_BLOCK_RE = re.compile(r"^import[ \t]*\(([^)]*)\)", re.M | re.S)
 _GO_IMPORT_LINE_RE = re.compile(r'^import[ \t]+(?:\w+[ \t]+)?"([^"\n]+)"', re.M)
@@ -384,6 +394,35 @@ def _symbol(kind: str, name: str, signature: str, doc: str | None) -> dict[str, 
     }
 
 
+def _assigned_names(node: ast.Assign | ast.AnnAssign) -> list[str]:
+    """The plain names a top-level assignment binds, in source order."""
+    targets = [node.target] if isinstance(node, ast.AnnAssign) else node.targets
+    names: list[str] = []
+    for target in targets:
+        if isinstance(target, ast.Name):
+            names.append(target.id)
+        elif isinstance(target, ast.Tuple | ast.List):
+            names.extend(e.id for e in target.elts if isinstance(e, ast.Name))
+    return names
+
+
+def _python_variables(node: ast.Assign | ast.AnnAssign) -> list[dict[str, Any]]:
+    """Public module-level assignments as ``variable`` symbols (D-SC1d-7).
+
+    The name and its annotation, never the value: ``settings: Settings`` is
+    the contract a consumer imports; what it is set to is not. A bare
+    ``settings = get_settings()`` carries only its name.
+    """
+    annotation = (
+        f": {ast.unparse(node.annotation)}" if isinstance(node, ast.AnnAssign) else ""
+    )
+    return [
+        _symbol("variable", name, f"{name}{annotation}", None)
+        for name in _assigned_names(node)
+        if not name.startswith(_PRIVATE_PREFIX)
+    ]
+
+
 def _python_symbols(tree: ast.Module) -> list[dict[str, Any]]:
     symbols: list[dict[str, Any]] = []
     for node in tree.body:
@@ -403,6 +442,8 @@ def _python_symbols(tree: ast.Module) -> list[dict[str, Any]]:
                 sig += f" -> {ast.unparse(node.returns)}"
             doc = _first_line(ast.get_docstring(node))
             symbols.append(_symbol("function", node.name, sig, doc))
+        elif isinstance(node, ast.Assign | ast.AnnAssign):
+            symbols.extend(_python_variables(node))
     return symbols
 
 
@@ -464,8 +505,31 @@ def _js_kind(m: re.Match[str]) -> tuple[str, str]:
     return "const", name
 
 
+def _js_export_lists(text: str) -> list[tuple[int, dict[str, Any]]]:
+    """One ``export`` symbol per name in an ``export { a, b as c }`` list."""
+    lines = text.splitlines()
+    out: list[tuple[int, dict[str, Any]]] = []
+    for m in _JS_EXPORT_LIST_RE.finditer(text):
+        lineno = text.count("\n", 0, m.start())
+        doc = _comment_above(lines, lineno, _JS_COMMENT_MARKERS)
+        for raw in m.group(1).split(","):
+            item = _JS_EXPORT_ITEM_RE.match(raw.strip())
+            if item is None:
+                continue
+            name = item.group(2) or item.group(1)
+            out.append((lineno, _symbol("export", name, f"export {{ {name} }}", doc)))
+    return out
+
+
 def _js_symbols(text: str) -> list[dict[str, Any]]:
     found = _regex_symbols(text, _JS_EXPORT_RE, _js_kind, _JS_COMMENT_MARKERS)
+    found += _regex_symbols(
+        text,
+        _JS_DEFAULT_IDENT_RE,
+        lambda m: ("default", m.group(1)),
+        _JS_COMMENT_MARKERS,
+    )
+    found += _js_export_lists(text)
     return [s for _, s in sorted(found, key=lambda t: t[0])]
 
 

@@ -1,0 +1,229 @@
+{
+  "stack_spec": {
+    "name": "Built with Spec4 (BWS4)",
+    "languages": [
+      {
+        "name": "Python",
+        "version": "3.12"
+      },
+      {
+        "name": "TypeScript",
+        "version": "5.9"
+      }
+    ],
+    "libraries": [
+      {
+        "name": "FastAPI",
+        "category": "web framework",
+        "language": "Python"
+      },
+      {
+        "name": "SQLAlchemy",
+        "category": "orm",
+        "language": "Python"
+      },
+      {
+        "name": "asyncpg",
+        "category": "database driver",
+        "language": "Python"
+      },
+      {
+        "name": "Alembic",
+        "category": "database migrations",
+        "language": "Python"
+      },
+      {
+        "name": "httpx",
+        "category": "http client",
+        "language": "Python"
+      },
+      {
+        "name": "Pydantic",
+        "category": "validation",
+        "language": "Python"
+      },
+      {
+        "name": "LiteLLM",
+        "category": "ai",
+        "language": "Python"
+      },
+      {
+        "name": "PydanticAI",
+        "category": "agent framework",
+        "language": "Python"
+      },
+      {
+        "name": "sse-starlette",
+        "category": "streaming",
+        "language": "Python"
+      },
+      {
+        "name": "tenacity",
+        "category": "resilience",
+        "language": "Python"
+      },
+      {
+        "name": "sentence-transformers",
+        "category": "ai",
+        "language": "Python"
+      },
+      {
+        "name": "scikit-learn",
+        "category": "machine learning",
+        "language": "Python"
+      },
+      {
+        "name": "numpy",
+        "category": "numerics",
+        "language": "Python"
+      },
+      {
+        "name": "pgvector",
+        "category": "database client",
+        "language": "Python"
+      },
+      {
+        "name": "pydantic-settings",
+        "category": "configuration",
+        "language": "Python"
+      },
+      {
+        "name": "structlog",
+        "category": "logging and observability",
+        "language": "Python"
+      },
+      {
+        "name": "sentry-sdk",
+        "category": "logging and observability",
+        "language": "Python"
+      },
+      {
+        "name": "pytest",
+        "category": "testing",
+        "language": "Python"
+      },
+      {
+        "name": "Ruff",
+        "category": "linting and formatting",
+        "language": "Python"
+      },
+      {
+        "name": "mypy",
+        "category": "type checking",
+        "language": "Python"
+      },
+      {
+        "name": "React",
+        "category": "ui framework",
+        "language": "TypeScript"
+      },
+      {
+        "name": "Vite",
+        "category": "build tool",
+        "language": "TypeScript"
+      },
+      {
+        "name": "React Router",
+        "category": "routing",
+        "language": "TypeScript"
+      },
+      {
+        "name": "TanStack Query",
+        "category": "data fetching",
+        "language": "TypeScript"
+      },
+      {
+        "name": "@microsoft/fetch-event-source",
+        "category": "streaming",
+        "language": "TypeScript"
+      },
+      {
+        "name": "Tailwind CSS",
+        "category": "styling",
+        "language": "TypeScript"
+      },
+      {
+        "name": "react-markdown",
+        "category": "markdown rendering",
+        "language": "TypeScript"
+      },
+      {
+        "name": "remark-gfm",
+        "category": "markdown rendering",
+        "language": "TypeScript"
+      },
+      {
+        "name": "plotly.js",
+        "category": "visualization",
+        "language": "TypeScript"
+      },
+      {
+        "name": "react-plotly.js",
+        "category": "visualization",
+        "language": "TypeScript"
+      },
+      {
+        "name": "Vitest",
+        "category": "testing",
+        "language": "TypeScript"
+      },
+      {
+        "name": "React Testing Library",
+        "category": "testing",
+        "language": "TypeScript"
+      },
+      {
+        "name": "Playwright",
+        "category": "testing",
+        "language": "TypeScript"
+      },
+      {
+        "name": "@sentry/react",
+        "category": "logging and observability",
+        "language": "TypeScript"
+      }
+    ],
+    "deployment": {
+      "targets": [
+        {
+          "name": "web_client",
+          "kind": "spa"
+        },
+        {
+          "name": "api",
+          "kind": "rest_api"
+        }
+      ]
+    },
+    "providers": {
+      "OpenRouter (via LiteLLM)": {},
+      "OpenRouter (via PydanticAI)": {}
+    },
+    "infrastructure": {
+      "chunking_pipeline": {},
+      "embedding_pipeline": {},
+      "retriever": {},
+      "pipeline_runner": {},
+      "agent_loop_runtime": {},
+      "tool_execution_harness": {},
+      "subagent_orchestration_runtime": {},
+      "agent_message_bus": {},
+      "protocol_runtime": {}
+    },
+    "integrations": [
+      {
+        "name": "Exa Search API",
+        "kind": "third_party_api"
+      },
+      {
+        "name": "OpenAI Moderation API (omni-moderation-latest)",
+        "kind": "third_party_api"
+      }
+    ],
+    "persistence": {
+      "primary_store": {
+        "choice": "Neon (serverless Postgres) + pgvector"
+      }
+    }
+  }
+}

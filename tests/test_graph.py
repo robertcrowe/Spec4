@@ -440,6 +440,35 @@ class TestPythonSignatures:
             },
         ]
 
+    def test_public_assignments_are_variables_without_values(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # D-SC1d-7: the contract a consumer imports is the name and its
+        # annotation; ``settings = get_settings()`` carries only its name.
+        body = (
+            "settings: Settings = get_settings()\n"
+            "async_session_factory = make_factory()\n"
+            "A, B = 1, 2\n"
+            "[C, _d] = [3, 4]\n"
+            "_private = 0\n"
+            "__all__ = ['A']\n"
+            "obj.attr = 1\n"
+            "x: int\n"
+            "def f():\n    inner = 1\n"
+        )
+        entry = _graph.file_signatures(_write(tmp_path, "vars.py", body))
+        assert entry is not None
+        assert [(s["kind"], s["name"], s["signature"]) for s in entry["symbols"]] == [
+            ("variable", "settings", "settings: Settings"),
+            ("variable", "async_session_factory", "async_session_factory"),
+            ("variable", "A", "A"),
+            ("variable", "B", "B"),
+            ("variable", "C", "C"),
+            ("variable", "x", "x: int"),
+            ("function", "f", "def f()"),
+        ]
+        assert all(s["doc"] is None for s in entry["symbols"][:6])
+
     def test_symbols_per_file_are_capped(self, tmp_path: pathlib.Path) -> None:
         body = "".join(f"def f{i}():\n    pass\n\n" for i in range(45))
         entry = _graph.file_signatures(_write(tmp_path, "many.py", body))
@@ -512,6 +541,39 @@ class TestJsSignatures:
             ("enum", "Mode", "export enum Mode", None),
             ("function", "gen", "export function* gen()", None),
             ("const", "counter", "export let counter", None),
+        ]
+
+    def test_default_identifier_and_export_lists(self, tmp_path: pathlib.Path) -> None:
+        # D-SC1d-7: the two forms 1c missed — ``App.tsx`` and ``main.tsx``
+        # had 0 symbols on BWS4.
+        body = (
+            "import React from 'react';\n"
+            "function App() { return null; }\n"
+            "const helper = 1;\n"
+            "type Props = {};\n"
+            "// The root component.\n"
+            "export default App;\n"
+            "export { helper, App as Root };\n"
+            "export type { Props };\n"
+            "export {\n  helper as again,\n};\n"
+            "export { x } from './x';\n"
+            "export default function () {}\n"
+            "export default async function () {}\n"
+            "export default {};\n"
+            "export default memo(App);\n"
+            "export * from './y';\n"
+        )
+        entry = _graph.file_signatures(_write(tmp_path, "App.tsx", body))
+        assert entry is not None
+        assert [
+            (s["kind"], s["name"], s["signature"], s["doc"]) for s in entry["symbols"]
+        ] == [
+            ("default", "App", "export default App", "The root component."),
+            ("export", "helper", "export { helper }", None),
+            ("export", "Root", "export { Root }", None),
+            ("export", "Props", "export { Props }", None),
+            ("export", "again", "export { again }", None),
+            ("export", "x", "export { x }", None),
         ]
 
     def test_comment_block_with_only_markers_yields_no_doc(self) -> None:

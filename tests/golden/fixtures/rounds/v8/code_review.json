@@ -1,0 +1,212 @@
+{
+  "code_review": {
+    "schema_version": 1,
+    "is_software_project": true,
+    "project_type": "full-stack web application \u2014 FastAPI backend + React/Vite SPA gallery of AI-pattern example apps",
+    "build_system": {
+      "tool": "uv",
+      "manifest": "pyproject.toml"
+    },
+    "commands": {
+      "build": "npm run build",
+      "test": "uv run pytest",
+      "lint": "uv run ruff check .",
+      "typecheck": "uv run mypy backend",
+      "run": "uv run uvicorn backend.app.main:app",
+      "dev": "npm run dev"
+    },
+    "deployment": {
+      "paas": {
+        "platform": "render",
+        "config_path": "render.yaml",
+        "source": "render.yaml"
+      }
+    },
+    "dependencies": [
+      {
+        "name": "fastapi",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "uvicorn",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sqlalchemy",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "asyncpg",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "alembic",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pgvector",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pydantic",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pydantic-settings",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pydantic-ai",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "litellm",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sentence-transformers",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "torch",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "scikit-learn",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "numpy",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "httpx",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sse-starlette",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "structlog",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "tenacity",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sentry-sdk",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "mypy",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pytest",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "ruff",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "react",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "react-dom",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "react-router",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@tanstack/react-query",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@microsoft/fetch-event-source",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "plotly.js",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "react-plotly.js",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "react-markdown",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@sentry/react",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "typescript",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "vite",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@vitejs/plugin-react",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "vitest",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "jsdom",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@testing-library/react",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@testing-library/jest-dom",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@testing-library/user-event",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "oxlint",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "tailwindcss",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "postcss",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "autoprefixer",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@types/node",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@types/react",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@types/react-dom",
+        "source": "frontend/package.json"
+      }
+    ]
+  }
+}

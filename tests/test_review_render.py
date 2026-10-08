@@ -1,4 +1,4 @@
-"""The Scan Summary section of ``code_scanner._review_render`` (v2 steps 1b–1c).
+"""The Scan Summary section of ``code_scanner._review_render`` (v2 steps 1b–1d).
 
 The renderer's other sections are pinned by ``tests/test_renderer_goldens.py``,
 a whole-file floor entry whose node ids may not change; the 1b goldens live
@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from spec4.agents.code_scanner._review_render import (
     _scan_candidates_line,
+    _scan_prior_line,
     _since_summary,
     _skipped_summary,
+    _tree_state,
     format_review_as_text,
 )
 from tests._golden import assert_golden, load_fixture
@@ -32,6 +34,14 @@ class TestScanSummaryGoldens:
         assert_golden(
             "render_review_with_scan_graph.md",
             format_review_as_text(load_fixture("review_with_scan_graph.json")),
+        )
+
+    def test_scan_summary_names_the_prior_round_and_the_drift(self) -> None:
+        # 1d: one more line, gated on ``prior_round``, and the git line reads
+        # ``working_tree``; the 1b and 1c goldens above are unchanged.
+        assert_golden(
+            "render_review_with_scan_prior.md",
+            format_review_as_text(load_fixture("review_with_scan_prior.json")),
         )
 
     def test_scan_summary_on_a_non_software_directory(self) -> None:
@@ -81,6 +91,57 @@ class TestSummaryLines:
         )
         assert "Load-bearing" not in text
         assert "**Scan Summary**" in text
+
+    def test_prior_line_counts_and_names_the_catalog_round(self) -> None:
+        prior = {
+            "version": 8,
+            "phases": [{}] * 6,
+            "implemented": "2026-10-01T23:30:22+00:00",
+            "capabilities_from_version": 7,
+        }
+        drift = {
+            "planned_unmatched": [{}] * 5,
+            "planned_only_imported": [],
+            "declared_not_planned": [{}] * 11,
+        }
+        assert _scan_prior_line(prior, drift) == (
+            "- Prior round: v8 (6 phases; implemented 2026-10-01; catalog from v7); "
+            "plan drift: 5 planned deps unmatched, 11 declared but unplanned"
+        )
+
+    def test_prior_line_singulars_own_catalog_and_no_drift(self) -> None:
+        prior = {"version": 3, "phases": [{}], "capabilities_from_version": 3}
+        assert _scan_prior_line(prior, None) == "- Prior round: v3 (1 phase)"
+        drift = {
+            "planned_unmatched": [{}],
+            "planned_only_imported": [{}, {}],
+            "declared_not_planned": [],
+        }
+        assert _scan_prior_line(prior, drift) == (
+            "- Prior round: v3 (1 phase); plan drift: 1 planned dep unmatched, "
+            "2 imported but undeclared, 0 declared but unplanned"
+        )
+        text = format_review_as_text(
+            review_envelope(
+                scan={"inventory": {"files_total": 1}, "prior_round": prior}
+            )
+        )
+        assert "- Prior round: v3 (1 phase)" in text
+        assert "plan drift" not in text
+
+    def test_tree_state_reads_working_tree_when_present(self) -> None:
+        assert (
+            _tree_state({"dirty": True, "untracked_count": 2}) == "dirty, 2 untracked"
+        )
+        assert _tree_state({"dirty": False, "untracked_count": 0}) == "clean"
+        tree = {"modified_top_dirs": {"src": 2, ".": 1}, "untracked_top_dirs": {}}
+        assert _tree_state({"working_tree": tree, "untracked_count": 0}) == "3 modified"
+        empty = {"modified_top_dirs": {}, "untracked_top_dirs": {}}
+        assert _tree_state({"working_tree": empty, "untracked_count": 0}) == "clean"
+        assert (
+            _tree_state({"working_tree": empty, "untracked_count": 4, "dirty": False})
+            == "4 untracked"
+        )
 
     def test_since_summary_says_no_commits_plainly(self) -> None:
         since = {

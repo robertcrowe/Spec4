@@ -1,0 +1,103 @@
+{
+  "vision_statement": {
+    "name": "Built with Spec4 (BWS4)",
+    "vision": {
+      "key_features_mvp": [
+        {
+          "Landing_Page": {
+            "id": "landing_page"
+          }
+        },
+        {
+          "RAG_Example_App": {
+            "id": "rag_example_app"
+          }
+        },
+        {
+          "Shared_Framework_Services": {
+            "id": "shared_framework_services"
+          }
+        },
+        {
+          "Tool_Use_Integration": {
+            "id": "tool_use_integration"
+          }
+        },
+        {
+          "Embeddings_Example_App": {
+            "id": "embeddings_example_app"
+          }
+        },
+        {
+          "Single_Call_Example_App": {
+            "id": "single_call_example_app"
+          }
+        },
+        {
+          "Chained_Calls_Example_App": {
+            "id": "chained_calls_example_app"
+          }
+        },
+        {
+          "Planning_Agent_Example_App": {
+            "id": "planning_agent_example_app"
+          }
+        },
+        {
+          "Orchestrated_Subagents_Example_App": {
+            "id": "orchestrated_subagents_example_app"
+          }
+        },
+        {
+          "Multi_Agent_Collaboration_Example_App": {
+            "id": "multi_agent_collaboration_example_app"
+          }
+        },
+        {
+          "ReAct_Loop_Example_App": {
+            "id": "react_loop_example_app"
+          }
+        },
+        {
+          "Self_Hosted_Deployment": {
+            "id": "self_hosted_deployment"
+          }
+        }
+      ]
+    },
+    "revision_history": [
+      {
+        "version": 1,
+        "based_on_version": 0
+      },
+      {
+        "version": 2,
+        "based_on_version": 1
+      },
+      {
+        "version": 3,
+        "based_on_version": 2
+      },
+      {
+        "version": 4,
+        "based_on_version": 3
+      },
+      {
+        "version": 5,
+        "based_on_version": 4
+      },
+      {
+        "version": 6,
+        "based_on_version": 5
+      },
+      {
+        "version": 7,
+        "based_on_version": 6
+      },
+      {
+        "version": 8,
+        "based_on_version": 7
+      }
+    ]
+  }
+}
