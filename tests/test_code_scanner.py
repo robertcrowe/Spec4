@@ -1909,6 +1909,21 @@ class TestStep3Schema:
         assert "Prior Round" in SYSTEM_PROMPT
         assert "External Packages and Their Importers" in SYSTEM_PROMPT
 
+    def test_llm_provider_entries_name_the_provider_not_the_sdk(self) -> None:
+        # 3b (D-SC3-14 finding 1): the first real 2.6.0 scan named providers
+        # (OpenRouter, Groq) while ``ai_capabilities`` names SDKs (litellm,
+        # pydantic-ai), so the cross-reference rule now says exactly that.
+        from spec4.agents.code_scanner import SYSTEM_PROMPT
+
+        assert (
+            "an `llm_provider` entry's `name` is the\n  provider itself "
+            "(OpenRouter, Anthropic, Groq)" in SYSTEM_PROMPT
+        )
+        assert "(litellm, pydantic-ai) is in `ai_capabilities`, not here" in (
+            SYSTEM_PROMPT
+        )
+        assert "matches\n  the `ai_capabilities` entry it backs" not in SYSTEM_PROMPT
+
 
 class TestWrapReviewConsumers:
     _scan = {

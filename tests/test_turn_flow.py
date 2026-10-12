@@ -18,6 +18,7 @@ from typing import Any
 from spec4.agents._code_review_context import (
     AGENT_REVIEW_VIEWS,
     PHASER_FIELD_GUIDANCE,
+    STACK_FIELD_GUIDANCE,
 )
 from spec4.agents._turn_flow import (
     build_revision_context,
@@ -59,6 +60,23 @@ class TestRevisionReviewBlock:
         assert "scan" not in body
         assert "schema_version" not in body
         assert "code_review" not in body
+
+    def test_stack_advisor_revision_view_carries_its_own_guidance(self) -> None:
+        # 3b (D-SC3-11): the stack's view now has a guidance dict, and the
+        # revision block renders through it like the seed does.
+        review = review_envelope(
+            integrations=[{"name": "Redis", "kind": "cache"}],
+            scan={
+                "plan_drift": {"planned_unmatched": [{"name": "Alembic"}]},
+            },
+        )
+        ctx = build_revision_context(
+            {"code_review": review}, ["code review"], "stack_advisor"
+        )
+        assert "Updated code review, by block:" in ctx
+        assert f"_{STACK_FIELD_GUIDANCE['integrations']}_" in ctx
+        assert "- **Alembic**" in ctx
+        assert "```json" not in ctx
 
     def test_no_agent_falls_back_to_json(self) -> None:
         ctx = build_revision_context({"code_review": _REVIEW}, ["code review"])

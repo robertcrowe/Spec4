@@ -712,9 +712,11 @@ computed scan data around it when it stores the artifact — do not include a
   client or call — one that appears in the importer block or a sample.
   `config_env_vars` lists the variable NAMES that configure it (the same
   names appear in `env_vars`; values are a security boundary — never include
-  one). Cross-reference by name: an `llm_provider` entry's `name` matches
-  the `ai_capabilities` entry it backs; a `database` or `cache` entry's
-  `name` matches a `persistence.databases[].engine`. Omit the field entirely
+  one). Cross-reference by name: an `llm_provider` entry's `name` is the
+  provider itself (OpenRouter, Anthropic, Groq) — the SDK it is called
+  through (litellm, pydantic-ai) is in `ai_capabilities`, not here; a
+  `database` or `cache` entry's `name` matches a
+  `persistence.databases[].engine`. Omit the field entirely
   when the code calls no external service — do not emit an empty array.
 - `notes.ci_cd.present` is REQUIRED (boolean) whenever `notes` is present.
 - `notes.test_coverage` shape (when `has_tests` is `true`): EITHER include both

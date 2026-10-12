@@ -10,6 +10,45 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.7.0] — unreleased
+
+Step 3b of the CodeScanner v2 plan (D-SC3-11): the consumer side of step 3.
+The three `review` arrays 2.6.0 added reach the agents that asked for them,
+and for the first time a consumer view carries measured `scan` facts beside
+the model's judgments. Built after the first real BWS4 2.6.0 scan (D-SC3-14)
+showed what the arrays contain.
+
+### Added
+- **`scan.` paths in `render_code_review`** — a field under the `scan.`
+  prefix resolves against the envelope's computed `scan` layer and renders
+  under a "Scan …" / measured heading rather than "Existing …", with its
+  own guidance line in `FIELD_GUIDANCE`. Three fields render by hand
+  instead of through the generic walker: `load_bearing` (contract keys
+  beneath their module, `consumers` as a count), `scan.coverage` (one line
+  of counts, never the sampled paths) and `scan.delta.dependencies` (one
+  line per manifest that changed, the manifest name printed whole).
+- **Phaser** reads `load_bearing` ("a phase that touches a load-bearing
+  module names, in its instructions and verification, the contract it
+  preserves"), `implemented` and a `scan.coverage` line.
+- **StackAdvisor** reads `integrations` with its own routing line
+  (`STACK_FIELD_GUIDANCE`: `llm_provider` entries are Topic 3's providers,
+  the rest are its integrations), `scan.plan_drift.planned_unmatched`,
+  `scan.plan_drift.declared_not_planned` and `scan.delta.dependencies`.
+- **Brainstormer** reads `implemented` ("never propose a `complete` one as
+  new; a `partial`/`stub` one is a finish-or-remove question").
+- **Deployer**'s existing-infrastructure excerpt carries `integrations`,
+  and a scan whose `git.dirty` is true adds a one-line note to plan against
+  the committed tree.
+- Four goldens for the consumer views from the step-3 fixture
+  (`code_review_*_view_step3.md`); the 2a goldens are unchanged.
+
+### Changed
+- CodeScanner prompt: an `llm_provider` integration names the provider
+  (OpenRouter, Anthropic, Groq); the SDK it is called through is in
+  `ai_capabilities` (D-SC3-14 finding 1).
+- `AGENT_REVIEW_VIEWS["stack_advisor"]` now carries `STACK_FIELD_GUIDANCE`,
+  so the revision-path "updated code review" block matches the seed.
+
 ## [2.6.0] — unreleased
 
 Step 3a of the CodeScanner v2 plan (D-SC3-1…10, 12): the review gains the

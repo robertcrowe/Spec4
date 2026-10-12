@@ -5,7 +5,7 @@ from collections.abc import Generator
 from typing import Any, Literal, cast
 
 from spec4 import project_manager, llm, websearch
-from spec4.agents._code_review_context import unwrap_review
+from spec4.agents._code_review_context import unwrap_review, unwrap_scan
 from spec4.agents._feature_context import ai_features_for_deployer
 from spec4.agents._reask import drain_stream, stream_counting
 from spec4.agents._revision import revision_delta
@@ -370,14 +370,17 @@ Any additional caveats, cost estimates, or advice. Include a short record of the
 def _build_existing_infra_block(code_review: dict[str, Any]) -> str:
     """Render the deployment-relevant excerpt of code_review for the seed.
 
-    Pulls only the four blocks Deployer's prompt acts on (deployment,
-    env_vars, persistence, auth). When none of them are present we emit
-    nothing — the prompt's default behavior (decide from stack + phases)
-    still applies.
+    Pulls only the five blocks Deployer's prompt acts on (deployment,
+    env_vars, persistence, auth, and since 2.7.0 ``integrations`` — the
+    external services the deployment must reach, D-SC3-11). When none of
+    them are present we emit nothing — the prompt's default behavior (decide
+    from stack + phases) still applies. A scan that found uncommitted
+    changes (``scan.git.dirty``) adds one note after the excerpt, so the plan
+    is written against the committed tree.
     """
     cr = unwrap_review(code_review)
     excerpt: dict[str, Any] = {}
-    for key in ("deployment", "env_vars", "persistence", "auth"):
+    for key in ("deployment", "env_vars", "persistence", "auth", "integrations"):
         if cr.get(key):
             excerpt[key] = cr[key]
     if not excerpt:
@@ -386,11 +389,32 @@ def _build_existing_infra_block(code_review: dict[str, Any]) -> str:
     return (
         "Here is the deployment-relevant excerpt of the existing code review. "
         "Treat these as facts about what the project already has — when asking "
-        "the developer about containerization, env vars, persistence, or auth, "
-        "reference what is already in place and ask whether to keep or change "
-        "it (don't re-decide from scratch). Reference env variable NAMES only — "
-        "values live in the developer's secret store.\n\n"
+        "the developer about containerization, env vars, persistence, auth, or "
+        "the external services under `integrations`, reference what is already "
+        "in place and ask whether to keep or change it (don't re-decide from "
+        "scratch). Every `integrations` entry is a service the deployment must "
+        "be able to reach, configured by the variables it names. Reference env "
+        "variable NAMES only — values live in the developer's secret store.\n\n"
         f"```json\n{body}\n```\n\n"
+        f"{_dirty_tree_note(unwrap_scan(code_review))}"
+    )
+
+
+def _dirty_tree_note(scan: dict[str, Any]) -> str:
+    """One line when the scan's ``git.dirty`` is true, else ``""`` (D-SC3-11)."""
+    git = scan.get("git")
+    if not isinstance(git, dict) or git.get("dirty") is not True:
+        return ""
+    tree = git.get("working_tree") or {}
+    modified = sum((tree.get("modified_top_dirs") or {}).values())
+    untracked = git.get("untracked_count")
+    counts = f"{modified} modified"
+    if isinstance(untracked, int):
+        counts += f", {untracked} untracked"
+    return (
+        "Note: the code review's scan found uncommitted changes in the working "
+        f"tree ({counts}). Plan against the committed state, and have the "
+        "developer commit or stash before the first deployment step.\n\n"
     )
 
 

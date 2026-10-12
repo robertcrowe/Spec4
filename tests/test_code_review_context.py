@@ -26,7 +26,9 @@ from spec4.agents._code_review_context import (
     FIELD_GUIDANCE,
     PHASER_FIELD_GUIDANCE,
     PHASER_REVIEW_FIELDS,
+    SCAN_PREFIX,
     SCOUT_REVIEW_FIELDS,
+    STACK_FIELD_GUIDANCE,
     STACK_REVIEW_FIELDS,
     render_code_review,
     unwrap_review,
@@ -313,7 +315,334 @@ class TestRenderCodeReview:
     def test_golden_full_review_stack_view(self) -> None:
         assert_golden(
             "code_review_stack_view.md",
-            render_code_review(load_fixture("review_full.json"), STACK_REVIEW_FIELDS),
+            render_code_review(
+                load_fixture("review_full.json"),
+                STACK_REVIEW_FIELDS,
+                guidance=STACK_FIELD_GUIDANCE,
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# step 3b: scan. paths and the three arrays in the consumer views (D-SC3-11)
+# ---------------------------------------------------------------------------
+
+
+_STEP3 = "review_with_step3.json"
+
+
+def _scan_review(scan: dict[str, Any], **fields: Any) -> dict[str, Any]:
+    return _review(scan=scan, languages=[{"name": "Go"}], **fields)
+
+
+class TestScanPaths:
+    def test_scan_fields_resolve_against_the_scan_layer_not_the_review(self) -> None:
+        # The review carries a ``plan_drift`` key of its own (the walker would
+        # happily render it); the scan path must read the scan's.
+        review = _scan_review(
+            {"plan_drift": {"planned_unmatched": [{"name": "Alembic"}]}},
+            plan_drift={"planned_unmatched": [{"name": "WRONG"}]},
+        )
+        out = render_code_review(review, ("scan.plan_drift.planned_unmatched",))
+        assert "**Alembic**" in out
+        assert "WRONG" not in out
+        # And a review field never reads the scan.
+        out = render_code_review(review, ("plan_drift",))
+        assert "WRONG" in out
+        assert "Alembic" not in out
+
+    def test_scan_headings_say_measured_not_existing(self) -> None:
+        review = _scan_review(
+            {
+                "plan_drift": {
+                    "planned_unmatched": [{"name": "Alembic", "sources": ["stack"]}],
+                    "declared_not_planned": [{"name": "oxlint", "manifest": "p.json"}],
+                },
+                "delta": {"dependencies": {"pyproject.toml": {"added": ["x"]}}},
+                "coverage": {"source_files_sampled": 2, "source_files_total": 9},
+                "inventory": {"files_total": 3},
+            }
+        )
+        fields = (
+            "scan.plan_drift.planned_unmatched",
+            "scan.plan_drift.declared_not_planned",
+            "scan.delta.dependencies",
+            "scan.coverage",
+            "scan.inventory",
+        )
+        out = render_code_review(review, fields)
+        for heading in (
+            "**Planned last round, not found in the code**",
+            "**Declared in a manifest, not planned**",
+            "**Dependency changes since the prior scan**",
+            "**Scan coverage**",
+            "**Scan inventory**",  # no override: the generic "Scan <label>"
+        ):
+            assert heading in out
+        assert "**Existing" not in out
+        # Every named scan path carries its guidance line, in tuple order.
+        for field in fields[:4]:
+            assert f"_{FIELD_GUIDANCE[field]}_" in out
+        positions = [out.index(FIELD_GUIDANCE[f]) for f in fields[:4]]
+        assert positions == sorted(positions)
+        assert "- files total: 3" in out
+
+    def test_scan_prefix_is_the_routing_rule(self) -> None:
+        assert SCAN_PREFIX == "scan."
+        for tup in (PHASER_REVIEW_FIELDS, STACK_REVIEW_FIELDS):
+            assert any(f.startswith(SCAN_PREFIX) for f in tup)
+        for tup in (BRAINSTORMER_REVIEW_FIELDS, SCOUT_REVIEW_FIELDS):
+            assert not any(f.startswith(SCAN_PREFIX) for f in tup)
+
+    def test_absent_scan_or_absent_path_skips_the_field(self) -> None:
+        fields = ("languages", "scan.coverage", "scan.plan_drift.planned_unmatched")
+        out = render_code_review(_review(languages=[{"name": "Go"}]), fields)
+        assert out.splitlines() == [
+            "**Existing languages**",
+            f"_{FIELD_GUIDANCE['languages']}_",
+            "- **Go**",
+        ]
+        review = _scan_review({"plan_drift": {"planned_unmatched": []}})
+        assert "Planned" not in render_code_review(review, fields)
+        # A review that is not a software project renders nothing, scan or no.
+        review = _review(is_software_project=False, scan={"coverage": {"x": 1}})
+        assert render_code_review(review, fields) == ""
+
+    def test_coverage_is_one_line_of_counts(self) -> None:
+        cov = {
+            "source_files_sampled": 4,
+            "source_files_total": 2292,
+            "sampled": ["src/app/main.py", "src/app/models.py"],
+            "signatures_shown": ["a.py", "b.py", "c.py"],
+            "evidence_tokens": 22814,
+        }
+        out = render_code_review(_scan_review({"coverage": cov}), ("scan.coverage",))
+        assert out.splitlines()[-1] == (
+            "- 4 of 2292 source files shown as bodies; 3 more as signature "
+            "blocks; ~22,814 tokens of evidence"
+        )
+        assert "src/app/main.py" not in out  # the paths are not the coder's
+        # Older scans without the 2.4.0 keys: the two counts alone.
+        lean = {"source_files_sampled": 0, "source_files_total": 7, "sampled": []}
+        out = render_code_review(_scan_review({"coverage": lean}), ("scan.coverage",))
+        assert out.splitlines()[-1] == "- 0 of 7 source files shown as bodies"
+        # No counts at all: nothing, not a half line.
+        for cov in (
+            {"sampled": ["x"]},
+            {"source_files_sampled": "4"},
+            {"source_files_sampled": 4},  # one count alone is not a line
+            {"source_files_total": 9},
+            "text",
+        ):
+            review = _scan_review({"coverage": cov})
+            assert render_code_review(review, ("scan.coverage",)) == ""
+
+    def test_dependency_delta_lists_only_the_manifests_that_changed(self) -> None:
+        deps = {
+            "pyproject.toml": {
+                "added": ["pydantic-ai", "structlog"],
+                "removed": [],
+                "bumped": ["fastapi"],
+                "truncated": False,
+            },
+            "web/package.json": {
+                "added": [],
+                "removed": [],
+                "bumped": [],
+                "truncated": False,
+            },
+            "Cargo.toml": {"added": [], "removed": ["serde"], "truncated": True},
+        }
+        field = ("scan.delta.dependencies",)
+        out = render_code_review(_scan_review({"delta": {"dependencies": deps}}), field)
+        lines = out.splitlines()[2:]
+        assert lines == [
+            "- **pyproject.toml** — added: pydantic-ai, structlog; bumped: fastapi",
+            "- **Cargo.toml** — removed: serde; truncated: yes",
+        ]
+        assert "package.json" not in out
+        # Nothing changed anywhere: the block is skipped.
+        quiet = {"pyproject.toml": {"added": [], "removed": [], "bumped": []}}
+        review = _scan_review({"delta": {"dependencies": quiet}})
+        assert render_code_review(review, field) == ""
+        # Totality: a manifest whose value is not a dict still renders.
+        odd = {"Makefile": "rewritten", "x": None}
+        out = render_code_review(_scan_review({"delta": {"dependencies": odd}}), field)
+        assert out.splitlines()[-1] == "- **Makefile** — rewritten"
+        # ... and a delta that is not a dict at all walks as it stands.
+        out = render_code_review(
+            _scan_review({"delta": {"dependencies": ["httpx", "boto3"]}}), field
+        )
+        assert out.splitlines()[2:] == ["- httpx", "- boto3"]
+
+
+class TestStep3ArraysInTheViews:
+    def test_load_bearing_renders_the_contract_beneath_its_module(self) -> None:
+        entries = [
+            {
+                "module": "src/app/llm.py",
+                "symbol": "stream_turn",
+                "role": "every model call",
+                "contract": {
+                    "inputs": ["messages", "config"],
+                    "outputs": ["chunks"],
+                    "invariants": [],
+                    "side_effects": ["network"],
+                },
+                "consumers": ["a.py", "b.py", "c.py"],
+                "inferred_from": "src/app/llm.py",
+            },
+            {"module": "src/app/k.py", "role": "keys", "contract": {"outputs": ["s"]}},
+            "raw",
+            "",
+            None,
+        ]
+        out = render_code_review(_review(load_bearing=entries), ("load_bearing",))
+        assert out.splitlines() == [
+            "**Existing load-bearing modules**",
+            f"_{FIELD_GUIDANCE['load_bearing']}_",
+            "- **src/app/llm.py** · `stream_turn` (consumers: 3) — every model call "
+            "[src/app/llm.py]",
+            "  - inputs: messages; config",
+            "  - outputs: chunks",
+            "  - side effects: network",
+            "- **src/app/k.py** — keys",
+            "  - outputs: s",
+            "- raw",
+        ]
+        assert "a.py" not in out  # consumers is a count, the list stays in the JSON
+        # Totality: a non-list value still walks.
+        out = render_code_review(_review(load_bearing={"k": "v"}), ("load_bearing",))
+        assert "- k: v" in out
+
+    def test_implemented_and_integrations_walk_with_their_primary_key(self) -> None:
+        review = _review(
+            implemented=[
+                {
+                    "id": "code_review",
+                    "name": "Code review",
+                    "status": "complete",
+                    "paths": ["src/app/scanner/"],
+                    "prior_feature_ids": ["round_tree"],
+                }
+            ],
+            integrations=[
+                {
+                    "name": "OpenRouter",
+                    "kind": "llm_provider",
+                    "client_module": "src/app/llm.py",
+                    "config_env_vars": ["OPENROUTER_API_KEY"],
+                }
+            ],
+        )
+        out = render_code_review(review, ("implemented", "integrations"))
+        assert "**Existing implemented capabilities**" in out
+        assert (
+            "- **Code review** — id: code_review; status: complete; paths: "
+            "src/app/scanner/; prior feature ids: round_tree" in out
+        )
+        assert "**Existing integrations**" in out
+        assert (
+            "- **OpenRouter** — kind: llm_provider; client module: src/app/llm.py; "
+            "config env vars: OPENROUTER_API_KEY" in out
+        )
+
+    def test_each_consumer_tuple_gained_what_the_decision_names(self) -> None:
+        # D-SC3-11, tuple by tuple.
+        for field in ("load_bearing", "implemented", "scan.coverage"):
+            assert field in PHASER_REVIEW_FIELDS
+        assert PHASER_REVIEW_FIELDS[-1] == "scan.coverage"
+        assert "integrations" not in PHASER_REVIEW_FIELDS
+        for field in (
+            "integrations",
+            "scan.plan_drift.planned_unmatched",
+            "scan.plan_drift.declared_not_planned",
+            "scan.delta.dependencies",
+        ):
+            assert field in STACK_REVIEW_FIELDS
+        for field in ("load_bearing", "implemented"):
+            assert field not in STACK_REVIEW_FIELDS
+        assert "implemented" in BRAINSTORMER_REVIEW_FIELDS
+        for field in ("load_bearing", "integrations"):
+            assert field not in BRAINSTORMER_REVIEW_FIELDS
+        # Scout is untouched by 3b.
+        for field in ("load_bearing", "implemented", "integrations"):
+            assert field not in SCOUT_REVIEW_FIELDS
+
+    def test_guidance_lines_are_the_decision_s_words(self) -> None:
+        assert PHASER_FIELD_GUIDANCE["load_bearing"] == (
+            "A phase that touches a load-bearing module names, in its instructions "
+            "and verification, the contract it preserves."
+        )
+        assert STACK_FIELD_GUIDANCE["integrations"] == (
+            "`llm_provider` entries are Topic 3's `providers`; the rest are your "
+            "`integrations`, already in place."
+        )
+        assert BRAINSTORMER_FIELD_GUIDANCE["implemented"] == (
+            "Already built, with status. Never propose a `complete` one as new; a "
+            "`partial`/`stub` one is a finish-or-remove question."
+        )
+        assert "implemented" in PHASER_FIELD_GUIDANCE
+        # Each override names a field its tuple renders, and replaces the
+        # shared line in that view.
+        assert set(STACK_FIELD_GUIDANCE) <= set(STACK_REVIEW_FIELDS)
+        assert set(PHASER_FIELD_GUIDANCE) <= set(PHASER_REVIEW_FIELDS)
+        assert set(BRAINSTORMER_FIELD_GUIDANCE) <= set(BRAINSTORMER_REVIEW_FIELDS)
+        fx = load_fixture(_STEP3)
+        stack = render_code_review(
+            fx, STACK_REVIEW_FIELDS, guidance=STACK_FIELD_GUIDANCE
+        )
+        assert f"_{STACK_FIELD_GUIDANCE['integrations']}_" in stack
+        assert f"_{FIELD_GUIDANCE['integrations']}_" not in stack
+        brain = render_code_review(
+            fx, BRAINSTORMER_REVIEW_FIELDS, guidance=BRAINSTORMER_FIELD_GUIDANCE
+        )
+        assert f"_{BRAINSTORMER_FIELD_GUIDANCE['implemented']}_" in brain
+        assert f"_{FIELD_GUIDANCE['implemented']}_" not in brain
+
+    def test_old_fixture_without_the_fields_renders_as_before(self) -> None:
+        # The 2a fixture has no step-3 arrays and an empty scan: the three
+        # pinned goldens above are unchanged, so no heading of 3b's appears.
+        fx = load_fixture("review_full.json")
+        for fields, guidance in (
+            (PHASER_REVIEW_FIELDS, PHASER_FIELD_GUIDANCE),
+            (STACK_REVIEW_FIELDS, STACK_FIELD_GUIDANCE),
+            (BRAINSTORMER_REVIEW_FIELDS, BRAINSTORMER_FIELD_GUIDANCE),
+        ):
+            out = render_code_review(fx, fields, guidance=guidance)
+            for heading in (
+                "**Existing load-bearing modules**",
+                "**Existing implemented capabilities**",
+                "**Existing integrations**",
+                "**Scan",
+                "**Planned",
+                "**Declared",
+                "**Dependency changes",
+            ):
+                assert heading not in out
+            assert "**Existing architecture**" in out  # paired positive
+
+    def test_golden_step3_views(self) -> None:
+        fx = load_fixture(_STEP3)
+        assert_golden(
+            "code_review_phaser_view_step3.md",
+            render_code_review(
+                fx, PHASER_REVIEW_FIELDS, guidance=PHASER_FIELD_GUIDANCE
+            ),
+        )
+        assert_golden(
+            "code_review_stack_view_step3.md",
+            render_code_review(fx, STACK_REVIEW_FIELDS, guidance=STACK_FIELD_GUIDANCE),
+        )
+        assert_golden(
+            "code_review_brainstormer_view_step3.md",
+            render_code_review(
+                fx, BRAINSTORMER_REVIEW_FIELDS, guidance=BRAINSTORMER_FIELD_GUIDANCE
+            ),
+        )
+        assert_golden(
+            "code_review_scout_view_step3.md",
+            render_code_review(fx, SCOUT_REVIEW_FIELDS),
         )
 
 
@@ -352,6 +681,42 @@ class TestStackAdvisorSeed:
         # The conflict-warning instruction and the brownfield ask are kept.
         assert "proactively warn me about the conflict" in seed
         assert "draft an initial stack spec" in seed
+
+    def test_brownfield_seed_carries_integrations_and_the_measured_blocks(
+        self,
+    ) -> None:
+        # 3b (D-SC3-11): the integrations index with the stack's own routing
+        # line, and the scan's plan drift and dependency delta.
+        review = _review(
+            scan={
+                "plan_drift": {
+                    "planned_unmatched": [{"name": "Alembic", "sources": ["stack"]}],
+                    "declared_not_planned": [
+                        {"name": "oxlint", "manifest": "web/package.json"}
+                    ],
+                },
+                "delta": {"dependencies": {"pyproject.toml": {"added": ["httpx"]}}},
+            },
+            integrations=[
+                {"name": "OpenRouter", "kind": "llm_provider", "client_module": "l.py"}
+            ],
+        )
+        session = make_session(
+            active_agent="stack_advisor",
+            vision_statement={"vision_statement": {"name": "App"}},
+            code_review=review,
+            stack_statement=None,
+        )
+        seed = _seed_after_run(session)
+        assert "**Existing integrations**" in seed
+        assert f"_{STACK_FIELD_GUIDANCE['integrations']}_" in seed
+        assert "- **OpenRouter** — kind: llm_provider" in seed
+        assert "**Planned last round, not found in the code**" in seed
+        assert "- **Alembic** — sources: stack" in seed
+        assert "**Declared in a manifest, not planned**" in seed
+        assert "- **oxlint** — manifest: web/package.json" in seed
+        assert "- **pyproject.toml** — added: httpx" in seed
+        assert "Scan coverage" not in seed  # Phaser's, not the stack's
 
     def test_not_a_software_project_review_uses_the_greenfield_seed(self) -> None:
         review = _review(is_software_project=False, summary="bare manifest")
@@ -417,6 +782,39 @@ class TestPhaserSeed:
         assert "index.html" not in seed
         assert "integration/validation thread for the existing code" in seed
 
+    def test_brownfield_seed_carries_contracts_and_the_coverage_line(self) -> None:
+        # 3b (D-SC3-11): load_bearing and implemented with Phaser's rules, and
+        # one coverage line from the scan — never the sampled paths.
+        review = _review(
+            scan={
+                "coverage": {
+                    "source_files_sampled": 3,
+                    "source_files_total": 40,
+                    "sampled": ["src/secret_path.py"],
+                }
+            },
+            load_bearing=[
+                {
+                    "module": "src/app/llm.py",
+                    "role": "every call",
+                    "contract": {"invariants": ["messages ends with the turn"]},
+                    "consumers": ["a.py"],
+                }
+            ],
+            implemented=[
+                {"id": "x", "name": "Export", "status": "partial", "paths": ["e.py"]}
+            ],
+        )
+        seed = self._seed(review)
+        assert f"_{PHASER_FIELD_GUIDANCE['load_bearing']}_" in seed
+        assert "- **src/app/llm.py** (consumers: 1) — every call" in seed
+        assert "  - invariants: messages ends with the turn" in seed
+        assert f"_{PHASER_FIELD_GUIDANCE['implemented']}_" in seed
+        assert "- **Export** — id: x; status: partial; paths: e.py" in seed
+        assert "**Scan coverage**" in seed
+        assert "- 3 of 40 source files shown as bodies" in seed
+        assert "src/secret_path.py" not in seed
+
     def test_review_with_nothing_in_the_tuple_still_names_itself(self) -> None:
         seed = self._seed(_review(languages=[{"name": "Go"}]))
         assert "none of its blocks relevant to phasing carry content" in seed
@@ -474,6 +872,23 @@ class TestBrainstormerSeeds:
         assert "pytest" not in seed  # commands are Phaser's, not the vision's
         assert json.dumps(review, indent=2) not in seed
         assert "Use the code review as context" in seed
+
+    def test_review_only_seed_carries_implemented_with_the_vision_rule(self) -> None:
+        # 3b (D-SC3-11): what is already built, so the vision never re-proposes it.
+        review = _review(
+            existing_self_description={"text": "A planner.", "source": "README.md"},
+            implemented=[
+                {"id": "exp", "name": "Export", "status": "complete", "paths": ["e.py"]}
+            ],
+            load_bearing=[
+                {"module": "m.py", "role": "r", "contract": {"outputs": ["o"]}}
+            ],
+        )
+        session = make_session(code_review=review, vision_statement=None)
+        seed, _ = self._run(session)
+        assert f"_{BRAINSTORMER_FIELD_GUIDANCE['implemented']}_" in seed
+        assert "- **Export** — id: exp; status: complete; paths: e.py" in seed
+        assert "load-bearing" not in seed  # Phaser's, not the vision's
 
     def test_existing_vision_seed_carries_the_same_view(self) -> None:
         review = self._review()

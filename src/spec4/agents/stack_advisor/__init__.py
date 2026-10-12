@@ -28,7 +28,11 @@ from collections.abc import Generator
 from typing import Any
 
 from spec4 import project_manager, llm, websearch
-from spec4.agents._code_review_context import STACK_REVIEW_FIELDS, render_code_review
+from spec4.agents._code_review_context import (
+    STACK_FIELD_GUIDANCE,
+    STACK_REVIEW_FIELDS,
+    render_code_review,
+)
 from spec4.agents._feature_context import ai_features_for_stack, feature_specs_for_stack
 from spec4.agents._reask import (
     abandon_reask,
@@ -249,8 +253,13 @@ def _stack_seed_message(session: dict[str, Any]) -> str:
     # view, not a raw JSON paste. Each block carries its own one-line guidance
     # (``_code_review_context.FIELD_GUIDANCE``), which replaces the paragraph
     # that used to name a subset of the fields after the paste; the standing
-    # conflict-warning instruction is unchanged.
-    review_view = render_code_review(code_review, STACK_REVIEW_FIELDS)
+    # conflict-warning instruction is unchanged. Step 3b (D-SC3-11) adds the
+    # ``integrations`` index with the stack's own routing line
+    # (``STACK_FIELD_GUIDANCE``) and three measured ``scan.`` blocks: the plan
+    # drift both ways and the dependency delta since the prior scan.
+    review_view = render_code_review(
+        code_review, STACK_REVIEW_FIELDS, guidance=STACK_FIELD_GUIDANCE
+    )
     code_review_block = (
         "For context, here is what a code review found in the existing project. "
         "Every block below is a fact about the codebase as it stands today:\n\n"

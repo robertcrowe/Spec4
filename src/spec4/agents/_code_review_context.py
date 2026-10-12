@@ -24,10 +24,17 @@ It is a **leaf**, like ``feature_specs.py``: it imports nothing from
 The renderer is total (D-SC33's rule, applied here): any JSON shape under any
 key renders through the generic walker, so a schema field this module has no
 special knowledge of still reaches the seed rather than vanishing.
+
+Step 3b (D-SC3-11, 2.7.0): a field may also be a ``scan.``-prefixed dotted
+path, resolved against the envelope's computed ``scan`` layer instead of the
+model's ``review``. Those blocks are measured facts — plan drift, dependency
+delta, sampling coverage — and render under a "Scan …" heading rather than
+"Existing …", so a consumer can tell what was computed from what was judged.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 __all__ = [
@@ -38,7 +45,9 @@ __all__ = [
     "FIELD_GUIDANCE",
     "PHASER_FIELD_GUIDANCE",
     "PHASER_REVIEW_FIELDS",
+    "SCAN_PREFIX",
     "SCOUT_REVIEW_FIELDS",
+    "STACK_FIELD_GUIDANCE",
     "STACK_REVIEW_FIELDS",
     "render_code_review",
     "unwrap_review",
@@ -97,7 +106,49 @@ FIELD_GUIDANCE: dict[str, str] = {
         "Typed observations about what is fragile. Weigh them before proposing a "
         "technology swap."
     ),
+    # Step 3 (2.6.0) arrays — the shared lines; Phaser, StackAdvisor and
+    # Brainstormer override the ones whose use differs (D-SC3-11).
+    "load_bearing": (
+        "The modules the rest of the code depends on, each with the contract its "
+        "consumers rely on and how many of them there are. Changing one changes "
+        "every consumer."
+    ),
+    "implemented": (
+        "What the code already does, product-level, with how far along each one "
+        "is. `prior_feature_ids` name the last round's features it realises."
+    ),
+    "integrations": (
+        "The external services the code already talks to, with the module that "
+        "holds each client and the variable names that configure it."
+    ),
+    # ``scan.`` paths (D-SC3-11): measured by the scan, never judged by the
+    # model. Each line says what was measured and what to do with it.
+    "scan.coverage": (
+        "Measured: how much of the source the review's evidence covered. A "
+        "module outside the sampled set was reviewed from its signatures or not "
+        "at all — a phase that touches one verifies before it relies on a claim "
+        "about it."
+    ),
+    "scan.plan_drift.planned_unmatched": (
+        "Measured: technologies the last round's stack or phases named that no "
+        "manifest declares and no module imports. They were never adopted or "
+        "have since been dropped — do not carry them forward unexamined."
+    ),
+    "scan.plan_drift.declared_not_planned": (
+        "Measured: dependencies a manifest declares that the last round's plan "
+        "never named — adopted outside Spec4. Record them in the stack rather "
+        "than proposing a parallel choice for the same purpose."
+    ),
+    "scan.delta.dependencies": (
+        "Measured: declared dependencies added, removed or bumped since the "
+        "prior scan, per manifest. These are recent, deliberate choices — keep "
+        "them unless the vision says otherwise."
+    ),
 }
+
+#: Prefix that routes a field to the envelope's computed ``scan`` layer
+#: (D-SC3-11). Everything else resolves against ``review``.
+SCAN_PREFIX = "scan."
 
 #: Sub-keys no consumer view renders (D-CR6). ``entrypoints.ui_root`` reached
 #: nothing in the BWS4 baseline and duplicates ``ui_summary.entry_files`` and
@@ -117,6 +168,7 @@ BRAINSTORMER_REVIEW_FIELDS: tuple[str, ...] = (
     "architecture",
     "ui_summary",
     "api_surface",
+    "implemented",
     "ai_capabilities",
     "protocols_implemented",
     "notes.incomplete_or_dead_code",
@@ -141,6 +193,10 @@ BRAINSTORMER_FIELD_GUIDANCE: dict[str, str] = {
         "What the product already does, route by route — the existing feature "
         "inventory. Never propose as new a capability that is already here."
     ),
+    "implemented": (
+        "Already built, with status. Never propose a `complete` one as new; a "
+        "`partial`/`stub` one is a finish-or-remove question."
+    ),
     "ai_capabilities": (
         "AI already in the codebase. These are existing features, not candidates; "
         "a new AI feature should say how it relates to them."
@@ -164,6 +220,8 @@ BRAINSTORMER_FIELD_GUIDANCE: dict[str, str] = {
 #: still the review's own values, now beside the planning rule each governs.
 PHASER_REVIEW_FIELDS: tuple[str, ...] = (
     "architecture",
+    "load_bearing",
+    "implemented",
     "commands",
     "entrypoints",
     "directory_map",
@@ -175,12 +233,22 @@ PHASER_REVIEW_FIELDS: tuple[str, ...] = (
     "notes.incomplete_or_dead_code",
     "notes.change_risks",
     "notes.test_coverage",
+    "scan.coverage",
 )
 
 #: Phaser's per-field rules, folded in from the paragraphs that used to follow
 #: the paste (``_phaser_review_instruction``). Blocks not listed here fall back
 #: to :data:`FIELD_GUIDANCE`.
 PHASER_FIELD_GUIDANCE: dict[str, str] = {
+    "load_bearing": (
+        "A phase that touches a load-bearing module names, in its instructions "
+        "and verification, the contract it preserves."
+    ),
+    "implemented": (
+        "Already built, with status. Phases extend a `complete` capability "
+        "rather than rebuild it; a `partial` or `stub` one a phase touches is "
+        "finished or removed in that phase, as the vision decides."
+    ),
     "commands": (
         "Authoritative. Use `test` to write each phase's verification criterion; "
         "`build`, `lint` and `typecheck` are the gates every phase must pass."
@@ -244,12 +312,26 @@ STACK_REVIEW_FIELDS: tuple[str, ...] = (
     "persistence",
     "deployment",
     "auth",
+    "integrations",
     "protocols_implemented",
     "api_surface",
     "env_vars",
     "commands.deploy",
     "notes.change_risks",
+    "scan.plan_drift.planned_unmatched",
+    "scan.plan_drift.declared_not_planned",
+    "scan.delta.dependencies",
 )
+
+#: StackAdvisor's per-field rules (D-SC3-11). One block reads differently for
+#: the stack than for anyone else: ``integrations`` is split by ``kind`` across
+#: two of its topics. Blocks not listed here fall back to :data:`FIELD_GUIDANCE`.
+STACK_FIELD_GUIDANCE: dict[str, str] = {
+    "integrations": (
+        "`llm_provider` entries are Topic 3's `providers`; the rest are your "
+        "`integrations`, already in place."
+    ),
+}
 
 #: What the Agentifier's Scout reads from the review, in the order it is
 #: rendered (D-EV7; replaces the raw JSON paste in ``scout.py``). Scout
@@ -279,7 +361,7 @@ SCOUT_REVIEW_FIELDS: tuple[str, ...] = (
 #: through Scout) receive the ``review`` block as raw JSON instead.
 AGENT_REVIEW_VIEWS: dict[str, tuple[tuple[str, ...], dict[str, str] | None]] = {
     "brainstormer": (BRAINSTORMER_REVIEW_FIELDS, BRAINSTORMER_FIELD_GUIDANCE),
-    "stack_advisor": (STACK_REVIEW_FIELDS, None),
+    "stack_advisor": (STACK_REVIEW_FIELDS, STACK_FIELD_GUIDANCE),
     "phaser": (PHASER_REVIEW_FIELDS, PHASER_FIELD_GUIDANCE),
 }
 
@@ -322,12 +404,20 @@ def _resolve(node: Any, dotted: str) -> Any:
     return node
 
 
-#: Heading overrides where the key's own words read badly after "Existing".
+#: Heading overrides where the key's own words read badly after "Existing",
+#: and the headings of the ``scan.`` paths (D-SC3-11), which carry no
+#: "Existing" — they are measurements, not the state of the code.
 _HEADINGS = {
     "existing_self_description": "self-description",
     "commands.deploy": "deploy command",
     "api_surface": "API surface",
     "env_vars": "environment variables",
+    "load_bearing": "load-bearing modules",
+    "implemented": "implemented capabilities",
+    "scan.coverage": "Scan coverage",
+    "scan.plan_drift.planned_unmatched": "Planned last round, not found in the code",
+    "scan.plan_drift.declared_not_planned": "Declared in a manifest, not planned",
+    "scan.delta.dependencies": "Dependency changes since the prior scan",
 }
 
 
@@ -335,8 +425,126 @@ def _label(key: str) -> str:
     return key.rsplit(".", 1)[-1].replace("_", " ")
 
 
+def _is_scan_field(field: str) -> bool:
+    return field.startswith(SCAN_PREFIX)
+
+
 def _heading(field: str) -> str:
-    return _HEADINGS.get(field) or _label(field)
+    """The bold heading for ``field``: "Existing …" for the review, not for scan."""
+    if _is_scan_field(field):
+        return _HEADINGS.get(field) or f"Scan {_label(field)}"
+    return "Existing " + (_HEADINGS.get(field) or _label(field))
+
+
+def _joined(values: Any, sep: str = "; ") -> str:
+    """A list of strings as one ``sep``-joined run; a scalar as itself."""
+    if isinstance(values, list):
+        return sep.join(_scalar(v) for v in values if not _empty(v))
+    return _scalar(values)
+
+
+def _load_bearing_lines(entries: Any) -> list[str]:
+    """``load_bearing`` (step 3): one entry per module, its contract beneath.
+
+    The generic walker would fold the nested ``contract`` into the entry's
+    line; here each contract key gets its own sub-bullet, as the transcript
+    renderer prints it, and ``consumers`` is shown as a count — the list is
+    the import graph's, in the JSON for anyone who needs the paths. An entry
+    that is not a dict falls back to the walker, so nothing is dropped.
+    """
+    if not isinstance(entries, list):
+        return _render_value(entries, "")
+    lines: list[str] = []
+    for entry in entries:
+        if _empty(entry):
+            continue
+        if not isinstance(entry, dict):
+            lines.extend(_render_list([entry], ""))
+            continue
+        lines.append(f"- {_load_bearing_head(entry)}{_provenance(entry)}")
+        contract = entry.get("contract")
+        if isinstance(contract, dict):
+            for key in ("inputs", "outputs", "invariants", "side_effects"):
+                if not _empty(contract.get(key)):
+                    lines.append(f"  - {_label(key)}: {_joined(contract[key])}")
+    return lines
+
+
+def _load_bearing_head(entry: dict[str, Any]) -> str:
+    """``**module** · `symbol` (consumers: n) — role``, each part when present."""
+    head = f"**{_scalar(entry.get('module', ''))}**"
+    if _text(entry.get("symbol")):
+        head += f" · `{_scalar(entry['symbol'])}`"
+    consumers = entry.get("consumers")
+    if isinstance(consumers, list):
+        head += f" (consumers: {len(consumers)})"
+    if _text(entry.get("role")):
+        head += f" — {_scalar(entry['role'])}"
+    return head
+
+
+def _coverage_line(coverage: Any) -> list[str]:
+    """``scan.coverage`` as one line (D-SC3-11): counts, not the sampled paths.
+
+    The coder does not need ``sampled[]``; it needs to know how much of the
+    tree the review's claims rest on. Older scans without the 2.4.0 keys
+    render the two counts alone; a coverage block without them renders
+    nothing.
+    """
+    if not isinstance(coverage, dict):
+        return []
+    sampled = coverage.get("source_files_sampled")
+    total = coverage.get("source_files_total")
+    if not isinstance(sampled, int) or not isinstance(total, int):
+        return []
+    parts = [f"{sampled} of {total} source files shown as bodies"]
+    signatures = coverage.get("signatures_shown")
+    if isinstance(signatures, list) and signatures:
+        parts.append(f"{len(signatures)} more as signature blocks")
+    tokens = coverage.get("evidence_tokens")
+    if isinstance(tokens, int) and tokens > 0:
+        parts.append(f"~{tokens:,} tokens of evidence")
+    return ["- " + "; ".join(parts)]
+
+
+def _dependency_change_lines(delta: Any) -> list[str]:
+    """``scan.delta.dependencies``: one line per manifest that changed.
+
+    Each manifest shows its non-empty ``added`` / ``removed`` / ``bumped``
+    lists and ``truncated`` only when true; a manifest with none of those is
+    omitted, so the block says what moved and nothing else. The manifest
+    name is printed whole — the walker's labeller would clip ``pyproject.toml``
+    at its dot.
+    """
+    if not isinstance(delta, dict):
+        return _render_value(delta, "")
+    lines: list[str] = []
+    for manifest, change in delta.items():
+        if not isinstance(change, dict):
+            if not _empty(change):
+                lines.append(f"- **{manifest}** — {_joined(change)}")
+            continue
+        moved = [
+            f"{key}: {_joined(change[key], sep=', ')}"
+            for key in ("added", "removed", "bumped")
+            if not _empty(change.get(key))
+        ]
+        if change.get("truncated") is True:
+            moved.append("truncated: yes")
+        if moved:
+            lines.append(f"- **{manifest}** — {'; '.join(moved)}")
+    return lines
+
+
+#: Fields whose body is rendered by hand rather than by the generic walker:
+#: the walker is total, but it flattens a nested entry to one line and
+#: labels a dict key by its last dot-separated part, which these three
+#: cannot afford. Every other field, scan or review, renders verbatim.
+_RENDERERS: dict[str, Callable[[Any], list[str]]] = {
+    "load_bearing": _load_bearing_lines,
+    "scan.coverage": _coverage_line,
+    "scan.delta.dependencies": _dependency_change_lines,
+}
 
 
 def _empty(value: Any) -> bool:
@@ -468,6 +676,19 @@ def _without_excluded(field: str, value: Any) -> Any:
     return {k: v for k, v in value.items() if str(k) not in dropped}
 
 
+def _field_value(cr: dict[str, Any], scan: dict[str, Any], field: str) -> Any:
+    """The value ``field`` names: from ``scan`` under the prefix, else ``cr``."""
+    if _is_scan_field(field):
+        return _resolve(scan, field[len(SCAN_PREFIX) :])
+    return _without_excluded(field, _resolve(cr, field))
+
+
+def _body(field: str, value: Any) -> list[str]:
+    """The rendered body of ``field``: by hand for ``_RENDERERS``, else walked."""
+    renderer = _RENDERERS.get(field)
+    return renderer(value) if renderer is not None else _render_value(value, "")
+
+
 def render_code_review(
     review: Any,
     fields: tuple[str, ...],
@@ -487,20 +708,31 @@ def render_code_review(
     (``session["code_review"]``); it is unwrapped by path. Returns ``""`` for
     a review that is not the envelope, not a software project, or contains
     none of the fields — the caller then emits nothing.
+
+    A field under :data:`SCAN_PREFIX` (``scan.plan_drift.planned_unmatched``,
+    ``scan.coverage``) resolves against the same envelope's computed ``scan``
+    layer (D-SC3-11) and renders under a "Scan …" heading. The fields in
+    ``_RENDERERS`` (``load_bearing``, ``scan.coverage``,
+    ``scan.delta.dependencies``) render by hand — coverage to one line, the
+    delta to the manifests that changed, contracts beneath their module;
+    everything else walks. Scan fields are skipped like any other when the
+    envelope has no scan — a review that is not a software project still
+    renders nothing, scan or no scan.
     """
     cr = unwrap_review(review)
     if not cr or cr.get("is_software_project") is False:
         return ""
+    scan = unwrap_scan(review)
     lines_for = {**FIELD_GUIDANCE, **(guidance or {})}
     blocks: list[str] = []
     for field in fields:
-        value = _without_excluded(field, _resolve(cr, field))
+        value = _field_value(cr, scan, field)
         if _empty(value):
             continue
-        body = _render_value(value, "")
+        body = _body(field, value)
         if not body:
             continue  # present, but every leaf was empty
-        lines = [f"**Existing {_heading(field)}**"]
+        lines = [f"**{_heading(field)}**"]
         line = lines_for.get(field)
         if line:
             lines.append(f"_{line}_")

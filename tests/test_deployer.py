@@ -5,6 +5,7 @@ Split out of ``tests/test_agents.py`` by source module, with every class unchang
 """
 
 import copy
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -92,6 +93,69 @@ class TestDeployerExistingInfra:
         block = _build_existing_infra_block(review_envelope(auth=auth))
         assert "auth" in block
         assert "jwt" in block
+
+    def test_build_existing_infra_block_carries_integrations(self) -> None:
+        # 3b (D-SC3-11): the external services the deployment must reach, in
+        # the JSON excerpt beside the four blocks it already carried.
+        from spec4.agents.deployer import _build_existing_infra_block
+
+        integrations = [
+            {
+                "name": "OpenRouter",
+                "kind": "llm_provider",
+                "client_module": "src/app/llm.py",
+                "config_env_vars": ["OPENROUTER_API_KEY"],
+            }
+        ]
+        block = _build_existing_infra_block(review_envelope(integrations=integrations))
+        json_body = block.split("```json", 1)[1].split("```", 1)[0]
+        assert json.loads(json_body) == {"integrations": integrations}
+        assert "under `integrations`" in block
+        assert "service the deployment must be able to reach" in block
+        # An empty list is "absent", like the other four.
+        assert _build_existing_infra_block(review_envelope(integrations=[])) == ""
+
+    def test_build_existing_infra_block_notes_a_dirty_tree(self) -> None:
+        # 3b (D-SC3-11): one line from ``scan.git.dirty``, after the excerpt.
+        from spec4.agents.deployer import _build_existing_infra_block
+
+        git = {
+            "available": True,
+            "head": "9f3c2ab",
+            "branch": "main",
+            "dirty": True,
+            "untracked_count": 2,
+            "working_tree": {
+                "modified_top_dirs": {"src": 3, "tests": 1},
+                "untracked_top_dirs": {"docs": 2},
+            },
+        }
+        block = _build_existing_infra_block(
+            review_envelope(scan={"git": git}, auth={"model": "jwt"})
+        )
+        note = block.split("```\n\n", 1)[1]
+        assert note == (
+            "Note: the code review's scan found uncommitted changes in the working "
+            "tree (4 modified, 2 untracked). Plan against the committed state, and "
+            "have the developer commit or stash before the first deployment "
+            "step.\n\n"
+        )
+        # Without the counts the note still names the fact.
+        lean = {**git, "working_tree": {}}
+        del lean["untracked_count"]
+        block = _build_existing_infra_block(
+            review_envelope(scan={"git": lean}, auth={"model": "jwt"})
+        )
+        assert "(0 modified)." in block
+        # A clean tree, a scan without git, or no scan: no note.
+        for scan in ({"git": {**git, "dirty": False}}, {"git": "n/a"}, {}, None):
+            block = _build_existing_infra_block(
+                review_envelope(scan=scan, auth={"model": "jwt"})
+            )
+            assert "uncommitted" not in block
+            assert "jwt" in block  # paired positive: the excerpt is still there
+        # The note never appears without an excerpt to follow.
+        assert _build_existing_infra_block(review_envelope(scan={"git": git})) == ""
 
     def test_fresh_start_seed_includes_infra_excerpt_when_present(self) -> None:
         session = make_session(
