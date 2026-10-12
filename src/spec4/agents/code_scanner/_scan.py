@@ -181,6 +181,8 @@ class SampleRecord:
     shape of the tree section. ``sampled`` holds bodies, whole or headed;
     ``signatures_shown`` the files shown as signature blocks only;
     ``evidence_tokens`` the ``approx_tokens`` of the whole block (D-SC2-13).
+    ``external_imports_shown`` and ``prior_round_shown`` say whether the two
+    2.6.0 tier-A blocks rendered from the scan were present (D-SC3-6/8).
     """
 
     tree_listed: int = 0
@@ -195,6 +197,8 @@ class SampleRecord:
     signatures_shown: list[str] = dataclasses.field(default_factory=list)
     source_files_total: int = 0
     evidence_tokens: int = 0
+    external_imports_shown: bool = False
+    prior_round_shown: bool = False
 
 
 def _rel(root: pathlib.Path, path: pathlib.Path) -> str:

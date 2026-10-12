@@ -186,10 +186,35 @@ class TestCoverage:
     ) -> None:
         _make_project(tmp_path)
         scan = _scan(tmp_path)
-        for key in ("signatures_shown", "conventions", "tree", "evidence_tokens"):
+        for key in (
+            "signatures_shown",
+            "conventions",
+            "tree",
+            "evidence_tokens",
+            "external_imports_shown",
+            "prior_round_shown",
+        ):
             del scan["coverage"][key]
         del scan["module_graph"]["reach"]
+        del scan["module_graph"]["external_imports"]
         assert validate_code_review(review_envelope(scan=scan)) == []
+
+    def test_coverage_carries_the_3a_flags_from_the_record(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # 2.6.0 (D-SC3-6/8): the project has no external import and no prior
+        # round, so both read False from the seed; set, they are carried.
+        _make_project(tmp_path)
+        cov = _scan(tmp_path)["coverage"]
+        assert cov["external_imports_shown"] is False
+        assert cov["prior_round_shown"] is False
+        record = SampleRecord(external_imports_shown=True, prior_round_shown=True)
+        cov = _collect.coverage_block(record)
+        assert cov["external_imports_shown"] is True
+        assert cov["prior_round_shown"] is True
+        assert validate_code_review(review_envelope(scan={"coverage": cov})) == []
+        cov["external_imports_shown"] = "yes"
+        assert validate_code_review(review_envelope(scan={"coverage": cov})) != []
 
     def test_empty_directory_leaves_the_record_blank(
         self, tmp_path: pathlib.Path

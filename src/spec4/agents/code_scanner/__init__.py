@@ -106,15 +106,45 @@ def wrap_review(
     ``schema_version`` and ``scan`` are code-owned (D-EV2/D-EV4): the model
     never emits either. ``scan`` is what ``collect_scan`` measured at walk
     time, attached here after validation, so nothing the model wrote is
-    mistaken for a computed fact.
+    mistaken for a computed fact. One field inside ``review`` is code-owned
+    too: ``load_bearing[].consumers`` (D-SC3-4), filled from the graph here
+    and never from what the model emitted.
     """
+    scan = {} if scan is None else scan
     return {
         "code_review": {
             "schema_version": CODE_REVIEW_SCHEMA_VERSION,
-            "scan": {} if scan is None else scan,
-            "review": block["review"],
+            "scan": scan,
+            "review": _with_consumers(block["review"], scan),
         }
     }
+
+
+def _with_consumers(review: dict[str, Any], scan: dict[str, Any]) -> dict[str, Any]:
+    """``review`` with every ``load_bearing[].consumers`` set from ``scan``.
+
+    The graph's ``load_bearing_candidates`` name each candidate's importers
+    (1c); a ``load_bearing`` entry whose ``module`` is a candidate gets that
+    list, any other gets ``[]``. A ``consumers`` value the model emitted —
+    an update-mode re-emission carries the prior one forward — is replaced,
+    so the stored list is always the measured one. Other entries and a
+    review without ``load_bearing`` pass through untouched.
+    """
+    entries = review.get("load_bearing")
+    if not isinstance(entries, list):
+        return review
+    graph = scan.get("module_graph") or {}
+    by_module = {
+        c["path"]: list(c["consumers"])
+        for c in graph.get("load_bearing_candidates") or []
+    }
+    joined = [
+        {**e, "consumers": by_module.get(e.get("module"), [])}
+        if isinstance(e, dict)
+        else e
+        for e in entries
+    ]
+    return {**review, "load_bearing": joined}
 
 
 def _prior_review_for_seed(prior: dict[str, Any]) -> dict[str, Any]:

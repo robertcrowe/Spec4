@@ -223,3 +223,53 @@ class TestSampledEvidenceLines:
         assert _scan_reach_line({"basis": "none", "entrypoints": []}) is None
         # Paired positive: a known basis does render.
         assert _scan_reach_line({"basis": "entrypoints", "reached": 0}) is not None
+
+
+class TestStep3Sections:
+    def test_load_bearing_implemented_and_integrations_render(self) -> None:
+        # 2.6.0 (step 3a, D-SC3-12): Load-Bearing Modules and Implemented
+        # after Architecture, Integrations after AI Capabilities. The 2a
+        # fixture with the three arrays added; the 2a golden is unchanged.
+        assert_golden(
+            "render_review_with_step3.md",
+            format_review_as_text(load_fixture("review_with_step3.json")),
+        )
+
+    def test_sections_sit_where_the_decision_placed_them(self) -> None:
+        text = format_review_as_text(load_fixture("review_with_step3.json"))
+        order = [
+            "**Architecture:**",
+            "**Load-Bearing Modules:**",
+            "**Implemented:**",
+            "**Languages & Frameworks:**",
+            "**AI Capabilities:**",
+            "**Integrations:**",
+            "**UI:**",
+        ]
+        positions = [text.index(h) for h in order]
+        assert positions == sorted(positions)
+
+    def test_absent_or_empty_arrays_render_nothing(self) -> None:
+        for value in (None, [], "n/a"):
+            fields = {
+                "load_bearing": value,
+                "implemented": value,
+                "integrations": value,
+            }
+            fields = {k: v for k, v in fields.items() if v is not None}
+            text = format_review_as_text(review_envelope(**fields))
+            for heading in ("Load-Bearing", "Implemented:", "Integrations:"):
+                assert heading not in text
+
+    def test_odd_entries_fall_back_to_their_text(self) -> None:
+        text = format_review_as_text(
+            review_envelope(
+                load_bearing=["raw", {"module": "m.py", "contract": "x"}],
+                implemented=["raw", {"id": "only_id"}],
+                integrations=["raw", {"name": "Thing"}],
+            )
+        )
+        assert text.count("- raw") == 3
+        assert "- `m.py`\n" in text  # no symbol, no consumers, no role, no contract
+        assert "- only_id\n" in text
+        assert "- Thing\n" in text

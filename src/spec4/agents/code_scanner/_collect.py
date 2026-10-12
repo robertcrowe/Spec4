@@ -180,7 +180,8 @@ def coverage_block(record: SampleRecord) -> dict[str, Any]:
 
     2.4.0 (D-SC2-13) adds ``signatures_shown``, ``conventions``, ``tree`` and
     ``evidence_tokens``; ``tree_listed``/``tree_truncated`` keep their names
-    and now count the tree's source node list.
+    and now count the tree's source node list. 2.6.0 adds the two flags for
+    the blocks rendered from the scan itself (D-SC3-6/8).
     """
     return {
         "tree_listed": record.tree_listed,
@@ -200,6 +201,8 @@ def coverage_block(record: SampleRecord) -> dict[str, Any]:
             "truncated": record.tree_truncated,
         },
         "evidence_tokens": record.evidence_tokens,
+        "external_imports_shown": record.external_imports_shown,
+        "prior_round_shown": record.prior_round_shown,
     }
 
 

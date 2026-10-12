@@ -27,6 +27,11 @@ packages the manifests declare — summarised as a count and the shallowest
 directories nothing reaches. ``analyse`` returns the reached set itself
 beside the block, for the sampler to rank by; the set is not stored.
 
+Step 3a adds ``module_graph.external_imports`` (D-SC3-6): for every package
+``unresolved`` counts, the modules that import it, up to ``_MAX_IMPORTERS``
+each — the evidence an ``integrations[].client_module`` cites, from the same
+import walk.
+
 A file Python cannot parse contributes no edges and no signatures and never
 fails the scan.
 """
@@ -73,6 +78,7 @@ _MAX_SYMBOLS_PER_FILE = 40
 _MAX_SIGNATURES_BYTES = 32_000
 _MAX_SIGNATURE_CHARS = 200
 _MAX_SOURCE_BYTES = 2_000_000
+_MAX_IMPORTERS = 10
 _PRIVATE_PREFIX = "_"
 _ROOT_DIR = "."
 _BASIS_ENTRYPOINTS = "entrypoints"
@@ -328,9 +334,23 @@ def _is_stdlib(path: pathlib.Path, name: str) -> bool:
     return path.suffix == ".py" and name in sys.stdlib_module_names
 
 
-def _edges(index: _Index) -> tuple[set[tuple[str, str]], collections.Counter[str]]:
+@dataclasses.dataclass(frozen=True)
+class _Edges:
+    """One pass over the nodes' imports: the edges, and what resolved to nothing.
+
+    ``unresolved`` counts each external top-level name once per import;
+    ``importers`` names the modules that import it, in path order (D-SC3-6).
+    """
+
+    edges: set[tuple[str, str]]
+    unresolved: collections.Counter[str]
+    importers: dict[str, list[str]]
+
+
+def _edges(index: _Index) -> _Edges:
     edges: set[tuple[str, str]] = set()
     unresolved: collections.Counter[str] = collections.Counter()
+    importers: dict[str, list[str]] = collections.defaultdict(list)
     for path in index.nodes:
         if path.suffix not in _LANGUAGE_BY_SUFFIX:
             continue
@@ -344,7 +364,24 @@ def _edges(index: _Index) -> tuple[set[tuple[str, str]], collections.Counter[str
                     edges.add((src, target))
             elif external and not _is_stdlib(path, external):
                 unresolved[external] += 1
-    return edges, unresolved
+                if src not in importers[external]:
+                    importers[external].append(src)
+    return _Edges(edges, unresolved, dict(importers))
+
+
+def _external_imports(
+    unresolved: list[tuple[str, int]], importers: dict[str, list[str]]
+) -> dict[str, list[str]]:
+    """``{package: [importing modules]}`` for the stored ``unresolved`` packages.
+
+    The same packages ``unresolved`` keeps, in its order (most imported
+    first), each with up to ``_MAX_IMPORTERS`` importers sorted by path —
+    enough to name an integration's client module (D-SC3-6), bounded so a
+    framework imported everywhere does not list the whole tree.
+    """
+    return {
+        name: sorted(importers.get(name, []))[:_MAX_IMPORTERS] for name, _ in unresolved
+    }
 
 
 @dataclasses.dataclass(frozen=True)
@@ -371,10 +408,10 @@ def module_graph_block(
 def analyse(root: pathlib.Path, all_files: list[pathlib.Path]) -> GraphAnalysis:
     """One parse of the tree: the ``module_graph`` block and its reached set."""
     index = _Index(root, graph_nodes(root, all_files))
-    edges, unresolved = _edges(index)
-    block = _graph_block(index, edges, unresolved)
+    found = _edges(index)
+    block = _graph_block(index, found)
     basis, labels, roots = _reach_roots(index)
-    reached = _closure(roots, edges)
+    reached = _closure(roots, found.edges)
     block["reach"] = {
         "basis": basis,
         "entrypoints": labels,
@@ -386,11 +423,8 @@ def analyse(root: pathlib.Path, all_files: list[pathlib.Path]) -> GraphAnalysis:
     return GraphAnalysis(block, frozenset(reached))
 
 
-def _graph_block(
-    index: _Index,
-    edges: set[tuple[str, str]],
-    unresolved: collections.Counter[str],
-) -> dict[str, Any]:
+def _graph_block(index: _Index, found: _Edges) -> dict[str, Any]:
+    edges, unresolved = found.edges, found.unresolved
     fan_in = collections.Counter(dst for _, dst in edges)
     fan_out = collections.Counter(src for src, _ in edges)
     consumers: dict[str, list[str]] = collections.defaultdict(list)
@@ -418,6 +452,9 @@ def _graph_block(
         ],
         "unresolved": dict(top_unresolved[:_MAX_UNRESOLVED]),
         "unresolved_truncated": len(top_unresolved) > _MAX_UNRESOLVED,
+        "external_imports": _external_imports(
+            top_unresolved[:_MAX_UNRESOLVED], found.importers
+        ),
     }
 
 

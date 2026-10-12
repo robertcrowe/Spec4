@@ -346,6 +346,47 @@ class TestGraphShape:
         assert graph["unresolved_truncated"] is True
         assert graph["unresolved"]["thirdparty000"] == 2
 
+    def test_external_imports_name_each_package_s_importers(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # 2.6.0 (D-SC3-6): the packages ``unresolved`` counts, in its order,
+        # each with the modules importing it sorted by path, once each — a
+        # module importing a package twice is one importer, and an import of
+        # the stdlib or of a sibling is no package at all.
+        _write(tmp_path, "src/b.py", "import os\nimport requests\nimport requests.x\n")
+        _write(
+            tmp_path, "src/a.py", "import requests\nimport boto3\nfrom src import b\n"
+        )
+        graph = _graph_of(tmp_path)
+        assert graph["unresolved"] == {"requests": 3, "boto3": 1}
+        assert graph["external_imports"] == {
+            "requests": ["src/a.py", "src/b.py"],
+            "boto3": ["src/a.py"],
+        }
+        assert list(graph["external_imports"]) == list(graph["unresolved"])
+        assert "os" not in graph["external_imports"]
+        assert "src" not in graph["external_imports"]
+        # Sorted by path whatever order the files arrive in.
+        files = sorted(collect_files(tmp_path), reverse=True)
+        graph = _graph.module_graph_block(tmp_path, files)
+        assert graph["external_imports"]["requests"] == ["src/a.py", "src/b.py"]
+
+    def test_external_imports_are_capped_per_package_and_to_the_unresolved_cap(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        for i in range(_graph._MAX_IMPORTERS + 3):
+            _write(tmp_path, f"m{i:02d}.py", "import widely\n")
+        body = "".join(f"import thirdparty{i:03d}\n" for i in range(60))
+        _write(tmp_path, "deps.py", body)
+        graph = _graph_of(tmp_path)
+        assert graph["unresolved"]["widely"] == _graph._MAX_IMPORTERS + 3
+        assert graph["external_imports"]["widely"] == [
+            f"m{i:02d}.py" for i in range(_graph._MAX_IMPORTERS)
+        ]
+        assert len(graph["external_imports"]) == _graph._MAX_UNRESOLVED
+        assert set(graph["external_imports"]) == set(graph["unresolved"])
+        assert validate_code_review(review_envelope(scan={"module_graph": graph})) == []
+
     def test_unreadable_or_oversized_source_contributes_nothing(
         self, tmp_path: pathlib.Path
     ) -> None:
@@ -689,6 +730,7 @@ class TestAssembly:
                 "reached": 0,
                 "unreached_dirs": [],
             },
+            "external_imports": {},
         }
         assert scan["signatures"] == {"files": {}, "truncated": False}
         assert validate_code_review(review_envelope(scan=scan)) == []

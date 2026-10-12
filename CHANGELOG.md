@@ -10,6 +10,48 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.6.0] — unreleased
+
+Step 3a of the CodeScanner v2 plan (D-SC3-1…10, 12): the review gains the
+architecture, contract and integration judgments the plan's step 3 asks for,
+and the seed gains the evidence they are answered from. The consumer tuples
+are step 3b (2.7.0), after one real scan shows what the arrays contain.
+
+### Added
+- **`review.load_bearing[]`** — `{module, symbol?, role, contract: {inputs,
+  outputs, invariants, side_effects}, consumers[], source | inferred_from}`,
+  one entry per load-bearing candidate the seed names. `consumers` is
+  code-owned (D-SC3-4): `wrap_review` fills it from
+  `scan.module_graph.load_bearing_candidates` by module path and replaces
+  whatever the model emitted, so the stored list is always the measured one;
+  the emitted-block schema permits the key so an update-mode re-emission
+  that carries it forward does not trip a retry.
+- **`review.implemented[]`** — `{id, name, description, status, paths[],
+  prior_feature_ids[], source | inferred_from}`; `status` closed
+  (`complete | partial | stub | scaffolded_only`), `paths` required and
+  non-empty. Named `implemented`, not the plan's `capabilities`, because
+  that word already means AI-catalog ids downstream (D-SC3-2);
+  `prior_feature_ids` are product-feature ids and are not validated at
+  commit.
+- **`review.integrations[]`** — `{name, kind, client_module,
+  config_env_vars[], purpose, source | inferred_from}`; `kind` closed over
+  StackAdvisor's vocabulary plus `llm_provider`, `web_search`, `database`,
+  `cache`, `queue`, `mcp_server`; env-var names only (D-SC3-5).
+- **`scan.module_graph.external_imports`** — `{package: [importing
+  modules]}` for every package `unresolved` counts, up to 10 modules each
+  (D-SC3-6). Optional in the schema, so a 2.1–2.5 scan still validates.
+- **Two tier-A seed blocks** rendered from the scan (`code_scanner._sample`):
+  "External Packages and Their Importers" (≤ 6 modules per package) and
+  "Prior Round" (the prior round's product-feature ids with the phases that
+  declared them, ≤ 50), plus the candidate list at the head of Key Module
+  Signatures (D-SC3-8/9). `coverage.external_imports_shown` and
+  `coverage.prior_round_shown` record them.
+- **Prompt**: the three arrays in the consumers paragraph, draft section
+  names, the schema example and the field rules; the retry message names
+  the two new enums. **Renderer**: Load-Bearing Modules and Implemented
+  after Architecture, Integrations after AI Capabilities; a review without
+  the arrays renders as before.
+
 ## [2.5.0] — unreleased
 
 Step 2b of the CodeScanner v2 plan (D-SC2-6): the seed's body tier adds the

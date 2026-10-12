@@ -40,7 +40,8 @@ import jsonschema
 # against. A review written under an older value is not read as current: the
 # /agents page gates the round until CodeScanner re-scans (D-SV1). Bumped only
 # when the artifact's shape changes in a way downstream consumers must follow.
-# 2: the ``{scan, review}`` envelope (CodeScanner v2 step 1a).
+# 2: the ``{scan, review}`` envelope (CodeScanner v2 step 1a). Step 3's three
+# ``review`` arrays (2.6.0) are optional additions and do not bump it.
 CODE_REVIEW_SCHEMA_VERSION = 2
 
 
@@ -262,9 +263,113 @@ _AI_CAPABILITIES_SCHEMA: dict[str, Any] = {
 }
 
 
+# Closed enum — load-bearing for Brainstormer (a ``complete`` capability is
+# never proposed as new) and step 4's reconciliation verdicts (D-SC3-7).
+_IMPLEMENTED_STATUSES: list[str] = [
+    "complete",
+    "partial",
+    "stub",
+    "scaffolded_only",
+]
+
+
+# Closed enum — StackAdvisor's open ``integrations.kind`` vocabulary plus the
+# four kinds CodeScanner sees that StackAdvisor files elsewhere (``llm_provider``
+# in its ``providers``; ``database``/``cache``/``queue`` in its ``persistence``),
+# so a consumer can route each entry by ``kind`` alone (D-SC3-5).
+_INTEGRATION_KINDS: list[str] = [
+    "llm_provider",
+    "web_search",
+    "database",
+    "cache",
+    "queue",
+    "object_storage",
+    "identity_provider",
+    "email_service",
+    "payment",
+    "mcp_server",
+    "third_party_api",
+    "other",
+]
+
+
+def _str_list() -> dict[str, Any]:
+    return {"type": "array", "items": {"type": "string"}}
+
+
+# Step 3 (D-SC3-3): a module the rest of the code depends on, with the
+# contract its consumers rely on. ``consumers`` is code-owned — filled at
+# ``wrap_review`` from ``scan.module_graph`` by ``module`` path (D-SC3-4) — and
+# is permitted here so an update-mode re-emission that carries the prior value
+# forward does not trip a retry; commit always overwrites it.
+_LOAD_BEARING_ITEM: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["module", "role", "contract"],
+    "properties": {
+        "module": {"type": "string"},
+        "symbol": {"type": "string"},
+        "role": {"type": "string"},
+        "contract": {
+            "type": "object",
+            "additionalProperties": False,
+            "minProperties": 1,
+            "properties": {
+                "inputs": _str_list(),
+                "outputs": _str_list(),
+                "invariants": _str_list(),
+                "side_effects": _str_list(),
+            },
+        },
+        "consumers": _str_list(),
+        **_PROVENANCE_FIELDS,
+    },
+}
+
+
+# Step 3 (D-SC3-7): what the code already does, product-level, with how far
+# along it is. ``prior_feature_ids`` name product-feature ids from the prior
+# round (vision / feature-spec id space — never AI-catalog ids, which is why
+# this array is ``implemented`` and not ``capabilities``, D-SC3-2); they are
+# not validated at commit, so step 4 can judge an id outside the list.
+_IMPLEMENTED_ITEM: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["id", "name", "status", "paths"],
+    "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "description": {"type": "string"},
+        "status": {"type": "string", "enum": _IMPLEMENTED_STATUSES},
+        "paths": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "prior_feature_ids": _str_list(),
+        **_PROVENANCE_FIELDS,
+    },
+}
+
+
+# Step 3 (D-SC3-5): an index of the external services the code talks to,
+# cross-referencing ``ai_capabilities`` / ``persistence`` / ``env_vars`` by
+# name. ``config_env_vars`` is NAME-ONLY, as ``env_vars`` is.
+_INTEGRATION_ITEM: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["name", "kind"],
+    "properties": {
+        "name": {"type": "string"},
+        "kind": {"type": "string", "enum": _INTEGRATION_KINDS},
+        "client_module": {"type": "string"},
+        "config_env_vars": _str_list(),
+        "purpose": {"type": "string"},
+        **_PROVENANCE_FIELDS,
+    },
+}
+
+
 # The ``review`` field set — the v1 property vocabulary, unchanged in shape.
 # It is the LLM's judgment about the codebase; every entry carries its own
 # ``source``/``inferred_from`` provenance. Shared by the two schemas below.
+# Step 3 (2.6.0) adds the three optional arrays at the end.
 _REVIEW_PROPERTIES: dict[str, Any] = {
     "is_software_project": {"type": "boolean"},
     # Empty-project branch
@@ -518,6 +623,11 @@ _REVIEW_PROPERTIES: dict[str, Any] = {
             },
         },
     },
+    # Step 3 (D-SC3-1): architecture, contracts and integrations. Optional —
+    # a review without them still validates; present, each item is closed.
+    "load_bearing": {"type": "array", "items": _LOAD_BEARING_ITEM},
+    "implemented": {"type": "array", "items": _IMPLEMENTED_ITEM},
+    "integrations": {"type": "array", "items": _INTEGRATION_ITEM},
 }
 
 
@@ -540,10 +650,6 @@ REVIEW_BLOCK_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
     "properties": {"review": _REVIEW_OBJECT},
 }
-
-
-def _str_list() -> dict[str, Any]:
-    return {"type": "array", "items": {"type": "string"}}
 
 
 def _int_map() -> dict[str, Any]:
@@ -633,6 +739,10 @@ _SCAN_COVERAGE = _closed(
             },
         ),
         "evidence_tokens": _NON_NEGATIVE,
+        # 2.6.0 (D-SC3-6/8): whether the seed carried the external-import
+        # index and the prior round's feature ids. Optional for older scans.
+        "external_imports_shown": {"type": "boolean"},
+        "prior_round_shown": {"type": "boolean"},
     },
 )
 
@@ -752,6 +862,9 @@ _SCAN_MODULE_GRAPH = _closed(
                 "unreached_dirs": _str_list(),
             },
         ),
+        # 2.6.0 (D-SC3-6): the modules importing each external package —
+        # ``unresolved`` counts them, this names them. Optional for older scans.
+        "external_imports": {"type": "object", "additionalProperties": _str_list()},
     },
 )
 
@@ -1136,6 +1249,13 @@ def format_validation_errors_for_retry(errors: list[str], limit: int = 15) -> st
         "tui, none.\n"
         "- `ai_capabilities[].kind` must be one of: llm_api, embedding, "
         "vector_store, ml_model, rag, agent_framework, other.\n"
+        "- `implemented[].status` must be one of: complete, partial, stub, "
+        "scaffolded_only; every entry needs at least one path.\n"
+        "- `integrations[].kind` must be one of: llm_provider, web_search, "
+        "database, cache, queue, object_storage, identity_provider, "
+        "email_service, payment, mcp_server, third_party_api, other.\n"
+        "- `load_bearing[].contract` holds only `inputs`, `outputs`, "
+        "`invariants`, `side_effects` (string lists); omit `consumers`.\n"
         "- Do not add custom sub-keys anywhere in the schema; route "
         "extras to `notes.other_notes`.\n"
         "- Each canonical key takes a single invocation, never a "

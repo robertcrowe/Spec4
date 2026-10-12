@@ -1748,3 +1748,259 @@ class TestCodeScannerUnparseableArtifact:
         with mock_litellm_stream("code_review: not really json") as mock_llm:
             collect(code_scanner.run("looks good", session, session["llm_config"]))
         assert mock_llm.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# step 3a: load_bearing / implemented / integrations (D-SC3-1…5, 7, 10)
+# ---------------------------------------------------------------------------
+
+
+def _load_bearing(**over: Any) -> dict[str, Any]:
+    return {
+        "module": "src/app/llm.py",
+        "symbol": "stream_turn",
+        "role": "every LLM call",
+        "contract": {"inputs": ["messages"], "side_effects": ["network"]},
+        "inferred_from": "src/app/llm.py",
+        **over,
+    }
+
+
+def _implemented(**over: Any) -> dict[str, Any]:
+    return {
+        "id": "code_review",
+        "name": "Code review",
+        "description": "Drafts a review",
+        "status": "complete",
+        "paths": ["src/app/scanner/"],
+        "prior_feature_ids": ["round_tree"],
+        "inferred_from": "src/app/scanner/__init__.py",
+        **over,
+    }
+
+
+def _integration(**over: Any) -> dict[str, Any]:
+    return {
+        "name": "Tavily",
+        "kind": "web_search",
+        "client_module": "src/app/websearch.py",
+        "config_env_vars": ["TAVILY_API_KEY"],
+        "purpose": "look-ups during a scan",
+        "inferred_from": "src/app/websearch.py",
+        **over,
+    }
+
+
+class TestStep3Schema:
+    def test_the_three_arrays_validate_in_both_schemas(self) -> None:
+        from spec4.agents._code_review_schema import (
+            validate_code_review,
+            validate_review_block,
+        )
+        from tests._review_helpers import review_block
+
+        fields = {
+            "load_bearing": [_load_bearing(), _load_bearing(module="src/app/c.py")],
+            "implemented": [_implemented()],
+            "integrations": [_integration()],
+        }
+        assert validate_review_block(review_block(**fields)) == []
+        assert validate_code_review(review_envelope(**fields)) == []
+        # Minimal items: the required keys alone.
+        lean = {
+            "load_bearing": [
+                {"module": "a.py", "role": "r", "contract": {"outputs": ["x"]}}
+            ],
+            "implemented": [
+                {"id": "a", "name": "A", "status": "stub", "paths": ["a.py"]}
+            ],
+            "integrations": [{"name": "Redis", "kind": "cache"}],
+        }
+        assert validate_review_block(review_block(**lean)) == []
+
+    def test_emitted_block_permits_consumers_so_an_update_does_not_retry(
+        self,
+    ) -> None:
+        # D-SC3-4: the stored value is code-owned, but an update-mode
+        # re-emission carries the prior one forward; the schema lets it
+        # through and ``wrap_review`` replaces it.
+        from spec4.agents._code_review_schema import validate_review_block
+        from tests._review_helpers import review_block
+
+        block = review_block(load_bearing=[_load_bearing(consumers=["x.py"])])
+        assert validate_review_block(block) == []
+
+    @pytest.mark.parametrize(
+        "field, item, needle",
+        [
+            ("load_bearing", _load_bearing(contract={}), "contract"),
+            ("load_bearing", _load_bearing(contract={"inputs": "x"}), "inputs"),
+            ("load_bearing", _load_bearing(contract={"callers": ["x"]}), "callers"),
+            ("load_bearing", _load_bearing(evidence="x"), "evidence"),
+            ("implemented", _implemented(status="done"), "status"),
+            ("implemented", _implemented(paths=[]), "paths"),
+            ("implemented", _implemented(evidence="x"), "evidence"),
+            ("integrations", _integration(kind="search"), "kind"),
+            ("integrations", _integration(config_env_vars=[{"name": "K"}]), "config"),
+            ("integrations", _integration(value="secret"), "value"),
+        ],
+    )
+    def test_closed_shapes_and_enums_reject_drift(
+        self, field: str, item: dict[str, Any], needle: str
+    ) -> None:
+        from spec4.agents._code_review_schema import validate_review_block
+        from tests._review_helpers import review_block
+
+        errors = validate_review_block(review_block(**{field: [item]}))
+        assert errors
+        assert any(needle in e for e in errors)
+
+    @pytest.mark.parametrize(
+        "field, item, missing",
+        [
+            ("load_bearing", {"role": "r", "contract": {"inputs": ["x"]}}, "module"),
+            ("load_bearing", {"module": "a.py", "contract": {"inputs": ["x"]}}, "role"),
+            ("load_bearing", {"module": "a.py", "role": "r"}, "contract"),
+            ("implemented", {"name": "A", "status": "stub", "paths": ["a"]}, "id"),
+            ("implemented", {"id": "a", "name": "A", "status": "stub"}, "paths"),
+            ("integrations", {"name": "Redis"}, "kind"),
+            ("integrations", {"kind": "cache"}, "name"),
+        ],
+    )
+    def test_required_keys(
+        self, field: str, item: dict[str, Any], missing: str
+    ) -> None:
+        from spec4.agents._code_review_schema import validate_review_block
+        from tests._review_helpers import review_block
+
+        errors = validate_review_block(review_block(**{field: [item]}))
+        assert any(f"'{missing}' is a required property" in e for e in errors)
+
+    def test_retry_message_names_the_new_enums(self) -> None:
+        from spec4.agents._code_review_schema import (
+            _IMPLEMENTED_STATUSES,
+            _INTEGRATION_KINDS,
+            format_validation_errors_for_retry,
+        )
+
+        msg = format_validation_errors_for_retry(["x"])
+        for status in _IMPLEMENTED_STATUSES:
+            assert status in msg
+        for kind in _INTEGRATION_KINDS:
+            assert kind in msg
+        assert "omit `consumers`" in msg
+
+    def test_system_prompt_documents_the_three_arrays(self) -> None:
+        from spec4.agents.code_scanner import SYSTEM_PROMPT
+
+        for key in ("load_bearing", "implemented", "integrations"):
+            assert f'"{key}": [' in SYSTEM_PROMPT  # the JSON exemplar
+            assert f"**`{key}`**" in SYSTEM_PROMPT  # the field rule
+        for name in (
+            "Load-Bearing Modules",
+            "Implemented Capabilities",
+            "Integrations",
+        ):
+            assert name in SYSTEM_PROMPT  # the draft section list
+        assert "scaffolded_only" in SYSTEM_PROMPT
+        assert "mcp_server" in SYSTEM_PROMPT
+        assert "Do NOT emit `consumers`" in SYSTEM_PROMPT
+        assert "Load-bearing candidates" in SYSTEM_PROMPT
+        assert "Prior Round" in SYSTEM_PROMPT
+        assert "External Packages and Their Importers" in SYSTEM_PROMPT
+
+
+class TestWrapReviewConsumers:
+    _scan = {
+        "module_graph": {
+            "languages": ["python"],
+            "nodes": 4,
+            "edges": 4,
+            "fan_in": {"src/app/llm.py": 2, "src/app/c.py": 2},
+            "fan_out": {"a.py": 2, "b.py": 1, "d.py": 1},
+            "load_bearing_candidates": [
+                {"path": "src/app/llm.py", "fan_in": 2, "consumers": ["a.py", "b.py"]},
+                {"path": "src/app/c.py", "fan_in": 2, "consumers": ["a.py", "d.py"]},
+            ],
+            "unresolved": {},
+            "unresolved_truncated": False,
+        }
+    }
+
+    def test_consumers_are_filled_from_the_graph_by_module(self) -> None:
+        from spec4.agents.code_scanner import wrap_review
+
+        block = {
+            "review": {
+                "is_software_project": True,
+                "load_bearing": [
+                    _load_bearing(),
+                    _load_bearing(module="src/app/other.py"),
+                ],
+            }
+        }
+        out = wrap_review(block, self._scan)["code_review"]["review"]["load_bearing"]
+        assert out[0]["consumers"] == ["a.py", "b.py"]
+        assert out[1]["consumers"] == []
+        assert out[0]["symbol"] == "stream_turn"  # the rest passes through
+        # The block itself is not mutated.
+        assert "consumers" not in block["review"]["load_bearing"][0]
+
+    def test_an_emitted_consumers_value_is_replaced_not_kept(self) -> None:
+        from spec4.agents.code_scanner import wrap_review
+
+        block = {
+            "review": {
+                "is_software_project": True,
+                "load_bearing": [
+                    _load_bearing(consumers=["stale.py"]),
+                    _load_bearing(module="src/app/other.py", consumers=["x.py"]),
+                ],
+            }
+        }
+        out = wrap_review(block, self._scan)["code_review"]["review"]["load_bearing"]
+        assert out[0]["consumers"] == ["a.py", "b.py"]
+        assert out[1]["consumers"] == []
+
+    def test_without_a_graph_every_entry_gets_an_empty_list(self) -> None:
+        from spec4.agents.code_scanner import wrap_review
+
+        block = {
+            "review": {"is_software_project": True, "load_bearing": [_load_bearing()]}
+        }
+        for scan in (None, {}, {"module_graph": {}}):
+            out = wrap_review(block, scan)["code_review"]["review"]
+            assert out["load_bearing"][0]["consumers"] == []
+
+    def test_a_review_without_load_bearing_passes_through_unchanged(self) -> None:
+        from spec4.agents.code_scanner import wrap_review
+
+        block = {"review": {"is_software_project": True, "project_type": "CLI"}}
+        assert (
+            wrap_review(block, self._scan)["code_review"]["review"] == block["review"]
+        )
+        odd = {"review": {"is_software_project": True, "load_bearing": "n/a"}}
+        assert wrap_review(odd, self._scan)["code_review"]["review"] == odd["review"]
+
+    def test_commit_stores_the_joined_list_and_the_envelope_validates(
+        self, tmp_path: Any
+    ) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents.code_scanner import _scanner_commit
+
+        session = make_session(
+            code_scanner_scan=self._scan,
+            code_scanner_messages=[{"role": "assistant", "content": ""}],
+        )
+        block = {
+            "review": {
+                "is_software_project": True,
+                "load_bearing": [_load_bearing(consumers=["stale.py"])],
+            }
+        }
+        _scanner_commit(session, session["code_scanner_messages"], block)
+        stored = session["code_review"]
+        assert validate_code_review(stored) == []
+        lb = stored["code_review"]["review"]["load_bearing"][0]
+        assert lb["consumers"] == ["a.py", "b.py"]
+        assert "consumers: 2" in session["_display_override"]

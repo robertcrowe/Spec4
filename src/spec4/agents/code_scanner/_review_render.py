@@ -318,6 +318,8 @@ def format_review_as_text(review: dict[str, Any]) -> str:
         lines.append(f"**Project Type:** {cr['project_type']}\n")
     _render_self_description(cr.get("existing_self_description"), lines)
     _render_architecture(cr.get("architecture"), lines)
+    _render_load_bearing(cr.get("load_bearing"), lines)
+    _render_implemented(cr.get("implemented"), lines)
     _render_languages_and_frameworks(
         cr.get("languages", []), cr.get("frameworks", []), lines
     )
@@ -335,6 +337,7 @@ def format_review_as_text(review: dict[str, Any]) -> str:
     _render_api_surface(cr.get("api_surface"), lines)
     _render_auth(cr.get("auth"), lines)
     _render_ai_capabilities(cr.get("ai_capabilities"), lines)
+    _render_integrations(cr.get("integrations"), lines)
 
     _render_ui_summary(cr.get("ui_summary"), lines)
 
@@ -705,6 +708,87 @@ def _render_ai_capabilities(ai_caps: Any, lines: list[str]) -> None:
             if b
         ]
         tail = f" — {' · '.join(tail_bits)}" if tail_bits else ""
+        lines.append(f"- {head}{tail}")
+    lines.append("")
+
+
+_CONTRACT_KEYS = ("inputs", "outputs", "invariants", "side_effects")
+
+
+def _render_load_bearing(entries: Any, lines: list[str]) -> None:
+    """The ``load_bearing`` list (step 3): module, role, contract, consumers."""
+    if not isinstance(entries, list) or not entries:
+        return
+    lines.append("**Load-Bearing Modules:**")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            lines.append(f"- {entry}")
+            continue
+        module = entry.get("module", "")
+        symbol = entry.get("symbol", "")
+        head = f"`{module}`" + (f" · `{symbol}`" if symbol else "")
+        consumers = entry.get("consumers")
+        if isinstance(consumers, list):
+            head += f" (consumers: {len(consumers)})"
+        role = entry.get("role", "")
+        lines.append(f"- {head}{f' — {role}' if role else ''}")
+        contract = entry.get("contract")
+        if isinstance(contract, dict):
+            for key in _CONTRACT_KEYS:
+                values = contract.get(key)
+                if isinstance(values, list) and values:
+                    joined = "; ".join(str(v) for v in values)
+                    lines.append(f"  - {key.replace('_', ' ')}: {joined}")
+    lines.append("")
+
+
+def _render_implemented(entries: Any, lines: list[str]) -> None:
+    """The ``implemented`` list (step 3), one line per capability with status."""
+    if not isinstance(entries, list) or not entries:
+        return
+    lines.append("**Implemented:**")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            lines.append(f"- {entry}")
+            continue
+        name = entry.get("name") or entry.get("id", "")
+        status = entry.get("status", "")
+        head = f"{name} [{status}]" if status else name or str(entry)
+        bits: list[str] = []
+        if entry.get("description"):
+            bits.append(str(entry["description"]))
+        paths = entry.get("paths")
+        if isinstance(paths, list) and paths:
+            bits.append(", ".join(f"`{p}`" for p in paths))
+        prior = entry.get("prior_feature_ids")
+        if isinstance(prior, list) and prior:
+            bits.append("prior: " + ", ".join(str(p) for p in prior))
+        tail = f" — {' · '.join(bits)}" if bits else ""
+        lines.append(f"- {head}{tail}")
+    lines.append("")
+
+
+def _render_integrations(entries: Any, lines: list[str]) -> None:
+    """The ``integrations`` index (step 3): name, kind, client module, env names."""
+    if not isinstance(entries, list) or not entries:
+        return
+    lines.append("**Integrations:**")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            lines.append(f"- {entry}")
+            continue
+        name = entry.get("name", "")
+        kind = entry.get("kind", "")
+        head = f"{name} [{kind}]" if name and kind else name or str(entry)
+        bits: list[str] = []
+        if entry.get("purpose"):
+            bits.append(str(entry["purpose"]))
+        if entry.get("client_module"):
+            bits.append(f"`{entry['client_module']}`")
+        env = entry.get("config_env_vars")
+        if isinstance(env, list) and env:
+            bits.append("env: " + ", ".join(str(e) for e in env))
+        tail = f" — {' · '.join(bits)}" if bits else ""
         lines.append(f"- {head}{tail}")
     lines.append("")
 

@@ -601,3 +601,171 @@ class TestEntry:
 
     def test_scan_evidence_defaults_to_the_constant(self) -> None:
         assert ScanEvidence([], {}, frozenset()).budget_tokens == 24_000
+
+
+# ---------------------------------------------------------------------------
+# step 3a: the blocks rendered from the scan (D-SC3-6/8/9)
+# ---------------------------------------------------------------------------
+
+
+def _with_prior(evidence: ScanEvidence, prior: dict[str, Any] | None) -> ScanEvidence:
+    """``evidence`` with ``scan.prior_round`` set (or removed when ``None``)."""
+    scan = {k: v for k, v in evidence.scan.items() if k != "prior_round"}
+    if prior is not None:
+        scan["prior_round"] = prior
+    return dataclasses.replace(evidence, scan=scan)
+
+
+def _prior(
+    feature_ids: list[str], phases: list[tuple[int | None, list[str]]]
+) -> dict[str, Any]:
+    return {
+        "version": 2,
+        "implemented": "2026-09-08T06:00:21+00:00",
+        "vision": {"name": "Demo", "feature_ids": feature_ids, "revision_count": 0},
+        "phases": [
+            {"number": n, "features": [{"id": f, "role": None} for f in fs]}
+            for n, fs in phases
+        ],
+    }
+
+
+def _context_prior(
+    root: pathlib.Path, prior: dict[str, Any] | None
+) -> tuple[str, SampleRecord]:
+    files = collect_files(root)
+    evidence = _with_prior(_collect.measure_scan(str(root), files, None), prior)
+    record = SampleRecord()
+    return gather_project_context(str(root), files, record, evidence), record
+
+
+def _candidate_line(text: str) -> tuple[str, list[str]]:
+    """The candidate line under Key Module Signatures and the paths it names."""
+    head = text.split("### Key Module Signatures\n")[1].split("####")[0].strip()
+    listed = [p.strip().strip("`") for p in head.split("): ")[1].split(", ")]
+    return head, listed
+
+
+class TestScanRenderedBlocks:
+    def test_external_imports_block_names_importers_and_sets_the_flag(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        _write(
+            tmp_path, "src/demo/search.py", "import httpx\nimport mcp\n" + _module("s")
+        )
+        _write(tmp_path, "src/demo/llm.py", "import httpx\n" + _module("llm"))
+        text, record = _context(tmp_path)
+        assert record.external_imports_shown is True
+        block = text.split("### External Packages and Their Importers")[1]
+        block = block.split("###")[0]
+        assert "- httpx: `src/demo/llm.py`, `src/demo/search.py`" in block
+        assert "- mcp: `src/demo/search.py`" in block
+        assert block.index("httpx") < block.index("mcp")  # most imported first
+        # Tier A closes with it: after conventions, before the signatures.
+        assert text.index("### External Packages") < text.index(
+            "### Key Module Signatures"
+        )
+
+    def test_external_imports_block_caps_the_modules_shown(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        for i in range(_sample._MAX_IMPORTERS_SHOWN + 2):
+            _write(tmp_path, f"m{i}.py", "import widely\n")
+        text, _ = _context(tmp_path)
+        assert "`m5.py` (+2 more)" in text
+        assert "`m6.py`" not in text
+
+    def test_no_external_imports_means_no_block_and_no_flag(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _write(tmp_path, "main.py", "import os\n" + _module("main"))
+        text, record = _context(tmp_path)
+        assert "External Packages" not in text
+        assert record.external_imports_shown is False
+
+    def test_prior_round_block_lists_ids_with_their_phases(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        prior = _prior(
+            ["round_tree", "agent_rows", "unbuilt"],
+            [(1, ["round_tree"]), (2, ["round_tree", "agent_rows"]), (3, ["extra"])],
+        )
+        text, record = _context_prior(tmp_path, prior)
+        assert record.prior_round_shown is True
+        block = text.split("### Prior Round (v2, implemented 2026-09-08)")[1]
+        block = block.split("###")[0]
+        assert "`implemented[].prior_feature_ids`" in block
+        lines = [ln for ln in block.splitlines() if ln.startswith("- `")]
+        assert lines == [
+            "- `round_tree` — phase 1, 2",
+            "- `agent_rows` — phase 2",
+            "- `unbuilt` — no phase declared it",
+            "- `extra` — phase 3",
+        ]
+        assert text.index("### Prior Round") < text.index("### Key Module Signatures")
+
+    def test_prior_round_block_caps_and_handles_a_phase_without_a_number(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        ids = [f"f{i:02d}" for i in range(_sample._MAX_PRIOR_IDS_SHOWN + 2)]
+        prior = _prior(ids, [(None, ["f00"])])
+        prior["implemented"] = None
+        text, _ = _context_prior(tmp_path, prior)
+        assert "### Prior Round (v2)\n" in text
+        assert "- `f00` — no phase declared it" in text
+        assert f"- `f{_sample._MAX_PRIOR_IDS_SHOWN - 1:02d}`" in text
+        assert f"- `f{_sample._MAX_PRIOR_IDS_SHOWN:02d}`" not in text
+        assert "(+2 more)" in text
+
+    def test_no_prior_round_or_no_ids_means_no_block(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        text, record = _context_prior(tmp_path, None)
+        assert "Prior Round" not in text
+        assert record.prior_round_shown is False
+        text, record = _context_prior(tmp_path, _prior([], [(1, [])]))
+        assert "Prior Round" not in text
+        assert record.prior_round_shown is False
+
+    def test_candidate_line_names_the_shown_candidates_by_fan_in(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        text, record = _context(tmp_path)
+        head, listed = _candidate_line(text)
+        assert head.startswith(
+            "Load-bearing candidates (by fan-in, emit one `load_bearing` entry "
+            "for each): "
+        )
+        # evals/_load.py (fan-in 5, unreached) is a candidate; app.py is an
+        # entrypoint shown in B but not a candidate, so it is not listed.
+        assert listed[0] == "evals/_load.py"
+        assert "src/demo/app.py" not in listed
+        assert "src/demo/app.py" in record.signatures_shown
+        assert set(listed) <= set(record.signatures_shown)
+        assert len(listed) == 4
+
+    def test_candidate_line_lists_only_candidates_that_fit_and_is_budgeted(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        full, _ = _context(tmp_path)
+        tight = approx_tokens(full.split("### Key Module Signatures")[0]) + 180
+        text, record = _context(tmp_path, budget=tight)
+        assert approx_tokens(text) <= tight
+        _, listed = _candidate_line(text)
+        assert all(p in record.signatures_shown for p in listed)
+        assert listed == ["src/demo/models.py", "src/demo/core.py", "src/demo/util.py"]
+        assert "evals/_load.py" not in record.signatures_shown
+
+    def test_no_signatures_means_no_candidate_line(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _write(tmp_path, "main.py", _module("main"))
+        text, _ = _context(tmp_path)
+        assert "Load-bearing candidates" not in text
+        assert "Key Module Signatures" not in text or "####" in text

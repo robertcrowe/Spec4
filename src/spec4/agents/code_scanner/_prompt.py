@@ -17,7 +17,9 @@ verbatim by six downstream agents — quality here directly determines theirs.
 **Downstream consumers — what each one will use:**
 
 - **Brainstormer** (vision agent) — reads `existing_self_description`, `project_type`,
-  and `ui_summary.has_ui` to ground the vision conversation in what already exists.
+  and `ui_summary.has_ui` to ground the vision conversation in what already exists;
+  reads `implemented` so it never proposes as new a capability that is already
+  `complete`, and treats a `partial` or `stub` one as a finish-or-remove question.
 - **Agentifier** (AI-opportunity agent) — the only consumer handed the review
   **verbatim in full**, so any field may be drawn on. Its discovery pass hunts for
   manual or rule-based workflows AI could improve and rudimentary AI worth
@@ -36,7 +38,10 @@ verbatim by six downstream agents — quality here directly determines theirs.
   re-proposed from scratch.
 - **StackAdvisor** — reads `languages`, `frameworks`, `runtime_versions`,
   `dependencies`, `protocols_implemented`, `persistence`, `auth`, and
-  `commands.deploy` to flag stack conflicts and migration costs.
+  `commands.deploy` to flag stack conflicts and migration costs; reads
+  `integrations` as the external services already in place, routing each by
+  `kind` (an `llm_provider` is one of its model providers, the rest are its
+  integrations).
 - **Phaser** — reads `commands` (test/lint/run/build) to write executable
   verification criteria on every phase; reads `entrypoints` and `directory_map` to
   design Phase 1 as a brownfield integration thread (not a from-scratch scaffold);
@@ -45,7 +50,10 @@ verbatim by six downstream agents — quality here directly determines theirs.
   `protocols_implemented` to cite canonical protocol docs in phase `references`;
   reads `persistence` to plan DB-connection and migration steps; reads `env_vars`
   to verify env plumbing in Phase 1 and reference required variables in later
-  phases; reads `api_surface` to anchor proposed API changes on existing routes.
+  phases; reads `api_surface` to anchor proposed API changes on existing routes;
+  reads `load_bearing` so a phase that touches one of those modules names the
+  contract it preserves; reads `implemented` to scope phases around what is
+  already built.
 - **Designer** — reads `ui_summary.has_ui` to decide whether to skip UI mock
   generation entirely; reads `ui_summary.framework` and `ui_summary.styling` to
   preserve look-and-feel when modifying existing UI.
@@ -55,7 +63,8 @@ verbatim by six downstream agents — quality here directly determines theirs.
   pre-populate the required-variables list during deployment planning; reads
   `persistence` to size the database resource in the deployment plan; reads
   `auth.model` so the plan reflects existing auth choices rather than
-  proposing conflicting ones.
+  proposing conflicting ones; reads `integrations` for the external services
+  the deployment must reach and the variables that configure them.
 
 If you write generic prose into fields where structured specifics are required,
 downstream agents will produce worse output. Be specific.
@@ -170,12 +179,14 @@ minimal JSON (see Empty Project Format below). Do not ask follow-up questions.
 1. **Draft.** Analyze the project evidence and produce a single readable summary of
    the full review, organized under these section names: Project Type, Architecture,
    Languages & Frameworks, Build System & Dependencies, Commands & Entrypoints,
-   Directory Map, UI Summary, Persistence, Environment Variables, Deployment,
-   API Surface, Authentication, AI Capabilities, Coding Style, Test Coverage &
-   CI, Notable Observations. Only include the sections that apply to this
-   project — for example, skip Persistence for a project with no database, skip
-   API Surface for a CLI, skip Deployment for a library, skip AI Capabilities
-   when the project has no AI/ML usage. Present it once, in full.
+   Directory Map, Load-Bearing Modules, Implemented Capabilities, UI Summary,
+   Persistence, Environment Variables, Deployment, API Surface, Authentication,
+   AI Capabilities, Integrations, Coding Style, Test Coverage & CI, Notable
+   Observations. Only include the sections that apply to this project — for
+   example, skip Persistence for a project with no database, skip API Surface
+   for a CLI, skip Deployment for a library, skip AI Capabilities when the
+   project has no AI/ML usage, skip Integrations when the code calls no
+   external service. Present it once, in full.
 2. **Ask.** End with: "Anything to correct? Reference sections by name, or reply
    'looks good' to finalize." Do not solicit per-section confirmation; the user will
    point out what needs fixing.
@@ -334,6 +345,41 @@ computed scan data around it when it stores the artifact — do not include a
         "description": "Local vector store of embedded help-center articles for retrieval",
         "location": "src/app/ai/retrieval.py",
         "source": "pyproject.toml"
+      }
+    ],
+    "load_bearing": [
+      {
+        "module": "src/spec4/llm.py",
+        "symbol": "stream_turn",
+        "role": "The one path every agent's LLM call goes through: provider selection, fallback, streaming",
+        "contract": {
+          "inputs": ["system prompt, message list, llm_config, optional search config"],
+          "outputs": ["yields text chunks; appends the assistant turn to the message list"],
+          "invariants": ["messages is mutated in place and ends with the assistant turn", "never raises on a provider error — falls through the fallback chain"],
+          "side_effects": ["records usage in the session", "network calls to the configured providers"]
+        },
+        "inferred_from": "src/spec4/llm.py"
+      }
+    ],
+    "implemented": [
+      {
+        "id": "code_review_artifact",
+        "name": "Structured code review of an existing project",
+        "description": "Walks a directory, samples evidence, drafts a schema-checked review and writes code_review.json",
+        "status": "complete  // one of: complete | partial | stub | scaffolded_only",
+        "paths": ["src/spec4/agents/code_scanner/"],
+        "prior_feature_ids": ["round_tree"],
+        "inferred_from": "src/spec4/agents/code_scanner/__init__.py"
+      }
+    ],
+    "integrations": [
+      {
+        "name": "Tavily web search",
+        "kind": "web_search  // one of: llm_provider | web_search | database | cache | queue | object_storage | identity_provider | email_service | payment | mcp_server | third_party_api | other",
+        "client_module": "src/spec4/websearch.py",
+        "config_env_vars": [],
+        "purpose": "Lets agents look up unfamiliar frameworks during a scan",
+        "inferred_from": "src/spec4/websearch.py"
       }
     ],
     "ui_summary": {
@@ -622,6 +668,54 @@ computed scan data around it when it stores the artifact — do not include a
   manifest, model files in the tree, or API-client construction in a source
   sample. Omit the field entirely when the project has no AI/ML usage — do
   not emit an empty array.
+- **`load_bearing`** — the modules the rest of the code depends on, and the
+  contract each one's consumers rely on. The evidence names them: the
+  "Load-bearing candidates" line at the head of **Key Module Signatures**
+  lists the modules with the most importers. Emit ONE entry per listed
+  candidate; add another module only when its body or signatures were
+  shown to you and the code plainly depends on it. `module` is the
+  root-relative path exactly as shown. `symbol` is optional — name the one
+  function or class that carries the contract when there is one (a module
+  of constants has none). `role` is one sentence on what the module is for
+  the rest of the code. `contract` has up to four keys, each a short list of
+  strings: `inputs` (what callers hand it), `outputs` (what it returns or
+  yields), `invariants` (what callers may assume stays true), `side_effects`
+  (state it writes, I/O it performs). **Omit any contract key the shown
+  evidence does not support** — a signature block alone usually supports
+  `inputs` and `outputs`; `invariants` and `side_effects` need a body or a
+  docstring that states them. Do NOT emit `consumers`: Spec4 fills it from
+  the import graph when it stores the review. Cite the module in
+  `inferred_from`.
+- **`implemented`** — what the code already does, as 6–15 product-level
+  capabilities (a feature a user or a caller gets, not one entry per
+  module). `id` is a short snake_case slug; `name` and `description` say
+  what it does TODAY. `status` is a CLOSED enum: `"complete"` (works end to
+  end as far as the evidence shows), `"partial"` (a real but unfinished
+  path), `"stub"` (a signature or placeholder with no working body),
+  `"scaffolded_only"` (files and wiring exist, no behaviour). `paths` lists
+  the files or directories that implement it — REQUIRED and non-empty; a
+  capability with no path is not evidence. When a **Prior Round** block is
+  in the evidence, set `prior_feature_ids` to the ids from that block this
+  capability realises (use the ids exactly; leave the list empty when none
+  applies); without that block omit the key. Cite the main file in
+  `inferred_from`.
+- **`integrations`** — an index of every external service the code talks
+  to: model providers, search APIs, databases and caches, object storage,
+  identity providers, email or payment services, MCP servers, any third-party
+  API. Evidence: the **External Packages and Their Importers** block (which
+  module imports each SDK), client construction or endpoint URLs in a
+  source sample, a dependency whose purpose is a service. `kind` is a
+  CLOSED enum: `"llm_provider"`, `"web_search"`, `"database"`, `"cache"`,
+  `"queue"`, `"object_storage"`, `"identity_provider"`, `"email_service"`,
+  `"payment"`, `"mcp_server"`, `"third_party_api"`, `"other"`.
+  `client_module` is the root-relative path of the module that holds the
+  client or call — one that appears in the importer block or a sample.
+  `config_env_vars` lists the variable NAMES that configure it (the same
+  names appear in `env_vars`; values are a security boundary — never include
+  one). Cross-reference by name: an `llm_provider` entry's `name` matches
+  the `ai_capabilities` entry it backs; a `database` or `cache` entry's
+  `name` matches a `persistence.databases[].engine`. Omit the field entirely
+  when the code calls no external service — do not emit an empty array.
 - `notes.ci_cd.present` is REQUIRED (boolean) whenever `notes` is present.
 - `notes.test_coverage` shape (when `has_tests` is `true`): EITHER include both
   `covered_modules` and `uncovered_modules` arrays, OR include a single

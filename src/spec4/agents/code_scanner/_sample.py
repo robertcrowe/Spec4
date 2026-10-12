@@ -6,9 +6,15 @@ tiers, spent in order against one token budget (D-SC2-5):
 - **A — fixed.** The file tree (a directory rollup plus every non-test source
   path, D-SC2-3), the README, manifests, CI, deployment signals and the
   Project Conventions (D-SC2-10). Formatted in ``_scan``; not budgeted beyond
-  their own caps.
+  their own caps. Since 2.6.0 two blocks rendered from the scan close the
+  tier: the external packages with the modules that import them (D-SC3-6)
+  and the prior round's feature ids with the phases that declared them
+  (D-SC3-8) — the evidence step 3's ``integrations`` and ``implemented``
+  asks are answered from.
 - **B — signatures.** Every load-bearing candidate and entrypoint candidate as
-  a compact signature block (D-SC2-8), up to ``_TIER_B_TOKENS``.
+  a compact signature block (D-SC2-8), up to ``_TIER_B_TOKENS``, headed by
+  the candidate list itself (D-SC3-9) so the ``load_bearing`` ask names its
+  set.
 - **C — bodies.** Entrypoint candidates, then the top ``_TOP_FAN_IN_BODIES``
   candidates by fan-in, then the files most touched since the round boundary
   (``git.since_last_round.most_touched``, D-SC2-6, step 2b), each whole when
@@ -75,6 +81,8 @@ _ENTRYPOINT_LABEL = "entrypoint candidate"
 _CONFIG_KEY = "scan_context_tokens"
 _UNKNOWN_REACH = "none"
 _ROOT_DIR_LABEL = "."
+_MAX_IMPORTERS_SHOWN = 6
+_MAX_PRIOR_IDS_SHOWN = 50
 
 
 @dataclasses.dataclass(frozen=True)
@@ -174,6 +182,10 @@ class _Sampler:
         self.touches: dict[str, int] = {
             m["path"]: m["commits"] for m in since.get("most_touched") or []
         }
+        self.external_imports: dict[str, list[str]] = (
+            graph.get("external_imports") or {}
+        )
+        self.prior_round: dict[str, Any] = evidence.scan.get("prior_round") or {}
 
     # -- tier A ------------------------------------------------------------
 
@@ -186,8 +198,75 @@ class _Sampler:
         lines.extend(format_ci_block(root, files, record))
         lines.extend(format_deployment_signals(root, files, record))
         lines.extend(format_conventions_block(root, files, record))
+        lines.extend(self._external_imports_block())
+        lines.extend(self._prior_round_block())
         record.source_files_total = sum(1 for f in files if _is_source(f))
         return lines
+
+    def _external_imports_block(self) -> list[str]:
+        """External packages and the modules that import them (D-SC3-6).
+
+        Rendered from ``module_graph.external_imports``, most-imported package
+        first, up to ``_MAX_IMPORTERS_SHOWN`` modules each — the evidence an
+        ``integrations[].client_module`` cites. Empty when the graph has none.
+        """
+        if not self.external_imports:
+            return []
+        self.record.external_imports_shown = True
+        out = ["### External Packages and Their Importers\n"]
+        for package, modules in self.external_imports.items():
+            shown = ", ".join(f"`{m}`" for m in modules[:_MAX_IMPORTERS_SHOWN])
+            more = len(modules) - _MAX_IMPORTERS_SHOWN
+            tail = f" (+{more} more)" if more > 0 else ""
+            out.append(f"- {package}: {shown}{tail}")
+        out.append("")
+        return out
+
+    def _prior_round_block(self) -> list[str]:
+        """The prior round's product-feature ids, with their phases (D-SC3-8).
+
+        Rendered from ``scan.prior_round``: the vision's ids first, then any
+        id a phase declared that the vision did not, each with the numbers of
+        the phases declaring it. The ids are the vocabulary for
+        ``implemented[].prior_feature_ids``. Empty when no round is implemented.
+        """
+        prior = self.prior_round
+        if not prior:
+            return []
+        phases_of: dict[str, list[int]] = {}
+        for phase in prior.get("phases") or []:
+            for feature in phase.get("features") or []:
+                phases_of.setdefault(feature["id"], [])
+                if phase.get("number") is not None:
+                    phases_of[feature["id"]].append(phase["number"])
+        ids = list(
+            dict.fromkeys(
+                [*(prior.get("vision") or {}).get("feature_ids", []), *phases_of]
+            )
+        )
+        if not ids:
+            return []
+        self.record.prior_round_shown = True
+        when = prior.get("implemented")
+        head = f"### Prior Round (v{prior.get('version')}"
+        head += f", implemented {when[:10]})\n" if isinstance(when, str) else ")\n"
+        out = [
+            head,
+            "Product features the last Spec4 round planned, with the phases that "
+            "built them (ids are the vocabulary for `implemented[].prior_feature_ids`):",
+        ]
+        for fid in ids[:_MAX_PRIOR_IDS_SHOWN]:
+            numbers = phases_of.get(fid) or []
+            phases = (
+                " — phase " + ", ".join(str(n) for n in numbers)
+                if numbers
+                else " — no phase declared it"
+            )
+            out.append(f"- `{fid}`{phases}")
+        if len(ids) > _MAX_PRIOR_IDS_SHOWN:
+            out.append(f"(+{len(ids) - _MAX_PRIOR_IDS_SHOWN} more)")
+        out.append("")
+        return out
 
     # -- tiers B, C, D -------------------------------------------------------
 
@@ -195,10 +274,15 @@ class _Sampler:
         """B, C and D against what tier A left of the budget (D-SC2-5)."""
         left = max(0, self.budget - spent)
         b_budget = min(_TIER_B_TOKENS, left)
+        # D-SC3-9: the candidate line is B's first block; its cost for the
+        # full candidate list is reserved before the signatures fill, so the
+        # line for the subset actually shown always fits what was reserved.
+        line_cost = sum(approx_tokens(t) for t in self._candidate_line(self.candidates))
         b_paths, b_text = self._fill(
-            self._tier_b_paths(), self._signature_block, b_budget
+            self._tier_b_paths(), self._signature_block, max(0, b_budget - line_cost)
         )
-        b_spent = sum(approx_tokens(t) for t in b_text)
+        b_line = self._candidate_line(b_paths) if b_text else []
+        b_spent = sum(approx_tokens(t) for t in [*b_line, *b_text])
         left -= b_spent
         d_reserve = self._d_cost(set(b_paths), min(_TIER_D_TOKENS, left))
         c_budget = min(_TIER_C_TOKENS + (b_budget - b_spent), left - d_reserve)
@@ -214,6 +298,7 @@ class _Sampler:
         out: list[str] = []
         if b_text:
             out.append("### Key Module Signatures\n")
+            out.extend(b_line)
             out.extend(b_text)
         out.append("### Source File Samples\n")
         out.extend(c_text)
@@ -260,6 +345,20 @@ class _Sampler:
 
     def _tier_b_paths(self) -> list[str]:
         return self._ranked([*self.candidates, *self.entrypoints])
+
+    def _candidate_line(self, shown: list[str]) -> list[str]:
+        """The load-bearing candidates B shows, as one list (D-SC3-9).
+
+        Fan-in order, candidates only — an entrypoint shown in B is not one
+        unless the graph ranks it. The ``load_bearing`` ask names this set.
+        """
+        listed = [p for p in self.candidates if p in shown]
+        if not listed:
+            return []
+        return [
+            "Load-bearing candidates (by fan-in, emit one `load_bearing` entry "
+            "for each): " + ", ".join(f"`{p}`" for p in listed) + "\n"
+        ]
 
     def _tier_c_paths(self) -> list[str]:
         """Entrypoints, the top fan-in candidates, then the most-touched files.
