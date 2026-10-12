@@ -218,6 +218,18 @@ _LOG_ALL = _LOG_SINCE + (
     "ccc\x1fA. Developer\x1f2026-07-02T09:01:44-07:00\x1f\x1f\n"
     "web/index.ts\nsrc/old.py\n"
 )
+# ``git log --name-only --format=`` since the boundary (2b): names only, one
+# paragraph per commit, blank lines between. Three commits here where
+# ``_LOG_SINCE`` has two — the names log is not capped, the record log is.
+_NAMES_SINCE = (
+    "src/app/main.py\ntests/test_main.py\n\n"
+    "README.md\nsrc/app/cli.py\n.spec4/v1/code_review.json\n\n"
+    "src/app/main.py\n.spec4/v1/IMPLEMENTED\n"
+)
+
+
+def _is_names_log(args: list[str]) -> bool:
+    return args[0] == "log" and "--format=" in args
 
 
 def _canned(status: str = " M src/app/main.py\n?? notes.txt\n?? tmp/\n") -> Any:
@@ -228,6 +240,8 @@ def _canned(status: str = " M src/app/main.py\n?? notes.txt\n?? tmp/\n") -> Any:
             return "main\n"
         if args[0] == "status":
             return status
+        if _is_names_log(args):
+            return _NAMES_SINCE
         if args[0] == "log":
             return (
                 _LOG_SINCE if any(a.startswith("--since=") for a in args) else _LOG_ALL
@@ -281,6 +295,93 @@ class TestGitBlock:
         assert since["authors"] == ["A. Developer", "B. Reviewer"]
         assert since["touched_top_dirs"] == {".": 1, "src": 2, "tests": 1}
         assert since["agent_trailers_present"] is True
+        assert since["most_touched"] == [
+            {"path": "src/app/main.py", "commits": 2},
+            {"path": "README.md", "commits": 1},
+            {"path": "src/app/cli.py", "commits": 1},
+            {"path": "tests/test_main.py", "commits": 1},
+        ]
+
+    def test_most_touched_is_one_uncapped_names_only_log_since_the_boundary(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # D-SC2-6: one extra ``git log``; no ``-n`` cap, so the counts stay
+        # exact when the record log above is truncated.
+        seen: list[list[str]] = []
+        canned = _canned()
+
+        def _run(args: list[str], cwd: pathlib.Path) -> str | None:
+            seen.append(args)
+            return canned(args, cwd)
+
+        with (
+            patch.object(_collect, "_run_git", _run),
+            patch.object(_collect, "_MAX_LOG_COMMITS", 2),
+        ):
+            git = _collect.git_block(tmp_path, ("implemented", 1_759_000_000.0))
+        names_logs = [a for a in seen if _is_names_log(a)]
+        assert names_logs == [
+            ["log", "--name-only", "--format=", "--since=@1759000000"]
+        ]
+        since = git["since_last_round"]
+        assert since["truncated"] is True
+        assert since["most_touched"][0] == {"path": "src/app/main.py", "commits": 2}
+
+    def test_most_touched_leaves_out_spec4_output_and_is_capped(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        with (
+            patch.object(_collect, "_run_git", _canned()),
+            patch.object(_collect, "_MAX_MOST_TOUCHED", 2),
+        ):
+            since = _collect.git_block(tmp_path, ("implemented", 0.0))[
+                "since_last_round"
+            ]
+        paths = [m["path"] for m in since["most_touched"]]
+        assert paths == ["src/app/main.py", "README.md"]
+        assert not any(p.startswith(".spec4") for p in paths)
+
+    def test_most_touched_ranks_by_commits_then_path(self) -> None:
+        text = "b.py\na.py\n\nb.py\n\n  \nc.py\na.py\n"
+        counts = _collect._parse_names(text)
+        assert counts == {"a.py": 2, "b.py": 2, "c.py": 1}
+        assert _collect._parse_names(".spec4\n.spec4/x\n.spec4x.py\n") == {
+            ".spec4x.py": 1
+        }
+
+    def test_no_commits_since_the_boundary_gives_an_empty_most_touched(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        canned = _canned()
+
+        def _run(args: list[str], cwd: pathlib.Path) -> str | None:
+            if _is_names_log(args):
+                return ""
+            if args[0] == "log" and any(a.startswith("--since=") for a in args):
+                return ""
+            return canned(args, cwd)
+
+        with patch.object(_collect, "_run_git", _run):
+            since = _collect.git_block(tmp_path, ("implemented", 0.0))[
+                "since_last_round"
+            ]
+        assert since["commits"] == 0
+        assert since["most_touched"] == []
+
+    def test_failed_names_log_drops_only_most_touched(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        canned = _canned()
+
+        def _run(args: list[str], cwd: pathlib.Path) -> str | None:
+            return None if _is_names_log(args) else canned(args, cwd)
+
+        with patch.object(_collect, "_run_git", _run):
+            since = _collect.git_block(tmp_path, ("implemented", 0.0))[
+                "since_last_round"
+            ]
+        assert since["commits"] == 2
+        assert "most_touched" not in since
 
     def test_activity_keeps_the_newest_commit_per_top_dir(
         self, tmp_path: pathlib.Path
@@ -562,6 +663,21 @@ class TestScanSchema:
 
     def test_empty_scan_still_validates(self) -> None:
         assert validate_code_review(review_envelope(scan={})) == []
+
+    def test_most_touched_is_optional_and_closed(self, tmp_path: pathlib.Path) -> None:
+        # 2b (D-SC2-6): a 2.4.0 ``since_last_round`` without it validates; with
+        # it, each entry is exactly ``{path, commits}``.
+        with patch.object(_collect, "_run_git", _canned()):
+            git = _collect.git_block(tmp_path, ("implemented", 0.0))
+        since = git["since_last_round"]
+        assert since["most_touched"]
+        assert validate_code_review(review_envelope(scan={"git": git})) == []
+        del since["most_touched"]
+        assert validate_code_review(review_envelope(scan={"git": git})) == []
+        since["most_touched"] = [{"path": "a.py", "commits": 1, "extra": 0}]
+        assert validate_code_review(review_envelope(scan={"git": git})) != []
+        since["most_touched"] = [{"path": "a.py"}]
+        assert validate_code_review(review_envelope(scan={"git": git})) != []
 
 
 # ---------------------------------------------------------------------------

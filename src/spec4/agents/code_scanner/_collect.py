@@ -32,6 +32,12 @@ block but ``coverage`` *before* the seed, so the sampler draws on the graph
 that is stored, and ``attach_coverage`` adds ``coverage`` after it from the
 record the sampler filled. ``collect_scan`` composes the two.
 
+Step 2b (D-SC2-6) adds ``since_last_round.most_touched``: the files with the
+most commits since the round boundary, from one extra ``git log`` that is
+not capped at ``_MAX_LOG_COMMITS``, so the counts are exact even when the
+commit list is truncated. The sampler's body tier reads it (``_sample``), and
+step 4's ``unplanned_changes`` wants the same list, so it is persisted.
+
 ``_run_git`` is the one seam to the ``git`` binary, and the first subprocess
 call in Spec4. Tests patch it by name (AGENTS.md: the module-level seam, not
 ``subprocess.run``); every failure mode — no binary, a timeout, a non-zero
@@ -67,6 +73,7 @@ _MAX_LISTED = 2_000
 _MAX_LOC_FILE_BYTES = 2_000_000
 _BINARY_SNIFF_BYTES = 8_192
 _MAX_LOG_COMMITS = 500
+_MAX_MOST_TOUCHED = 25
 _GIT_TIMEOUT_SECONDS = 10
 _NO_EXTENSION = "(none)"
 _ROOT_DIR = "."
@@ -323,6 +330,40 @@ def _log(root: pathlib.Path, extra: Iterable[str]) -> list[dict[str, Any]] | Non
     return None if out is None else _parse_log(out)
 
 
+def _is_spec4_output(rel_path: str) -> bool:
+    return rel_path == _SPEC4_DIR or rel_path.startswith(_SPEC4_DIR + "/")
+
+
+def _parse_names(text: str) -> collections.Counter[str]:
+    """Commits per path from ``git log --name-only --format=`` output.
+
+    With an empty format the log is file names only, one commit's names per
+    paragraph; a name appears once per commit that touched it, so counting
+    lines counts commits. Spec4's own ``.spec4/`` output is left out, as it is
+    from the working-tree counts.
+    """
+    counts: collections.Counter[str] = collections.Counter()
+    for line in text.splitlines():
+        name = line.strip()
+        if name and not _is_spec4_output(name):
+            counts[name] += 1
+    return counts
+
+
+def _most_touched(root: pathlib.Path, epoch: float) -> list[dict[str, Any]] | None:
+    """The ``_MAX_MOST_TOUCHED`` files with the most commits since ``epoch`` (D-SC2-6).
+
+    Most commits first, then by path, so the list is stable across scans. One
+    extra ``git log`` without the ``_MAX_LOG_COMMITS`` cap: the counts are
+    exact whether or not the commit list above is truncated.
+    """
+    out = _run_git(["log", "--name-only", "--format=", f"--since=@{int(epoch)}"], root)
+    if out is None:
+        return None
+    ranked = sorted(_parse_names(out).items(), key=lambda kv: (-kv[1], kv[0]))
+    return [{"path": p, "commits": n} for p, n in ranked[:_MAX_MOST_TOUCHED]]
+
+
 def _since_last_round(
     root: pathlib.Path, boundary: tuple[str, float]
 ) -> dict[str, Any] | None:
@@ -336,7 +377,7 @@ def _since_last_round(
         authors.add(c["author"])
         for d in {_top_dir(f) for f in c["files"]}:
             touched[d] += 1
-    return {
+    since: dict[str, Any] = {
         "boundary_kind": kind,
         "boundary": _iso(epoch),
         "commits": len(commits),
@@ -349,6 +390,10 @@ def _since_last_round(
             _AGENT_TRAILER_RE.search(c["trailers"]) for c in commits
         ),
     }
+    most_touched = _most_touched(root, epoch)
+    if most_touched is not None:
+        since["most_touched"] = most_touched
+    return since
 
 
 def _activity(root: pathlib.Path) -> dict[str, Any] | None:
@@ -391,7 +436,7 @@ def _status(root: pathlib.Path) -> tuple[list[str], list[str]] | None:
         if not line.strip():
             continue
         path = _status_path(line)
-        if path == _SPEC4_DIR or path.startswith(_SPEC4_DIR + "/"):
+        if _is_spec4_output(path):
             continue
         (untracked if line.startswith(_UNTRACKED_CODE) else modified).append(path)
     return modified, untracked

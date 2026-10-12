@@ -10,6 +10,32 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.5.0] — unreleased
+
+Step 2b of the CodeScanner v2 plan (D-SC2-6): the seed's body tier adds the
+files most touched since the last round, and the git block records them.
+
+### Added
+- **`git.since_last_round.most_touched`** — `[{path, commits}]`, the 25
+  files with the most commits since the round boundary, most first, then by
+  path; `.spec4/` excluded as elsewhere in the block. One extra
+  `git log --name-only` that is not capped at 500 commits, so the counts are
+  exact when the commit list is truncated. Optional in the schema, so a
+  2.1–2.4 block on disk still validates. Absent when that one log fails;
+  the rest of `since_last_round` stands.
+- **Tier C's third group** (`code_scanner._sample`): after the entrypoint
+  candidates and the top three by fan-in, the most-touched files that are
+  graph nodes, in the git block's order with reached files first, skipping
+  any file already shown and any thin `__init__.py`. Whole-or-headed bodies
+  and the C budget are unchanged; without a git block or a round boundary
+  the group is empty and the seed is as in 2.4.0.
+- Signature and body headings note a file's churn: `(fan-in 22, 12 commits
+  since last round)`. Only when the file is in `most_touched`.
+
+### Changed
+- The Scan Summary's Git line is unchanged: the per-file list is in the
+  stored scan and the seed, not the one-line summary.
+
 ## [2.4.0] — unreleased
 
 Step 2a of the CodeScanner v2 plan: the scan seed's evidence is chosen from

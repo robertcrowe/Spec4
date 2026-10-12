@@ -94,6 +94,29 @@ def _context(
     return gather_project_context(str(root), files, record, evidence), record
 
 
+def _touched(
+    evidence: ScanEvidence, most_touched: list[tuple[str, int]]
+) -> ScanEvidence:
+    """``evidence`` with a git block whose ``since_last_round`` carries the list."""
+    since = {"most_touched": [{"path": p, "commits": n} for p, n in most_touched]}
+    git = {"available": True, "since_last_round": since}
+    return dataclasses.replace(evidence, scan={**evidence.scan, "git": git})
+
+
+def _context_touched(
+    root: pathlib.Path,
+    most_touched: list[tuple[str, int]],
+    *,
+    budget: int | None = None,
+) -> tuple[str, SampleRecord]:
+    files = collect_files(root)
+    evidence = _touched(_collect.measure_scan(str(root), files, None), most_touched)
+    if budget is not None:
+        evidence = dataclasses.replace(evidence, budget_tokens=budget)
+    record = SampleRecord()
+    return gather_project_context(str(root), files, record, evidence), record
+
+
 # ---------------------------------------------------------------------------
 # tiers and reach
 # ---------------------------------------------------------------------------
@@ -199,6 +222,150 @@ class TestTiers:
 
 
 # ---------------------------------------------------------------------------
+# tier C's third group: the most-touched files (2b, D-SC2-6)
+# ---------------------------------------------------------------------------
+
+
+class TestMostTouched:
+    def test_most_touched_follow_the_top_fan_in_in_git_order_reached_first(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        _write(tmp_path, "docs/notes.md", "# notes\n")
+        _, record = _context_touched(
+            tmp_path,
+            [
+                ("evals/e1.py", 5),  # a node, unreached: last of the group
+                ("src/demo/api/views.py", 4),
+                ("src/demo/__init__.py", 3),  # thin: never a slot
+                ("src/demo/core.py", 3),  # already a top-fan-in body
+                ("docs/notes.md", 2),  # not a graph node
+                ("src/demo/api/routes.py", 1),
+            ],
+        )
+        assert record.sampled == [
+            "src/demo/app.py",
+            "src/demo/models.py",
+            "src/demo/core.py",
+            "src/demo/util.py",
+            "src/demo/api/views.py",
+            "src/demo/api/routes.py",
+            "evals/e1.py",
+        ]
+        assert record.sampled.count("src/demo/core.py") == 1
+
+    def test_git_order_is_kept_within_the_reached_half(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        _, by_commits = _context_touched(
+            tmp_path, [("src/demo/api/routes.py", 9), ("src/demo/api/views.py", 8)]
+        )
+        _, reversed_ = _context_touched(
+            tmp_path, [("src/demo/api/views.py", 9), ("src/demo/api/routes.py", 8)]
+        )
+        assert by_commits.sampled[-2:] == [
+            "src/demo/api/routes.py",
+            "src/demo/api/views.py",
+        ]
+        assert reversed_.sampled[-2:] == [
+            "src/demo/api/views.py",
+            "src/demo/api/routes.py",
+        ]
+
+    def test_without_a_git_block_or_a_boundary_c_is_as_in_2a(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        _, plain = _context(tmp_path)
+        files = collect_files(tmp_path)
+        evidence = _collect.measure_scan(str(tmp_path), files, None)
+        for git in (
+            {"available": False},
+            {"available": True},
+            {"available": True, "since_last_round": {"commits": 0}},
+            {"available": True, "since_last_round": {"most_touched": []}},
+        ):
+            record = SampleRecord()
+            scan = {**evidence.scan, "git": git}
+            gather_project_context(
+                str(tmp_path), files, record, dataclasses.replace(evidence, scan=scan)
+            )
+            assert record.sampled == plain.sampled
+        assert plain.sampled == [
+            "src/demo/app.py",
+            "src/demo/models.py",
+            "src/demo/core.py",
+            "src/demo/util.py",
+        ]
+
+    def test_headings_note_the_commits_since_the_round(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        text, _ = _context_touched(
+            tmp_path,
+            [
+                ("src/demo/app.py", 7),
+                ("src/demo/models.py", 1),
+                ("src/demo/api/views.py", 2),
+            ],
+        )
+        c_part = text[text.index("### Source File Samples") :]
+        headings = {
+            line.split("`")[1]: line.rpartition(" (")[2].rstrip(")")
+            for line in c_part.splitlines()
+            if line.startswith("#### ")
+        }
+        assert headings["src/demo/app.py"] == (
+            "entrypoint candidate, 7 commits since last round"
+        )
+        assert headings["src/demo/models.py"] == "fan-in 3, 1 commit since last round"
+        assert (
+            headings["src/demo/api/views.py"] == "fan-in 1, 2 commits since last round"
+        )
+        assert headings["src/demo/core.py"] == "fan-in 2"
+        # The signature tier carries the same note.
+        b_part = text[
+            text.index("### Key Module Signatures") : text.index(
+                "### Source File Samples"
+            )
+        ]
+        assert "`src/demo/models.py` (fan-in 3, 1 commit since last round)" in b_part
+
+    def test_most_touched_share_the_body_budget_and_skip_what_does_not_fit(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _write(tmp_path, "main.py", "import core\n")
+        _write(tmp_path, "core.py", _module("core"))
+        _write(tmp_path, "u.py", "import core\n")
+        _write(tmp_path, "big.py", _module("big", extra_lines=300))
+        _write(tmp_path, "small.py", _module("small"))
+        files = collect_files(tmp_path)
+        evidence = _collect.measure_scan(str(tmp_path), files, None)
+        bodies = sum(
+            approx_tokens((tmp_path / f).read_text()) for f in ("main.py", "core.py")
+        )
+        with (
+            patch.object(_sample, "_TIER_C_TOKENS", bodies + 150),
+            patch.object(_sample, "_TIER_B_TOKENS", 0),
+        ):
+            record = SampleRecord()
+            text = gather_project_context(
+                str(tmp_path),
+                files,
+                record,
+                _touched(evidence, [("big.py", 3), ("small.py", 2)]),
+            )
+        assert record.sampled == ["main.py", "core.py", "small.py"]
+        # Neither an entrypoint nor a candidate: the churn is the whole label.
+        assert (
+            "#### `small.py` (whole file, 10 lines) (2 commits since last round)"
+            in text
+        )
+
+
+# ---------------------------------------------------------------------------
 # budgets
 # ---------------------------------------------------------------------------
 
@@ -289,6 +456,16 @@ class TestRendering:
         assert "_Signatures of `big.py`:_" in text
         assert "def big_f1(x: int) -> int  # Doc 1." in text
         assert record.sampled == ["main.py", "big.py"]
+
+    def test_an_imported_entrypoint_is_labelled_as_an_entrypoint_only(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _write(tmp_path, "main.py", _module("main"))
+        _write(tmp_path, "u.py", "import main\n")
+        _write(tmp_path, "v.py", "import main\n")
+        text, _ = _context(tmp_path)
+        assert "#### `main.py` (whole file, 10 lines) (entrypoint candidate)" in text
+        assert "fan-in" not in text.split("### Source File Samples")[1]
 
     def test_headed_file_without_symbols_has_no_signature_trailer(
         self, tmp_path: pathlib.Path

@@ -658,6 +658,15 @@ _SCAN_GIT_SINCE = _closed(
         "authors": _str_list(),
         "touched_top_dirs": _int_map(),
         "agent_trailers_present": {"type": "boolean"},
+        # 2.5.0 (D-SC2-6): the files with the most commits since the boundary,
+        # most first. Optional, so a 2.1–2.4 block on disk still validates.
+        "most_touched": {
+            "type": "array",
+            "items": _closed(
+                ["path", "commits"],
+                {"path": {"type": "string"}, "commits": _NON_NEGATIVE},
+            ),
+        },
     },
 )
 

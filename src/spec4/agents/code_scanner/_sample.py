@@ -10,10 +10,12 @@ tiers, spent in order against one token budget (D-SC2-5):
 - **B — signatures.** Every load-bearing candidate and entrypoint candidate as
   a compact signature block (D-SC2-8), up to ``_TIER_B_TOKENS``.
 - **C — bodies.** Entrypoint candidates, then the top ``_TOP_FAN_IN_BODIES``
-  candidates by fan-in, each whole when it is at most ``_WHOLE_BODY_TOKENS``,
-  else its head plus its signatures (D-SC2-7). Up to ``_TIER_C_TOKENS`` plus
-  whatever B left unspent, less the share D needs. Step 2b adds the files
-  most touched since the round boundary (D-SC2-6); 2a does not.
+  candidates by fan-in, then the files most touched since the round boundary
+  (``git.since_last_round.most_touched``, D-SC2-6, step 2b), each whole when
+  it is at most ``_WHOLE_BODY_TOKENS``, else its head plus its signatures
+  (D-SC2-7). Up to ``_TIER_C_TOKENS`` plus whatever B left unspent, less the
+  share D needs. Without a ``git`` block or a round boundary the third group
+  is empty and C is as in 2a.
 - **D — breadth.** One signature block per product package no B or C file sits
   in, from its highest fan-in member, up to ``_TIER_D_TOKENS``.
 
@@ -69,7 +71,7 @@ _TOP_FAN_IN_BODIES = 3
 _THIN_INIT_LINES = 20
 _INIT_NAME = "__init__.py"
 _MAX_BODY_CHARS = 2_000_000
-_ENTRYPOINT_LABEL = " (entrypoint candidate)"
+_ENTRYPOINT_LABEL = "entrypoint candidate"
 _CONFIG_KEY = "scan_context_tokens"
 _UNKNOWN_REACH = "none"
 _ROOT_DIR_LABEL = "."
@@ -168,6 +170,10 @@ class _Sampler:
         self.entrypoints = [
             rel for rel, p in self.nodes.items() if _is_entrypoint_candidate(p)
         ]
+        since = (evidence.scan.get("git") or {}).get("since_last_round") or {}
+        self.touches: dict[str, int] = {
+            m["path"]: m["commits"] for m in since.get("most_touched") or []
+        }
 
     # -- tier A ------------------------------------------------------------
 
@@ -256,9 +262,17 @@ class _Sampler:
         return self._ranked([*self.candidates, *self.entrypoints])
 
     def _tier_c_paths(self) -> list[str]:
+        """Entrypoints, the top fan-in candidates, then the most-touched files.
+
+        The third group (D-SC2-6) keeps the git block's order — most commits
+        first — reached files ahead of unreached, and skips anything the first
+        two already show.
+        """
         entry = self._ranked(self.entrypoints)
         top = [p for p in self._ranked(self.candidates) if p not in entry]
-        return entry + top[:_TOP_FAN_IN_BODIES]
+        shown = entry + top[:_TOP_FAN_IN_BODIES]
+        touched = [p for p in self._ranked(self.touches) if p not in shown]
+        return shown + touched
 
     def _tier_d_paths(self, taken: set[str]) -> list[str]:
         """The highest fan-in member of each product package no B/C file is in."""
@@ -293,10 +307,18 @@ class _Sampler:
     # -- rendering -----------------------------------------------------------
 
     def _label(self, rel: str) -> str:
+        """Why the file is shown: entrypoint or fan-in, and its churn (2b)."""
+        parts: list[str] = []
         if rel in self.entrypoints:
-            return _ENTRYPOINT_LABEL
-        fan_in = self.fan_in.get(rel, 0)
-        return f" (fan-in {fan_in})" if fan_in else ""
+            parts.append(_ENTRYPOINT_LABEL)
+        elif self.fan_in.get(rel, 0):
+            parts.append(f"fan-in {self.fan_in[rel]}")
+        touches = self.touches.get(rel, 0)
+        if touches:
+            parts.append(
+                f"{touches} commit{'' if touches == 1 else 's'} since last round"
+            )
+        return f" ({', '.join(parts)})" if parts else ""
 
     def _entry(self, rel: str) -> dict[str, Any] | None:
         entry = self.signatures.get(rel)
