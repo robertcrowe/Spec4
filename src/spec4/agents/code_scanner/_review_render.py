@@ -25,6 +25,8 @@ from spec4.agents._stack_context import render_coding_style
 _TOP_EXTENSIONS = 5
 _MAX_UNSCANNED_SHOWN = 6
 _TOP_CANDIDATES_SHOWN = 5
+_MAX_REACH_NAMES = 3
+_REACH_BASES = ("entrypoints", "manifest")
 
 
 def _as_str_list(value: Any) -> list[str]:
@@ -106,6 +108,9 @@ def _render_scan_summary(scan: dict[str, Any], lines: list[str]) -> None:
         candidates_line = _scan_candidates_line(graph)
         if candidates_line:
             lines.append(candidates_line)
+        reach_line = _scan_reach_line(graph.get("reach"))
+        if reach_line:
+            lines.append(reach_line)
     prior = scan.get("prior_round")
     if isinstance(prior, dict):
         lines.append(_scan_prior_line(prior, scan.get("plan_drift")))
@@ -187,7 +192,36 @@ def _scan_coverage_line(coverage: dict[str, Any]) -> str:
     deploy = len(coverage.get("deploy") or [])
     if deploy:
         bits.append(f"{deploy} deployment")
-    return "- Shown to the model: " + ", ".join(bits)
+    # 2.4.0 (D-SC2-13): absent from older scans, whose lines are unchanged.
+    signatures = len(coverage.get("signatures_shown") or [])
+    if signatures:
+        bits.append(f"{signatures} signature file{'' if signatures == 1 else 's'}")
+    conventions = len(coverage.get("conventions") or [])
+    if conventions:
+        bits.append(f"{conventions} convention file{'' if conventions == 1 else 's'}")
+    line = "- Shown to the model: " + ", ".join(bits)
+    tokens = coverage.get("evidence_tokens")
+    if isinstance(tokens, int) and tokens:
+        line += f" (~{tokens:,} tokens)"
+    return line
+
+
+def _scan_reach_line(reach: Any) -> str | None:
+    """How far the entrypoints reach (2.4.0, D-SC2-4); ``None`` when unknown."""
+    if not isinstance(reach, dict) or reach.get("basis") not in _REACH_BASES:
+        return None
+    roots = reach.get("entrypoints") or []
+    shown = ", ".join(f"`{r}`" for r in roots[:_MAX_REACH_NAMES])
+    if len(roots) > _MAX_REACH_NAMES:
+        shown += f" and {len(roots) - _MAX_REACH_NAMES} more"
+    source = "declared package" if reach["basis"] == "manifest" else "entrypoint"
+    line = f"- Reach: {reach.get('reached', 0):,} modules from {source} {shown}"
+    unreached = reach.get("unreached_dirs") or []
+    if unreached:
+        names = ", ".join(f"`{d}`" for d in unreached[:_MAX_REACH_NAMES])
+        more = len(unreached) - _MAX_REACH_NAMES
+        line += "; unreached: " + names + (f" and {more} more" if more > 0 else "")
+    return line
 
 
 def _scan_git_line(git: dict[str, Any]) -> str:

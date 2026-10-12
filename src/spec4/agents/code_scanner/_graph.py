@@ -21,6 +21,12 @@ judgment reads a candidate's ``consumers`` and its signatures.
   the code rather than the file count, so it has a hard budget (D-SC1c-8)
   and says when it hit it.
 
+Step 2a adds ``module_graph.reach`` (D-SC2-4): the nodes transitively
+imported from the entrypoint candidates — or, when none is a node, from the
+packages the manifests declare — summarised as a count and the shallowest
+directories nothing reaches. ``analyse`` returns the reached set itself
+beside the block, for the sampler to rank by; the set is not stored.
+
 A file Python cannot parse contributes no edges and no signatures and never
 fails the scan.
 """
@@ -29,10 +35,12 @@ from __future__ import annotations
 
 import ast
 import collections
+import dataclasses
 import json
 import pathlib
 import re
 import sys
+import tomllib
 from typing import TYPE_CHECKING, Any
 
 from spec4.agents.code_scanner._scan import (
@@ -67,6 +75,10 @@ _MAX_SIGNATURE_CHARS = 200
 _MAX_SOURCE_BYTES = 2_000_000
 _PRIVATE_PREFIX = "_"
 _ROOT_DIR = "."
+_BASIS_ENTRYPOINTS = "entrypoints"
+_BASIS_MANIFEST = "manifest"
+_BASIS_NONE = "none"
+_PEP503_RE = re.compile(r"[-_.]+")
 
 _JS_IMPORT_RE = re.compile(
     r"""(?:^[ \t]*(?:import|export)\b[^'"\n]*?\bfrom[ \t]*|^[ \t]*import[ \t]*)"""
@@ -335,12 +347,50 @@ def _edges(index: _Index) -> tuple[set[tuple[str, str]], collections.Counter[str
     return edges, unresolved
 
 
+@dataclasses.dataclass(frozen=True)
+class GraphAnalysis:
+    """The ``module_graph`` block and the reached set behind its ``reach``.
+
+    ``reached`` is the in-memory product of the edge walk the block does not
+    store (D-SC1c-2): the root-relative paths transitively imported from the
+    reach roots, roots included. The sampler ranks by it (D-SC2-4); only its
+    summary, ``block["reach"]``, is persisted.
+    """
+
+    block: dict[str, Any]
+    reached: frozenset[str]
+
+
 def module_graph_block(
     root: pathlib.Path, all_files: list[pathlib.Path]
 ) -> dict[str, Any]:
     """The ``module_graph`` block; see the module docstring."""
+    return analyse(root, all_files).block
+
+
+def analyse(root: pathlib.Path, all_files: list[pathlib.Path]) -> GraphAnalysis:
+    """One parse of the tree: the ``module_graph`` block and its reached set."""
     index = _Index(root, graph_nodes(root, all_files))
     edges, unresolved = _edges(index)
+    block = _graph_block(index, edges, unresolved)
+    basis, labels, roots = _reach_roots(index)
+    reached = _closure(roots, edges)
+    block["reach"] = {
+        "basis": basis,
+        "entrypoints": labels,
+        "reached": len(reached),
+        "unreached_dirs": []
+        if basis == _BASIS_NONE
+        else _unreached_dirs(index, reached),
+    }
+    return GraphAnalysis(block, frozenset(reached))
+
+
+def _graph_block(
+    index: _Index,
+    edges: set[tuple[str, str]],
+    unresolved: collections.Counter[str],
+) -> dict[str, Any]:
     fan_in = collections.Counter(dst for _, dst in edges)
     fan_out = collections.Counter(src for src, _ in edges)
     consumers: dict[str, list[str]] = collections.defaultdict(list)
@@ -369,6 +419,131 @@ def module_graph_block(
         "unresolved": dict(top_unresolved[:_MAX_UNRESOLVED]),
         "unresolved_truncated": len(top_unresolved) > _MAX_UNRESOLVED,
     }
+
+
+# ---------------------------------------------------------------------------
+# reach (2a, D-SC2-4)
+# ---------------------------------------------------------------------------
+
+
+def _reach_roots(index: _Index) -> tuple[str, list[str], list[str]]:
+    """``(basis, labels, root paths)`` for the reach walk.
+
+    The entrypoint candidates when any is a node; else the packages the
+    manifests declare (D-SC2-4 (c)), labelled by the directory or file they
+    resolved to; else nothing, and reach is unknown rather than empty.
+    """
+    entrypoints = [index.rel[n] for n in index.nodes if _is_entrypoint_candidate(n)]
+    if entrypoints:
+        return _BASIS_ENTRYPOINTS, entrypoints, entrypoints
+    labels, roots = _manifest_roots(index)
+    if roots:
+        return _BASIS_MANIFEST, labels, roots
+    return _BASIS_NONE, [], []
+
+
+def _manifest_roots(index: _Index) -> tuple[list[str], list[str]]:
+    """Nodes under the packages ``pyproject.toml`` / ``package.json`` declare."""
+    node_dirs = sorted({_parent_dir(rel) for rel in index.node_set})
+    labels: set[str] = set()
+    for name in _declared_packages(index.root):
+        labels.update(d for d in node_dirs if d == name or d.endswith("/" + name))
+    roots = {rel for rel in index.node_set for d in labels if rel.startswith(d + "/")}
+    main = _package_main(index.root)
+    if main is not None and main in index.node_set:
+        labels.add(main)
+        roots.add(main)
+    return sorted(labels), sorted(roots)
+
+
+def _declared_packages(root: pathlib.Path) -> list[str]:
+    """Package directory names a ``pyproject.toml`` declares, slash-separated.
+
+    ``[project].name`` normalised to an import name, and every ``packages``
+    list anywhere under ``[tool]`` (setuptools, poetry's ``{include}``
+    tables, hatch's wheel target) — the spellings differ, the key does not.
+    """
+    text = _read_text_safely(root / "pyproject.toml", _MAX_SOURCE_BYTES)
+    if text is None:
+        return []
+    try:
+        data = tomllib.loads(text)
+    except tomllib.TOMLDecodeError:
+        return []
+    names: list[str] = []
+    project = data.get("project")
+    if isinstance(project, dict) and isinstance(project.get("name"), str):
+        names.append(_PEP503_RE.sub("_", project["name"]).lower())
+    names.extend(_packages_under(data.get("tool")))
+    return [n.strip("/").replace(".", "/") for n in names if n.strip("/")]
+
+
+def _packages_under(table: Any) -> list[str]:
+    """Every string a ``packages`` key holds below ``table``, in document order."""
+    if not isinstance(table, dict):
+        return []
+    found: list[str] = []
+    for key, value in table.items():
+        if key == "packages" and isinstance(value, list):
+            for item in value:
+                # poetry spells an entry as a table: ``{include = "pkg"}``
+                name = item.get("include") if isinstance(item, dict) else item
+                if isinstance(name, str):
+                    found.append(name)
+        else:
+            found.extend(_packages_under(value))
+    return found
+
+
+def _package_main(root: pathlib.Path) -> str | None:
+    """``package.json``'s ``main``, root-relative, when it names a string."""
+    text = _read_text_safely(root / "package.json", _MAX_SOURCE_BYTES)
+    if text is None:
+        return None
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    main = data.get("main") if isinstance(data, dict) else None
+    return main.removeprefix("./") if isinstance(main, str) else None
+
+
+def _closure(roots: list[str], edges: set[tuple[str, str]]) -> set[str]:
+    """Every node transitively imported from ``roots``, the roots included."""
+    out: dict[str, list[str]] = collections.defaultdict(list)
+    for src, dst in edges:
+        out[src].append(dst)
+    seen = set(roots)
+    stack = list(roots)
+    while stack:
+        for dst in out[stack.pop()]:
+            if dst not in seen:
+                seen.add(dst)
+                stack.append(dst)
+    return seen
+
+
+def _parent_dir(rel: str) -> str:
+    head, sep, _ = rel.rpartition("/")
+    return head if sep else _ROOT_DIR
+
+
+def _unreached_dirs(index: _Index, reached: set[str]) -> list[str]:
+    """The shallowest directories whose every node, at any depth, is unreached.
+
+    A directory is listed only when its parent is not itself wholly
+    unreached, so ``evals/`` stands for everything beneath it.
+    """
+    wholly: dict[str, bool] = {}
+    for rel in index.node_set:
+        d = _parent_dir(rel)
+        while True:
+            wholly[d] = wholly.get(d, True) and rel not in reached
+            if d == _ROOT_DIR:
+                break
+            d = _parent_dir(d)
+    full = {d for d, un in wholly.items() if un}
+    return sorted(d for d in full if d != _ROOT_DIR and _parent_dir(d) not in full)
 
 
 # ---------------------------------------------------------------------------

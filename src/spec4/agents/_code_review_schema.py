@@ -621,6 +621,18 @@ _SCAN_COVERAGE = _closed(
         "sampled": _str_list(),
         "source_files_total": _NON_NEGATIVE,
         "source_files_sampled": _NON_NEGATIVE,
+        # 2.4.0 (D-SC2-13): optional, so a 2.1–2.3 scan on disk still reads.
+        "signatures_shown": _str_list(),
+        "conventions": _str_list(),
+        "tree": _closed(
+            ["form", "nodes_listed", "truncated"],
+            {
+                "form": {"enum": ["rollup+nodes", "empty"]},
+                "nodes_listed": _NON_NEGATIVE,
+                "truncated": {"type": "boolean"},
+            },
+        ),
+        "evidence_tokens": _NON_NEGATIVE,
     },
 )
 
@@ -721,6 +733,16 @@ _SCAN_MODULE_GRAPH = _closed(
         },
         "unresolved": _int_map(),
         "unresolved_truncated": {"type": "boolean"},
+        # 2.4.0 (D-SC2-4): what the sampler ranked by; optional for older scans.
+        "reach": _closed(
+            ["basis", "entrypoints", "reached", "unreached_dirs"],
+            {
+                "basis": {"enum": ["entrypoints", "manifest", "none"]},
+                "entrypoints": _str_list(),
+                "reached": _NON_NEGATIVE,
+                "unreached_dirs": _str_list(),
+            },
+        ),
     },
 )
 

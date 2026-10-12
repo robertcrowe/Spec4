@@ -15,11 +15,8 @@ import pytest
 
 from spec4.agents._code_review_schema import validate_code_review
 from spec4.agents.code_scanner import _collect, _graph
-from spec4.agents.code_scanner._scan import (
-    SampleRecord,
-    collect_files,
-    gather_project_context,
-)
+from spec4.agents.code_scanner._sample import gather_project_context
+from spec4.agents.code_scanner._scan import SampleRecord, collect_files
 from tests._review_helpers import review_envelope
 
 
@@ -685,6 +682,13 @@ class TestAssembly:
             "load_bearing_candidates": [],
             "unresolved": {},
             "unresolved_truncated": False,
+            # 2.4.0: no entrypoint and no manifest, so reach is unknown.
+            "reach": {
+                "basis": "none",
+                "entrypoints": [],
+                "reached": 0,
+                "unreached_dirs": [],
+            },
         }
         assert scan["signatures"] == {"files": {}, "truncated": False}
         assert validate_code_review(review_envelope(scan=scan)) == []
@@ -714,3 +718,133 @@ class TestAssembly:
         assert validate_code_review(review_envelope(scan=scan)) == []
         scan["module_graph"]["load_bearing_candidates"][0]["role"] = "hub"
         assert validate_code_review(review_envelope(scan=scan))
+
+
+# ---------------------------------------------------------------------------
+# reach (2.4.0, D-SC2-4)
+# ---------------------------------------------------------------------------
+
+
+def _reach_of(root: pathlib.Path) -> tuple[dict[str, Any], frozenset[str]]:
+    analysis = _graph.analyse(root, collect_files(root))
+    return analysis.block["reach"], analysis.reached
+
+
+class TestReach:
+    def test_entrypoint_reach_is_transitive_and_names_the_unreached_dirs(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _write(tmp_path, "src/pkg/main.py", "from pkg import core\n")
+        _write(tmp_path, "src/pkg/core.py", "from pkg.db import models\n")
+        _write(tmp_path, "src/pkg/db/models.py", "")
+        _write(tmp_path, "src/pkg/orphan.py", "")
+        _write(tmp_path, "evals/probe.py", "from pkg import core\n")
+        _write(tmp_path, "evals/deep/run_x.py", "")
+        _write(tmp_path, "scripts/tool.py", "")
+        reach, reached = _reach_of(tmp_path)
+        assert reach == {
+            "basis": "entrypoints",
+            "entrypoints": ["src/pkg/main.py"],
+            "reached": 3,
+            # Shallowest wholly-unreached directories only: ``evals/deep``
+            # is covered by ``evals``; ``src/pkg`` holds the orphan but is
+            # partly reached, so it is not listed.
+            "unreached_dirs": ["evals", "scripts"],
+        }
+        assert reached == {"src/pkg/main.py", "src/pkg/core.py", "src/pkg/db/models.py"}
+        assert "src/pkg/orphan.py" not in reached
+
+    def test_import_cycles_terminate(self, tmp_path: pathlib.Path) -> None:
+        _write(tmp_path, "app.py", "import a\n")
+        _write(tmp_path, "a.py", "import b\n")
+        _write(tmp_path, "b.py", "import a\n")
+        reach, reached = _reach_of(tmp_path)
+        assert reach["reached"] == 3
+        assert reached == {"app.py", "a.py", "b.py"}
+
+    def test_manifest_fallback_from_the_project_name(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _write(tmp_path, "pyproject.toml", '[project]\nname = "My-Pkg"\n')
+        _write(tmp_path, "src/my_pkg/core.py", "from my_pkg import util\n")
+        _write(tmp_path, "src/my_pkg/util.py", "")
+        _write(tmp_path, "tools/gen.py", "")
+        reach, reached = _reach_of(tmp_path)
+        assert reach["basis"] == "manifest"
+        assert reach["entrypoints"] == ["src/my_pkg"]
+        assert reached == {"src/my_pkg/core.py", "src/my_pkg/util.py"}
+        assert reach["unreached_dirs"] == ["tools"]
+
+    def test_manifest_fallback_from_tool_packages_in_both_spellings(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "pyproject.toml",
+            "[project]\nname = 'dist-name'\n"
+            "[tool.setuptools]\npackages = ['alpha']\n"
+            "[tool.poetry]\npackages = [{include = 'beta.sub'}, {from = 'x'}, 3]\n",
+        )
+        _write(tmp_path, "alpha/a.py", "")
+        _write(tmp_path, "beta/sub/b.py", "")
+        _write(tmp_path, "gamma/c.py", "")
+        reach, reached = _reach_of(tmp_path)
+        assert reach["entrypoints"] == ["alpha", "beta/sub"]
+        assert reached == {"alpha/a.py", "beta/sub/b.py"}
+        assert "gamma/c.py" not in reached
+
+    def test_manifest_fallback_from_package_json_main(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _write(tmp_path, "package.json", '{"main": "./lib/entry.js"}')
+        _write(tmp_path, "lib/entry.js", "const u = require('./util');\n")
+        _write(tmp_path, "lib/util.js", "")
+        _write(tmp_path, "bench/b.js", "")
+        reach, reached = _reach_of(tmp_path)
+        assert reach["basis"] == "manifest"
+        assert reach["entrypoints"] == ["lib/entry.js"]
+        assert reached == {"lib/entry.js", "lib/util.js"}
+
+    @pytest.mark.parametrize(
+        ("name", "text"),
+        [
+            ("pyproject.toml", "[project\nname = "),
+            ("package.json", "{not json"),
+            ("package.json", '["main"]'),
+            ("package.json", '{"main": 3}'),
+            ("package.json", '{"main": "dist/missing.js"}'),
+            ("pyproject.toml", "[project]\nname = 'nothing-here'\n"),
+        ],
+    )
+    def test_unusable_manifests_leave_reach_unknown(
+        self, tmp_path: pathlib.Path, name: str, text: str
+    ) -> None:
+        _write(tmp_path, name, text)
+        _write(tmp_path, "lib/x.py", "")
+        reach, reached = _reach_of(tmp_path)
+        assert reach == {
+            "basis": "none",
+            "entrypoints": [],
+            "reached": 0,
+            "unreached_dirs": [],
+        }
+        assert reached == frozenset()
+
+    def test_entrypoints_outrank_the_manifest(self, tmp_path: pathlib.Path) -> None:
+        _write(tmp_path, "pyproject.toml", "[project]\nname = 'pkg'\n")
+        _write(tmp_path, "pkg/cli.py", "")
+        _write(tmp_path, "pkg/other.py", "")
+        reach, _ = _reach_of(tmp_path)
+        assert reach["basis"] == "entrypoints"
+        assert reach["entrypoints"] == ["pkg/cli.py"]
+
+    def test_scan_with_reach_validates_and_the_block_stays_closed(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _write(tmp_path, "main.py", "")
+        scan = _collect.collect_scan(
+            str(tmp_path), collect_files(tmp_path), SampleRecord(), None
+        )
+        assert validate_code_review(review_envelope(scan=scan)) == []
+        scan["module_graph"]["reach"]["extra"] = 1
+        assert validate_code_review(review_envelope(scan=scan)) != []

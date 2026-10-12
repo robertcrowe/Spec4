@@ -10,6 +10,64 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.4.0] — unreleased
+
+Step 2a of the CodeScanner v2 plan: the scan seed's evidence is chosen from
+the `scan` layer instead of walk order. The graph, signatures and reach are
+computed before the seed and the sampler spends one token budget across
+four tiers. On Spec4's own tree the seed goes from 3 sampled files (two of
+them eval scripts) and 41 of 103 `src/` modules named to 4 bodies, 17
+signature files and every `src/` module named, at ~17.4 k tokens of
+evidence (was ~5.8 k). Step 2b adds the files most touched since the last
+round.
+
+### Added
+- **Tiered evidence** (`code_scanner._sample`). A — the file tree, README,
+  manifests, CI, deployment signals and a new Project Conventions section.
+  B — every load-bearing candidate and entrypoint candidate as a compact
+  signature block (`def name(sig)  # first doc line`, one per symbol), up to
+  6 k tokens. C — bodies of the entrypoint candidates and the top three
+  candidates by fan-in, whole when at most 4 k tokens, else the first 150
+  lines plus the file's signatures; up to 12 k plus what B left unspent,
+  less what D needs. D — one signature block per product package no B or C
+  file sits in, from its highest fan-in member, up to 3 k. A block that does
+  not fit is skipped, so a smaller one later in the order can still use the
+  room. Within each tier, files reached from an entrypoint go first; an
+  `__init__.py` under 20 non-blank lines never takes a slot.
+- **Evidence budget**: 24,000 tokens (`approx_tokens`), overridable per scan
+  with `llm_config["scan_context_tokens"]`. `approx_tokens` is now the
+  budget's meter as well as the narrated request size.
+- **`module_graph.reach`** — `{basis, entrypoints, reached, unreached_dirs}`:
+  how many graph nodes are transitively imported from the entrypoint
+  candidates (or, with none, from the packages `pyproject.toml`'s
+  `[project].name` / `[tool.*].packages` or `package.json`'s `main`
+  declare), and the shallowest directories nothing reaches. On Spec4: 97
+  from `src/spec4/app.py`; unreached `evals`, `scripts`, `src/spec4/assets`.
+  The sampler's ranking, made auditable without storing the edge list.
+- **Project Conventions** section: root-level `.env.example` /
+  `.env.sample` / `.env.template` (first 1,500 characters), `CLAUDE.md`,
+  `AGENTS.md`, `CONTRIBUTING.md` (first 80 lines each); `CLA.md` and
+  `LICENSE` named as present, never pasted.
+- **`scan.coverage`** gains `signatures_shown`, `conventions`, `tree: {form,
+  nodes_listed, truncated}` and `evidence_tokens`. All optional in the
+  schema, so a 2.1–2.3 scan on disk still validates.
+- **Scan Summary**: the "Shown to the model" line adds signature and
+  convention file counts and the evidence size; a Reach line follows the
+  candidates. Both absent for older scans, whose goldens are unchanged.
+
+### Changed
+- The **file tree** is a directory rollup (every directory holding a file,
+  with its count and top three extensions; never capped) plus the list of
+  every non-test source file (capped at 400). It replaces the first 150
+  paths of the walk, which on Spec4 hid 68 `src/` files.
+  `coverage.tree_listed` / `tree_truncated` now count that node list.
+- **Deployment signals** add `Caddyfile`, `deploy.sh`, `nginx.conf` and any
+  `*.service` unit; the cap stays five files.
+- `collect_scan` is split into `measure_scan` (before the seed) and
+  `attach_coverage` (after it); `collect_scan` composes them.
+  `gather_project_context` moved from `_scan` to `_sample` and takes the
+  measured scan; the package import path is unchanged.
+
 ## [2.3.0] — unreleased
 
 The last of the step-1 `scan` collectors: what the prior Spec4 round planned,

@@ -7,8 +7,12 @@ markdown block the seed messages carry. Pure filesystem and string work --
 no LLM, no session, no Dash.
 
 ``approx_tokens`` is here rather than beside ``run`` because it is the last
-of the budgets: the same display-only sizing that the ``_MAX_*`` constants
-above enforce, reported back to the user (D-SC-P2).
+of the budgets. It was display-only (D-SC-P2); since 2.4.0 it is also the
+meter the sampler spends ``EVIDENCE_TOKEN_BUDGET`` with (D-SC2-2).
+
+Which files the seed shows, and in what form, is decided in ``_sample``
+(step 2a): this module keeps the walk, the fixed-evidence formatters (tree,
+README, manifests, CI, deployment, conventions) and their size constants.
 
 ``SampleRecord`` is the ledger of what the formatters below actually pasted
 into that block. ``gather_project_context`` fills one when handed it, and the
@@ -22,6 +26,7 @@ re-exports every name below under its original spelling.
 
 from __future__ import annotations
 
+import collections
 import dataclasses
 import pathlib
 
@@ -90,7 +95,16 @@ _DEPLOY_SIGNAL_FILES = {
     "vercel.json",
     "netlify.toml",
     "app.yaml",
+    "Caddyfile",
+    "deploy.sh",
+    "nginx.conf",
 }
+# A systemd unit is named for its service (``bws4-api.service``), so it is
+# matched by suffix rather than by name (D-SC2-11).
+_DEPLOY_SIGNAL_SUFFIXES = {".service"}
+_MAX_DEPLOY_FILES = 5
+_MAX_CI_FILES = 5
+_MAX_SIGNAL_FILE_CHARS = 1_500
 
 _README_NAMES = {"README.md", "README.rst", "README.txt", "README"}
 _CI_DIR_PARTS = ((".github", "workflows"),)
@@ -103,13 +117,30 @@ _CI_FILE_BASENAMES = {
 }
 _TERRAFORM_DIRS = {"terraform", "infra", "infrastructure"}
 
-_MAX_TREE_FILES = 150
+# Project Conventions (D-SC2-10): root-level files only. An env example is
+# pasted whole up to its cap; the agent-instruction and contributor docs by
+# their head; the legal files are named, never pasted.
+_ENV_EXAMPLE_NAMES = (".env.example", ".env.sample", ".env.template")
+_CONVENTION_DOC_NAMES = ("CLAUDE.md", "AGENTS.md", "CONTRIBUTING.md")
+_PRESENT_ONLY_NAMES = ("CLA.md", "LICENSE", "LICENSE.md", "LICENSE.txt")
+_MAX_ENV_EXAMPLE_CHARS = 1_500
+_MAX_CONVENTION_LINES = 80
+# Read cap for a file read only for its head lines; generous, it bounds memory.
+_MAX_SOURCE_READ_CHARS = 2_000_000
+
+# The whole evidence block's budget in ``approx_tokens`` (D-SC2-2). With the
+# ~8.9 k-token system prompt and an update-mode prior review it keeps a fresh
+# scan under ~45 k tokens for every provider in the fallback chain.
+# ``llm_config["scan_context_tokens"]`` overrides it (``_sample``).
+EVIDENCE_TOKEN_BUDGET = 24_000
+
+_MAX_TREE_NODES = 400
+_TOP_TREE_EXTENSIONS = 3
+_TREE_FORM = "rollup+nodes"
+_TREE_EMPTY = "empty"
 _MAX_MANIFEST_CHARS = 10_000
 _MAX_MANIFEST_FILE_CHARS = 3_000
 _MAX_README_LINES = 80
-_MAX_PRIORITY_SOURCE_FILES = 8
-_MAX_SOURCE_SAMPLE_CHARS = 8_000
-_MAX_SOURCE_SAMPLE_LINES = 80
 
 _SOURCE_EXTENSIONS = {
     ".py",
@@ -145,17 +176,25 @@ class SampleRecord:
 
     Every list holds only files whose *contents* reached the seed; a file that
     was listed in the tree but never read is not sampled. ``tree_listed`` is
-    the number of paths the file tree showed before its cap.
+    the number of source paths the tree's node list named before its cap
+    (2.4.0; the directory rollup above it is never capped), ``tree_form`` the
+    shape of the tree section. ``sampled`` holds bodies, whole or headed;
+    ``signatures_shown`` the files shown as signature blocks only;
+    ``evidence_tokens`` the ``approx_tokens`` of the whole block (D-SC2-13).
     """
 
     tree_listed: int = 0
     tree_truncated: bool = False
+    tree_form: str = _TREE_EMPTY
     readme: str | None = None
     manifests: list[str] = dataclasses.field(default_factory=list)
     ci: list[str] = dataclasses.field(default_factory=list)
     deploy: list[str] = dataclasses.field(default_factory=list)
+    conventions: list[str] = dataclasses.field(default_factory=list)
     sampled: list[str] = dataclasses.field(default_factory=list)
+    signatures_shown: list[str] = dataclasses.field(default_factory=list)
     source_files_total: int = 0
+    evidence_tokens: int = 0
 
 
 def _rel(root: pathlib.Path, path: pathlib.Path) -> str:
@@ -192,74 +231,46 @@ def collect_files(root: pathlib.Path) -> list[pathlib.Path]:
     return all_files
 
 
-def gather_project_context(
-    working_dir: str,
-    all_files: list[pathlib.Path] | None = None,
-    record: SampleRecord | None = None,
-) -> str:
-    """The evidence block a scan seed carries.
-
-    With ``record``, every formatter notes what it pasted (D-SC1b-4); the
-    output text is the same either way.
-    """
-    root = pathlib.Path(working_dir)
-    lines: list[str] = [f"## Project Directory: `{root}`\n"]
-    if record is None:
-        record = SampleRecord()
-
-    if all_files is None:
-        all_files = collect_files(root)
-
-    if not all_files:
-        lines.append("The directory appears to be empty (no non-hidden files found).\n")
-        return "\n".join(lines)
-
-    _file_tree_lines(root, all_files, lines, record)
-
-    readme_lines = _format_readme_block(root, all_files, record)
-    if readme_lines:
-        lines.extend(readme_lines)
-
-    _manifest_file_lines(root, all_files, lines, record)
-
-    ci_block = _format_ci_block(root, all_files, record)
-    if ci_block:
-        lines.extend(ci_block)
-
-    deploy_block = _format_deployment_signals(root, all_files, record)
-    if deploy_block:
-        lines.extend(deploy_block)
-
-    lines.append("### Source File Samples\n")
-    source_files = [f for f in all_files if f.suffix in _SOURCE_EXTENSIONS]
-    record.source_files_total = len(source_files)
-
-    priority_files = _priority_source_files(root, source_files)
-    _source_sample_lines(root, priority_files, lines, record)
-
-    return "\n".join(lines)
-
-
-def _file_tree_lines(
+def file_tree_lines(
     root: pathlib.Path,
     all_files: list[pathlib.Path],
+    nodes: list[str],
     lines: list[str],
     record: SampleRecord,
 ) -> None:
-    """The truncated file tree."""
-    lines.append("### File Tree\n```")
-    for f in all_files[:_MAX_TREE_FILES]:
-        lines.append(str(f.relative_to(root)))
-    if len(all_files) > _MAX_TREE_FILES:
-        lines.append(
-            f"... and {len(all_files) - _MAX_TREE_FILES} more files (truncated)"
-        )
+    """The file tree: a directory rollup, then the source node list (D-SC2-3).
+
+    The rollup names every directory that holds a file, with its file count
+    and top extensions, and is never capped. The node list names every
+    non-test source file (``nodes``, the graph's) up to ``_MAX_TREE_NODES``.
+    """
+    by_dir: dict[str, collections.Counter[str]] = collections.defaultdict(
+        collections.Counter
+    )
+    for f in all_files:
+        parent = f.parent.relative_to(root).as_posix()
+        by_dir[parent][f.suffix or f.name] += 1
+    lines.append("### File Tree\n")
+    lines.append("Directories (files, top extensions):\n```")
+    for d in sorted(by_dir, key=lambda x: (x != ".", x)):
+        counts = by_dir[d]
+        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        top = ", ".join(f"{k} {n}" for k, n in ranked[:_TOP_TREE_EXTENSIONS])
+        label = "./" if d == "." else f"{d}/"
+        lines.append(f"{label}  {sum(counts.values())}  ({top})")
     lines.append("```\n")
-    record.tree_listed = min(len(all_files), _MAX_TREE_FILES)
-    record.tree_truncated = len(all_files) > _MAX_TREE_FILES
+    shown = nodes[:_MAX_TREE_NODES]
+    lines.append(f"Source files (non-test, {len(nodes)}):\n```")
+    lines.extend(shown)
+    if len(nodes) > _MAX_TREE_NODES:
+        lines.append(f"(+{len(nodes) - _MAX_TREE_NODES} more)")
+    lines.append("```\n")
+    record.tree_form = _TREE_FORM
+    record.tree_listed = len(shown)
+    record.tree_truncated = len(nodes) > _MAX_TREE_NODES
 
 
-def _manifest_file_lines(
+def manifest_file_lines(
     root: pathlib.Path,
     all_files: list[pathlib.Path],
     lines: list[str],
@@ -284,44 +295,7 @@ def _is_test_path(root: pathlib.Path, p: pathlib.Path) -> bool:
     return any(x in ("test", "tests", "spec", "specs") for x in parts)
 
 
-def _priority_source_files(
-    root: pathlib.Path, source_files: list[pathlib.Path]
-) -> list[pathlib.Path]:
-    """Non-test sources, entrypoint candidates first, capped."""
-    non_test_sources = [f for f in source_files if not _is_test_path(root, f)]
-    entrypoint_files = [f for f in non_test_sources if _is_entrypoint_candidate(f)]
-    other_files = [f for f in non_test_sources if not _is_entrypoint_candidate(f)]
-    priority_files = (entrypoint_files + other_files)[:_MAX_PRIORITY_SOURCE_FILES]
-    return priority_files
-
-
-def _source_sample_lines(
-    root: pathlib.Path,
-    priority_files: list[pathlib.Path],
-    lines: list[str],
-    record: SampleRecord,
-) -> None:
-    """Head samples of the priority source files, within the character budget."""
-    source_chars = 0
-    for f in priority_files:
-        if source_chars >= _MAX_SOURCE_SAMPLE_CHARS:
-            break
-        try:
-            content = f.read_text(errors="replace")
-        except OSError:
-            continue
-        sample_lines = content.splitlines()[:_MAX_SOURCE_SAMPLE_LINES]
-        sample = "\n".join(sample_lines)
-        label = " (entrypoint candidate)" if _is_entrypoint_candidate(f) else ""
-        lines.append(
-            f"#### `{f.relative_to(root)}` (first {len(sample_lines)} lines){label}\n"
-            f"```\n{sample}\n```\n"
-        )
-        source_chars += len(sample)
-        record.sampled.append(_rel(root, f))
-
-
-def _format_readme_block(
+def format_readme_block(
     root: pathlib.Path, all_files: list[pathlib.Path], record: SampleRecord
 ) -> list[str]:
     readme = next(
@@ -344,7 +318,7 @@ def _format_readme_block(
     ]
 
 
-def _format_ci_block(
+def format_ci_block(
     root: pathlib.Path, all_files: list[pathlib.Path], record: SampleRecord
 ) -> list[str]:
     ci_files: list[pathlib.Path] = []
@@ -358,8 +332,8 @@ def _format_ci_block(
     if not ci_files:
         return []
     out: list[str] = ["### CI / Workflow Files\n"]
-    for f in ci_files[:5]:
-        content = _read_text_safely(f, 1500)
+    for f in ci_files[:_MAX_CI_FILES]:
+        content = _read_text_safely(f, _MAX_SIGNAL_FILE_CHARS)
         if content is None:
             continue
         out.append(f"#### `{f.relative_to(root)}`\n```\n{content}\n```\n")
@@ -367,14 +341,14 @@ def _format_ci_block(
     return out
 
 
-def _format_deployment_signals(
+def format_deployment_signals(
     root: pathlib.Path, all_files: list[pathlib.Path], record: SampleRecord
 ) -> list[str]:
     deploy_files: list[pathlib.Path] = []
     has_terraform = False
     for f in all_files:
         rel_parts = f.relative_to(root).parts
-        if f.name in _DEPLOY_SIGNAL_FILES:
+        if f.name in _DEPLOY_SIGNAL_FILES or f.suffix in _DEPLOY_SIGNAL_SUFFIXES:
             deploy_files.append(f)
         if any(p in _TERRAFORM_DIRS for p in rel_parts) and f.suffix in {
             ".tf",
@@ -384,8 +358,8 @@ def _format_deployment_signals(
     if not deploy_files and not has_terraform:
         return []
     out: list[str] = ["### Deployment Signals\n"]
-    for f in deploy_files[:5]:
-        content = _read_text_safely(f, 1500)
+    for f in deploy_files[:_MAX_DEPLOY_FILES]:
+        content = _read_text_safely(f, _MAX_SIGNAL_FILE_CHARS)
         if content is None:
             out.append(f"- `{f.relative_to(root)}` present\n")
             continue
@@ -398,12 +372,51 @@ def _format_deployment_signals(
     return out
 
 
-def approx_tokens(text: str) -> int:
-    """Rough token count for display only (D-SC-P2).
+def format_conventions_block(
+    root: pathlib.Path, all_files: list[pathlib.Path], record: SampleRecord
+) -> list[str]:
+    """The Project Conventions section (D-SC2-10); empty when none is present.
 
-    Four characters per token is the usual English-prose rule of thumb and is
-    close enough to set an expectation about request size. It is never used for
-    truncation, budgeting, or any request decision — only to tell the user how
-    much was sent — so no tokenizer dependency is warranted.
+    Root-level files only, in the order the name tuples give: env examples
+    whole up to ``_MAX_ENV_EXAMPLE_CHARS``, the agent and contributor docs by
+    their first ``_MAX_CONVENTION_LINES`` lines, the legal files by name.
+    """
+    at_root = {f.name: f for f in all_files if f.parent == root}
+    out: list[str] = []
+    for name in _ENV_EXAMPLE_NAMES:
+        f = at_root.get(name)
+        content = None if f is None else _read_text_safely(f, _MAX_ENV_EXAMPLE_CHARS)
+        if content is not None:
+            out.append(f"#### `{name}`\n```\n{content}\n```\n")
+            record.conventions.append(name)
+    for name in _CONVENTION_DOC_NAMES:
+        f = at_root.get(name)
+        content = None if f is None else _read_text_safely(f, _MAX_SOURCE_READ_CHARS)
+        if content is not None:
+            head = content.splitlines()[:_MAX_CONVENTION_LINES]
+            out.append(
+                f"#### `{name}` (first {len(head)} lines)\n```\n"
+                + "\n".join(head)
+                + "\n```\n"
+            )
+            record.conventions.append(name)
+    present = [n for n in _PRESENT_ONLY_NAMES if n in at_root]
+    if present:
+        out.append("- Also present: " + ", ".join(f"`{n}`" for n in present) + "\n")
+    if not out:
+        return []
+    return ["### Project Conventions\n", *out]
+
+
+def approx_tokens(text: str) -> int:
+    """Rough token count: four characters per token.
+
+    D-SC-P2 introduced it for display only — telling the user how much was
+    sent. Since 2.4.0 it is also the meter the sampler spends the evidence
+    budget with (D-SC2-2, superseding D-SC-P2's "never used for budgeting"):
+    one rule of thumb for what is shown and what is reported, so the budget
+    and the narrated request size agree. It still decides only how much
+    evidence is pasted, never a request parameter, so no tokenizer dependency
+    is warranted.
     """
     return len(text) // 4

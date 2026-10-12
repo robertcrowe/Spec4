@@ -11,7 +11,8 @@ the CodeScanner v2 plan ships three blocks:
   the walk pruned (``unscanned_dirs``), so a consumer can tell "not there"
   from "not looked at".
 - ``coverage`` — what the seed actually showed the model, from the
-  ``SampleRecord`` the formatters in ``_scan`` fill while pasting
+  ``SampleRecord`` the formatters in ``_scan`` and the tiers in ``_sample``
+  fill while pasting
   (D-SC1b-4): one source of truth for the sampling, no second derivation.
 - ``git`` — present only when the project root *is* a repository top-level
   (a ``.git`` entry at the root; D-SC1b-5): head, branch, cleanliness, the
@@ -25,6 +26,11 @@ assembled here. Step 1d adds ``dependencies`` (``_manifests``), ``prior_round``
 (``_prior``), ``plan_drift`` (``_drift``) and ``delta`` (``_delta``), and
 gives ``git`` a ``working_tree`` block with Spec4's own ``.spec4/`` output
 excluded from the dirty and untracked counts (D-SC1d-8).
+
+Step 2a splits assembly in two (D-SC2-1): ``measure_scan`` computes every
+block but ``coverage`` *before* the seed, so the sampler draws on the graph
+that is stored, and ``attach_coverage`` adds ``coverage`` after it from the
+record the sampler filled. ``collect_scan`` composes the two.
 
 ``_run_git`` is the one seam to the ``git`` binary, and the first subprocess
 call in Spec4. Tests patch it by name (AGENTS.md: the module-level seam, not
@@ -46,9 +52,10 @@ from typing import TYPE_CHECKING, Any
 from spec4 import project_manager
 from spec4.agents.code_scanner._delta import delta_block, prior_scan
 from spec4.agents.code_scanner._drift import plan_drift_block
-from spec4.agents.code_scanner._graph import module_graph_block, signatures_block
+from spec4.agents.code_scanner._graph import analyse, signatures_block
 from spec4.agents.code_scanner._manifests import dependencies_block
 from spec4.agents.code_scanner._prior import prior_round_block
+from spec4.agents.code_scanner._sample import ScanEvidence
 from spec4.agents.code_scanner._scan import _SKIP_DIRS, SampleRecord
 from spec4.app_constants import ARTIFACT_CODE_REVIEW
 
@@ -162,7 +169,12 @@ def inventory_block(
 
 
 def coverage_block(record: SampleRecord) -> dict[str, Any]:
-    """What the seed showed the model, from the formatters' own ledger."""
+    """What the seed showed the model, from the formatters' own ledger.
+
+    2.4.0 (D-SC2-13) adds ``signatures_shown``, ``conventions``, ``tree`` and
+    ``evidence_tokens``; ``tree_listed``/``tree_truncated`` keep their names
+    and now count the tree's source node list.
+    """
     return {
         "tree_listed": record.tree_listed,
         "tree_truncated": record.tree_truncated,
@@ -173,6 +185,14 @@ def coverage_block(record: SampleRecord) -> dict[str, Any]:
         "sampled": list(record.sampled),
         "source_files_total": record.source_files_total,
         "source_files_sampled": len(record.sampled),
+        "signatures_shown": list(record.signatures_shown),
+        "conventions": list(record.conventions),
+        "tree": {
+            "form": record.tree_form,
+            "nodes_listed": record.tree_listed,
+            "truncated": record.tree_truncated,
+        },
+        "evidence_tokens": record.evidence_tokens,
     }
 
 
@@ -419,40 +439,70 @@ def git_block(root: pathlib.Path, boundary: tuple[str, float] | None) -> dict[st
 # ---------------------------------------------------------------------------
 
 
-def collect_scan(
+def measure_scan(
     working_dir: str,
     all_files: list[pathlib.Path],
-    record: SampleRecord,
     session: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """The whole ``scan`` layer for one walk; stashed until commit.
+) -> ScanEvidence:
+    """The pre-seed half of the ``scan`` layer (D-SC2-1): every block but coverage.
 
-    ``git`` is present only for a repository root. ``session`` reaches
-    ``active_version`` for the round boundary and the prior scan, and nothing
-    else. The graph feeds the signatures: the candidates it ranks are the
-    files whose signatures are kept (1c). ``prior_round`` and ``plan_drift``
-    are present when a round is implemented; ``delta`` when an earlier 2.x
-    scan is on disk to compare against (1d). ``dependencies`` is on every scan,
-    since the next scan's ``delta`` reads this one's.
+    Runs before the seed is built, so the sampler draws on the same graph,
+    signatures and reached set that are stored. ``git`` is present only for a
+    repository root. ``session`` reaches ``active_version`` for the round
+    boundary and the prior scan, and nothing else. The graph feeds the
+    signatures: the candidates it ranks are the files whose signatures are
+    kept (1c). ``prior_round`` and ``plan_drift`` are present when a round is
+    implemented; ``delta`` when an earlier 2.x scan is on disk to compare
+    against (1d). ``dependencies`` is on every scan, since the next scan's
+    ``delta`` reads this one's.
     """
     root = pathlib.Path(working_dir)
-    graph = module_graph_block(root, all_files)
+    graph = analyse(root, all_files)
     dependencies = dependencies_block(root, all_files)
     scan: dict[str, Any] = {
         "inventory": inventory_block(root, all_files),
-        "coverage": coverage_block(record),
         "dependencies": dependencies,
-        "module_graph": graph,
-        "signatures": signatures_block(root, all_files, graph),
+        "module_graph": graph.block,
+        "signatures": signatures_block(root, all_files, graph.block),
     }
     if is_repo_root(root):
         scan["git"] = git_block(root, round_boundary(working_dir, session))
     prior = prior_round_block(working_dir)
     if prior is not None:
         scan["prior_round"] = prior
-        scan["plan_drift"] = plan_drift_block(prior, dependencies, graph)
+        scan["plan_drift"] = plan_drift_block(prior, dependencies, graph.block)
     found = prior_scan(working_dir, session)
     if found is not None:
         descriptor, earlier = found
         scan["delta"] = delta_block(scan, earlier, descriptor)
-    return scan
+    return ScanEvidence(all_files, scan, graph.reached)
+
+
+def attach_coverage(scan: dict[str, Any], record: SampleRecord) -> dict[str, Any]:
+    """The post-seed half: ``coverage`` from the filled record, after ``inventory``.
+
+    Returns a new dict in the 2.3.0 key order, so a stored scan reads the same
+    as before the split.
+    """
+    out: dict[str, Any] = {}
+    for key, value in scan.items():
+        out[key] = value
+        if key == "inventory":
+            out["coverage"] = coverage_block(record)
+    out.setdefault("coverage", coverage_block(record))
+    return out
+
+
+def collect_scan(
+    working_dir: str,
+    all_files: list[pathlib.Path],
+    record: SampleRecord,
+    session: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The whole ``scan`` layer for one walk, both halves in one call.
+
+    ``run`` uses the halves (``measure_scan`` before the seed, then
+    ``attach_coverage``); this composition is for callers holding a record
+    that is already filled.
+    """
+    return attach_coverage(measure_scan(working_dir, all_files, session).scan, record)

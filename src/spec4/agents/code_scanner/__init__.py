@@ -7,8 +7,11 @@ schema-checked ``code_review`` artifact, and ``run`` itself.
 Cleanup Phase 4c turned this module into a package and moved the three
 self-contained concerns into siblings, one module each:
 
-* :mod:`spec4.agents.code_scanner._scan` -- the repo walk, the project-context
-  block the seeds carry, and the size budgets that bound both.
+* :mod:`spec4.agents.code_scanner._scan` -- the repo walk, the fixed-evidence
+  formatters, and the size budgets that bound them.
+* :mod:`spec4.agents.code_scanner._sample` -- the project-context block the
+  seeds carry: which files are shown, in what form, within the evidence
+  budget (v2 step 2a).
 * :mod:`spec4.agents.code_scanner._collect` -- the code-owned ``scan`` layer
   (schema_version 2): inventory, coverage, and git, computed after the walk
   and merged at commit (D-EV2).
@@ -27,6 +30,7 @@ imported from this module at all.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import pathlib
 from collections.abc import Generator
@@ -55,14 +59,22 @@ from spec4.agents._turn_flow import (
 )
 from spec4.app_constants import STATE_IN_PROGRESS, STATE_REVIEW_COMPLETE
 
-from spec4.agents.code_scanner._collect import collect_scan
+from spec4.agents.code_scanner._collect import (
+    attach_coverage,
+    collect_scan,
+    measure_scan,
+)
 from spec4.agents.code_scanner._prompt import SYSTEM_PROMPT
 from spec4.agents.code_scanner._review_render import format_review_as_text
+from spec4.agents.code_scanner._sample import (
+    ScanEvidence,
+    evidence_budget,
+    gather_project_context,
+)
 from spec4.agents.code_scanner._scan import (
     SampleRecord,
     approx_tokens,
     collect_files,
-    gather_project_context,
 )
 
 __all__ = [
@@ -166,6 +178,7 @@ def build_fresh_scan_seed(
     all_files: list[pathlib.Path] | None = None,
     prior_review: dict[str, Any] | None = None,
     record: SampleRecord | None = None,
+    scan: ScanEvidence | None = None,
 ) -> str:
     """The seed for a scan drawn from the evidence alone.
 
@@ -173,9 +186,10 @@ def build_fresh_scan_seed(
     appended as context — hints, not a baseline. It is never the update seed:
     that one asks for a diff against the prior review and a merged re-emission,
     and a review the current schema does not read cannot be merged into.
-    ``record``, when given, is filled with what the evidence block pasted.
+    ``record``, when given, is filled with what the evidence block pasted;
+    ``scan`` is the pre-seed measurement the sampler draws on (D-SC2-1).
     """
-    context = gather_project_context(working_dir, all_files, record)
+    context = gather_project_context(working_dir, all_files, record, scan)
     head = (
         "Please introduce yourself as CodeScanner, then analyze this project "
         "directory and produce the full draft review in one shot as described in "
@@ -204,8 +218,9 @@ def build_update_scan_seed(
     prior_review: dict[str, Any],
     all_files: list[pathlib.Path] | None = None,
     record: SampleRecord | None = None,
+    scan: ScanEvidence | None = None,
 ) -> str:
-    context = gather_project_context(working_dir, all_files, record)
+    context = gather_project_context(working_dir, all_files, record, scan)
     prior_json = json.dumps(_prior_review_for_seed(prior_review), indent=2)
     return (
         "Please introduce yourself as CodeScanner. The user has asked you to "
@@ -382,11 +397,17 @@ def _scanner_first_entry(
     pre_stream_chars += len(count_line)
     yield count_line
 
-    seed, record = _scanner_seed(msgs, working_dir, existing_review, all_files, stale)
-    # D-SC1b-1: the measured layer is taken from the same walk the model is
-    # about to see and held in the session until the review block arrives —
-    # the commit may be turns away (a chat first, or the re-ask path).
-    session["code_scanner_scan"] = collect_scan(working_dir, all_files, record, session)
+    # D-SC2-1: the measured layer is computed before the seed, from the same
+    # walk, so the sampler ranks by the graph that is stored; coverage — what
+    # the seed actually pasted — is attached after. D-SC1b-1: the result is
+    # held in the session until the review block arrives — the commit may be
+    # turns away (a chat first, or the re-ask path).
+    evidence = dataclasses.replace(
+        measure_scan(working_dir, all_files, session),
+        budget_tokens=evidence_budget(llm_config),
+    )
+    seed, record = _scanner_seed(msgs, working_dir, existing_review, evidence, stale)
+    session["code_scanner_scan"] = attach_coverage(evidence.scan, record)
 
     # D-SC-P2: what follows is a single completion call, and the wait
     # before its first token is dominated by prefill over this request.
@@ -469,22 +490,28 @@ def _scanner_seed(
     msgs: list[dict[str, Any]],
     working_dir: str,
     existing_review: Any,
-    all_files: list[Any],
+    evidence: ScanEvidence,
     stale: bool = False,
 ) -> tuple[str, SampleRecord]:
     """Build and append the scan seed; return it with the record of what it pasted.
 
     A prior review under the current schema opens the update scan; one under an
     older schema (``stale``) opens a fresh scan that carries it as context only
-    (D-SV4); none opens a fresh scan.
+    (D-SV4); none opens a fresh scan. ``evidence`` carries the walk and the
+    pre-seed measurement the sampler ranks by (D-SC2-1).
     """
     record = SampleRecord()
+    files = evidence.files
     if existing_review is not None and stale:
-        seed = build_fresh_scan_seed(working_dir, all_files, existing_review, record)
+        seed = build_fresh_scan_seed(
+            working_dir, files, existing_review, record, evidence
+        )
     elif existing_review is not None:
-        seed = build_update_scan_seed(working_dir, existing_review, all_files, record)
+        seed = build_update_scan_seed(
+            working_dir, existing_review, files, record, evidence
+        )
     else:
-        seed = build_fresh_scan_seed(working_dir, all_files, record=record)
+        seed = build_fresh_scan_seed(working_dir, files, None, record, evidence)
     msgs.append({"role": "user", "content": seed})
     return seed, record
 

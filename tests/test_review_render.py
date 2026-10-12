@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from spec4.agents.code_scanner._review_render import (
     _scan_candidates_line,
+    _scan_coverage_line,
     _scan_prior_line,
+    _scan_reach_line,
     _since_summary,
     _skipped_summary,
     _tree_state,
@@ -42,6 +44,15 @@ class TestScanSummaryGoldens:
         assert_golden(
             "render_review_with_scan_prior.md",
             format_review_as_text(load_fixture("review_with_scan_prior.json")),
+        )
+
+    def test_scan_summary_names_the_sampled_evidence_and_the_reach(self) -> None:
+        # 2.4.0 (step 2a): the coverage line gains signature and convention
+        # counts and the evidence size, and a reach line follows the
+        # candidates; differs from the 1d golden by those two lines only.
+        assert_golden(
+            "render_review_with_scan_sampled.md",
+            format_review_as_text(load_fixture("review_with_scan_sampled.json")),
         )
 
     def test_scan_summary_on_a_non_software_directory(self) -> None:
@@ -163,3 +174,52 @@ class TestSummaryLines:
             "1 commit since the last implemented round (2026-09-28), 1 author, "
             "touching `src`"
         )
+
+
+class TestSampledEvidenceLines:
+    def test_coverage_line_adds_the_2a_counts_only_when_present(self) -> None:
+        base = {"source_files_sampled": 2, "source_files_total": 9, "manifests": []}
+        assert _scan_coverage_line(base) == (
+            "- Shown to the model: 2 of 9 source files sampled, 0 manifests"
+        )
+        full = {
+            **base,
+            "signatures_shown": ["a.py", "b.py"],
+            "conventions": ["AGENTS.md"],
+            "evidence_tokens": 17368,
+        }
+        assert _scan_coverage_line(full) == (
+            "- Shown to the model: 2 of 9 source files sampled, 0 manifests, "
+            "2 signature files, 1 convention file (~17,368 tokens)"
+        )
+
+    def test_reach_line_names_roots_and_unreached_dirs_with_caps(self) -> None:
+        reach = {
+            "basis": "entrypoints",
+            "entrypoints": ["a.py", "b.py", "c.py", "d.py"],
+            "reached": 97,
+            "unreached_dirs": ["evals", "scripts", "x", "y", "z"],
+        }
+        assert _scan_reach_line(reach) == (
+            "- Reach: 97 modules from entrypoint `a.py`, `b.py`, `c.py` and 1 more; "
+            "unreached: `evals`, `scripts`, `x` and 2 more"
+        )
+
+    def test_reach_line_from_a_declared_package_without_unreached_dirs(
+        self,
+    ) -> None:
+        reach = {
+            "basis": "manifest",
+            "entrypoints": ["src/pkg"],
+            "reached": 4,
+            "unreached_dirs": [],
+        }
+        assert _scan_reach_line(reach) == (
+            "- Reach: 4 modules from declared package `src/pkg`"
+        )
+
+    def test_reach_line_is_absent_when_reach_is_unknown_or_missing(self) -> None:
+        assert _scan_reach_line(None) is None
+        assert _scan_reach_line({"basis": "none", "entrypoints": []}) is None
+        # Paired positive: a known basis does render.
+        assert _scan_reach_line({"basis": "entrypoints", "reached": 0}) is not None

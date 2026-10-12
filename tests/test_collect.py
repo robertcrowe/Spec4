@@ -26,11 +26,8 @@ from spec4 import session as session_mod
 from spec4.agents import code_scanner
 from spec4.agents._code_review_schema import validate_code_review
 from spec4.agents.code_scanner import _collect
-from spec4.agents.code_scanner._scan import (
-    SampleRecord,
-    collect_files,
-    gather_project_context,
-)
+from spec4.agents.code_scanner._sample import gather_project_context
+from spec4.agents.code_scanner._scan import SampleRecord, collect_files
 from spec4.app_constants import STATE_REVIEW_COMPLETE
 from spec4.callbacks._nav import on_rescan_project
 from tests._agent_helpers import collect, make_session
@@ -154,8 +151,15 @@ class TestCoverage:
         assert "tests/test_main.py" not in cov["sampled"]
         assert cov["source_files_total"] == 4
         assert cov["source_files_sampled"] == len(cov["sampled"])
-        assert cov["tree_listed"] == 9
+        # 2.4.0: the tree lists every non-test source node under a directory
+        # rollup; ``tree_listed`` counts that node list (D-SC2-3/13).
+        assert cov["tree_listed"] == 3
         assert cov["tree_truncated"] is False
+        assert cov["tree"] == {
+            "form": "rollup+nodes",
+            "nodes_listed": 3,
+            "truncated": False,
+        }
 
     def test_record_is_optional_and_the_text_is_unchanged(
         self, tmp_path: pathlib.Path
@@ -167,6 +171,25 @@ class TestCoverage:
         without = gather_project_context(str(tmp_path), files)
         assert with_record == without
         assert record.sampled
+
+    def test_2a_fields_validate_and_the_tree_shape_is_closed(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _make_project(tmp_path)
+        scan = _scan(tmp_path)
+        assert validate_code_review(review_envelope(scan=scan)) == []
+        scan["coverage"]["tree"]["form"] = "flat"
+        assert validate_code_review(review_envelope(scan=scan)) != []
+
+    def test_a_2_3_coverage_without_the_2a_fields_still_validates(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _make_project(tmp_path)
+        scan = _scan(tmp_path)
+        for key in ("signatures_shown", "conventions", "tree", "evidence_tokens"):
+            del scan["coverage"][key]
+        del scan["module_graph"]["reach"]
+        assert validate_code_review(review_envelope(scan=scan)) == []
 
     def test_empty_directory_leaves_the_record_blank(
         self, tmp_path: pathlib.Path
@@ -594,6 +617,42 @@ class TestScanStash:
             == 9
         )
         assert session["code_scanner_scan"] is None
+
+    def test_stash_carries_the_2a_coverage_after_the_inventory(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # D-SC2-1: measured before the seed, coverage attached after it, in
+        # the 2.3.0 key order; the record is the one the seed filled.
+        _make_project(tmp_path)
+        session = make_session(active_agent="code_scanner", working_dir=str(tmp_path))
+        with patch.object(code_scanner.llm, "stream_turn", _fake_stream("Hello.")):
+            collect(code_scanner.run(None, session, {"model": "m"}))
+        stash = session["code_scanner_scan"]
+        assert list(stash)[:3] == ["inventory", "coverage", "dependencies"]
+        seed = session["code_scanner_messages"][0]["content"]
+        cov = stash["coverage"]
+        assert cov["sampled"] == ["src/main.py"]  # util.py: no importers
+        assert cov["tree"]["form"] == "rollup+nodes"
+        assert 0 < cov["evidence_tokens"] <= code_scanner.approx_tokens(seed)
+        assert stash["module_graph"]["reach"]["entrypoints"] == ["src/main.py"]
+        assert validate_code_review(review_envelope(scan=stash)) == []
+
+    def test_scan_context_tokens_overrides_the_evidence_budget(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _make_project(tmp_path)
+        tight = make_session(active_agent="code_scanner", working_dir=str(tmp_path))
+        roomy = make_session(active_agent="code_scanner", working_dir=str(tmp_path))
+        with patch.object(code_scanner.llm, "stream_turn", _fake_stream("Hello.")):
+            collect(code_scanner.run(None, tight, {"scan_context_tokens": 1}))
+            collect(code_scanner.run(None, roomy, {}))
+        assert tight["code_scanner_scan"]["coverage"]["sampled"] == []
+        assert roomy["code_scanner_scan"]["coverage"]["sampled"] != []
+
+    def test_attach_coverage_appends_when_there_is_no_inventory(self) -> None:
+        out = _collect.attach_coverage({"git": {"available": False}}, SampleRecord())
+        assert list(out) == ["git", "coverage"]
+        assert out["coverage"]["evidence_tokens"] == 0
 
     def test_commit_without_a_stash_is_refused(self) -> None:
         session = make_session(
