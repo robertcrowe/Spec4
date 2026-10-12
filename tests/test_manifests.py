@@ -37,6 +37,10 @@ dependencies = [
 dev = ["pytest", "ruff==0.5"]
 docs = ["mkdocs"]
 
+[dependency-groups]
+dev = ["mypy>=1.20", "pytest", {include-group = "lint"}]
+lint = ["ruff>=0.15", "Pytest-Cov"]
+
 [tool.poetry.dependencies]
 ignored = "^1"
 """
@@ -75,8 +79,29 @@ class TestPyproject:
             "pytest": "",
             "ruff": "==0.5",
             "mkdocs": "",
+            "mypy": ">=1.20",
+            "Pytest-Cov": "",
         }
         assert "ignored" not in deps
+        # 2.7.1 (D-SC4-13): the PEP 735 groups are read; the first declaration
+        # of a name wins (``pytest`` and ``ruff`` keep their optional-group
+        # specs), and ``include-group`` entries contribute nothing themselves.
+        assert "include-group" not in deps
+        assert "lint" not in deps
+
+    def test_dependency_groups_alone_are_read(self, tmp_path: pathlib.Path) -> None:
+        # A tool-only pyproject with no ``[project]`` table still declares
+        # its dev tools (PEP 735 does not require ``[project]``).
+        path = _write(
+            tmp_path,
+            "pyproject.toml",
+            '[dependency-groups]\ntest = ["pytest>=9", 7]\n'
+            "[tool.ruff]\nline-length = 88\n",
+        )
+        assert _manifests.parse_manifest(path) == {"pytest": ">=9"}
+        # Not a table: ignored, as a non-list optional group is.
+        path = _write(tmp_path, "pyproject.toml", "dependency-groups = 3\n")
+        assert _manifests.parse_manifest(path) == {}
 
     def test_no_project_table_is_empty_not_none(self, tmp_path: pathlib.Path) -> None:
         path = _write(tmp_path, "pyproject.toml", "[tool.ruff]\nline-length = 88\n")

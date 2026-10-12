@@ -10,6 +10,22 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.7.1] — unreleased
+
+D-SC4-13: `scan.dependencies` reads PEP 735 `[dependency-groups]`.
+
+### Fixed
+- `pyproject.toml` parsing read `[project].dependencies` and
+  `[project.optional-dependencies]` only, so the dev tools `uv` and `pdm`
+  declare in `[dependency-groups]` (`pytest`, `mypy`, `ruff`, …) counted as
+  never declared: `plan_drift` listed them as `planned_unmatched` (4 of
+  Spec4's own 6), and from 2.7.0 StackAdvisor's "Planned last round, not
+  found in the code" block showed tools in daily use as missing. Every
+  group's PEP 508 entries are now declared; `{include-group = …}` entries
+  are skipped (the group they name is read on its own); a pyproject with
+  groups but no `[project]` table declares them too. `delta.dependencies`
+  and `plan_drift` follow with no change of their own.
+
 ## [2.7.0] — unreleased
 
 Step 3b of the CodeScanner v2 plan (D-SC3-11): the consumer side of step 3.

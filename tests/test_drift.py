@@ -155,6 +155,42 @@ class TestBuckets:
         assert "@testing-library/react" not in unplanned
         assert drift["truncated"] is False
 
+    def test_dev_tools_in_dependency_groups_are_declared_not_unmatched(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # 2.7.1 (D-SC4-13): the Spec4-shaped case — ``uv`` puts the dev tools
+        # the plan names into PEP 735 ``[dependency-groups]``, which 1d's
+        # parser did not read, so they fell into ``planned_unmatched`` and
+        # 3b showed StackAdvisor "planned, not found" for tools in daily use.
+        install_rounds(tmp_path, 8)
+        _write_manifests(tmp_path)
+        tools = ["mypy", "pytest", "ruff", "pytest-cov"]
+        runtime = [n for n in _PYTHON_DECLARED if n not in tools]
+        (tmp_path / "pyproject.toml").write_text(
+            "[project]\nname = 'bws4'\ndependencies = [\n"
+            + "".join(f'  "{n}>=1",\n' for n in runtime)
+            + "]\n[dependency-groups]\ndev = [\n"
+            + "".join(f'  "{n}>=1",\n' for n in tools)
+            + "]\n"
+        )
+        drift = _drift_of(tmp_path, {"caddy_api": 1, "remark_gfm": 3})
+        matched = {e["name"]: e["manifest"] for e in drift["planned_in_manifests"]}
+        for name in ("mypy", "pytest", "Ruff"):
+            assert matched[name] == "pyproject.toml"
+            assert name not in _names(drift["planned_unmatched"])
+        # v8 never planned pytest-cov: declared from the group, still unplanned.
+        assert "pytest-cov" in _names(drift["declared_not_planned"])
+        # Everything else is as the full-manifest case above.
+        assert _names(drift["planned_unmatched"]) == [
+            "Caddy 2",
+            "Node 20",
+            "Playwright",
+            "Python 3.12",
+            "systemd",
+            "uv",
+        ]
+        assert drift["declared"] == len(_PYTHON_DECLARED) + len(_JS_DECLARED)
+
     def test_sources_name_the_stack_and_each_phase(
         self, tmp_path: pathlib.Path
     ) -> None:

@@ -1,9 +1,10 @@
 """The ``dependencies`` block of the ``scan`` layer: what the manifests declare (1d).
 
 Three manifest formats are parsed, and only for their dependency names and
-version specifiers (D-SC1d-6): ``pyproject.toml`` (``[project].dependencies``
-and every ``[project.optional-dependencies]`` group, as PEP 508 names),
-``package.json`` (``dependencies`` and ``devDependencies``) and ``go.mod``
+version specifiers (D-SC1d-6): ``pyproject.toml`` (``[project].dependencies``,
+every ``[project.optional-dependencies]`` group and, since 2.7.1, every PEP 735
+``[dependency-groups]`` list — the dev tools ``uv`` and ``pdm`` declare there —
+as PEP 508 names; D-SC4-13), ``package.json`` (``dependencies`` and ``devDependencies``) and ``go.mod``
 (``require``). Nothing else in a manifest is read — the block exists so that
 ``plan_drift`` can ask "was what the plan named ever declared?" and ``delta``
 can say what was added, dropped or bumped between two scans without opening
@@ -47,13 +48,20 @@ def _pyproject(text: str) -> dict[str, str] | None:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError:
         return None
+    groups: list[Any] = []
     project = data.get("project")
-    if not isinstance(project, dict):
-        return {}
-    groups: list[Any] = [project.get("dependencies")]
-    optional = project.get("optional-dependencies")
-    if isinstance(optional, dict):
-        groups.extend(optional.values())
+    if isinstance(project, dict):
+        groups.append(project.get("dependencies"))
+        optional = project.get("optional-dependencies")
+        if isinstance(optional, dict):
+            groups.extend(optional.values())
+    # PEP 735 (D-SC4-13): ``[dependency-groups]`` is a top-level table beside
+    # ``[project]``; a ``{include-group = "..."}`` entry is a table, not a
+    # string, and is skipped like any non-string requirement — the group it
+    # names is read on its own.
+    dependency_groups = data.get("dependency-groups")
+    if isinstance(dependency_groups, dict):
+        groups.extend(dependency_groups.values())
     out: dict[str, str] = {}
     for group in groups:
         if not isinstance(group, list):
