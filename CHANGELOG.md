@@ -10,6 +10,19 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.8.1] — unreleased
+
+### Fixed
+- `git.since_last_round` and `most_touched` passed the round boundary to
+  `git log` as `--since=@<epoch>`. Git reads a short `@N` by its
+  approximate-date parser rather than as a Unix timestamp, so a boundary at
+  epoch 0 meant "now" and counted only the current second's commits — the
+  source of the intermittent `test_throwaway_repository_end_to_end`
+  failure (`assert 0 == 2`). Both call sites now pass an ISO-8601 UTC
+  timestamp, which git parses as a timestamp whatever its value. Real
+  boundaries are file mtimes and were never mis-read; the stored
+  `boundary` string is unchanged.
+
 ## [2.8.0] — unreleased
 
 Step 4a of the CodeScanner v2 plan (D-SC4-1…4, 6…10): the producer side of

@@ -293,6 +293,19 @@ def _iso(epoch: float) -> str:
     )
 
 
+def _since_arg(epoch: float) -> str:
+    """``--since=`` for ``git log`` as an ISO-8601 UTC timestamp (2.8.1).
+
+    Not ``@<epoch>``: git reads a short ``@N`` (``@0`` in particular) by its
+    approximate-date parser and lands on "now", so a boundary at epoch 0
+    returned the commits of the current second only — the
+    ``test_throwaway_repository_end_to_end`` flake. The ISO form is parsed as
+    a timestamp whatever its value; real boundaries (file mtimes) were never
+    affected.
+    """
+    return f"--since={_iso(epoch)}"
+
+
 def _top_dir(rel_path: str) -> str:
     head, sep, _ = rel_path.partition("/")
     return head if sep else _ROOT_DIR
@@ -362,7 +375,7 @@ def _most_touched(root: pathlib.Path, epoch: float) -> list[dict[str, Any]] | No
     extra ``git log`` without the ``_MAX_LOG_COMMITS`` cap: the counts are
     exact whether or not the commit list above is truncated.
     """
-    out = _run_git(["log", "--name-only", "--format=", f"--since=@{int(epoch)}"], root)
+    out = _run_git(["log", "--name-only", "--format=", _since_arg(epoch)], root)
     if out is None:
         return None
     ranked = sorted(_parse_names(out).items(), key=lambda kv: (-kv[1], kv[0]))
@@ -373,7 +386,7 @@ def _since_last_round(
     root: pathlib.Path, boundary: tuple[str, float]
 ) -> dict[str, Any] | None:
     kind, epoch = boundary
-    commits = _log(root, [f"--since=@{int(epoch)}"])
+    commits = _log(root, [_since_arg(epoch)])
     if commits is None:
         return None
     touched: collections.Counter[str] = collections.Counter()

@@ -358,7 +358,7 @@ class TestGitBlock:
             git = _collect.git_block(tmp_path, ("implemented", 1_759_000_000.0))
         names_logs = [a for a in seen if _is_names_log(a)]
         assert names_logs == [
-            ["log", "--name-only", "--format=", "--since=@1759000000"]
+            ["log", "--name-only", "--format=", "--since=2025-09-27T19:06:40+00:00"]
         ]
         since = git["since_last_round"]
         assert since["truncated"] is True
@@ -573,6 +573,56 @@ class TestRunGit:
             side_effect=subprocess.TimeoutExpired(cmd="git", timeout=1),
         ):
             assert _collect._run_git(["status"], tmp_path) is None
+
+    def test_since_arg_is_an_iso_timestamp_never_a_bare_epoch(self) -> None:
+        # 2.8.1: git parses a short ``@N`` as an approximate date ("now"), so
+        # ``--since=@0`` saw only the current second's commits. Every boundary
+        # is now an ISO-8601 UTC timestamp, epoch 0 included.
+        assert _collect._since_arg(0.0) == "--since=1970-01-01T00:00:00+00:00"
+        assert _collect._since_arg(1_759_000_000.9) == (
+            "--since=2025-09-27T19:06:40+00:00"
+        )
+        assert "@" not in _collect._since_arg(0.0)
+
+    @pytest.mark.skipif(_GIT is None, reason="git not installed")
+    def test_epoch_zero_boundary_sees_every_commit(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # The flake's shape, made deterministic: two commits in one second
+        # against a boundary of epoch 0 must both count. With ``@0`` this was
+        # 0 or 2 depending on the clock; the ISO form is always 2.
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "A",
+            "GIT_AUTHOR_EMAIL": "a@example.com",
+            "GIT_COMMITTER_NAME": "A",
+            "GIT_COMMITTER_EMAIL": "a@example.com",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            # Both commits stamped in the same second, so the case the clock
+            # used to decide is the one tested.
+            "GIT_AUTHOR_DATE": "2026-01-01T00:00:00+00:00",
+            "GIT_COMMITTER_DATE": "2026-01-01T00:00:00+00:00",
+        }
+
+        def git(*args: str) -> None:
+            subprocess.run(
+                ["git", *args], cwd=tmp_path, env=env, check=True, capture_output=True
+            )
+
+        git("init", "-q", "-b", "main")
+        for name in ("a", "b"):
+            (tmp_path / f"{name}.py").write_text("x = 1\n")
+            git("add", ".")
+            git("commit", "-q", "-m", name)
+        since = _collect.git_block(tmp_path, ("implemented", 0.0))["since_last_round"]
+        assert since["commits"] == 2
+        assert since["most_touched"] == [
+            {"path": "a.py", "commits": 1},
+            {"path": "b.py", "commits": 1},
+        ]
+        # Paired negative: a boundary after both commits sees none.
+        later = _collect.git_block(tmp_path, ("implemented", 1_800_000_000.0))
+        assert later["since_last_round"]["commits"] == 0
 
     @pytest.mark.skipif(_GIT is None, reason="git not installed")
     def test_throwaway_repository_end_to_end(self, tmp_path: pathlib.Path) -> None:
