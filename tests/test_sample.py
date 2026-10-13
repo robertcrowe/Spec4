@@ -639,6 +639,50 @@ def _context_prior(
     return gather_project_context(str(root), files, record, evidence), record
 
 
+def _since(
+    evidence: ScanEvidence,
+    since: dict[str, Any] | None,
+    delta: dict[str, Any] | None = None,
+) -> ScanEvidence:
+    """``evidence`` with ``git.since_last_round`` and ``delta`` set (or removed)."""
+    scan = {k: v for k, v in evidence.scan.items() if k not in ("git", "delta")}
+    if since is not None:
+        scan["git"] = {"available": True, "since_last_round": since}
+    if delta is not None:
+        scan["delta"] = delta
+    return dataclasses.replace(evidence, scan=scan)
+
+
+def _since_block(
+    commits: int = 14, most_touched: list[tuple[str, int]] | None = None
+) -> dict[str, Any]:
+    return {
+        "boundary_kind": "implemented",
+        "boundary": "2026-09-08T06:00:21+00:00",
+        "commits": commits,
+        "authors": ["A", "B"],
+        "touched_top_dirs": {"src": 12, "tests": 9},
+        "agent_trailers_present": True,
+        "most_touched": [{"path": p, "commits": n} for p, n in most_touched or []],
+    }
+
+
+def _context_since(
+    root: pathlib.Path,
+    since: dict[str, Any] | None,
+    delta: dict[str, Any] | None = None,
+) -> tuple[str, SampleRecord]:
+    files = collect_files(root)
+    evidence = _since(_collect.measure_scan(str(root), files, None), since, delta)
+    record = SampleRecord()
+    return gather_project_context(str(root), files, record, evidence), record
+
+
+def _block(text: str, head: str) -> str:
+    """The tier-A block under ``head``, up to the next heading."""
+    return text.split(head)[1].split("\n###")[0]
+
+
 def _candidate_line(text: str) -> tuple[str, list[str]]:
     """The candidate line under Key Module Signatures and the paths it names."""
     head = text.split("### Key Module Signatures\n")[1].split("####")[0].strip()
@@ -769,3 +813,156 @@ class TestScanRenderedBlocks:
         text, _ = _context(tmp_path)
         assert "Load-bearing candidates" not in text
         assert "Key Module Signatures" not in text or "####" in text
+
+
+class TestStep4Blocks:
+    def test_prior_round_block_lists_phase_titles_ahead_of_the_ids(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # D-SC4-8 (a): "- phase n — *title*" per numbered phase, before the
+        # id list; summaries are not shown.
+        _product(tmp_path)
+        prior = _prior(["round_tree"], [(1, ["round_tree"]), (2, []), (None, [])])
+        prior["phases"][0]["title"] = "Integration Thread"
+        prior["phases"][0]["summary"] = "A long summary that must not appear"
+        prior["phases"][1]["title"] = None
+        prior["phases"][2]["title"] = "Unnumbered"
+        text, _ = _context_prior(tmp_path, prior)
+        block = _block(text, "### Prior Round (v2, implemented 2026-09-08)")
+        assert "Phases of that round:\n- phase 1 — *Integration Thread*\n" in block
+        assert "- phase 2 — *untitled*\n" in block
+        assert "Unnumbered" not in block
+        assert "long summary" not in block
+        assert block.index("phase 1 — ") < block.index("- `round_tree`")
+        assert "Planned stack facts" not in block  # no stack: no paragraph
+
+    def test_prior_round_block_without_titles_has_no_phase_list(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        prior = _prior(["round_tree"], [(None, ["round_tree"])])
+        text, _ = _context_prior(tmp_path, prior)
+        assert "Phases of that round" not in text
+        assert "- `round_tree` — no phase declared it" in text
+
+    def test_prior_round_block_ends_with_the_planned_stack_facts(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # D-SC4-7: persistence_primary, provider_names, integrations[].name
+        # and deployment_targets[].name, one paragraph after the ids.
+        _product(tmp_path)
+        prior = _prior(["round_tree"], [(1, ["round_tree"])])
+        prior["stack"] = {
+            "persistence_primary": "Neon (serverless Postgres) + pgvector",
+            "provider_names": ["OpenRouter (via LiteLLM)", "Groq"],
+            "integrations": [{"name": "Tavily", "kind": "search"}, {"name": None}],
+            "deployment_targets": [{"name": "netcup VPS", "kind": "vps"}],
+            "libraries": [{"name": "FastAPI", "category": "web"}],
+        }
+        text, _ = _context_prior(tmp_path, prior)
+        block = _block(text, "### Prior Round")
+        assert block.rstrip().endswith(
+            "Planned stack facts (verbatim from that round's stack; a "
+            "`divergences` entry names one whose counterpart in your review has "
+            "a different name or shape): persistence: Neon (serverless Postgres) "
+            "+ pgvector; providers: OpenRouter (via LiteLLM), Groq; integrations: "
+            "Tavily; deployment targets: netcup VPS."
+        )
+        assert "FastAPI" not in block  # libraries are plan_drift's, not here
+        assert block.index("- `round_tree`") < block.index("Planned stack facts")
+
+    def test_planned_stack_facts_omit_absent_fields(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        prior = _prior(["round_tree"], [(1, ["round_tree"])])
+        prior["stack"] = {"persistence_primary": None, "provider_names": ["Groq"]}
+        text, _ = _context_prior(tmp_path, prior)
+        block = _block(text, "### Prior Round")
+        assert block.rstrip().endswith("shape): providers: Groq.")
+        assert "persistence:" not in block
+
+    def test_changes_block_lists_commits_dirs_and_most_touched(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # D-SC4-6: after the Prior Round block, before the signatures.
+        _product(tmp_path)
+        since = _since_block(
+            most_touched=[("src/demo/core.py", 5), ("README.md", 2), ("x.py", 1)]
+        )
+        text, record = _context_since(tmp_path, since)
+        assert record.changes_shown is True
+        block = _block(
+            text, "### Changes Since the Last Round (implemented 2026-09-08)"
+        )
+        assert (
+            "14 commits by 2 authors; agent trailers present: yes; touched: "
+            "`src` 12, `tests` 9." in block
+        )
+        assert (
+            "Most-touched files since then (commits):\n"
+            "- `src/demo/core.py` — 5\n- `README.md` — 2\n- `x.py` — 1\n" in block
+        )
+        assert "since the prior scan" not in block  # no delta on this scan
+        assert text.index("### Changes Since") < text.index("### Key Module Signatures")
+
+    def test_changes_block_caps_most_touched_and_wording_for_one(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        touched = [
+            (f"f{i:02d}.py", 30 - i) for i in range(_sample._MAX_TOUCHED_SHOWN + 3)
+        ]
+        since = _since_block(commits=1, most_touched=touched)
+        since["authors"] = ["A"]
+        since["agent_trailers_present"] = False
+        since["touched_top_dirs"] = {}
+        text, _ = _context_since(tmp_path, since)
+        block = _block(text, "### Changes Since the Last Round")
+        assert "1 commit by 1 author; agent trailers present: no.\n" in block
+        assert f"- `f{_sample._MAX_TOUCHED_SHOWN - 1:02d}.py`" in block
+        assert f"- `f{_sample._MAX_TOUCHED_SHOWN:02d}.py`" not in block
+
+    def test_changes_block_names_the_file_and_candidate_delta(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        since = _since_block()
+        since["boundary_kind"] = "prior_review"
+        added = [f"src/a{i}.py" for i in range(_sample._MAX_DELTA_SHOWN + 2)]
+        delta = {
+            "files": {"added": added, "removed": ["old.py"]},
+            "candidates": {"entered": ["src/demo/core.py"], "left": []},
+        }
+        text, _ = _context_since(tmp_path, since, delta)
+        block = _block(text, "### Changes Since the Last Round (scanned 2026-09-08)")
+        assert "Most-touched" not in block
+        assert (
+            "Files added since the prior scan: `src/a0.py`, " in block
+            and f"`src/a{_sample._MAX_DELTA_SHOWN - 1}.py` (+2 more)\n" in block
+        )
+        assert f"`src/a{_sample._MAX_DELTA_SHOWN}.py`" not in block
+        assert "Files removed since the prior scan: `old.py`\n" in block
+        assert (
+            "Load-bearing candidates entered since the prior scan: "
+            "`src/demo/core.py`\n" in block
+        )
+        assert "candidates left" not in block
+
+    def test_no_round_boundary_means_no_changes_block_and_no_flag(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        _product(tmp_path)
+        text, record = _context_since(tmp_path, None)
+        assert "Changes Since" not in text
+        assert record.changes_shown is False
+        # A git block without ``since_last_round`` is the same.
+        files = collect_files(tmp_path)
+        evidence = _collect.measure_scan(str(tmp_path), files, None)
+        evidence = dataclasses.replace(
+            evidence, scan={**evidence.scan, "git": {"available": True}}
+        )
+        record = SampleRecord()
+        text = gather_project_context(str(tmp_path), files, record, evidence)
+        assert "Changes Since" not in text
+        assert record.changes_shown is False

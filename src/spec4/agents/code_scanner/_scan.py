@@ -182,7 +182,8 @@ class SampleRecord:
     ``signatures_shown`` the files shown as signature blocks only;
     ``evidence_tokens`` the ``approx_tokens`` of the whole block (D-SC2-13).
     ``external_imports_shown`` and ``prior_round_shown`` say whether the two
-    2.6.0 tier-A blocks rendered from the scan were present (D-SC3-6/8).
+    2.6.0 tier-A blocks rendered from the scan were present (D-SC3-6/8);
+    ``changes_shown`` whether the 2.8.0 Changes block was (D-SC4-6).
     """
 
     tree_listed: int = 0
@@ -199,6 +200,7 @@ class SampleRecord:
     evidence_tokens: int = 0
     external_imports_shown: bool = False
     prior_round_shown: bool = False
+    changes_shown: bool = False
 
 
 def _rel(root: pathlib.Path, path: pathlib.Path) -> str:

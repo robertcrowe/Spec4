@@ -41,7 +41,8 @@ import jsonschema
 # /agents page gates the round until CodeScanner re-scans (D-SV1). Bumped only
 # when the artifact's shape changes in a way downstream consumers must follow.
 # 2: the ``{scan, review}`` envelope (CodeScanner v2 step 1a). Step 3's three
-# ``review`` arrays (2.6.0) are optional additions and do not bump it.
+# ``review`` arrays (2.6.0) and step 4's three (2.8.0) are optional additions
+# and do not bump it.
 CODE_REVIEW_SCHEMA_VERSION = 2
 
 
@@ -366,10 +367,110 @@ _INTEGRATION_ITEM: dict[str, Any] = {
 }
 
 
+# Closed enum — step 4's reconciliation verdict (D-SC4-3). Code-owned: a
+# pure function of ``implemented[]`` and the prior round's phases, computed
+# at ``wrap_review``. ``unassessed`` is for a phase that declared no
+# features — the plan's three values cannot say "nothing to check".
+_RECONCILIATION_VERDICTS: list[str] = [
+    "evidence_found",
+    "evidence_partial",
+    "no_evidence_found",
+    "unassessed",
+]
+
+
+# Closed enum — code-owned at ``wrap_review`` (D-SC4-4): ``out_of_round``
+# when a change touches a file committed since the round boundary or added
+# since the prior scan; ``in_round`` needs the round's start, which the scan
+# does not carry yet (D-SC4-5, 4b); ``unknown`` otherwise.
+_UNPLANNED_CLASSIFICATIONS: list[str] = ["in_round", "out_of_round", "unknown"]
+
+
+# Closed enums — ``divergences[]`` is the judgment half of plan drift
+# (D-SC4-7): a planned fact whose counterpart in this review has a different
+# name or shape. Dependency names are never here; ``scan.plan_drift`` has them.
+_DIVERGENCE_AREAS: list[str] = [
+    "stack",
+    "persistence",
+    "providers",
+    "deployment",
+    "integrations",
+    "phases",
+]
+_DIVERGENCE_KINDS: list[str] = ["renamed", "replaced", "dropped", "added", "reshaped"]
+
+
+# Step 4 (D-SC4-1/3): one entry per prior phase. Everything but ``gap`` (and
+# the provenance that goes with it) is code-owned — ``wrap_review`` joins
+# ``implemented[].prior_feature_ids`` × ``status`` against
+# ``scan.prior_round.phases[].features`` and overwrites whatever the model
+# emitted. The model emits ``{phase_number, gap}`` only; the full item is
+# permitted so an update-mode re-emission does not trip a retry, as
+# ``load_bearing[].consumers``.
+_RECONCILIATION_ITEM: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["phase_number"],
+    "properties": {
+        "phase_number": {"type": "integer"},
+        "verdict": {"type": "string", "enum": _RECONCILIATION_VERDICTS},
+        "implemented_ids": _str_list(),
+        "paths": _str_list(),
+        "features": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["id", "statuses"],
+                "properties": {"id": {"type": "string"}, "statuses": _str_list()},
+            },
+        },
+        "gap": {"type": "string"},
+        **_PROVENANCE_FIELDS,
+    },
+}
+
+
+# Step 4 (D-SC4-4): changes since the last round that no phase planned,
+# grouped by area. ``affects`` holds root-relative paths or ``implemented[]``
+# ids; ``classification`` is code-owned and overwritten at commit.
+_UNPLANNED_CHANGE_ITEM: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["area", "summary"],
+    "properties": {
+        "area": {"type": "string"},
+        "summary": {"type": "string"},
+        "affects": _str_list(),
+        "classification": {"type": "string", "enum": _UNPLANNED_CLASSIFICATIONS},
+        **_PROVENANCE_FIELDS,
+    },
+}
+
+
+# Step 4 (D-SC4-7): where the built stack departs from the planned one.
+# ``planned`` is verbatim from the prior round, ``found`` verbatim from this
+# review. LLM-emitted whole.
+_DIVERGENCE_ITEM: dict[str, Any] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["area", "planned", "found", "kind"],
+    "properties": {
+        "area": {"type": "string", "enum": _DIVERGENCE_AREAS},
+        "planned": {"type": "string"},
+        "found": {"type": "string"},
+        "kind": {"type": "string", "enum": _DIVERGENCE_KINDS},
+        "note": {"type": "string"},
+        **_PROVENANCE_FIELDS,
+    },
+}
+
+
 # The ``review`` field set — the v1 property vocabulary, unchanged in shape.
 # It is the LLM's judgment about the codebase; every entry carries its own
 # ``source``/``inferred_from`` provenance. Shared by the two schemas below.
-# Step 3 (2.6.0) adds the three optional arrays at the end.
+# Step 3 (2.6.0) adds three optional arrays at the end; step 4 (2.8.0) three
+# more after them.
 _REVIEW_PROPERTIES: dict[str, Any] = {
     "is_software_project": {"type": "boolean"},
     # Empty-project branch
@@ -628,6 +729,12 @@ _REVIEW_PROPERTIES: dict[str, Any] = {
     "load_bearing": {"type": "array", "items": _LOAD_BEARING_ITEM},
     "implemented": {"type": "array", "items": _IMPLEMENTED_ITEM},
     "integrations": {"type": "array", "items": _INTEGRATION_ITEM},
+    # Step 4 (D-SC4-1): the prior round reconciled against ``implemented``,
+    # what changed outside any plan, and where the built stack departs from
+    # the planned one. Optional; present, each item is closed.
+    "prior_round_reconciliation": {"type": "array", "items": _RECONCILIATION_ITEM},
+    "unplanned_changes": {"type": "array", "items": _UNPLANNED_CHANGE_ITEM},
+    "divergences": {"type": "array", "items": _DIVERGENCE_ITEM},
 }
 
 
@@ -743,6 +850,9 @@ _SCAN_COVERAGE = _closed(
         # index and the prior round's feature ids. Optional for older scans.
         "external_imports_shown": {"type": "boolean"},
         "prior_round_shown": {"type": "boolean"},
+        # 2.8.0 (D-SC4-6): whether the seed carried the Changes Since the Last
+        # Round block. Optional for older scans.
+        "changes_shown": {"type": "boolean"},
     },
 )
 
@@ -1256,6 +1366,15 @@ def format_validation_errors_for_retry(errors: list[str], limit: int = 15) -> st
         "email_service, payment, mcp_server, third_party_api, other.\n"
         "- `load_bearing[].contract` holds only `inputs`, `outputs`, "
         "`invariants`, `side_effects` (string lists); omit `consumers`.\n"
+        "- `prior_round_reconciliation[]` items carry `phase_number` (integer) "
+        "and `gap` only; omit `verdict`, `implemented_ids`, `paths`, "
+        "`features`.\n"
+        "- `unplanned_changes[]` items carry `area`, `summary`, `affects`; "
+        "omit `classification`.\n"
+        "- `divergences[].area` must be one of: stack, persistence, providers, "
+        "deployment, integrations, phases; `divergences[].kind` must be one "
+        "of: renamed, replaced, dropped, added, reshaped. Never a dependency "
+        "name.\n"
         "- Do not add custom sub-keys anywhere in the schema; route "
         "extras to `notes.other_notes`.\n"
         "- Each canonical key takes a single invocation, never a "

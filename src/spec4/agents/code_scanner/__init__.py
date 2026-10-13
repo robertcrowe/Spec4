@@ -106,16 +106,23 @@ def wrap_review(
     ``schema_version`` and ``scan`` are code-owned (D-EV2/D-EV4): the model
     never emits either. ``scan`` is what ``collect_scan`` measured at walk
     time, attached here after validation, so nothing the model wrote is
-    mistaken for a computed fact. One field inside ``review`` is code-owned
-    too: ``load_bearing[].consumers`` (D-SC3-4), filled from the graph here
-    and never from what the model emitted.
+    mistaken for a computed fact. Three things inside ``review`` are
+    code-owned too, filled here and never from what the model emitted:
+    ``load_bearing[].consumers`` (D-SC3-4) from the graph; every
+    ``prior_round_reconciliation[]`` field but ``gap`` (D-SC4-3) from the
+    prior round's phases joined against ``implemented``; and
+    ``unplanned_changes[].classification`` (D-SC4-4) from the git block and
+    the delta.
     """
     scan = {} if scan is None else scan
+    review = _with_consumers(block["review"], scan)
+    review = _with_reconciliation(review, scan)
+    review = _with_classification(review, scan)
     return {
         "code_review": {
             "schema_version": CODE_REVIEW_SCHEMA_VERSION,
             "scan": scan,
-            "review": _with_consumers(block["review"], scan),
+            "review": review,
         }
     }
 
@@ -145,6 +152,163 @@ def _with_consumers(review: dict[str, Any], scan: dict[str, Any]) -> dict[str, A
         for e in entries
     ]
     return {**review, "load_bearing": joined}
+
+
+_RECONCILIATION_KEY = "prior_round_reconciliation"
+_STATUS_COMPLETE = "complete"
+_VERDICT_FOUND = "evidence_found"
+_VERDICT_PARTIAL = "evidence_partial"
+_VERDICT_NONE = "no_evidence_found"
+_VERDICT_UNASSESSED = "unassessed"
+_UNPLANNED_KEY = "unplanned_changes"
+_OUT_OF_ROUND = "out_of_round"
+_UNKNOWN_ROUND = "unknown"
+
+
+def _with_reconciliation(
+    review: dict[str, Any], scan: dict[str, Any]
+) -> dict[str, Any]:
+    """``review`` with ``prior_round_reconciliation`` computed per prior phase (D-SC4-3).
+
+    One entry per phase in ``scan.prior_round.phases`` that has a number, in
+    the round's order: ``{phase_number, verdict, implemented_ids, paths,
+    features, gap?}``. The join is ``implemented[].prior_feature_ids`` ×
+    ``status`` against the phase's ``features[].id``:
+
+    - ``evidence_found`` — every feature id the phase declares is claimed by
+      at least one ``complete`` entry;
+    - ``no_evidence_found`` — no feature id is claimed by any entry;
+    - ``evidence_partial`` — otherwise (some ids unclaimed, or claimed only
+      by ``partial`` / ``stub`` / ``scaffolded_only`` entries);
+    - ``unassessed`` — the phase declared no features.
+
+    A feature's ``role`` (``introduced`` / ``extended``) does not enter: the
+    rule reads feature coverage, not phase scope. The model's entries
+    contribute ``gap`` (with its provenance) merged by ``phase_number``;
+    anything else they carry is overwritten, and an entry naming no prior
+    phase is dropped. Without a prior round there is nothing to reconcile:
+    the key is removed if the model emitted it. A review whose
+    ``implemented`` is missing or malformed still gets every phase, with
+    nothing claimed.
+    """
+    phases = [
+        p
+        for p in (scan.get("prior_round") or {}).get("phases") or []
+        if isinstance(p, dict) and isinstance(p.get("number"), int)
+    ]
+    if not phases:
+        return {k: v for k, v in review.items() if k != _RECONCILIATION_KEY}
+    claims = _feature_claims(review.get("implemented"))
+    emitted = review.get(_RECONCILIATION_KEY)
+    gaps = {
+        e["phase_number"]: e
+        for e in (emitted if isinstance(emitted, list) else [])
+        if isinstance(e, dict) and isinstance(e.get("phase_number"), int)
+    }
+    joined = [_reconcile_phase(p, claims, gaps.get(p["number"])) for p in phases]
+    return {**review, _RECONCILIATION_KEY: joined}
+
+
+def _feature_claims(
+    implemented: Any,
+) -> dict[str, list[dict[str, Any]]]:
+    """Prior feature id → the ``implemented`` entries claiming it, in order."""
+    claims: dict[str, list[dict[str, Any]]] = {}
+    for entry in implemented if isinstance(implemented, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        for fid in entry.get("prior_feature_ids") or []:
+            claims.setdefault(str(fid), []).append(entry)
+    return claims
+
+
+def _reconcile_phase(
+    phase: dict[str, Any],
+    claims: dict[str, list[dict[str, Any]]],
+    emitted: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """One phase's reconciliation entry; see ``_with_reconciliation``."""
+    ids: list[str] = list(
+        dict.fromkeys(
+            str(f["id"])
+            for f in phase.get("features") or []
+            if isinstance(f, dict) and f.get("id") is not None
+        )
+    )
+    claiming = [e for fid in ids for e in claims.get(fid, [])]
+    features = [
+        {"id": fid, "statuses": [str(e.get("status")) for e in claims.get(fid, [])]}
+        for fid in ids
+    ]
+    entries: dict[str, dict[str, Any]] = {}
+    for e in claiming:
+        entries.setdefault(str(e.get("id")), e)
+    paths = list(
+        dict.fromkeys(str(p) for e in entries.values() for p in e.get("paths") or [])
+    )
+    out: dict[str, Any] = {
+        "phase_number": phase["number"],
+        "verdict": _verdict(features),
+        "implemented_ids": list(entries),
+        "paths": paths,
+        "features": features,
+    }
+    if emitted is None:
+        return out
+    gap = emitted.get("gap")
+    if isinstance(gap, str) and gap:
+        out["gap"] = gap
+        for key in ("source", "inferred_from"):
+            if isinstance(emitted.get(key), str):
+                out[key] = emitted[key]
+    return out
+
+
+def _verdict(features: list[dict[str, Any]]) -> str:
+    """The verdict rule of D-SC4-3 over ``[{id, statuses}]``."""
+    if not features:
+        return _VERDICT_UNASSESSED
+    if all(_STATUS_COMPLETE in f["statuses"] for f in features):
+        return _VERDICT_FOUND
+    if not any(f["statuses"] for f in features):
+        return _VERDICT_NONE
+    return _VERDICT_PARTIAL
+
+
+def _with_classification(
+    review: dict[str, Any], scan: dict[str, Any]
+) -> dict[str, Any]:
+    """``review`` with every ``unplanned_changes[].classification`` set (D-SC4-4).
+
+    ``out_of_round`` when any path in ``affects`` is one of
+    ``git.since_last_round.most_touched`` or ``delta.files.added``, or a
+    directory one of them sits under; ``unknown`` otherwise — the in-round
+    window is 4b (D-SC4-5). A value the model emitted is replaced. Entries
+    that are not dicts and a review without the array pass through.
+    """
+    entries = review.get(_UNPLANNED_KEY)
+    if not isinstance(entries, list):
+        return review
+    since = (scan.get("git") or {}).get("since_last_round") or {}
+    changed = [str(m.get("path")) for m in since.get("most_touched") or []]
+    changed.extend((scan.get("delta") or {}).get("files", {}).get("added") or [])
+    classified = [
+        {**e, "classification": _classify(e.get("affects"), changed)}
+        if isinstance(e, dict)
+        else e
+        for e in entries
+    ]
+    return {**review, _UNPLANNED_KEY: classified}
+
+
+def _classify(affects: Any, changed: list[str]) -> str:
+    if not isinstance(affects, list):
+        return _UNKNOWN_ROUND
+    for raw in affects:
+        affect = str(raw).rstrip("/")
+        if any(c == affect or c.startswith(affect + "/") for c in changed):
+            return _OUT_OF_ROUND
+    return _UNKNOWN_ROUND
 
 
 def _prior_review_for_seed(prior: dict[str, Any]) -> dict[str, Any]:

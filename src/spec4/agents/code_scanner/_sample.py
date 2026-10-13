@@ -6,11 +6,14 @@ tiers, spent in order against one token budget (D-SC2-5):
 - **A — fixed.** The file tree (a directory rollup plus every non-test source
   path, D-SC2-3), the README, manifests, CI, deployment signals and the
   Project Conventions (D-SC2-10). Formatted in ``_scan``; not budgeted beyond
-  their own caps. Since 2.6.0 two blocks rendered from the scan close the
+  their own caps. Since 2.6.0 blocks rendered from the scan close the
   tier: the external packages with the modules that import them (D-SC3-6)
   and the prior round's feature ids with the phases that declared them
   (D-SC3-8) — the evidence step 3's ``integrations`` and ``implemented``
-  asks are answered from.
+  asks are answered from. 2.8.0 adds the phases' titles and the planned
+  stack facts to the Prior Round block (D-SC4-7/8) and a Changes Since the
+  Last Round block after it (D-SC4-6): the commits, most-touched files and
+  file delta the ``unplanned_changes`` and ``divergences`` asks group.
 - **B — signatures.** Every load-bearing candidate and entrypoint candidate as
   a compact signature block (D-SC2-8), up to ``_TIER_B_TOKENS``, headed by
   the candidate list itself (D-SC3-9) so the ``load_bearing`` ask names its
@@ -83,6 +86,8 @@ _UNKNOWN_REACH = "none"
 _ROOT_DIR_LABEL = "."
 _MAX_IMPORTERS_SHOWN = 6
 _MAX_PRIOR_IDS_SHOWN = 50
+_MAX_TOUCHED_SHOWN = 25
+_MAX_DELTA_SHOWN = 10
 
 
 @dataclasses.dataclass(frozen=True)
@@ -186,6 +191,8 @@ class _Sampler:
             graph.get("external_imports") or {}
         )
         self.prior_round: dict[str, Any] = evidence.scan.get("prior_round") or {}
+        self.since: dict[str, Any] = since
+        self.delta: dict[str, Any] = evidence.scan.get("delta") or {}
 
     # -- tier A ------------------------------------------------------------
 
@@ -200,6 +207,7 @@ class _Sampler:
         lines.extend(format_conventions_block(root, files, record))
         lines.extend(self._external_imports_block())
         lines.extend(self._prior_round_block())
+        lines.extend(self._changes_block())
         record.source_files_total = sum(1 for f in files if _is_source(f))
         return lines
 
@@ -223,12 +231,15 @@ class _Sampler:
         return out
 
     def _prior_round_block(self) -> list[str]:
-        """The prior round's product-feature ids, with their phases (D-SC3-8).
+        """The prior round's phases and product-feature ids (D-SC3-8, D-SC4-7/8).
 
-        Rendered from ``scan.prior_round``: the vision's ids first, then any
-        id a phase declared that the vision did not, each with the numbers of
-        the phases declaring it. The ids are the vocabulary for
-        ``implemented[].prior_feature_ids``. Empty when no round is implemented.
+        Rendered from ``scan.prior_round``: the phases by number and title
+        (what each one was, for a reconciliation ``gap``); the vision's ids,
+        then any id a phase declared that the vision did not, each with the
+        numbers of the phases declaring it — the vocabulary for
+        ``implemented[].prior_feature_ids``; then the planned stack facts a
+        ``divergences`` entry judges against. Empty when no round is
+        implemented or it declared no ids.
         """
         prior = self.prior_round
         if not prior:
@@ -250,11 +261,11 @@ class _Sampler:
         when = prior.get("implemented")
         head = f"### Prior Round (v{prior.get('version')}"
         head += f", implemented {when[:10]})\n" if isinstance(when, str) else ")\n"
-        out = [
-            head,
+        out = [head, *self._prior_phase_lines(prior.get("phases") or [])]
+        out.append(
             "Product features the last Spec4 round planned, with the phases that "
-            "built them (ids are the vocabulary for `implemented[].prior_feature_ids`):",
-        ]
+            "built them (ids are the vocabulary for `implemented[].prior_feature_ids`):"
+        )
         for fid in ids[:_MAX_PRIOR_IDS_SHOWN]:
             numbers = phases_of.get(fid) or []
             phases = (
@@ -265,7 +276,111 @@ class _Sampler:
             out.append(f"- `{fid}`{phases}")
         if len(ids) > _MAX_PRIOR_IDS_SHOWN:
             out.append(f"(+{len(ids) - _MAX_PRIOR_IDS_SHOWN} more)")
+        out.extend(self._planned_stack_lines(prior.get("stack") or {}))
         out.append("")
+        return out
+
+    @staticmethod
+    def _prior_phase_lines(phases: list[dict[str, Any]]) -> list[str]:
+        """ "- phase n — *title*" per numbered phase (D-SC4-8a); none, nothing."""
+        lines = [
+            f"- phase {p['number']} — *{p.get('title') or 'untitled'}*"
+            for p in phases
+            if p.get("number") is not None
+        ]
+        return ["Phases of that round:", *lines, ""] if lines else []
+
+    @staticmethod
+    def _planned_stack_lines(stack: dict[str, Any]) -> list[str]:
+        """The planned stack facts ``divergences[]`` judges against (D-SC4-7).
+
+        One paragraph: the primary persistence, the model providers, the
+        integrations and the deployment targets the last round's stack named.
+        Nothing when the stack names none of them.
+        """
+        facts: list[str] = []
+        primary = stack.get("persistence_primary")
+        if isinstance(primary, str) and primary:
+            facts.append(f"persistence: {primary}")
+        providers = [str(p) for p in stack.get("provider_names") or []]
+        if providers:
+            facts.append("providers: " + ", ".join(providers))
+        for key in ("integrations", "deployment_targets"):
+            names = [str(e.get("name")) for e in stack.get(key) or [] if e.get("name")]
+            if names:
+                facts.append(f"{key.replace('_', ' ')}: " + ", ".join(names))
+        if not facts:
+            return []
+        return [
+            "",
+            "Planned stack facts (verbatim from that round's stack; a "
+            "`divergences` entry names one whose counterpart in your review has "
+            "a different name or shape): " + "; ".join(facts) + ".",
+        ]
+
+    def _changes_block(self) -> list[str]:
+        """What changed since the round boundary (D-SC4-6).
+
+        Rendered from ``git.since_last_round`` and ``delta``: the commit and
+        author counts, whether agent trailers are present, the touched
+        top-level directories, the most-touched files (≤ ``_MAX_TOUCHED_SHOWN``)
+        and, when a prior scan is on disk, the files added and removed since
+        it (≤ ``_MAX_DELTA_SHOWN`` each) and the load-bearing candidates that
+        entered or left. Everything here is after the boundary, so it is the
+        evidence ``unplanned_changes`` groups. Absent without a boundary.
+        """
+        since = self.since
+        if not since:
+            return []
+        self.record.changes_shown = True
+        boundary = str(since.get("boundary") or "")[:10]
+        kind = (
+            "implemented" if since.get("boundary_kind") == "implemented" else "scanned"
+        )
+        n = since.get("commits", 0)
+        authors = len(since.get("authors") or [])
+        trailers = "yes" if since.get("agent_trailers_present") else "no"
+        dirs = ", ".join(
+            f"`{d}` {c}" for d, c in (since.get("touched_top_dirs") or {}).items()
+        )
+        out = [
+            f"### Changes Since the Last Round ({kind} {boundary})\n",
+            f"{n} commit{'' if n == 1 else 's'} by {authors} "
+            f"author{'' if authors == 1 else 's'}; agent trailers present: "
+            f"{trailers}" + (f"; touched: {dirs}" if dirs else "") + ".",
+        ]
+        touched = (since.get("most_touched") or [])[:_MAX_TOUCHED_SHOWN]
+        if touched:
+            out.append("Most-touched files since then (commits):")
+            out.extend(f"- `{m['path']}` — {m['commits']}" for m in touched)
+        out.extend(self._delta_lines())
+        out.append("")
+        return out
+
+    def _delta_lines(self) -> list[str]:
+        """The file and candidate delta against the prior scan, when there is one."""
+        delta = self.delta
+        if not delta:
+            return []
+        out: list[str] = []
+        files = delta.get("files") or {}
+        for key in ("added", "removed"):
+            names = [str(p) for p in files.get(key) or []]
+            if names:
+                shown = ", ".join(f"`{p}`" for p in names[:_MAX_DELTA_SHOWN])
+                more = len(names) - _MAX_DELTA_SHOWN
+                out.append(
+                    f"Files {key} since the prior scan: {shown}"
+                    + (f" (+{more} more)" if more > 0 else "")
+                )
+        candidates = delta.get("candidates") or {}
+        for key in ("entered", "left"):
+            names = [str(p) for p in candidates.get(key) or []]
+            if names:
+                out.append(
+                    f"Load-bearing candidates {key} since the prior scan: "
+                    + ", ".join(f"`{p}`" for p in names)
+                )
         return out
 
     # -- tiers B, C, D -------------------------------------------------------

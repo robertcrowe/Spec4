@@ -193,6 +193,7 @@ class TestCoverage:
             "evidence_tokens",
             "external_imports_shown",
             "prior_round_shown",
+            "changes_shown",
         ):
             del scan["coverage"][key]
         del scan["module_graph"]["reach"]
@@ -215,6 +216,17 @@ class TestCoverage:
         assert validate_code_review(review_envelope(scan={"coverage": cov})) == []
         cov["external_imports_shown"] = "yes"
         assert validate_code_review(review_envelope(scan={"coverage": cov})) != []
+
+    def test_coverage_carries_the_4a_changes_flag_from_the_record(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # 2.8.0 (D-SC4-6): a project with no round boundary shows no Changes
+        # block, so the flag reads False from the seed; set, it is carried.
+        _make_project(tmp_path)
+        assert _scan(tmp_path)["coverage"]["changes_shown"] is False
+        cov = _collect.coverage_block(SampleRecord(changes_shown=True))
+        assert cov["changes_shown"] is True
+        assert validate_code_review(review_envelope(scan={"coverage": cov})) == []
 
     def test_empty_directory_leaves_the_record_blank(
         self, tmp_path: pathlib.Path

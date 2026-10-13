@@ -19,7 +19,9 @@ verbatim by six downstream agents — quality here directly determines theirs.
 - **Brainstormer** (vision agent) — reads `existing_self_description`, `project_type`,
   and `ui_summary.has_ui` to ground the vision conversation in what already exists;
   reads `implemented` so it never proposes as new a capability that is already
-  `complete`, and treats a `partial` or `stub` one as a finish-or-remove question.
+  `complete`, and treats a `partial` or `stub` one as a finish-or-remove question;
+  reads `unplanned_changes` for what changed since the last round outside any
+  plan, so a feature that touches one of those areas acknowledges it.
 - **Agentifier** (AI-opportunity agent) — the only consumer handed the review
   **verbatim in full**, so any field may be drawn on. Its discovery pass hunts for
   manual or rule-based workflows AI could improve and rudimentary AI worth
@@ -41,7 +43,8 @@ verbatim by six downstream agents — quality here directly determines theirs.
   `commands.deploy` to flag stack conflicts and migration costs; reads
   `integrations` as the external services already in place, routing each by
   `kind` (an `llm_provider` is one of its model providers, the rest are its
-  integrations).
+  integrations); reads `divergences` for where the built stack departs from
+  the one the last round planned, so it records the built name.
 - **Phaser** — reads `commands` (test/lint/run/build) to write executable
   verification criteria on every phase; reads `entrypoints` and `directory_map` to
   design Phase 1 as a brownfield integration thread (not a from-scratch scaffold);
@@ -53,7 +56,10 @@ verbatim by six downstream agents — quality here directly determines theirs.
   phases; reads `api_surface` to anchor proposed API changes on existing routes;
   reads `load_bearing` so a phase that touches one of those modules names the
   contract it preserves; reads `implemented` to scope phases around what is
-  already built.
+  already built; reads `prior_round_reconciliation` to know which of the last
+  round's phases the code evidences and which it does not, and
+  `unplanned_changes` so a phase that touches a changed area starts from what
+  is there now.
 - **Designer** — reads `ui_summary.has_ui` to decide whether to skip UI mock
   generation entirely; reads `ui_summary.framework` and `ui_summary.styling` to
   preserve look-and-feel when modifying existing UI.
@@ -179,14 +185,17 @@ minimal JSON (see Empty Project Format below). Do not ask follow-up questions.
 1. **Draft.** Analyze the project evidence and produce a single readable summary of
    the full review, organized under these section names: Project Type, Architecture,
    Languages & Frameworks, Build System & Dependencies, Commands & Entrypoints,
-   Directory Map, Load-Bearing Modules, Implemented Capabilities, UI Summary,
-   Persistence, Environment Variables, Deployment, API Surface, Authentication,
-   AI Capabilities, Integrations, Coding Style, Test Coverage & CI, Notable
+   Directory Map, Load-Bearing Modules, Implemented Capabilities, Prior Round
+   Reconciliation, Unplanned Changes, UI Summary, Persistence, Environment
+   Variables, Deployment, API Surface, Authentication, AI Capabilities,
+   Integrations, Divergences, Coding Style, Test Coverage & CI, Notable
    Observations. Only include the sections that apply to this project — for
    example, skip Persistence for a project with no database, skip API Surface
    for a CLI, skip Deployment for a library, skip AI Capabilities when the
    project has no AI/ML usage, skip Integrations when the code calls no
-   external service. Present it once, in full.
+   external service, skip Prior Round Reconciliation and Divergences without a
+   **Prior Round** block in the evidence, skip Unplanned Changes without a
+   **Changes Since the Last Round** block. Present it once, in full.
 2. **Ask.** End with: "Anything to correct? Reference sections by name, or reply
    'looks good' to finalize." Do not solicit per-section confirmation; the user will
    point out what needs fixing.
@@ -380,6 +389,30 @@ computed scan data around it when it stores the artifact — do not include a
         "config_env_vars": [],
         "purpose": "Lets agents look up unfamiliar frameworks during a scan",
         "inferred_from": "src/spec4/websearch.py"
+      }
+    ],
+    "prior_round_reconciliation": [
+      {
+        "phase_number": 3,
+        "gap": "The retriever exists but no module reads the planned ranking table; `search_ranking` is a stub"
+      }
+    ],
+    "unplanned_changes": [
+      {
+        "area": "provider fallback",
+        "summary": "llm.py gained a per-provider timeout ladder and a Groq fallback that no phase planned",
+        "affects": ["src/spec4/llm.py", "code_review_artifact"],
+        "inferred_from": "src/spec4/llm.py"
+      }
+    ],
+    "divergences": [
+      {
+        "area": "persistence  // one of: stack | persistence | providers | deployment | integrations | phases",
+        "planned": "Neon (serverless Postgres) + pgvector",
+        "found": "SQLite",
+        "kind": "replaced  // one of: renamed | replaced | dropped | added | reshaped",
+        "note": "The round's Alembic migrations target Postgres; the code opens a local SQLite file",
+        "inferred_from": "src/spec4/db.py"
       }
     ],
     "ui_summary": {
@@ -718,6 +751,39 @@ computed scan data around it when it stores the artifact — do not include a
   `database` or `cache` entry's `name` matches a
   `persistence.databases[].engine`. Omit the field entirely
   when the code calls no external service — do not emit an empty array.
+- **`prior_round_reconciliation`** — only when a **Prior Round** block is in
+  the evidence. Spec4 computes the verdict for every phase of that round
+  from your `implemented[].prior_feature_ids` and their `status` (a phase is
+  evidenced when every feature id it declared is claimed by a `complete`
+  entry), so get those two right first. Emit an entry ONLY for a phase whose
+  features you could not fully evidence: `phase_number` (from the block's
+  phase list) and `gap` — ONE sentence on what the code is missing or where
+  it stops short. Never emit `verdict`, `implemented_ids`, `paths` or
+  `features`: Spec4 fills them. A phase with full evidence gets no entry;
+  omit the field when every phase is evidenced.
+- **`unplanned_changes`** — only when a **Changes Since the Last Round**
+  block is in the evidence: what changed since that round outside any phase
+  of its plan, as 3–10 entries grouped by AREA (a subsystem, a workflow, a
+  concern), never one per file. `area` is a short label; `summary` one or
+  two sentences on what changed; `affects` lists the root-relative paths
+  (from that block or a sample you were shown) or `implemented[].id` slugs
+  the change touches. Root documents and manifests (`CHANGELOG.md`, lock
+  files, cleanup records) are ONE "documentation and manifests" entry at
+  most. Never emit `classification`: Spec4 fills it from the commit record.
+  Do not classify hand edits versus coding-agent edits.
+- **`divergences`** — only when a **Prior Round** block is in the evidence:
+  where what you found departs from what that round PLANNED, 0–10 entries.
+  `area` is a CLOSED enum: `"stack"`, `"persistence"`, `"providers"`,
+  `"deployment"`, `"integrations"`, `"phases"`. `planned` is the planned
+  fact VERBATIM from the block's planned stack facts or phase list; `found`
+  is its counterpart VERBATIM from this review (a `persistence.databases[]
+  .engine`, an `integrations[].name`, a `deployment` platform). `kind` is a
+  CLOSED enum: `"renamed"` (same thing, different name), `"replaced"` (a
+  different thing in its place), `"dropped"` (planned, absent), `"added"`
+  (present, never planned), `"reshaped"` (same name, different shape).
+  NEVER a dependency or package name — Spec4 computes those from the
+  manifests — only a planned fact whose counterpart has a different name or
+  shape. Omit the field when nothing diverges.
 - `notes.ci_cd.present` is REQUIRED (boolean) whenever `notes` is present.
 - `notes.test_coverage` shape (when `has_tests` is `true`): EITHER include both
   `covered_modules` and `uncovered_modules` arrays, OR include a single

@@ -13,6 +13,7 @@ from spec4.agents import code_scanner
 from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
 from spec4.app_constants import STATE_IN_PROGRESS, STATE_REVIEW_COMPLETE
 from spec4.layouts._chat_actions import _code_scanner_action_buttons
+from tests._golden import load_fixture
 from tests._review_helpers import review_envelope
 from tests._agent_helpers import (
     _chunkify_stream,
@@ -2019,3 +2020,495 @@ class TestWrapReviewConsumers:
         lb = stored["code_review"]["review"]["load_bearing"][0]
         assert lb["consumers"] == ["a.py", "b.py"]
         assert "consumers: 2" in session["_display_override"]
+
+
+# ---------------------------------------------------------------------------
+# step 4a (2.8.0): reconciliation, unplanned changes, divergences
+# ---------------------------------------------------------------------------
+
+
+def _reconciliation(**over: Any) -> dict[str, Any]:
+    return {"phase_number": 2, "gap": "the retriever is a stub", **over}
+
+
+def _unplanned(**over: Any) -> dict[str, Any]:
+    return {
+        "area": "provider fallback",
+        "summary": "llm.py gained a fallback ladder",
+        "affects": ["src/app/llm.py", "code_review"],
+        "inferred_from": "src/app/llm.py",
+        **over,
+    }
+
+
+def _divergence(**over: Any) -> dict[str, Any]:
+    return {
+        "area": "persistence",
+        "planned": "Neon (serverless Postgres) + pgvector",
+        "found": "PostgreSQL",
+        "kind": "renamed",
+        "note": "same engine, product name",
+        "inferred_from": "src/app/db.py",
+        **over,
+    }
+
+
+def _phase(number: int | None, ids: list[str], **over: Any) -> dict[str, Any]:
+    return {
+        "number": number,
+        "title": f"Phase {number}",
+        "features": [{"id": i, "role": "introduced"} for i in ids],
+        **over,
+    }
+
+
+def _prior_scan(*phases: dict[str, Any]) -> dict[str, Any]:
+    return {"prior_round": {"version": 2, "phases": list(phases)}}
+
+
+class TestStep4Schema:
+    def test_the_three_arrays_validate_in_both_schemas(self) -> None:
+        from spec4.agents._code_review_schema import (
+            validate_code_review,
+            validate_review_block,
+        )
+        from tests._review_helpers import review_block
+
+        fields = {
+            "prior_round_reconciliation": [_reconciliation()],
+            "unplanned_changes": [_unplanned()],
+            "divergences": [_divergence()],
+        }
+        assert validate_review_block(review_block(**fields)) == []
+        assert validate_code_review(review_envelope(**fields)) == []
+        # Minimal items: the required keys alone.
+        lean = {
+            "prior_round_reconciliation": [{"phase_number": 1}],
+            "unplanned_changes": [{"area": "a", "summary": "s"}],
+            "divergences": [
+                {"area": "stack", "planned": "p", "found": "f", "kind": "dropped"}
+            ],
+        }
+        assert validate_review_block(review_block(**lean)) == []
+
+    def test_emitted_block_permits_the_code_owned_fields(self) -> None:
+        # D-SC4-3/4: as ``consumers`` — an update-mode re-emission carries the
+        # stored item forward; the schema lets it through and commit overwrites.
+        from spec4.agents._code_review_schema import validate_review_block
+        from tests._review_helpers import review_block
+
+        full = _reconciliation(
+            verdict="evidence_partial",
+            implemented_ids=["a"],
+            paths=["a.py"],
+            features=[{"id": "x", "statuses": ["partial"]}],
+        )
+        block = review_block(
+            prior_round_reconciliation=[full],
+            unplanned_changes=[_unplanned(classification="unknown")],
+        )
+        assert validate_review_block(block) == []
+
+    @pytest.mark.parametrize(
+        "field, item, needle",
+        [
+            ("prior_round_reconciliation", _reconciliation(phase_number="2"), "2"),
+            ("prior_round_reconciliation", _reconciliation(verdict="done"), "done"),
+            ("prior_round_reconciliation", _reconciliation(evidence=["x"]), "evidence"),
+            (
+                "prior_round_reconciliation",
+                _reconciliation(features=[{"id": "x"}]),
+                "statuses",
+            ),
+            ("unplanned_changes", _unplanned(classification="hand"), "hand"),
+            ("unplanned_changes", _unplanned(affects="src/"), "affects"),
+            ("unplanned_changes", _unplanned(files=["x"]), "files"),
+            ("divergences", _divergence(area="dependencies"), "dependencies"),
+            ("divergences", _divergence(kind="changed"), "changed"),
+            ("divergences", _divergence(severity="high"), "severity"),
+        ],
+    )
+    def test_closed_shapes_and_enums_reject_drift(
+        self, field: str, item: dict[str, Any], needle: str
+    ) -> None:
+        from spec4.agents._code_review_schema import validate_review_block
+        from tests._review_helpers import review_block
+
+        errors = validate_review_block(review_block(**{field: [item]}))
+        assert errors
+        assert any(needle in e for e in errors)
+
+    @pytest.mark.parametrize(
+        "field, item, missing",
+        [
+            ("prior_round_reconciliation", {"gap": "x"}, "phase_number"),
+            ("unplanned_changes", {"summary": "s"}, "area"),
+            ("unplanned_changes", {"area": "a"}, "summary"),
+            ("divergences", {"planned": "p", "found": "f", "kind": "added"}, "area"),
+            (
+                "divergences",
+                {"area": "stack", "found": "f", "kind": "added"},
+                "planned",
+            ),
+            (
+                "divergences",
+                {"area": "stack", "planned": "p", "kind": "added"},
+                "found",
+            ),
+            ("divergences", {"area": "stack", "planned": "p", "found": "f"}, "kind"),
+        ],
+    )
+    def test_required_keys(
+        self, field: str, item: dict[str, Any], missing: str
+    ) -> None:
+        from spec4.agents._code_review_schema import validate_review_block
+        from tests._review_helpers import review_block
+
+        errors = validate_review_block(review_block(**{field: [item]}))
+        assert any(f"'{missing}' is a required property" in e for e in errors)
+
+    def test_coverage_accepts_changes_shown_and_older_scans_without_it(
+        self,
+    ) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+
+        coverage = {
+            "tree_listed": 1,
+            "tree_truncated": False,
+            "readme": None,
+            "manifests": [],
+            "ci": [],
+            "deploy": [],
+            "sampled": [],
+            "source_files_total": 1,
+            "source_files_sampled": 0,
+        }
+        assert validate_code_review(review_envelope(scan={"coverage": coverage})) == []
+        with_flag = {**coverage, "changes_shown": True}
+        assert validate_code_review(review_envelope(scan={"coverage": with_flag})) == []
+        bad = {**coverage, "changes_shown": "yes"}
+        errors = validate_code_review(review_envelope(scan={"coverage": bad}))
+        assert any("changes_shown" in e for e in errors)
+
+    def test_retry_message_names_the_enums_and_the_omit_rules(self) -> None:
+        from spec4.agents._code_review_schema import (
+            _DIVERGENCE_AREAS,
+            _DIVERGENCE_KINDS,
+            format_validation_errors_for_retry,
+        )
+
+        msg = format_validation_errors_for_retry(["x"])
+        for area in _DIVERGENCE_AREAS:
+            assert area in msg
+        for kind in _DIVERGENCE_KINDS:
+            assert kind in msg
+        assert "`phase_number` (integer) and `gap` only" in msg
+        assert "omit `classification`" in msg
+        assert "Never a dependency name" in msg
+
+    def test_system_prompt_documents_the_three_arrays(self) -> None:
+        from spec4.agents._code_review_schema import (
+            _DIVERGENCE_AREAS,
+            _DIVERGENCE_KINDS,
+        )
+        from spec4.agents.code_scanner import SYSTEM_PROMPT
+
+        for key in ("prior_round_reconciliation", "unplanned_changes", "divergences"):
+            assert f'"{key}": [' in SYSTEM_PROMPT  # the JSON exemplar
+            assert f"**`{key}`**" in SYSTEM_PROMPT  # the field rule
+            assert f"`{key}`" in SYSTEM_PROMPT.split("**Scope:**")[0]  # consumers
+        for name in (
+            "Prior Round Reconciliation",
+            "Unplanned Changes",
+            "Divergences",
+        ):
+            assert name in SYSTEM_PROMPT  # the draft section list
+        for value in (*_DIVERGENCE_AREAS, *_DIVERGENCE_KINDS):
+            assert f'"{value}"' in SYSTEM_PROMPT
+        # The exemplar shows reconciliation as {phase_number, gap} only.
+        exemplar = SYSTEM_PROMPT.split('"prior_round_reconciliation": [')[1]
+        exemplar = exemplar.split("]")[0]
+        assert '"phase_number"' in exemplar
+        assert '"gap"' in exemplar
+        assert "verdict" not in exemplar
+        assert "Never emit `verdict`, `implemented_ids`, `paths`" in SYSTEM_PROMPT
+        assert "Never emit `classification`" in SYSTEM_PROMPT
+        assert "NEVER a dependency or package name" in SYSTEM_PROMPT
+        assert "Changes Since the Last Round" in SYSTEM_PROMPT
+
+
+class TestWrapReviewReconciliation:
+    def _review(self, block: dict[str, Any], scan: dict[str, Any]) -> list[Any]:
+        from spec4.agents.code_scanner import wrap_review
+
+        out = wrap_review(block, scan)["code_review"]["review"]
+        return list(out.get("prior_round_reconciliation", []))
+
+    def test_every_prior_phase_gets_a_verdict_from_the_join(self) -> None:
+        # D-SC4-3: found when every id has a complete claim; none when no id
+        # is claimed; partial otherwise; unassessed without features. The
+        # role (``extended``) does not enter.
+        scan = _prior_scan(
+            _phase(1, ["a", "b"]),
+            _phase(2, ["c"]),
+            _phase(3, ["a", "d"]),
+            _phase(4, []),
+            _phase(5, ["e"]),
+        )
+        scan["prior_round"]["phases"][0]["features"][1]["role"] = "extended"
+        block = {
+            "review": {
+                "is_software_project": True,
+                "implemented": [
+                    _implemented(
+                        id="i1", paths=["a.py", "b.py"], prior_feature_ids=["a", "b"]
+                    ),
+                    _implemented(
+                        id="i2",
+                        status="partial",
+                        paths=["b.py"],
+                        prior_feature_ids=["b", "e"],
+                    ),
+                    _implemented(
+                        id="i3", status="stub", paths=["d.py"], prior_feature_ids=["d"]
+                    ),
+                ],
+            }
+        }
+        out = self._review(block, scan)
+        assert [e["phase_number"] for e in out] == [1, 2, 3, 4, 5]
+        assert [e["verdict"] for e in out] == [
+            "evidence_found",
+            "no_evidence_found",
+            "evidence_partial",
+            "unassessed",
+            "evidence_partial",
+        ]
+        assert out[0]["implemented_ids"] == ["i1", "i2"]
+        assert out[0]["paths"] == ["a.py", "b.py"]
+        assert out[0]["features"] == [
+            {"id": "a", "statuses": ["complete"]},
+            {"id": "b", "statuses": ["complete", "partial"]},
+        ]
+        assert out[1] == {
+            "phase_number": 2,
+            "verdict": "no_evidence_found",
+            "implemented_ids": [],
+            "paths": [],
+            "features": [{"id": "c", "statuses": []}],
+        }
+        assert out[2]["implemented_ids"] == ["i1", "i3"]
+        assert out[2]["paths"] == ["a.py", "b.py", "d.py"]  # the union, in order
+        assert out[3] == {
+            "phase_number": 4,
+            "verdict": "unassessed",
+            "implemented_ids": [],
+            "paths": [],
+            "features": [],
+        }
+        assert out[4]["features"] == [{"id": "e", "statuses": ["partial"]}]
+        assert all("gap" not in e for e in out)
+
+    def test_a_duplicate_feature_id_in_a_phase_counts_once(self) -> None:
+        scan = _prior_scan(_phase(1, ["a", "a"]))
+        block = {
+            "review": {
+                "is_software_project": True,
+                "implemented": [_implemented(prior_feature_ids=["a"])],
+            }
+        }
+        out = self._review(block, scan)
+        assert out[0]["verdict"] == "evidence_found"
+        assert out[0]["features"] == [{"id": "a", "statuses": ["complete"]}]
+
+    def test_the_models_gap_is_merged_by_phase_and_the_rest_overwritten(self) -> None:
+        scan = _prior_scan(_phase(1, ["a"]), _phase(2, ["b"]))
+        block = {
+            "review": {
+                "is_software_project": True,
+                "implemented": [_implemented(prior_feature_ids=["a"])],
+                "prior_round_reconciliation": [
+                    {
+                        "phase_number": 2,
+                        "gap": "b has no module",
+                        "inferred_from": "src/",
+                        "verdict": "evidence_found",  # the model's claim
+                        "implemented_ids": ["code_review"],
+                        "paths": ["stale.py"],
+                        "features": [{"id": "zzz", "statuses": ["complete"]}],
+                    },
+                    {"phase_number": 1, "gap": ""},  # empty gap: nothing kept
+                    {"phase_number": 9, "gap": "no such phase"},  # dropped
+                    "raw",
+                ],
+            }
+        }
+        out = self._review(block, scan)
+        assert [e["phase_number"] for e in out] == [1, 2]
+        assert "gap" not in out[0]
+        assert out[0]["verdict"] == "evidence_found"
+        assert out[1] == {
+            "phase_number": 2,
+            "verdict": "no_evidence_found",
+            "implemented_ids": [],
+            "paths": [],
+            "features": [{"id": "b", "statuses": []}],
+            "gap": "b has no module",
+            "inferred_from": "src/",
+        }
+        # The block itself is not mutated.
+        assert block["review"]["prior_round_reconciliation"][0]["paths"] == ["stale.py"]
+
+    def test_a_phase_without_a_number_is_skipped(self) -> None:
+        scan = _prior_scan(_phase(None, ["a"]), _phase(2, ["a"]))
+        block = {
+            "review": {
+                "is_software_project": True,
+                "implemented": [_implemented(prior_feature_ids=["a"])],
+            }
+        }
+        out = self._review(block, scan)
+        assert [e["phase_number"] for e in out] == [2]
+
+    def test_without_a_prior_round_the_key_is_dropped(self) -> None:
+        from spec4.agents.code_scanner import wrap_review
+
+        block = {
+            "review": {
+                "is_software_project": True,
+                "implemented": [_implemented()],
+                "prior_round_reconciliation": [_reconciliation()],
+            }
+        }
+        for scan in (None, {}, {"prior_round": {}}, {"prior_round": {"phases": []}}):
+            out = wrap_review(block, scan)["code_review"]["review"]
+            assert "prior_round_reconciliation" not in out
+            assert out["implemented"] == block["review"]["implemented"]
+        # Paired positive: a phase makes the key appear even when the model
+        # emitted nothing.
+        plain = {"review": {"is_software_project": True}}
+        out = wrap_review(plain, _prior_scan(_phase(1, [])))["code_review"]["review"]
+        assert out["prior_round_reconciliation"] == [
+            {
+                "phase_number": 1,
+                "verdict": "unassessed",
+                "implemented_ids": [],
+                "paths": [],
+                "features": [],
+            }
+        ]
+
+    def test_malformed_implemented_claims_nothing(self) -> None:
+        scan = _prior_scan(_phase(1, ["a"]))
+        for implemented in ("n/a", ["raw", {"id": "x"}], None):
+            block = {
+                "review": {"is_software_project": True, "implemented": implemented}
+            }
+            block = {
+                "review": {k: v for k, v in block["review"].items() if v is not None}
+            }
+            out = self._review(block, scan)
+            assert out[0]["verdict"] == "no_evidence_found"
+
+    def test_commit_stores_the_join_and_the_envelope_validates(self) -> None:
+        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents.code_scanner import _scanner_commit
+
+        prior = load_fixture("review_with_step3.json")["code_review"]["scan"]
+        session = make_session(
+            code_scanner_scan={"prior_round": prior["prior_round"]},
+            code_scanner_messages=[{"role": "assistant", "content": ""}],
+        )
+        block = {
+            "review": {
+                "is_software_project": True,
+                "implemented": [
+                    _implemented(id="vps", prior_feature_ids=["self_hosted_deployment"])
+                ],
+                "prior_round_reconciliation": [{"phase_number": 1, "gap": "half"}],
+            }
+        }
+        _scanner_commit(session, session["code_scanner_messages"], block)
+        stored = session["code_review"]
+        assert validate_code_review(stored) == []
+        entries = stored["code_review"]["review"]["prior_round_reconciliation"]
+        assert [e["verdict"] for e in entries] == ["evidence_partial"] * 2
+        assert entries[0]["gap"] == "half"
+        assert (
+            "phase 1 [evidence_partial] — `vps`; gap: half"
+            in (session["_display_override"])
+        )
+
+
+class TestWrapReviewClassification:
+    _scan = {
+        "git": {
+            "available": True,
+            "since_last_round": {
+                "most_touched": [
+                    {"path": "src/app/llm.py", "commits": 4},
+                    {"path": "CHANGELOG.md", "commits": 3},
+                ]
+            },
+        },
+        "delta": {"files": {"added": ["src/app/new.py"], "removed": ["gone.py"]}},
+    }
+
+    def _review(self, entries: list[Any], scan: Any) -> list[Any]:
+        from spec4.agents.code_scanner import wrap_review
+
+        block = {"review": {"is_software_project": True, "unplanned_changes": entries}}
+        out = wrap_review(block, scan)["code_review"]["review"]
+        return list(out["unplanned_changes"])
+
+    @pytest.mark.parametrize(
+        "affects, expected",
+        [
+            (["src/app/llm.py"], "out_of_round"),  # most touched
+            (["src/app/new.py"], "out_of_round"),  # added since the prior scan
+            (["src/app/"], "out_of_round"),  # a directory a touched file is under
+            (["src/app"], "out_of_round"),
+            (["docs/", "CHANGELOG.md"], "out_of_round"),  # any path suffices
+            (["src/app/llm"], "unknown"),  # a prefix is not a directory
+            (["gone.py"], "unknown"),  # removed is not a change to classify
+            (["code_review"], "unknown"),  # an implemented id
+            ([], "unknown"),
+        ],
+    )
+    def test_out_of_round_or_unknown_by_affects(
+        self, affects: list[str], expected: str
+    ) -> None:
+        out = self._review([_unplanned(affects=affects)], self._scan)
+        assert out[0]["classification"] == expected
+
+    def test_an_emitted_classification_is_replaced_and_the_rest_kept(self) -> None:
+        entries = [
+            _unplanned(affects=["src/app/llm.py"], classification="in_round"),
+            _unplanned(affects=["docs/x.md"], classification="out_of_round"),
+            {"area": "a", "summary": "s"},  # no affects at all
+            "raw",
+        ]
+        out = self._review(entries, self._scan)
+        assert [e["classification"] for e in out[:3]] == [
+            "out_of_round",
+            "unknown",
+            "unknown",
+        ]
+        assert out[0]["summary"] == "llm.py gained a fallback ladder"
+        assert out[3] == "raw"
+        assert entries[0]["classification"] == "in_round"  # not mutated
+
+    def test_without_git_or_delta_everything_is_unknown(self) -> None:
+        for scan in (None, {}, {"git": {"available": False}}, {"delta": {}}):
+            out = self._review([_unplanned(affects=["src/app/llm.py"])], scan)
+            assert out[0]["classification"] == "unknown"
+
+    def test_a_review_without_the_array_passes_through(self) -> None:
+        from spec4.agents.code_scanner import wrap_review
+
+        block = {"review": {"is_software_project": True, "project_type": "CLI"}}
+        assert (
+            wrap_review(block, self._scan)["code_review"]["review"] == block["review"]
+        )
+        odd = {"review": {"is_software_project": True, "unplanned_changes": "n/a"}}
+        assert wrap_review(odd, self._scan)["code_review"]["review"] == odd["review"]

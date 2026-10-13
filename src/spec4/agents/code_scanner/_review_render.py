@@ -1,6 +1,6 @@
 """Rendering a validated ``code_review`` artifact as chat-transcript text.
 
-``format_review_as_text`` and the seven section renderers it delegates to,
+``format_review_as_text`` and the section renderers it delegates to,
 plus the small coercion helpers (``_as_str_list``, ``_name_label``,
 ``_style_value``, ``_normalize_style_for_renderer``) that guard against the
 shapes an LLM actually returns. Output only -- nothing here reads the
@@ -320,6 +320,8 @@ def format_review_as_text(review: dict[str, Any]) -> str:
     _render_architecture(cr.get("architecture"), lines)
     _render_load_bearing(cr.get("load_bearing"), lines)
     _render_implemented(cr.get("implemented"), lines)
+    _render_reconciliation(cr.get("prior_round_reconciliation"), lines)
+    _render_unplanned_changes(cr.get("unplanned_changes"), lines)
     _render_languages_and_frameworks(
         cr.get("languages", []), cr.get("frameworks", []), lines
     )
@@ -338,6 +340,7 @@ def format_review_as_text(review: dict[str, Any]) -> str:
     _render_auth(cr.get("auth"), lines)
     _render_ai_capabilities(cr.get("ai_capabilities"), lines)
     _render_integrations(cr.get("integrations"), lines)
+    _render_divergences(cr.get("divergences"), lines)
 
     _render_ui_summary(cr.get("ui_summary"), lines)
 
@@ -790,6 +793,78 @@ def _render_integrations(entries: Any, lines: list[str]) -> None:
             bits.append("env: " + ", ".join(str(e) for e in env))
         tail = f" — {' · '.join(bits)}" if bits else ""
         lines.append(f"- {head}{tail}")
+    lines.append("")
+
+
+def _render_reconciliation(entries: Any, lines: list[str]) -> None:
+    """The ``prior_round_reconciliation`` list (step 4): one line per phase.
+
+    The verdict reads feature coverage, not phase scope (D-SC4-3), and the
+    heading says so once.
+    """
+    if not isinstance(entries, list) or not entries:
+        return
+    lines.append("**Prior Round Reconciliation** (feature coverage, not phase scope):")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            lines.append(f"- {entry}")
+            continue
+        head = f"phase {entry.get('phase_number', '?')}"
+        verdict = entry.get("verdict", "")
+        if verdict:
+            head += f" [{verdict}]"
+        ids = entry.get("implemented_ids")
+        bits: list[str] = []
+        if isinstance(ids, list) and ids:
+            bits.append(", ".join(f"`{i}`" for i in ids))
+        if entry.get("gap"):
+            bits.append(f"gap: {entry['gap']}")
+        tail = f" — {'; '.join(bits)}" if bits else ""
+        lines.append(f"- {head}{tail}")
+    lines.append("")
+
+
+def _render_unplanned_changes(entries: Any, lines: list[str]) -> None:
+    """The ``unplanned_changes`` list (step 4): area, classification, summary."""
+    if not isinstance(entries, list) or not entries:
+        return
+    lines.append("**Unplanned Changes:**")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            lines.append(f"- {entry}")
+            continue
+        area = entry.get("area", "")
+        classification = entry.get("classification", "")
+        head = f"{area} [{classification}]" if area and classification else area
+        bits: list[str] = []
+        if entry.get("summary"):
+            bits.append(str(entry["summary"]))
+        affects = entry.get("affects")
+        if isinstance(affects, list) and affects:
+            bits.append("affects: " + ", ".join(f"`{a}`" for a in affects))
+        tail = f" — {' · '.join(bits)}" if bits else ""
+        lines.append(f"- {head or str(entry)}{tail}")
+    lines.append("")
+
+
+def _render_divergences(entries: Any, lines: list[str]) -> None:
+    """The ``divergences`` list (step 4): area, planned → found, kind, note."""
+    if not isinstance(entries, list) or not entries:
+        return
+    lines.append("**Divergences:**")
+    for entry in entries:
+        if not isinstance(entry, dict):
+            lines.append(f"- {entry}")
+            continue
+        area = entry.get("area", "")
+        planned = entry.get("planned", "")
+        found = entry.get("found", "")
+        kind = entry.get("kind", "")
+        head = f"{area}: {planned} → {found}" if area else f"{planned} → {found}"
+        if kind:
+            head += f" [{kind}]"
+        note = entry.get("note")
+        lines.append(f"- {head}{f' — {note}' if note else ''}")
     lines.append("")
 
 

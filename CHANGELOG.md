@@ -10,6 +10,64 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.8.0] — unreleased
+
+Step 4a of the CodeScanner v2 plan (D-SC4-1…4, 6…10): the producer side of
+reconciliation. The review says which of the last round's phases the code
+evidences, what changed since that round outside any plan, and where the
+built stack departs from the planned one; the seed gains the evidence those
+are answered from. The in-round window and the consumer tuples are step 4b
+(2.9.0), after one real BWS4 2.8.0 scan.
+
+### Added
+- **`review.prior_round_reconciliation[]`** — one entry per prior phase:
+  `{phase_number, verdict, implemented_ids[], paths[], features[{id,
+  statuses[]}], gap?, source | inferred_from}`. Everything but `gap` is
+  code-owned (D-SC4-3): `wrap_review` joins `implemented[].prior_feature_ids`
+  × `status` against `scan.prior_round.phases[].features` — `evidence_found`
+  when every feature id the phase declared is claimed by a `complete` entry,
+  `no_evidence_found` when none is claimed, `evidence_partial` otherwise,
+  `unassessed` for a phase that declared no features (a fourth value the
+  plan's three could not say). The rule reads feature coverage, not phase
+  scope (`extended` counts as `introduced`). The model emits `{phase_number,
+  gap}` for phases it judges short; `gap` and its provenance are merged by
+  phase number, anything else it emits is overwritten, an entry naming no
+  prior phase is dropped, and without a prior round the key is removed. The
+  plan's `capability_ids` is `implemented_ids` (D-SC4-2: `capabilities` is
+  the AI-catalog id space) and its `evidence[]` is the code-filled `paths[]`.
+- **`review.unplanned_changes[]`** — `{area, summary, affects[],
+  classification, source | inferred_from}`, 3–10 entries grouped by area.
+  `classification` is code-owned (D-SC4-4): `out_of_round` when any path in
+  `affects` is one of `git.since_last_round.most_touched` or
+  `delta.files.added`, or a directory one of them sits under; `unknown`
+  otherwise — `in_round` is in the enum but needs the round's start, which
+  the scan does not carry yet (D-SC4-5, 4b). Hand-versus-agent edits are not
+  classified; `agent_trailers_present` is shown as a fact.
+- **`review.divergences[]`** — `{area, planned, found, kind, note?, source |
+  inferred_from}`, LLM-emitted; `area` closed (`stack | persistence |
+  providers | deployment | integrations | phases`), `kind` closed (`renamed
+  | replaced | dropped | added | reshaped`); never a dependency name, which
+  `scan.plan_drift` has (D-SC4-7).
+- **`scan.coverage.changes_shown`** — whether the seed carried the Changes
+  block (D-SC4-6). Optional, so an older scan still validates. Schema
+  version stays 2.
+- **Seed** (`code_scanner._sample`): the Prior Round block lists the phases
+  by number and title ahead of the ids and closes with the planned stack
+  facts (`persistence_primary`, `provider_names`, `integrations[].name`,
+  `deployment_targets[].name`) as one paragraph (D-SC4-7/8); a new tier-A
+  "Changes Since the Last Round" block after it — commits, authors, agent
+  trailers, touched directories, the most-touched files (≤ 25) and, with a
+  delta, the files added and removed (≤ 10 each) and the candidates that
+  entered or left (D-SC4-6). Absent without a round boundary.
+- **Prompt**: the three arrays in the consumers paragraph (Phaser
+  `prior_round_reconciliation` and `unplanned_changes`, StackAdvisor
+  `divergences`, Brainstormer `unplanned_changes`), the draft section names,
+  the schema example (reconciliation as `{phase_number, gap}` only) and the
+  field rules; the retry message names the two divergence enums and the two
+  omit rules (D-SC4-9). **Renderer**: Prior Round Reconciliation and
+  Unplanned Changes after Implemented, Divergences after Integrations; a
+  review without the arrays renders as before (D-SC4-10).
+
 ## [2.7.1] — unreleased
 
 D-SC4-13: `scan.dependencies` reads PEP 735 `[dependency-groups]`.

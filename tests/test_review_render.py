@@ -273,3 +273,120 @@ class TestStep3Sections:
         assert "- `m.py`\n" in text  # no symbol, no consumers, no role, no contract
         assert "- only_id\n" in text
         assert "- Thing\n" in text
+
+
+class TestStep4Sections:
+    def test_reconciliation_unplanned_changes_and_divergences_render(self) -> None:
+        # 2.8.0 (step 4a, D-SC4-10): Prior Round Reconciliation and Unplanned
+        # Changes after Implemented, Divergences after Integrations. The 3a
+        # fixture with the three arrays (as stored — the code-owned fields
+        # filled) and a third implemented entry; the 3a golden is unchanged.
+        assert_golden(
+            "render_review_with_step4.md",
+            format_review_as_text(load_fixture("review_with_step4.json")),
+        )
+
+    def test_sections_sit_where_the_decision_placed_them(self) -> None:
+        text = format_review_as_text(load_fixture("review_with_step4.json"))
+        order = [
+            "**Implemented:**",
+            "**Prior Round Reconciliation**",
+            "**Unplanned Changes:**",
+            "**Languages & Frameworks:**",
+            "**Integrations:**",
+            "**Divergences:**",
+            "**UI:**",
+        ]
+        positions = [text.index(h) for h in order]
+        assert positions == sorted(positions)
+        assert text.count("(feature coverage, not phase scope)") == 1
+
+    def test_reconciliation_lines_carry_verdict_ids_and_gap(self) -> None:
+        text = format_review_as_text(
+            review_envelope(
+                prior_round_reconciliation=[
+                    {
+                        "phase_number": 1,
+                        "verdict": "evidence_partial",
+                        "implemented_ids": ["a", "b"],
+                        "paths": ["x.py"],
+                        "features": [],
+                        "gap": "b is a stub",
+                    },
+                    {"phase_number": 2, "verdict": "unassessed"},
+                    {"phase_number": 3},
+                ]
+            )
+        )
+        assert "- phase 1 [evidence_partial] — `a`, `b`; gap: b is a stub\n" in text
+        assert "- phase 2 [unassessed]\n" in text
+        assert "- phase 3\n" in text
+        assert "x.py" not in text  # paths are stored, not shown
+
+    def test_unplanned_change_and_divergence_lines(self) -> None:
+        text = format_review_as_text(
+            review_envelope(
+                unplanned_changes=[
+                    {
+                        "area": "auth",
+                        "summary": "A session store appeared",
+                        "affects": ["src/auth.py"],
+                        "classification": "out_of_round",
+                    },
+                    {"area": "docs", "summary": "Churn"},
+                ],
+                divergences=[
+                    {
+                        "area": "providers",
+                        "planned": "OpenRouter (via LiteLLM)",
+                        "found": "OpenRouter",
+                        "kind": "renamed",
+                        "note": "Same provider",
+                    },
+                    {"planned": "a", "found": "b"},
+                ],
+            )
+        )
+        assert (
+            "- auth [out_of_round] — A session store appeared · affects: "
+            "`src/auth.py`\n" in text
+        )
+        assert "- docs — Churn\n" in text
+        assert (
+            "- providers: OpenRouter (via LiteLLM) → OpenRouter [renamed] — "
+            "Same provider\n" in text
+        )
+        assert "- a → b\n" in text
+
+    def test_absent_or_empty_arrays_render_nothing(self) -> None:
+        for value in (None, [], "n/a"):
+            fields = {
+                "prior_round_reconciliation": value,
+                "unplanned_changes": value,
+                "divergences": value,
+            }
+            fields = {k: v for k, v in fields.items() if v is not None}
+            text = format_review_as_text(review_envelope(**fields))
+            for heading in ("Reconciliation", "Unplanned Changes", "Divergences"):
+                assert heading not in text
+        # Paired positive: one entry each does render.
+        text = format_review_as_text(
+            review_envelope(
+                prior_round_reconciliation=[{"phase_number": 1}],
+                unplanned_changes=[{"area": "a", "summary": "s"}],
+                divergences=[{"area": "stack", "planned": "p", "found": "f"}],
+            )
+        )
+        for heading in ("Reconciliation", "Unplanned Changes", "Divergences"):
+            assert heading in text
+
+    def test_odd_entries_fall_back_to_their_text(self) -> None:
+        text = format_review_as_text(
+            review_envelope(
+                prior_round_reconciliation=["raw"],
+                unplanned_changes=["raw", {"summary": "no area"}],
+                divergences=["raw"],
+            )
+        )
+        assert text.count("- raw") == 3
+        assert "- {'summary': 'no area'} — no area\n" in text
