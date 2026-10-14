@@ -2098,6 +2098,7 @@ class TestStep4Schema:
         from tests._review_helpers import review_block
 
         full = _reconciliation(
+            title="Phase 2 — Retrieval",
             verdict="evidence_partial",
             implemented_ids=["a"],
             paths=["a.py"],
@@ -2108,12 +2109,16 @@ class TestStep4Schema:
             unplanned_changes=[_unplanned(classification="unknown")],
         )
         assert validate_review_block(block) == []
+        # ``title`` is nullable (D-SC4b-5): a round that recorded none.
+        block = review_block(prior_round_reconciliation=[_reconciliation(title=None)])
+        assert validate_review_block(block) == []
 
     @pytest.mark.parametrize(
         "field, item, needle",
         [
             ("prior_round_reconciliation", _reconciliation(phase_number="2"), "2"),
             ("prior_round_reconciliation", _reconciliation(verdict="done"), "done"),
+            ("prior_round_reconciliation", _reconciliation(title=3), "title"),
             ("prior_round_reconciliation", _reconciliation(evidence=["x"]), "evidence"),
             (
                 "prior_round_reconciliation",
@@ -2236,6 +2241,28 @@ class TestStep4Schema:
         assert "NEVER a dependency or package name" in SYSTEM_PROMPT
         assert "Changes Since the Last Round" in SYSTEM_PROMPT
 
+    def test_step4b_nudges_are_in_the_prompt(self) -> None:
+        # D-SC4b-8: the two sentences the first real BWS4 scan asked for,
+        # each inside the rule for its own field (the prompt is wrapped, so
+        # the pins compare on collapsed whitespace).
+        from spec4.agents.code_scanner import SYSTEM_PROMPT
+
+        def rule(field: str) -> str:
+            body = SYSTEM_PROMPT.split(f"- **`{field}`**")[1].split("\n- ")[0]
+            return " ".join(body.split())
+
+        assert (
+            "One entry per found counterpart; `found` is one name, verbatim — "
+            "never a conjunction" in rule("divergences")
+        )
+        assert "never a conjunction" not in rule("load_bearing")
+        assert (
+            "An invariant or side effect you state in the draft prose goes in "
+            "`contract.invariants` / `side_effects`, not only in the prose."
+            in rule("load_bearing")
+        )
+        assert "not only in the prose" not in rule("divergences")
+
 
 class TestWrapReviewReconciliation:
     def _review(self, block: dict[str, Any], scan: dict[str, Any]) -> list[Any]:
@@ -2292,6 +2319,7 @@ class TestWrapReviewReconciliation:
         ]
         assert out[1] == {
             "phase_number": 2,
+            "title": "Phase 2",
             "verdict": "no_evidence_found",
             "implemented_ids": [],
             "paths": [],
@@ -2301,6 +2329,7 @@ class TestWrapReviewReconciliation:
         assert out[2]["paths"] == ["a.py", "b.py", "d.py"]  # the union, in order
         assert out[3] == {
             "phase_number": 4,
+            "title": "Phase 4",
             "verdict": "unassessed",
             "implemented_ids": [],
             "paths": [],
@@ -2349,6 +2378,7 @@ class TestWrapReviewReconciliation:
         assert out[0]["verdict"] == "evidence_found"
         assert out[1] == {
             "phase_number": 2,
+            "title": "Phase 2",
             "verdict": "no_evidence_found",
             "implemented_ids": [],
             "paths": [],
@@ -2358,6 +2388,39 @@ class TestWrapReviewReconciliation:
         }
         # The block itself is not mutated.
         assert block["review"]["prior_round_reconciliation"][0]["paths"] == ["stale.py"]
+
+    def test_the_phase_title_is_copied_onto_the_item_at_commit(self) -> None:
+        # D-SC4b-5: the item carries its phase's title, null when the prior
+        # round recorded none (or a blank), and the model cannot set it.
+        scan = _prior_scan(
+            _phase(1, ["a"], title="Integration Thread"),
+            _phase(2, ["a"], title=None),
+            _phase(3, ["a"], title="   "),
+            _phase(4, ["a"], title=7),
+        )
+        del scan["prior_round"]["phases"][1]["title"]
+        block = {
+            "review": {
+                "is_software_project": True,
+                "implemented": [_implemented(prior_feature_ids=["a"])],
+                "prior_round_reconciliation": [
+                    {"phase_number": 1, "title": "the model's name", "gap": "g"},
+                    {"phase_number": 2, "title": "invented", "gap": "g"},
+                ],
+            }
+        }
+        out = self._review(block, scan)
+        assert [e["title"] for e in out] == ["Integration Thread", None, None, None]
+        assert list(out[0]) == [
+            "phase_number",
+            "title",
+            "verdict",
+            "implemented_ids",
+            "paths",
+            "features",
+            "gap",
+        ]
+        assert out[0]["gap"] == "g"  # the gap still merges beside it
 
     def test_a_phase_without_a_number_is_skipped(self) -> None:
         scan = _prior_scan(_phase(None, ["a"]), _phase(2, ["a"]))
@@ -2391,6 +2454,7 @@ class TestWrapReviewReconciliation:
         assert out["prior_round_reconciliation"] == [
             {
                 "phase_number": 1,
+                "title": "Phase 1",
                 "verdict": "unassessed",
                 "implemented_ids": [],
                 "paths": [],
@@ -2434,8 +2498,13 @@ class TestWrapReviewReconciliation:
         entries = stored["code_review"]["review"]["prior_round_reconciliation"]
         assert [e["verdict"] for e in entries] == ["evidence_partial"] * 2
         assert entries[0]["gap"] == "half"
+        assert entries[0]["title"] == (
+            "Integration Thread — VPS Baseline Bring-Up and Environment Contract "
+            "Relocation"
+        )
         assert (
-            "phase 1 [evidence_partial] — `vps`; gap: half"
+            "phase 1 — *Integration Thread — VPS Baseline Bring-Up and Environment "
+            "Contract Relocation* [evidence_partial] — `vps`; gap: half"
             in (session["_display_override"])
         )
 

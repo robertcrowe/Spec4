@@ -406,13 +406,16 @@ _DIVERGENCE_KINDS: list[str] = ["renamed", "replaced", "dropped", "added", "resh
 # ``scan.prior_round.phases[].features`` and overwrites whatever the model
 # emitted. The model emits ``{phase_number, gap}`` only; the full item is
 # permitted so an update-mode re-emission does not trip a retry, as
-# ``load_bearing[].consumers``.
+# ``load_bearing[].consumers``. ``title`` (D-SC4b-5, 2.9.0) is the prior
+# phase's title, copied at commit so a renderer handed the item alone can
+# name the phase; null when the prior round recorded none.
 _RECONCILIATION_ITEM: dict[str, Any] = {
     "type": "object",
     "additionalProperties": False,
     "required": ["phase_number"],
     "properties": {
         "phase_number": {"type": "integer"},
+        "title": {"type": ["string", "null"]},
         "verdict": {"type": "string", "enum": _RECONCILIATION_VERDICTS},
         "implemented_ids": _str_list(),
         "paths": _str_list(),

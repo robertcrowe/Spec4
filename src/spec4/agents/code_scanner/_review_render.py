@@ -800,7 +800,8 @@ def _render_reconciliation(entries: Any, lines: list[str]) -> None:
     """The ``prior_round_reconciliation`` list (step 4): one line per phase.
 
     The verdict reads feature coverage, not phase scope (D-SC4-3), and the
-    heading says so once.
+    heading says so once. The phase's ``title`` (D-SC4b-5) follows its number
+    when the item carries one.
     """
     if not isinstance(entries, list) or not entries:
         return
@@ -810,6 +811,8 @@ def _render_reconciliation(entries: Any, lines: list[str]) -> None:
             lines.append(f"- {entry}")
             continue
         head = f"phase {entry.get('phase_number', '?')}"
+        if entry.get("title"):
+            head += f" — *{entry['title']}*"
         verdict = entry.get("verdict", "")
         if verdict:
             head += f" [{verdict}]"

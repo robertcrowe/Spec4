@@ -171,9 +171,11 @@ def _with_reconciliation(
     """``review`` with ``prior_round_reconciliation`` computed per prior phase (D-SC4-3).
 
     One entry per phase in ``scan.prior_round.phases`` that has a number, in
-    the round's order: ``{phase_number, verdict, implemented_ids, paths,
-    features, gap?}``. The join is ``implemented[].prior_feature_ids`` ×
-    ``status`` against the phase's ``features[].id``:
+    the round's order: ``{phase_number, title, verdict, implemented_ids,
+    paths, features, gap?}``. ``title`` is the phase's own, or ``None`` when
+    the prior round recorded none (D-SC4b-5). The join is
+    ``implemented[].prior_feature_ids`` × ``status`` against the phase's
+    ``features[].id``:
 
     - ``evidence_found`` — every feature id the phase declares is claimed by
       at least one ``complete`` entry;
@@ -246,8 +248,10 @@ def _reconcile_phase(
     paths = list(
         dict.fromkeys(str(p) for e in entries.values() for p in e.get("paths") or [])
     )
+    title = phase.get("title")
     out: dict[str, Any] = {
         "phase_number": phase["number"],
+        "title": title if isinstance(title, str) and title.strip() else None,
         "verdict": _verdict(features),
         "implemented_ids": list(entries),
         "paths": paths,

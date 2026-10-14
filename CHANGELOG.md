@@ -10,6 +10,50 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.9.0] — unreleased
+
+Step 4b of the CodeScanner v2 plan (D-SC4b-1…8, 10, 12): the consumer side
+of reconciliation. Phaser, StackAdvisor and Brainstormer now read the three
+step-4 arrays through their views, with the guidance line each needs; the
+reconciliation renders one line per phase rather than a dump of its paths.
+The in-round window (D-SC4-5) stays deferred (D-SC4b-9): the first real BWS4
+scan found nothing after the round boundary to classify.
+
+### Added
+- **Consumer tuples** (D-SC4b-1…3): `PHASER_REVIEW_FIELDS` gains
+  `prior_round_reconciliation` and `unplanned_changes` after `implemented`
+  (a `no_evidence_found` / `evidence_partial` phase outside Scan coverage is
+  unverified, not absent — Phase 1 verifies before any phase re-plans it; an
+  `evidence_found` phase is not re-planned; a phase touching an unplanned
+  area starts from what is there now); `STACK_REVIEW_FIELDS` gains
+  `divergences` after `integrations` (record the built name — what D-CR7
+  overwrites from); `BRAINSTORMER_REVIEW_FIELDS` gains `unplanned_changes`
+  after `implemented` (acknowledge, don't propose fresh). Shared
+  `FIELD_GUIDANCE` lines for all three; Scout's tuple is untouched.
+- **Reconciliation renderer** (D-SC4b-4): a hand renderer in `_RENDERERS` —
+  `- phase n — *title* [verdict]: ids`, with the unclaimed feature ids, the
+  ones claimed only short of `complete`, and `gap` for a phase short of
+  `evidence_found`; `(no features declared)` for `unassessed`. `paths` and
+  the features' statuses are not rendered — the paths are on `implemented`,
+  which Phaser already reads (on BWS4 the walker printed 27 to one line).
+- **`prior_round_reconciliation[].title`** (D-SC4b-5): `wrap_review` copies
+  each prior phase's title onto its item at commit (null when the round
+  recorded none), so a renderer handed the item alone can name the phase;
+  the schema permits it and the transcript renderer shows it.
+- **Bare headings** (D-SC4b-6): the three step-4 arrays head as "Prior round
+  reconciliation (feature coverage, not phase scope)", "Unplanned changes
+  since the last round" and "Divergences from the planned stack" — not
+  "Existing …", which misread. `_BARE_HEADINGS` names them; every other
+  review field is unchanged.
+- **Prompt nudges** (D-SC4b-8): `divergences` — one entry per found
+  counterpart, `found` one name verbatim, never a conjunction (the first BWS4
+  scan emitted "OpenRouter and Groq"); `load_bearing` — an invariant or side
+  effect stated in the draft prose goes in `contract.invariants` /
+  `side_effects`, not only in the prose (`run_typed_step`'s stayed in prose).
+- Goldens `code_review_{phaser,stack,brainstormer}_view_step4.md` from
+  `fixtures/review_with_step4.json`; `render_review_with_step4.md`
+  regenerated for the title; every other golden byte-unchanged.
+
 ## [2.8.1] — unreleased
 
 ### Fixed

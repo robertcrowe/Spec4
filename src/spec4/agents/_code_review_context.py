@@ -121,6 +121,20 @@ FIELD_GUIDANCE: dict[str, str] = {
         "The external services the code already talks to, with the module that "
         "holds each client and the variable names that configure it."
     ),
+    # Step 4 (2.9.0) arrays — the shared lines; Phaser, StackAdvisor and
+    # Brainstormer override the ones whose use differs (D-SC4b-1…3).
+    "prior_round_reconciliation": (
+        "Which of the last round's phases the code evidences, by feature "
+        "coverage: a phase is `evidence_found` when every feature it declared "
+        "is claimed by a `complete` capability."
+    ),
+    "unplanned_changes": (
+        "Changes made since the last round outside any plan, grouped by area."
+    ),
+    "divergences": (
+        "Where the built stack departs from the one the last round planned; "
+        "`found` is the built name, `planned` the one the round recorded."
+    ),
     # ``scan.`` paths (D-SC3-11): measured by the scan, never judged by the
     # model. Each line says what was measured and what to do with it.
     "scan.coverage": (
@@ -161,6 +175,8 @@ EXCLUDED_PATHS: frozenset[str] = frozenset({"entrypoints.ui_root"})
 #: already built (the UI, the routes, the AI in place, the standards wired in)
 #: and what constrains new features (half-built areas, fragile ones). The
 #: toolchain blocks are StackAdvisor's; commands and paths are Phaser's.
+#: ``unplanned_changes`` follows ``implemented`` (D-SC4b-3): what changed
+#: outside any plan is acknowledged, not proposed fresh.
 BRAINSTORMER_REVIEW_FIELDS: tuple[str, ...] = (
     "existing_self_description",
     "summary",
@@ -169,6 +185,7 @@ BRAINSTORMER_REVIEW_FIELDS: tuple[str, ...] = (
     "ui_summary",
     "api_surface",
     "implemented",
+    "unplanned_changes",
     "ai_capabilities",
     "protocols_implemented",
     "notes.incomplete_or_dead_code",
@@ -197,6 +214,10 @@ BRAINSTORMER_FIELD_GUIDANCE: dict[str, str] = {
         "Already built, with status. Never propose a `complete` one as new; a "
         "`partial`/`stub` one is a finish-or-remove question."
     ),
+    "unplanned_changes": (
+        "What changed since the last round outside any plan. A feature that "
+        "touches an area here acknowledges it rather than proposing it fresh."
+    ),
     "ai_capabilities": (
         "AI already in the codebase. These are existing features, not candidates; "
         "a new AI feature should say how it relates to them."
@@ -218,10 +239,15 @@ BRAINSTORMER_FIELD_GUIDANCE: dict[str, str] = {
 #: had kept alongside it): ``commands``, ``entrypoints`` and ``directory_map``
 #: render verbatim through the generic walker, so what the coder receives is
 #: still the review's own values, now beside the planning rule each governs.
+#: The two step-4 arrays follow ``implemented`` (D-SC4b-1): the verdicts say
+#: which prior phases are already done, the unplanned changes where a phase
+#: starts from what is there now.
 PHASER_REVIEW_FIELDS: tuple[str, ...] = (
     "architecture",
     "load_bearing",
     "implemented",
+    "prior_round_reconciliation",
+    "unplanned_changes",
     "commands",
     "entrypoints",
     "directory_map",
@@ -248,6 +274,17 @@ PHASER_FIELD_GUIDANCE: dict[str, str] = {
         "Already built, with status. Phases extend a `complete` capability "
         "rather than rebuild it; a `partial` or `stub` one a phase touches is "
         "finished or removed in that phase, as the vision decides."
+    ),
+    "prior_round_reconciliation": (
+        "Which of the last round's phases the code evidences, by feature "
+        "coverage. A `no_evidence_found` or `evidence_partial` phase whose paths "
+        "lie outside Scan coverage is unverified, not absent — Phase 1 verifies "
+        "before any phase re-plans it; an `evidence_found` phase is not "
+        "re-planned."
+    ),
+    "unplanned_changes": (
+        "Changes made since the last round outside any plan; a phase that "
+        "touches an area here starts from what is there now."
     ),
     "commands": (
         "Authoritative. Use `test` to write each phase's verification criterion; "
@@ -299,7 +336,8 @@ PHASER_FIELD_GUIDANCE: dict[str, str] = {
 #: from the BWS4 baseline: every block that names a technology, version, tool,
 #: route, variable or risk the stack must carry forward. ``commands`` other than
 #: ``deploy``, ``entrypoints``, ``directory_map`` and ``ui_summary`` are Phaser's
-#: and Brainstormer's concerns, not the stack's.
+#: and Brainstormer's concerns, not the stack's. ``divergences`` follows
+#: ``integrations`` (D-SC4b-2): the built names D-CR7 overwrites from.
 STACK_REVIEW_FIELDS: tuple[str, ...] = (
     "existing_self_description",
     "architecture",
@@ -313,6 +351,7 @@ STACK_REVIEW_FIELDS: tuple[str, ...] = (
     "deployment",
     "auth",
     "integrations",
+    "divergences",
     "protocols_implemented",
     "api_surface",
     "env_vars",
@@ -330,6 +369,11 @@ STACK_FIELD_GUIDANCE: dict[str, str] = {
     "integrations": (
         "`llm_provider` entries are Topic 3's `providers`; the rest are your "
         "`integrations`, already in place."
+    ),
+    "divergences": (
+        "Where the built stack departs from the one the last round planned. "
+        "Record the built name, not the planned one — this is what D-CR7 "
+        "overwrites from."
     ),
 }
 
@@ -414,11 +458,25 @@ _HEADINGS = {
     "env_vars": "environment variables",
     "load_bearing": "load-bearing modules",
     "implemented": "implemented capabilities",
+    "prior_round_reconciliation": (
+        "Prior round reconciliation (feature coverage, not phase scope)"
+    ),
+    "unplanned_changes": "Unplanned changes since the last round",
+    "divergences": "Divergences from the planned stack",
     "scan.coverage": "Scan coverage",
     "scan.plan_drift.planned_unmatched": "Planned last round, not found in the code",
     "scan.plan_drift.declared_not_planned": "Declared in a manifest, not planned",
     "scan.delta.dependencies": "Dependency changes since the prior scan",
 }
+
+
+#: Review fields whose ``_HEADINGS`` text is used verbatim (D-SC4b-6). The
+#: step-4 arrays are about the last round, not the state of the code, and
+#: "Existing prior round reconciliation" misreads; every other review field
+#: still carries "Existing ".
+_BARE_HEADINGS: frozenset[str] = frozenset(
+    {"prior_round_reconciliation", "unplanned_changes", "divergences"}
+)
 
 
 def _label(key: str) -> str:
@@ -430,9 +488,14 @@ def _is_scan_field(field: str) -> bool:
 
 
 def _heading(field: str) -> str:
-    """The bold heading for ``field``: "Existing …" for the review, not for scan."""
+    """The bold heading for ``field``: "Existing …" for the review, not for scan.
+
+    A field in :data:`_BARE_HEADINGS` uses its ``_HEADINGS`` text as it stands.
+    """
     if _is_scan_field(field):
         return _HEADINGS.get(field) or f"Scan {_label(field)}"
+    if field in _BARE_HEADINGS:
+        return _HEADINGS[field]
     return "Existing " + (_HEADINGS.get(field) or _label(field))
 
 
@@ -481,6 +544,80 @@ def _load_bearing_head(entry: dict[str, Any]) -> str:
     if _text(entry.get("role")):
         head += f" — {_scalar(entry['role'])}"
     return head
+
+
+_VERDICT_FOUND = "evidence_found"
+_VERDICT_UNASSESSED = "unassessed"
+_STATUS_COMPLETE = "complete"
+
+
+def _reconciliation_lines(entries: Any) -> list[str]:
+    """``prior_round_reconciliation`` (step 4b, D-SC4b-4): one line per phase.
+
+    ``- phase n — *title* [verdict]: ids``; a phase short of
+    ``evidence_found`` adds the feature ids no capability claims
+    ("unclaimed"), the ones claimed only short of ``complete``
+    ("incomplete", with those statuses) and the model's ``gap``; an
+    ``unassessed`` phase reads "(no features declared)". ``paths`` and the
+    claimed features' statuses are not rendered — the paths are on
+    ``implemented``, which Phaser already reads — and the walker would print
+    both, 27 paths to a line on a real scan. A value that is not a list, or
+    an entry that is not a dict, falls back to the walker, so nothing is
+    dropped.
+    """
+    if not isinstance(entries, list):
+        return _render_value(entries, "")
+    lines: list[str] = []
+    for entry in entries:
+        if _empty(entry):
+            continue
+        if not isinstance(entry, dict):
+            lines.extend(_render_list([entry], ""))
+            continue
+        lines.append(f"- {_reconciliation_line(entry)}{_provenance(entry)}")
+    return lines
+
+
+def _reconciliation_line(entry: dict[str, Any]) -> str:
+    """``phase n — *title* [verdict]: ids; unclaimed: …; incomplete: …; gap: …``."""
+    head = f"phase {_scalar(entry.get('phase_number', '?'))}"
+    title = entry.get("title")
+    head += f" — *{_scalar(title) if _text(title) else 'untitled'}*"
+    verdict = entry.get("verdict")
+    if _text(verdict):
+        head += f" [{_scalar(verdict)}]"
+    if verdict == _VERDICT_UNASSESSED:
+        return head + " (no features declared)"
+    parts: list[str] = []
+    ids = entry.get("implemented_ids")
+    if isinstance(ids, list) and ids:
+        parts.append(", ".join(f"`{_scalar(i)}`" for i in ids))
+    if verdict != _VERDICT_FOUND:
+        parts.extend(_shortfall(entry.get("features")))
+    if _text(entry.get("gap")):
+        parts.append(f"gap: {_scalar(entry['gap'])}")
+    return head + (f": {'; '.join(parts)}" if parts else "")
+
+
+def _shortfall(features: Any) -> list[str]:
+    """The feature ids a phase is short on: unclaimed, then claimed incomplete."""
+    unclaimed: list[str] = []
+    incomplete: list[str] = []
+    for feature in features if isinstance(features, list) else []:
+        if not isinstance(feature, dict) or not _text(feature.get("id")):
+            continue
+        raw = feature.get("statuses")
+        statuses = [_scalar(s) for s in raw] if isinstance(raw, list) else []
+        if not statuses:
+            unclaimed.append(_scalar(feature["id"]))
+        elif _STATUS_COMPLETE not in statuses:
+            incomplete.append(f"{_scalar(feature['id'])} ({', '.join(statuses)})")
+    parts: list[str] = []
+    if unclaimed:
+        parts.append("unclaimed: " + ", ".join(unclaimed))
+    if incomplete:
+        parts.append("incomplete: " + ", ".join(incomplete))
+    return parts
 
 
 def _coverage_line(coverage: Any) -> list[str]:
@@ -538,10 +675,13 @@ def _dependency_change_lines(delta: Any) -> list[str]:
 
 #: Fields whose body is rendered by hand rather than by the generic walker:
 #: the walker is total, but it flattens a nested entry to one line and
-#: labels a dict key by its last dot-separated part, which these three
-#: cannot afford. Every other field, scan or review, renders verbatim.
+#: labels a dict key by its last dot-separated part, which these four
+#: cannot afford. Every other field, scan or review, renders verbatim —
+#: ``unplanned_changes`` and ``divergences`` included (D-SC4b-7): ``area``
+#: is a primary key, so the walker already leads each entry with it.
 _RENDERERS: dict[str, Callable[[Any], list[str]]] = {
     "load_bearing": _load_bearing_lines,
+    "prior_round_reconciliation": _reconciliation_lines,
     "scan.coverage": _coverage_line,
     "scan.delta.dependencies": _dependency_change_lines,
 }
@@ -712,10 +852,12 @@ def render_code_review(
     A field under :data:`SCAN_PREFIX` (``scan.plan_drift.planned_unmatched``,
     ``scan.coverage``) resolves against the same envelope's computed ``scan``
     layer (D-SC3-11) and renders under a "Scan …" heading. The fields in
-    ``_RENDERERS`` (``load_bearing``, ``scan.coverage``,
-    ``scan.delta.dependencies``) render by hand — coverage to one line, the
-    delta to the manifests that changed, contracts beneath their module;
-    everything else walks. Scan fields are skipped like any other when the
+    ``_RENDERERS`` (``load_bearing``, ``prior_round_reconciliation``,
+    ``scan.coverage``, ``scan.delta.dependencies``) render by hand —
+    coverage to one line, the delta to the manifests that changed, contracts
+    beneath their module, the reconciliation to one line per phase without
+    its paths; everything else walks. The three step-4 arrays head without
+    "Existing " (D-SC4b-6): they describe the last round, not the code. Scan fields are skipped like any other when the
     envelope has no scan — a review that is not a software project still
     renders nothing, scan or no scan.
     """

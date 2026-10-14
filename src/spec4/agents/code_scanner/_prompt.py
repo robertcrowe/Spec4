@@ -716,9 +716,10 @@ computed scan data around it when it stores the artifact — do not include a
   (state it writes, I/O it performs). **Omit any contract key the shown
   evidence does not support** — a signature block alone usually supports
   `inputs` and `outputs`; `invariants` and `side_effects` need a body or a
-  docstring that states them. Do NOT emit `consumers`: Spec4 fills it from
-  the import graph when it stores the review. Cite the module in
-  `inferred_from`.
+  docstring that states them. An invariant or side effect you state in the
+  draft prose goes in `contract.invariants` / `side_effects`, not only in
+  the prose. Do NOT emit `consumers`: Spec4 fills it from the import graph
+  when it stores the review. Cite the module in `inferred_from`.
 - **`implemented`** — what the code already does, as 6–15 product-level
   capabilities (a feature a user or a caller gets, not one entry per
   module). `id` is a short snake_case slug; `name` and `description` say
@@ -777,8 +778,10 @@ computed scan data around it when it stores the artifact — do not include a
   `"deployment"`, `"integrations"`, `"phases"`. `planned` is the planned
   fact VERBATIM from the block's planned stack facts or phase list; `found`
   is its counterpart VERBATIM from this review (a `persistence.databases[]
-  .engine`, an `integrations[].name`, a `deployment` platform). `kind` is a
-  CLOSED enum: `"renamed"` (same thing, different name), `"replaced"` (a
+  .engine`, an `integrations[].name`, a `deployment` platform). One entry
+  per found counterpart; `found` is one name, verbatim — never a
+  conjunction (two providers found are two entries, not "A and B"). `kind`
+  is a CLOSED enum: `"renamed"` (same thing, different name), `"replaced"` (a
   different thing in its place), `"dropped"` (planned, absent), `"added"`
   (present, never planned), `"reshaped"` (same name, different shape).
   NEVER a dependency or package name — Spec4 computes those from the

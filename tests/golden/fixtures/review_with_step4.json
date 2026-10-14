@@ -1489,6 +1489,7 @@
       "prior_round_reconciliation": [
         {
           "phase_number": 1,
+          "title": "Integration Thread \u2014 VPS Baseline Bring-Up and Environment Contract Relocation",
           "verdict": "evidence_partial",
           "implemented_ids": [
             "vps_runtime"
@@ -1514,6 +1515,7 @@
         },
         {
           "phase_number": 2,
+          "title": "Process Supervision \u2014 systemd Unit, Warm-at-Boot, Restart Survival",
           "verdict": "evidence_partial",
           "implemented_ids": [
             "vps_runtime"
@@ -1538,6 +1540,7 @@
         },
         {
           "phase_number": 3,
+          "title": "Observability \u2014 structlog JSON Boot Output and Health Probe",
           "verdict": "unassessed",
           "implemented_ids": [],
           "paths": [],

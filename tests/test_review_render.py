@@ -313,14 +313,17 @@ class TestStep4Sections:
                         "features": [],
                         "gap": "b is a stub",
                     },
-                    {"phase_number": 2, "verdict": "unassessed"},
+                    {"phase_number": 2, "verdict": "unassessed", "title": None},
                     {"phase_number": 3},
+                    {"phase_number": 4, "title": "Edge — TLS", "verdict": "unassessed"},
                 ]
             )
         )
         assert "- phase 1 [evidence_partial] — `a`, `b`; gap: b is a stub\n" in text
         assert "- phase 2 [unassessed]\n" in text
         assert "- phase 3\n" in text
+        # D-SC4b-5: the title, when the item carries one, follows the number.
+        assert "- phase 4 — *Edge — TLS* [unassessed]\n" in text
         assert "x.py" not in text  # paths are stored, not shown
 
     def test_unplanned_change_and_divergence_lines(self) -> None:

@@ -647,6 +647,264 @@ class TestStep3ArraysInTheViews:
 
 
 # ---------------------------------------------------------------------------
+# step 4b: the three step-4 arrays in the consumer views (D-SC4b-1…7)
+# ---------------------------------------------------------------------------
+
+
+_STEP4 = "review_with_step4.json"
+_RECON = ("prior_round_reconciliation",)
+
+
+def _phase_item(number: int, verdict: str, **over: Any) -> dict[str, Any]:
+    return {
+        "phase_number": number,
+        "title": f"Phase {number} title",
+        "verdict": verdict,
+        "implemented_ids": [],
+        "paths": [],
+        "features": [],
+        **over,
+    }
+
+
+class TestStep4ArraysInTheViews:
+    def test_each_consumer_tuple_gained_what_the_decision_names(self) -> None:
+        # D-SC4b-1…3, tuple by tuple, each array right after its anchor.
+        i = PHASER_REVIEW_FIELDS.index("implemented")
+        assert PHASER_REVIEW_FIELDS[i + 1 : i + 3] == (
+            "prior_round_reconciliation",
+            "unplanned_changes",
+        )
+        assert "divergences" not in PHASER_REVIEW_FIELDS
+        i = STACK_REVIEW_FIELDS.index("integrations")
+        assert STACK_REVIEW_FIELDS[i + 1] == "divergences"
+        for field in ("prior_round_reconciliation", "unplanned_changes"):
+            assert field not in STACK_REVIEW_FIELDS
+        i = BRAINSTORMER_REVIEW_FIELDS.index("implemented")
+        assert BRAINSTORMER_REVIEW_FIELDS[i + 1] == "unplanned_changes"
+        for field in ("prior_round_reconciliation", "divergences"):
+            assert field not in BRAINSTORMER_REVIEW_FIELDS
+        # Scout is untouched by 4b.
+        for field in ("prior_round_reconciliation", "unplanned_changes", "divergences"):
+            assert field not in SCOUT_REVIEW_FIELDS
+
+    def test_guidance_lines_are_the_decision_s_words(self) -> None:
+        assert PHASER_FIELD_GUIDANCE["prior_round_reconciliation"] == (
+            "Which of the last round's phases the code evidences, by feature "
+            "coverage. A `no_evidence_found` or `evidence_partial` phase whose "
+            "paths lie outside Scan coverage is unverified, not absent — Phase 1 "
+            "verifies before any phase re-plans it; an `evidence_found` phase is "
+            "not re-planned."
+        )
+        assert PHASER_FIELD_GUIDANCE["unplanned_changes"] == (
+            "Changes made since the last round outside any plan; a phase that "
+            "touches an area here starts from what is there now."
+        )
+        assert STACK_FIELD_GUIDANCE["divergences"] == (
+            "Where the built stack departs from the one the last round planned. "
+            "Record the built name, not the planned one — this is what D-CR7 "
+            "overwrites from."
+        )
+        assert BRAINSTORMER_FIELD_GUIDANCE["unplanned_changes"] == (
+            "What changed since the last round outside any plan. A feature that "
+            "touches an area here acknowledges it rather than proposing it fresh."
+        )
+        # A shared line exists for every array, so a consumer without an
+        # override (and the revision view's raw case) still gets one.
+        for field in ("prior_round_reconciliation", "unplanned_changes", "divergences"):
+            assert FIELD_GUIDANCE[field]
+        assert set(STACK_FIELD_GUIDANCE) <= set(STACK_REVIEW_FIELDS)
+        assert set(PHASER_FIELD_GUIDANCE) <= set(PHASER_REVIEW_FIELDS)
+        assert set(BRAINSTORMER_FIELD_GUIDANCE) <= set(BRAINSTORMER_REVIEW_FIELDS)
+        fx = load_fixture(_STEP4)
+        phaser_view = render_code_review(
+            fx, PHASER_REVIEW_FIELDS, guidance=PHASER_FIELD_GUIDANCE
+        )
+        for field in ("prior_round_reconciliation", "unplanned_changes"):
+            assert f"_{PHASER_FIELD_GUIDANCE[field]}_" in phaser_view
+            assert f"_{FIELD_GUIDANCE[field]}_" not in phaser_view
+        stack = render_code_review(
+            fx, STACK_REVIEW_FIELDS, guidance=STACK_FIELD_GUIDANCE
+        )
+        assert f"_{STACK_FIELD_GUIDANCE['divergences']}_" in stack
+        assert f"_{FIELD_GUIDANCE['divergences']}_" not in stack
+        # And the shared line is what a bare tuple renders.
+        bare = render_code_review(fx, ("divergences",))
+        assert f"_{FIELD_GUIDANCE['divergences']}_" in bare
+
+    def test_headings_of_the_three_arrays_carry_no_existing(self) -> None:
+        # D-SC4b-6: the arrays describe the last round, not the code.
+        fx = load_fixture(_STEP4)
+        fields = ("prior_round_reconciliation", "unplanned_changes", "divergences")
+        out = render_code_review(fx, fields)
+        for heading in (
+            "**Prior round reconciliation (feature coverage, not phase scope)**",
+            "**Unplanned changes since the last round**",
+            "**Divergences from the planned stack**",
+        ):
+            assert heading in out
+        assert "Existing" not in out
+        for heading in (
+            "Existing prior round reconciliation",
+            "Existing unplanned changes",
+            "Existing divergences",
+        ):
+            assert heading not in out
+        # Paired positive: every other review field still says "Existing ".
+        out = render_code_review(fx, ("implemented", "integrations", "languages"))
+        assert out.count("**Existing ") == 3
+        # ... and the heading, unlike a scan heading, keeps the tuple's order.
+        out = render_code_review(fx, ("implemented",) + fields)
+        heads = [ln for ln in out.splitlines() if ln.startswith("**")]
+        assert heads == [
+            "**Existing implemented capabilities**",
+            "**Prior round reconciliation (feature coverage, not phase scope)**",
+            "**Unplanned changes since the last round**",
+            "**Divergences from the planned stack**",
+        ]
+
+    def test_reconciliation_renders_one_line_per_phase_without_paths(self) -> None:
+        # D-SC4b-4: verdict, ids, the shortfall, the gap — never ``paths``
+        # or the claimed features' statuses.
+        entries = [
+            _phase_item(
+                1,
+                "evidence_found",
+                implemented_ids=["vps", "svc"],
+                paths=["deploy/", "backend/app/"],
+                features=[
+                    {"id": "a", "statuses": ["complete"]},
+                    {"id": "b", "statuses": ["complete", "partial"]},
+                    {"id": "yyy", "statuses": []},  # not read for evidence_found
+                ],
+            ),
+            _phase_item(
+                2,
+                "evidence_partial",
+                implemented_ids=["vps"],
+                paths=["deploy/"],
+                features=[
+                    {"id": "a", "statuses": ["complete"]},
+                    {"id": "b", "statuses": []},
+                    {"id": "c", "statuses": ["partial", "stub"]},
+                    {"id": "d", "statuses": []},
+                ],
+                gap="c is a stub",
+                inferred_from="backend/app/",
+            ),
+            _phase_item(
+                3,
+                "no_evidence_found",
+                features=[{"id": "e", "statuses": []}],
+                gap="nothing under backend/app/e",
+            ),
+            _phase_item(4, "unassessed"),
+            _phase_item(
+                5,
+                "unassessed",
+                title=None,
+                features=[{"id": "zzz", "statuses": []}],  # not read for unassessed
+            ),
+        ]
+        out = render_code_review(_review(prior_round_reconciliation=entries), _RECON)
+        assert out.splitlines() == [
+            "**Prior round reconciliation (feature coverage, not phase scope)**",
+            f"_{FIELD_GUIDANCE['prior_round_reconciliation']}_",
+            "- phase 1 — *Phase 1 title* [evidence_found]: `vps`, `svc`",
+            "- phase 2 — *Phase 2 title* [evidence_partial]: `vps`; unclaimed: b, d; "
+            "incomplete: c (partial, stub); gap: c is a stub [backend/app/]",
+            "- phase 3 — *Phase 3 title* [no_evidence_found]: unclaimed: e; "
+            "gap: nothing under backend/app/e",
+            "- phase 4 — *Phase 4 title* [unassessed] (no features declared)",
+            "- phase 5 — *untitled* [unassessed] (no features declared)",
+        ]
+        assert "deploy/" not in out  # paths are on implemented, not here
+        assert "statuses" not in out
+        assert "yyy" not in out
+        assert "zzz" not in out
+
+    def test_reconciliation_renderer_is_total(self) -> None:
+        # Entries the schema never produces still reach the seed.
+        entries = [
+            {"phase_number": 7},  # no title, verdict, ids or features
+            {"phase_number": 8, "verdict": "evidence_partial", "gap": "g"},
+            {"phase_number": 9, "features": "n/a", "implemented_ids": "x"},
+            {
+                "phase_number": 10,
+                "verdict": "evidence_partial",
+                "features": ["raw", {"statuses": []}, {"id": "", "statuses": []}],
+            },
+            "raw",
+            "",
+            None,
+            {},
+        ]
+        out = render_code_review(_review(prior_round_reconciliation=entries), _RECON)
+        assert out.splitlines()[2:] == [
+            "- phase 7 — *untitled*",
+            "- phase 8 — *untitled* [evidence_partial]: gap: g",
+            "- phase 9 — *untitled*",
+            "- phase 10 — *untitled* [evidence_partial]",  # malformed features skipped
+            "- raw",
+        ]
+        # A value that is not a list walks as it stands.
+        out = render_code_review(_review(prior_round_reconciliation={"k": "v"}), _RECON)
+        assert out.splitlines()[-1] == "- k: v"
+        # And an empty list, like any empty field, is skipped.
+        assert render_code_review(_review(prior_round_reconciliation=[]), _RECON) == ""
+
+    def test_unplanned_changes_and_divergences_walk_on_their_area(self) -> None:
+        # D-SC4b-7: ``area`` is a primary key, so the walker leads with it.
+        fx = load_fixture(_STEP4)
+        out = render_code_review(fx, ("unplanned_changes", "divergences"))
+        assert (
+            "- **scanner evidence tiers** — summary: The scanner gained tiered "
+            "sampling and a most-touched body tier that no phase of the last round "
+            "planned; affects: src/app/scanner/; code_review; classification: "
+            "out_of_round [src/app/scanner/__init__.py]"
+        ) in out
+        assert (
+            "- **persistence** — planned: Neon (serverless Postgres) + pgvector; "
+            "found: PostgreSQL; kind: renamed; note: Same engine; the review names "
+            "the product, the plan named the host [backend/app/db.py]"
+        ) in out
+        assert "- **providers** — planned: OpenRouter (via LiteLLM); found: " in out
+
+    def test_step3_fixture_renders_as_before(self) -> None:
+        # The 3b fixture has no step-4 arrays: the step-3 view goldens are
+        # byte-unchanged, so none of 4b's headings appears.
+        fx = load_fixture(_STEP3)
+        for fields, guidance in (
+            (PHASER_REVIEW_FIELDS, PHASER_FIELD_GUIDANCE),
+            (STACK_REVIEW_FIELDS, STACK_FIELD_GUIDANCE),
+            (BRAINSTORMER_REVIEW_FIELDS, BRAINSTORMER_FIELD_GUIDANCE),
+        ):
+            out = render_code_review(fx, fields, guidance=guidance)
+            for heading in ("**Prior round", "**Unplanned", "**Divergences"):
+                assert heading not in out
+            assert "**Existing architecture**" in out  # paired positive
+
+    def test_golden_step4_views(self) -> None:
+        fx = load_fixture(_STEP4)
+        assert_golden(
+            "code_review_phaser_view_step4.md",
+            render_code_review(
+                fx, PHASER_REVIEW_FIELDS, guidance=PHASER_FIELD_GUIDANCE
+            ),
+        )
+        assert_golden(
+            "code_review_stack_view_step4.md",
+            render_code_review(fx, STACK_REVIEW_FIELDS, guidance=STACK_FIELD_GUIDANCE),
+        )
+        assert_golden(
+            "code_review_brainstormer_view_step4.md",
+            render_code_review(
+                fx, BRAINSTORMER_REVIEW_FIELDS, guidance=BRAINSTORMER_FIELD_GUIDANCE
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
 # StackAdvisor seed
 # ---------------------------------------------------------------------------
 

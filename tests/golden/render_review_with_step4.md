@@ -31,9 +31,9 @@
 - VPS runtime bring-up [complete] — Boots the API under systemd on the VPS with the environment contract from /etc/bws4 · `deploy/bws4.service`, `backend/app/main.py` · prior: self_hosted_deployment
 
 **Prior Round Reconciliation** (feature coverage, not phase scope):
-- phase 1 [evidence_partial] — `vps_runtime`; gap: The shared framework services package is planned but no module under backend/app/services exists yet
-- phase 2 [evidence_partial] — `vps_runtime`; gap: Warm-at-boot is wired in the unit file but the model preload it names is a no-op
-- phase 3 [unassessed]
+- phase 1 — *Integration Thread — VPS Baseline Bring-Up and Environment Contract Relocation* [evidence_partial] — `vps_runtime`; gap: The shared framework services package is planned but no module under backend/app/services exists yet
+- phase 2 — *Process Supervision — systemd Unit, Warm-at-Boot, Restart Survival* [evidence_partial] — `vps_runtime`; gap: Warm-at-boot is wired in the unit file but the model preload it names is a no-op
+- phase 3 — *Observability — structlog JSON Boot Output and Health Probe* [unassessed]
 
 **Unplanned Changes:**
 - scanner evidence tiers [out_of_round] — The scanner gained tiered sampling and a most-touched body tier that no phase of the last round planned · affects: `src/app/scanner/`, `code_review`
