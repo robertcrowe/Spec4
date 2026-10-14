@@ -6,6 +6,7 @@ Split out of ``tests/test_agents.py`` by source module, with every class unchang
 """
 
 import json
+import pathlib
 from typing import Any
 from unittest.mock import patch
 import pytest
@@ -1650,6 +1651,89 @@ class TestCodeScannerValidationRetry:
             session["code_review"]["code_review"]["schema_version"]
             == CODE_REVIEW_SCHEMA_VERSION
         )
+
+
+class TestReviewFailureDump:
+    """2.9.1: a review emission that fails validation is written to
+    ``.spec4/failures/code_scanner_review_<n>.txt`` with its errors, so the
+    cause of a retry can be read after the fact (the Agentifier's D-AF7
+    precedent). Unconditional — not dev-gated."""
+
+    _valid = '```json\n{"review": {"is_software_project": true}}\n```'
+    _invalid = (
+        '```json\n{"review": {"is_software_project": true, '
+        '"commands": {"bogus": "x"}}}\n```'
+    )
+
+    def _run(self, working_dir: str | None, *replies: str) -> dict[str, Any]:
+        session = make_session(
+            code_scanner_scan={},
+            code_scanner_messages=[
+                {"role": "user", "content": "seed"},
+                {"role": "assistant", "content": "draft"},
+            ],
+        )
+        session["working_dir"] = working_dir
+        chunk_seqs = [list(_chunkify_stream(r)) for r in replies]
+
+        def fake_completion(**kwargs: Any) -> Any:
+            return iter(chunk_seqs.pop(0))
+
+        with patch("spec4.llm.litellm.completion", side_effect=fake_completion):
+            collect(code_scanner.run("Confirm", session, session["llm_config"]))
+        return session
+
+    def test_first_failed_emission_is_dumped_with_its_errors(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        session = self._run(str(tmp_path), self._invalid, self._valid)
+        assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
+        dumps = sorted((tmp_path / ".spec4" / "failures").glob("*.txt"))
+        assert [d.name for d in dumps] == ["code_scanner_review_1.txt"]
+        text = dumps[0].read_text(encoding="utf-8")
+        head, _, raw = text.partition("\n\n")
+        assert head.splitlines()[0] == (
+            "# code_scanner review emission failed validation (first emission)"
+        )
+        assert f"# schema_version {CODE_REVIEW_SCHEMA_VERSION}; 1 error(s):" in head
+        assert "bogus" in head  # the validator's own error line
+        assert raw == self._invalid  # the reply, verbatim, after the header
+
+    def test_both_failures_are_dumped_in_order(self, tmp_path: pathlib.Path) -> None:
+        session = self._run(str(tmp_path), self._invalid, self._invalid)
+        assert session["code_scanner_state"] != STATE_REVIEW_COMPLETE
+        dumps = sorted((tmp_path / ".spec4" / "failures").glob("*.txt"))
+        assert [d.name for d in dumps] == [
+            "code_scanner_review_1.txt",
+            "code_scanner_review_2.txt",
+        ]
+        assert "(first emission)" in dumps[0].read_text(encoding="utf-8")
+        assert "(re-ask)" in dumps[1].read_text(encoding="utf-8")
+        # A later scan numbers on from what is there.
+        self._run(str(tmp_path), self._invalid, self._valid)
+        names = sorted(p.name for p in (tmp_path / ".spec4" / "failures").glob("*"))
+        assert names == [f"code_scanner_review_{n}.txt" for n in (1, 2, 3)]
+
+    def test_a_valid_emission_writes_nothing(self, tmp_path: pathlib.Path) -> None:
+        session = self._run(str(tmp_path), self._valid)
+        assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
+        assert not (tmp_path / ".spec4").exists()
+
+    def test_no_working_dir_or_unwritable_dir_never_breaks_the_turn(
+        self, tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No working directory: nothing is written anywhere (not to the
+        # current directory either), and the retry still runs.
+        monkeypatch.chdir(tmp_path)
+        session = self._run(None, self._invalid, self._valid)
+        assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
+        assert list(tmp_path.iterdir()) == []
+        # A file where the failures directory should be: mkdir raises, the
+        # dump is skipped and the retry still completes.
+        (tmp_path / ".spec4").write_text("not a directory", encoding="utf-8")
+        session = self._run(str(tmp_path), self._invalid, self._valid)
+        assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
+        assert (tmp_path / ".spec4").read_text(encoding="utf-8") == "not a directory"
 
 
 class TestCodeScannerUnparseableArtifact:

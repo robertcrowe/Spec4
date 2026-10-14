@@ -10,6 +10,19 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.9.1] — unreleased
+
+### Added
+- CodeScanner writes a review emission that fails schema validation to
+  `.spec4/failures/code_scanner_review_<n>.txt` — the validator's error
+  list first, then the raw reply — before re-asking, and again if the
+  re-ask fails too. Every BWS4 scan since the closed shapes of 2.6.0/2.8.0
+  has taken the correction pass, and the re-ask path kept the first
+  emission and its errors only in the session's message list, where
+  nothing could read them. Unconditional, not dev-gated (unlike the
+  Agentifier's D-AF7 dumps): a failure on every scan is a defect signal.
+  Instrument before any lever.
+
 ## [2.9.0] — unreleased
 
 Step 4b of the CodeScanner v2 plan (D-SC4b-1…8, 10, 12): the consumer side

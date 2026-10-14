@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import pathlib
 from collections.abc import Generator
 from typing import Any
@@ -655,6 +656,7 @@ def _scanner_settle(
         # surfacing the specific errors back to the model. On providers
         # that support it, force json_object mode so the retry response
         # is pure JSON instead of prose-wrapped re-explanation.
+        _dump_review_failure(session, "first emission", raw_reply, errors)
         retry_user_msg, response_format = _scanner_retry_prompt(errors, llm_config)
         # The re-ask drains silently — its body is raw or fenced JSON the user
         # should never see — while publishing the running char total so the
@@ -673,8 +675,10 @@ def _scanner_settle(
             session=session,
             seed=pre_stream_chars + len(last_assistant_text(msgs)),
         )
-        review, _ = _extract_and_validate_review(last_assistant_text(msgs))
+        retry_reply = last_assistant_text(msgs)
+        review, retry_errors = _extract_and_validate_review(retry_reply)
         if review is None:
+            _dump_review_failure(session, "re-ask", retry_reply, retry_errors)
             _scanner_reask_failed(session, msgs, retry_user_msg)
 
     if review:
@@ -712,6 +716,46 @@ def _scanner_seed(
         seed = build_fresh_scan_seed(working_dir, files, None, record, evidence)
     msgs.append({"role": "user", "content": seed})
     return seed, record
+
+
+_log = logging.getLogger(__name__)
+_FAILURES_DIR = pathlib.Path(".spec4") / "failures"
+_FAILURE_STEM = "code_scanner_review"
+
+
+def _dump_review_failure(
+    session: dict[str, Any], attempt: str, raw: str, errors: list[Any]
+) -> None:
+    """Persist a review emission that failed validation, with its errors (2.9.1).
+
+    Written to ``.spec4/failures/code_scanner_review_<n>.txt`` under the
+    working directory: the error list first, one per line, then the raw
+    reply. Unconditional, not dev-gated: a schema failure on every scan is a
+    defect signal, and the re-ask path otherwise keeps the first emission
+    and its errors only in the session's message list, where nothing can
+    read them. The Agentifier's D-AF7 dump is the precedent — instrument
+    before any lever. Never raises.
+    """
+    working_dir = session.get("working_dir")
+    if not working_dir:
+        return
+    try:
+        failures = pathlib.Path(working_dir) / _FAILURES_DIR
+        failures.mkdir(parents=True, exist_ok=True)
+        n = len(list(failures.glob(f"{_FAILURE_STEM}_*.txt")))
+        body = "\n".join(
+            [
+                f"# code_scanner review emission failed validation ({attempt})",
+                f"# schema_version {CODE_REVIEW_SCHEMA_VERSION}; "
+                f"{len(errors)} error(s):",
+                *(f"#   {e}" for e in errors),
+                "",
+                raw,
+            ]
+        )
+        (failures / f"{_FAILURE_STEM}_{n + 1}.txt").write_text(body, encoding="utf-8")
+    except Exception:  # noqa: BLE001 - diagnostics must never break the turn
+        _log.exception("review failure dump failed")
 
 
 def _scanner_retry_prompt(
