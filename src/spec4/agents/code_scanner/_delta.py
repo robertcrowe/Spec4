@@ -56,7 +56,13 @@ def prior_scan(
     """``(descriptor, scan)`` of the prior scan to diff against, or ``None``.
 
     The descriptor is the block's ``prior``: which round, by which precedence,
-    and the head the prior scan recorded (when it had a ``git`` block).
+    the head the prior scan recorded (when it had a ``git`` block), and the
+    prior scan's ``producer`` — the Spec4 version and schema that measured it
+    (2.9.2, D-SC5-2), ``None`` for a scan from before the key existed. With
+    it a reader can tell "the prior was measured by an older extractor" from
+    a change in the tree: the 2.9.0 BWS4 scan's ``delta`` listed 43 "added"
+    symbols on an unchanged tree because its 2.2.0 prior predated
+    ``variable`` extraction, and nothing in the block said so.
     """
     candidates: list[tuple[str, int | None]] = [
         (_KIND_IMPLEMENTED, project_manager.latest_implemented_version(working_dir)),
@@ -77,8 +83,21 @@ def prior_scan(
             "kind": kind,
             "version": version,
             "head": head if isinstance(head, str) else None,
+            "producer": _producer_of(scan),
         }
         return descriptor, scan
+    return None
+
+
+def _producer_of(scan: dict[str, Any]) -> dict[str, Any] | None:
+    """The prior scan's ``producer`` when it carries a well-formed one."""
+    producer = scan.get("producer")
+    if (
+        isinstance(producer, dict)
+        and isinstance(producer.get("spec4"), str)
+        and isinstance(producer.get("schema"), int)
+    ):
+        return {"spec4": producer["spec4"], "schema": producer["schema"]}
     return None
 
 

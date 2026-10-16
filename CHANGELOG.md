@@ -10,6 +10,33 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.9.2] — unreleased
+
+Three small levers from the first measured 2.9.1 update scan on BWS4
+(D-SC5-1, 2, 5). No change to what is stored in `review`.
+
+### Changed
+- The update-scan seed pastes the prior `review` minus the fields Spec4
+  recomputes at commit — `load_bearing[].consumers`, every
+  `prior_round_reconciliation[]` field but `gap` (with its `source` /
+  `inferred_from`; an item with no gap goes, and the key with it), and
+  `unplanned_changes[].classification`. They cost ~2.6 k tokens of a 78 k
+  prompt on BWS4 and had the model announcing it would drop them. The
+  stale-schema fresh seed is unchanged.
+- The update summary gains a fourth label, **Previously omitted**, for an
+  entry the evidence supports but the prior review lacked — a completeness
+  fix in the review, which the first 2.9.1 scan had to label "Added" and
+  disclaim in prose.
+
+### Added
+- `scan.producer` — `{spec4, schema}`, the Spec4 version and schema that
+  measured the scan — on every scan as its last key, and `delta.prior.producer`
+  copied from the prior scan (`null` for one from before 2.9.2). A reader of
+  `delta` can now tell "measured by an older extractor" from "the tree
+  changed": the 2.9.0 BWS4 scan listed 43 "added" symbols on an unchanged
+  tree because its 2.2.0 prior predated `variable` extraction. Optional in
+  the schema, so every stored 2.x review still validates.
+
 ## [2.9.1] — unreleased
 
 ### Added

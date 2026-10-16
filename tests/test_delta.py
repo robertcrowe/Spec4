@@ -35,7 +35,8 @@ def _install_review(root: pathlib.Path, version: int, envelope: dict[str, Any]) 
 
 
 def _descriptor() -> dict[str, Any]:
-    return {"kind": "prior_review", "version": 9, "head": "861c009"}
+    # The 2.2.0 fixture predates ``producer`` (2.9.2), so the prior carries none.
+    return {"kind": "prior_review", "version": 9, "head": "861c009", "producer": None}
 
 
 class TestPriorScan:
@@ -65,7 +66,12 @@ class TestPriorScan:
         _install_review(tmp_path, 9, other)
         found = _delta.prior_scan(str(tmp_path), {"phase_version": 9})
         assert found is not None
-        assert found[0] == {"kind": "implemented", "version": 8, "head": "861c009"}
+        assert found[0] == {
+            "kind": "implemented",
+            "version": 8,
+            "head": "861c009",
+            "producer": None,
+        }
 
     def test_a_scan_without_an_inventory_is_not_a_prior(
         self, tmp_path: pathlib.Path
@@ -88,7 +94,51 @@ class TestPriorScan:
         _install_review(tmp_path, 4, envelope)
         found = _delta.prior_scan(str(tmp_path), None)
         assert found is not None
-        assert found[0] == {"kind": "prior_review", "version": 4, "head": None}
+        assert found[0] == {
+            "kind": "prior_review",
+            "version": 4,
+            "head": None,
+            "producer": None,
+        }
+
+    def test_producer_is_copied_from_a_prior_that_carries_one(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # 2.9.2 (D-SC5-2): a prior measured by a 2.9.2+ scanner names itself;
+        # the descriptor carries that, and only a well-formed one.
+        envelope = load_fixture(_FIXTURE)
+        envelope["code_review"]["scan"]["producer"] = {"spec4": "2.9.2", "schema": 2}
+        _install_review(tmp_path, 4, envelope)
+        found = _delta.prior_scan(str(tmp_path), None)
+        assert found is not None
+        assert found[0]["producer"] == {"spec4": "2.9.2", "schema": 2}
+        # Only the two named keys are copied: a prior with more in its
+        # ``producer`` must not push an unknown key into a closed block.
+        envelope["code_review"]["scan"]["producer"] = {
+            "spec4": "2.9.2",
+            "schema": 2,
+            "extra": True,
+        }
+        _install_review(tmp_path, 4, envelope)
+        found = _delta.prior_scan(str(tmp_path), None)
+        assert found is not None
+        assert found[0]["producer"] == {"spec4": "2.9.2", "schema": 2}
+        for malformed in ({"spec4": "2.9.2"}, {"spec4": 3, "schema": 2}, "2.9.2"):
+            envelope["code_review"]["scan"]["producer"] = malformed
+            _install_review(tmp_path, 4, envelope)
+            found = _delta.prior_scan(str(tmp_path), None)
+            assert found is not None
+            assert found[0]["producer"] is None
+
+    def test_producer_in_the_delta_prior_validates_present_or_null(self) -> None:
+        prior = _prior_scan()
+        delta = _delta.delta_block(copy.deepcopy(prior), prior, _descriptor())
+        assert delta["prior"]["producer"] is None
+        assert validate_code_review(review_envelope(scan={"delta": delta})) == []
+        delta["prior"]["producer"] = {"spec4": "2.9.2", "schema": 2}
+        assert validate_code_review(review_envelope(scan={"delta": delta})) == []
+        delta["prior"]["producer"] = {"spec4": "2.9.2"}
+        assert validate_code_review(review_envelope(scan={"delta": delta})) != []
 
 
 class TestComparisons:

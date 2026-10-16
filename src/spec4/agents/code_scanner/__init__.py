@@ -334,6 +334,54 @@ def _prior_review_for_seed(prior: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+_RECONCILIATION_SEED_KEYS = ("phase_number", "gap", "source", "inferred_from")
+
+
+def _prior_review_for_update_seed(prior: dict[str, Any]) -> dict[str, Any]:
+    """The prior review the *update* seed pastes: minus what Spec4 computes (2.9.2).
+
+    ``wrap_review`` overwrites three things in whatever the model emits —
+    ``load_bearing[].consumers``, every ``prior_round_reconciliation[]`` field
+    but ``gap`` (and its ``source`` / ``inferred_from``), and
+    ``unplanned_changes[].classification`` — so pasting them back as the prior
+    only costs tokens (~2.6 k on BWS4) and had the model narrating that it
+    would drop them (D-SC5-1). Here they are stripped before the paste: a
+    reconciliation item keeps ``phase_number`` with its ``gap`` fields, and
+    one with no ``gap`` goes, as does the key when nothing is left. The
+    stale-schema fresh seed is untouched — a schema-1 review has none of
+    these. Non-dict entries pass through; what remains keeps its order.
+    """
+    review = dict(_prior_review_for_seed(prior))
+    entries = review.get("load_bearing")
+    if isinstance(entries, list):
+        review["load_bearing"] = [
+            {k: v for k, v in e.items() if k != "consumers"}
+            if isinstance(e, dict)
+            else e
+            for e in entries
+        ]
+    changes = review.get(_UNPLANNED_KEY)
+    if isinstance(changes, list):
+        review[_UNPLANNED_KEY] = [
+            {k: v for k, v in c.items() if k != "classification"}
+            if isinstance(c, dict)
+            else c
+            for c in changes
+        ]
+    items = review.get(_RECONCILIATION_KEY)
+    if isinstance(items, list):
+        kept = [
+            {k: i[k] for k in _RECONCILIATION_SEED_KEYS if k in i}
+            for i in items
+            if isinstance(i, dict) and isinstance(i.get("gap"), str) and i["gap"]
+        ]
+        if kept:
+            review[_RECONCILIATION_KEY] = kept
+        else:
+            del review[_RECONCILIATION_KEY]
+    return review
+
+
 def _extract_and_validate_review(
     text: str,
 ) -> tuple[dict[str, Any] | None, list[str]]:
@@ -419,8 +467,17 @@ def build_update_scan_seed(
     record: SampleRecord | None = None,
     scan: ScanEvidence | None = None,
 ) -> str:
+    """The seed for an update scan: the prior review and a diff-then-merge ask.
+
+    The prior is pasted through ``_prior_review_for_update_seed`` — the
+    ``review`` layer minus the fields Spec4 recomputes at commit (D-SC5-1).
+    The summary's labels are Added / Removed / Changed for the project, and
+    "Previously omitted" for an entry the evidence supports but the prior
+    review lacked (D-SC5-5): a completeness fix is not a change in the code,
+    and on the first 2.9.1 BWS4 scan the model had to say so in prose.
+    """
     context = gather_project_context(working_dir, all_files, record, scan)
-    prior_json = json.dumps(_prior_review_for_seed(prior_review), indent=2)
+    prior_json = json.dumps(_prior_review_for_update_seed(prior_review), indent=2)
     return (
         "Please introduce yourself as CodeScanner. The user has asked you to "
         "re-scan this project, which already has a prior code review on disk.\n\n"
@@ -432,7 +489,10 @@ def build_update_scan_seed(
         "newly resolved or newly introduced incomplete/dead code, etc.\n"
         "- Present the changes as a readable summary grouped under the same "
         "section names used in the prior review. Mark each item explicitly as "
-        "Added / Removed / Changed.\n"
+        "Added / Removed / Changed. An entry the evidence supports that the "
+        "prior review simply lacked — a dependency the manifest always "
+        "declared, say — is marked **Previously omitted**, not Added: it is a "
+        "completeness fix in the review, not a change in the project.\n"
         '- After presenting the changes, ask: "Anything to correct? Reply '
         "'looks good' to merge and finalize.\"\n"
         "- When the user confirms, emit a complete updated `review` JSON block "

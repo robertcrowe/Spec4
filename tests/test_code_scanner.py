@@ -686,6 +686,120 @@ class TestCodeScanner:
         assert '"schema_version"' not in seed
         assert '"code_review"' not in seed
 
+    def test_update_seed_carries_the_previously_omitted_label(self) -> None:
+        # 2.9.2 (D-SC5-5): a prior-review omission is not a project change.
+        from spec4.agents.code_scanner import build_update_scan_seed
+
+        seed = build_update_scan_seed("/tmp/does-not-matter", review_envelope())
+        body = " ".join(seed.split())
+        assert "Added / Removed / Changed." in body
+        assert (
+            "is marked **Previously omitted**, not Added: it is a completeness "
+            "fix in the review, not a change in the project." in body
+        )
+
+    def test_update_seed_strips_what_spec4_recomputes(self) -> None:
+        # 2.9.2 (D-SC5-1): the update seed pastes the prior ``review`` minus
+        # the fields ``wrap_review`` overwrites at commit — ``consumers``,
+        # the computed reconciliation fields, ``classification`` — which only
+        # cost tokens and had the model announcing it would drop them.
+        from spec4.agents.code_scanner import (
+            _prior_review_for_update_seed,
+            build_update_scan_seed,
+        )
+
+        prior = review_envelope(
+            project_type="CLI",
+            load_bearing=[
+                {
+                    "module": "a.py",
+                    "role": "r",
+                    "contract": {"inputs": ["x"]},
+                    "consumers": ["b.py", "c.py"],
+                },
+                "not-a-dict",
+            ],
+            prior_round_reconciliation=[
+                {
+                    "phase_number": 1,
+                    "title": "One",
+                    "verdict": "evidence_found",
+                    "implemented_ids": ["f"],
+                    "paths": ["a.py"],
+                    "features": [{"id": "f", "statuses": ["complete"]}],
+                },
+                {
+                    "phase_number": 2,
+                    "title": "Two",
+                    "verdict": "evidence_partial",
+                    "implemented_ids": [],
+                    "paths": [],
+                    "features": [{"id": "g", "statuses": []}],
+                    "gap": "g is unclaimed",
+                    "source": "README.md",
+                    "inferred_from": "src/",
+                },
+                "not-a-dict",
+            ],
+            unplanned_changes=[
+                {"area": "x", "classification": "out_of_round", "affects": ["a.py"]},
+                7,
+            ],
+        )
+        stripped = _prior_review_for_update_seed(prior)
+        assert stripped["project_type"] == "CLI"
+        assert stripped["load_bearing"] == [
+            {"module": "a.py", "role": "r", "contract": {"inputs": ["x"]}},
+            "not-a-dict",
+        ]
+        assert stripped["prior_round_reconciliation"] == [
+            {
+                "phase_number": 2,
+                "gap": "g is unclaimed",
+                "source": "README.md",
+                "inferred_from": "src/",
+            }
+        ]
+        assert stripped["unplanned_changes"] == [{"area": "x", "affects": ["a.py"]}, 7]
+        # Order of the surviving keys is the prior's.
+        assert list(stripped) == list(prior["code_review"]["review"])
+        # The prior itself is untouched, and the seed carries the stripped one.
+        assert prior["code_review"]["review"]["load_bearing"][0]["consumers"] == [
+            "b.py",
+            "c.py",
+        ]
+        seed = build_update_scan_seed("/tmp/does-not-matter", prior)
+        assert '"consumers"' not in seed
+        assert '"verdict"' not in seed
+        assert '"classification"' not in seed
+        assert '"gap": "g is unclaimed"' in seed
+
+    def test_update_seed_drops_a_reconciliation_with_no_gap_at_all(self) -> None:
+        # Six ``evidence_found`` phases (BWS4 v9) carry nothing the model
+        # wrote, so the key goes rather than six ``{phase_number}`` stubs; a
+        # review without the arrays, or with malformed ones, passes through.
+        from spec4.agents.code_scanner import _prior_review_for_update_seed
+
+        prior = review_envelope(
+            prior_round_reconciliation=[
+                {"phase_number": n, "verdict": "evidence_found"} for n in (1, 2)
+            ]
+            + [{"phase_number": 3, "gap": ""}],
+        )
+        assert "prior_round_reconciliation" not in _prior_review_for_update_seed(prior)
+        plain = review_envelope(project_type="CLI")
+        assert _prior_review_for_update_seed(plain) == {
+            "is_software_project": True,
+            "project_type": "CLI",
+        }
+        odd = review_envelope(
+            load_bearing="x", prior_round_reconciliation=3, unplanned_changes={}
+        )
+        assert _prior_review_for_update_seed(odd)["load_bearing"] == "x"
+        assert _prior_review_for_update_seed(odd)["prior_round_reconciliation"] == 3
+        assert _prior_review_for_update_seed(odd)["unplanned_changes"] == {}
+        assert _prior_review_for_update_seed({}) == {}
+
     def test_seed_prior_review_reader_handles_each_shape(self) -> None:
         from spec4.agents.code_scanner import _prior_review_for_seed
 

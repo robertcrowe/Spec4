@@ -22,9 +22,13 @@ from unittest.mock import patch
 
 import pytest
 
+import spec4
 from spec4 import session as session_mod
 from spec4.agents import code_scanner
-from spec4.agents._code_review_schema import validate_code_review
+from spec4.agents._code_review_schema import (
+    CODE_REVIEW_SCHEMA_VERSION,
+    validate_code_review,
+)
 from spec4.agents.code_scanner import _collect
 from spec4.agents.code_scanner._sample import gather_project_context
 from spec4.agents.code_scanner._scan import SampleRecord, collect_files
@@ -724,7 +728,7 @@ class TestScanSchema:
             scan = _scan(tmp_path)
         # No round is implemented and no prior scan is on disk, so the 1d
         # blocks that need one (``prior_round``, ``plan_drift``, ``delta``)
-        # are absent; ``dependencies`` is on every scan.
+        # are absent; ``dependencies`` and ``producer`` are on every scan.
         assert set(scan) == {
             "inventory",
             "coverage",
@@ -732,9 +736,41 @@ class TestScanSchema:
             "module_graph",
             "signatures",
             "dependencies",
+            "producer",
         }
         assert validate_code_review(review_envelope(scan=scan)) == []
         json.dumps(scan)  # the stash and the artifact are both JSON
+
+    def test_producer_names_this_spec4_and_schema_as_the_last_key(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # 2.9.2 (D-SC5-2): every scan says which Spec4 measured it, so the
+        # next scan's ``delta.prior`` can carry it (see test_delta).
+        _make_project(tmp_path)
+        scan = _scan(tmp_path)
+        assert list(scan)[-1] == "producer"
+        assert scan["producer"] == {
+            "spec4": spec4.__version__,
+            "schema": CODE_REVIEW_SCHEMA_VERSION,
+        }
+        assert scan["producer"]["spec4"] not in ("", "unknown")
+
+    def test_producer_is_optional_and_closed(self) -> None:
+        # A stored 2.3.0…2.9.1 scan has no ``producer`` and still validates;
+        # with it, exactly ``{spec4, schema}``.
+        assert (
+            validate_code_review(review_envelope(scan={"git": {"available": False}}))
+            == []
+        )
+        good = {"producer": {"spec4": "2.9.2", "schema": 2}}
+        assert validate_code_review(review_envelope(scan=good)) == []
+        for bad in (
+            {"producer": {"spec4": "2.9.2"}},
+            {"producer": {"spec4": "2.9.2", "schema": 2, "extra": 1}},
+            {"producer": {"spec4": 2, "schema": 2}},
+            {"producer": None},
+        ):
+            assert validate_code_review(review_envelope(scan=bad)) != []
 
     def test_unavailable_git_validates(self) -> None:
         scan = {"git": {"available": False}}

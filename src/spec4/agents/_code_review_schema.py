@@ -1229,6 +1229,14 @@ def _delta_lists(*keys: str) -> dict[str, Any]:
     )
 
 
+# 2.9.2 (D-SC5-2): which Spec4 measured a scan, under which schema. On every
+# scan as its last key; ``delta.prior`` copies the prior scan's, ``null`` for
+# a prior from before the key existed. Optional in both places so every
+# stored 2.x review still validates.
+_SCAN_PRODUCER = _closed(
+    ["spec4", "schema"], {"spec4": {"type": "string"}, "schema": _NON_NEGATIVE}
+)
+
 _SCAN_DELTA = _closed(
     ["prior", "files", "dependencies", "candidates", "signatures"],
     {
@@ -1238,6 +1246,7 @@ _SCAN_DELTA = _closed(
                 "kind": {"enum": ["implemented", "prior_review"]},
                 "version": _NON_NEGATIVE,
                 "head": _NULLABLE_STRING,
+                "producer": {**_SCAN_PRODUCER, "type": ["object", "null"]},
             },
         ),
         "files": _closed(
@@ -1275,6 +1284,7 @@ SCAN_SCHEMA: dict[str, Any] = _closed(
         "prior_round": _SCAN_PRIOR_ROUND,
         "plan_drift": _SCAN_PLAN_DRIFT,
         "delta": _SCAN_DELTA,
+        "producer": _SCAN_PRODUCER,
     },
 )
 

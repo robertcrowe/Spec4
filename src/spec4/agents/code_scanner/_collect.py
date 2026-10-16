@@ -55,7 +55,7 @@ import re
 import subprocess
 from typing import TYPE_CHECKING, Any
 
-from spec4 import project_manager
+from spec4 import __version__, project_manager
 from spec4.agents.code_scanner._delta import delta_block, prior_scan
 from spec4.agents.code_scanner._drift import plan_drift_block
 from spec4.agents.code_scanner._graph import analyse, signatures_block
@@ -63,6 +63,7 @@ from spec4.agents.code_scanner._manifests import dependencies_block
 from spec4.agents.code_scanner._prior import prior_round_block
 from spec4.agents.code_scanner._sample import ScanEvidence
 from spec4.agents.code_scanner._scan import _SKIP_DIRS, SampleRecord
+from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
 from spec4.app_constants import ARTIFACT_CODE_REVIEW
 
 if TYPE_CHECKING:
@@ -517,7 +518,8 @@ def measure_scan(
     kept (1c). ``prior_round`` and ``plan_drift`` are present when a round is
     implemented; ``delta`` when an earlier 2.x scan is on disk to compare
     against (1d). ``dependencies`` is on every scan, since the next scan's
-    ``delta`` reads this one's.
+    ``delta`` reads this one's; so is ``producer``, last, for the same reason
+    (2.9.2).
     """
     root = pathlib.Path(working_dir)
     graph = analyse(root, all_files)
@@ -538,7 +540,20 @@ def measure_scan(
     if found is not None:
         descriptor, earlier = found
         scan["delta"] = delta_block(scan, earlier, descriptor)
+    scan["producer"] = producer_block()
     return ScanEvidence(all_files, scan, graph.reached)
+
+
+def producer_block() -> dict[str, Any]:
+    """Which Spec4 measured this scan, and under which schema (2.9.2, D-SC5-2).
+
+    Last key of ``scan``, on every scan. The next scan's ``delta.prior`` copies
+    it, so a reader of that block can separate "measured by an older
+    extractor" from "the tree changed" — the two were indistinguishable on
+    the 2.9.0 BWS4 scan, whose 2.2.0 prior predated ``variable`` symbols.
+    ``__version__`` is ``"unknown"`` outside an installed package.
+    """
+    return {"spec4": __version__, "schema": CODE_REVIEW_SCHEMA_VERSION}
 
 
 def attach_coverage(scan: dict[str, Any], record: SampleRecord) -> dict[str, Any]:
