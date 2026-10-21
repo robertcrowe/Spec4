@@ -381,6 +381,18 @@ def code_review_needs_rescan(
     data: Any = None
     with contextlib.suppress(OSError, json.JSONDecodeError):
         data = json.loads(path.read_text(encoding="utf-8"))
+    return code_review_is_stale(data)
+
+
+def code_review_is_stale(data: object) -> bool:
+    """The D-SV1 predicate on a parsed review: a ``schema_version`` other than ours.
+
+    The file-reading gate above and the new-round scan (2.11.0, D-SC5-15 —
+    the previous round's review resolved from disk when the session holds
+    none) decide staleness the same way: only a dict carrying a
+    ``code_review.schema_version`` different from the current one is stale;
+    anything shapeless is not.
+    """
     if not isinstance(data, dict):
         return False
     inner = data.get("code_review")

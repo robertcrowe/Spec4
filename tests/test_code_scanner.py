@@ -931,6 +931,19 @@ class TestCodeScanner:
         assert "btn-dl-review" not in ids
         assert "chat-token-count" in ids
 
+    def test_in_round_rescan_stashes_the_session_review_as_the_prior(self) -> None:
+        # 2.11.0: the commit reads one key for the carry's prior on both doors.
+        review = review_envelope(project_type="web")
+        session = make_session(
+            code_review=review,
+            code_scanner_state=STATE_IN_PROGRESS,
+            working_dir="/tmp/not-real-but-not-empty",
+        )
+        with mock_litellm_stream("(LLM update response)"):
+            collect(code_scanner.run(None, session, session["llm_config"]))
+        assert session["code_scanner_prior"] == review
+        assert session["code_review"] == review
+
     def test_current_schema_still_displays_existing_review(self, tmp_path: Any) -> None:
         # The inverse: a review under the current schema keeps the display
         # short-circuit — no scan, no seed appended.
@@ -948,6 +961,158 @@ class TestCodeScanner:
         assert "Re-scanning" not in out
         assert session["code_scanner_messages"][0]["content"] == (
             "[Spec4: displaying existing code review]"
+        )
+
+
+def _new_round_project(tmp_path: pathlib.Path, prior: dict[str, Any] | None) -> None:
+    """A small tree whose previous round (v9) is implemented and holds ``prior``.
+
+    The session loads no review for such a project (``brownfield_new_round_pending``),
+    which until 2.11.0 made the scan a fresh one.
+    """
+    (tmp_path / "README.md").write_text("# App\n\nA thing.\n")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("def main() -> None:\n    pass\n")
+    (tmp_path / "src" / "config.py").write_text("HOURLY_LIMIT = 5\n")
+    v9 = tmp_path / ".spec4" / "v9"
+    v9.mkdir(parents=True)
+    (v9 / "IMPLEMENTED").write_text("", encoding="utf-8")
+    if prior is not None:
+        (v9 / "code_review.json").write_text(json.dumps(prior), encoding="utf-8")
+
+
+def _implemented_prior() -> dict[str, Any]:
+    """A schema-2 prior whose listing matches the tree, so the delta names nothing."""
+    return review_envelope(
+        scan={
+            "inventory": {
+                "files_total": 3,
+                "files_listed": 3,
+                "truncated": False,
+                "listed": ["README.md", "src/app.py", "src/config.py"],
+            }
+        },
+        project_type="CLI",
+        env_vars=[
+            {"name": "DATABASE_URL", "purpose": "db", "source": ".env.example"},
+            {"name": "HOURLY_LIMIT", "purpose": "cap", "source": "src/config.py"},
+        ],
+    )
+
+
+class TestNewRoundScan:
+    # 2.11.0 (D-SC5-13…15): the first scan of a new brownfield round draws the
+    # update seed against the previous round's review on disk and carries
+    # against it at commit — the BWS4 2.10.0 scans showed this door opening on
+    # the fresh seed with ``prior=None`` while ``delta`` named the v9 review.
+
+    def test_the_previous_round_s_review_opens_the_update_seed(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        prior = _implemented_prior()
+        _new_round_project(tmp_path, prior)
+        session = make_session(working_dir=str(tmp_path))
+        assert session["code_review"] is None
+        with mock_litellm_stream("Anything to correct?"):
+            out = collect(code_scanner.run(None, session, session["llm_config"]))
+        assert "Re-scanning" in out
+        seed = session["code_scanner_messages"][0]["content"]
+        assert "Update mode" in seed
+        assert "Prior code review on disk" in seed
+        assert "**Paths this scan changed**" in seed
+        assert '"name": "HOURLY_LIMIT"' in seed
+        assert "older schema" not in seed
+        # The prior is stashed for the commit; the new round's review is not
+        # minted until then, so the /agents gate still reads a pending round.
+        assert session["code_scanner_prior"] == prior
+        assert session["code_review"] is None
+        assert session["code_scanner_state"] == STATE_IN_PROGRESS
+        assert session["code_scanner_scan"]["delta"]["prior"]["version"] == 9
+
+    def test_the_commit_carries_against_the_disk_prior_and_clears_the_stash(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from tests._review_helpers import review_block_text
+
+        _new_round_project(tmp_path, _implemented_prior())
+        session = make_session(working_dir=str(tmp_path))
+        with mock_litellm_stream("Anything to correct?"):
+            collect(code_scanner.run(None, session, session["llm_config"]))
+        emitted = [{"name": "DATABASE_URL", "purpose": "re-derived", "source": ".env"}]
+        with mock_litellm_stream(review_block_text(env_vars=emitted)):
+            collect(code_scanner.run("looks good", session, session["llm_config"]))
+        assert session["code_scanner_state"] == STATE_REVIEW_COMPLETE
+        stored = session["code_review"]["code_review"]["review"]
+        # The model's entry wins; the untouched config.py entry comes back.
+        assert stored["env_vars"] == [
+            *emitted,
+            {"name": "HOURLY_LIMIT", "purpose": "cap", "source": "src/config.py"},
+        ]
+        assert session["code_scanner_prior"] is None
+        assert session["code_scanner_scan"] is None
+
+    def test_an_older_schema_prior_opens_the_fresh_seed_with_context_and_no_carry(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from tests._review_helpers import review_block_text
+
+        stale = {
+            "code_review": {
+                "schema_version": CODE_REVIEW_SCHEMA_VERSION - 1,
+                "is_software_project": True,
+                "project_type": "CLI",
+                "env_vars": [
+                    {"name": "OLD", "purpose": "x", "source": "src/config.py"}
+                ],
+            }
+        }
+        _new_round_project(tmp_path, stale)
+        session = make_session(working_dir=str(tmp_path))
+        with mock_litellm_stream("Anything to correct?"):
+            out = collect(code_scanner.run(None, session, session["llm_config"]))
+        assert "Re-scanning" in out
+        seed = session["code_scanner_messages"][0]["content"]
+        assert "Update mode" not in seed
+        assert "older schema" in seed
+        assert '"project_type": "CLI"' in seed
+        assert session["code_scanner_prior"] == stale
+        with mock_litellm_stream(review_block_text(env_vars=[])):
+            collect(code_scanner.run("looks good", session, session["llm_config"]))
+        assert session["code_review"]["code_review"]["review"]["env_vars"] == []
+        assert session["code_scanner_prior"] is None
+
+    def test_no_prior_on_disk_is_a_fresh_scan(self, tmp_path: pathlib.Path) -> None:
+        _new_round_project(tmp_path, None)
+        session = make_session(working_dir=str(tmp_path))
+        with mock_litellm_stream("Anything to correct?"):
+            out = collect(code_scanner.run(None, session, session["llm_config"]))
+        assert "Scanning" in out
+        assert "Re-scanning" not in out
+        seed = session["code_scanner_messages"][0]["content"]
+        assert "Update mode" not in seed
+        assert "older schema" not in seed
+        assert session["code_scanner_prior"] is None
+        assert "delta" not in session["code_scanner_scan"]
+
+    def test_the_seed_s_prior_is_the_delta_s_prior(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # D-SC5-14: one resolver — the envelope the seed pasted is the file
+        # whose scan ``delta.prior`` describes.
+        prior = _implemented_prior()
+        prior["code_review"]["scan"]["git"] = {"available": True, "head": "abc1234"}
+        _new_round_project(tmp_path, prior)
+        session = make_session(working_dir=str(tmp_path))
+        with mock_litellm_stream("Anything to correct?"):
+            collect(code_scanner.run(None, session, session["llm_config"]))
+        assert session["code_scanner_scan"]["delta"]["prior"] == {
+            "kind": "implemented",
+            "version": 9,
+            "head": "abc1234",
+            "producer": None,
+        }
+        assert session["code_scanner_prior"]["code_review"]["scan"]["git"]["head"] == (
+            "abc1234"
         )
 
 

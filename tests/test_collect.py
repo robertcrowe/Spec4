@@ -867,6 +867,13 @@ class TestScanStash:
         session = {"code_scanner_scan": {"inventory": {}}, "messages": ["x"]}
         assert on_rescan_project(1, session)["code_scanner_scan"] is None
 
+    def test_the_prior_stash_rides_beside_the_scan_stash(self) -> None:
+        # 2.11.0 (D-SC5-13): the envelope the seed was drawn against is held
+        # like the scan — a default of None, cleared by the Re-scan button.
+        assert session_mod.default_session()["code_scanner_prior"] is None
+        session = {"code_scanner_prior": {"code_review": {}}, "messages": ["x"]}
+        assert on_rescan_project(1, session)["code_scanner_prior"] is None
+
     def test_walk_stashes_and_commit_merges_then_clears(
         self, tmp_path: pathlib.Path
     ) -> None:

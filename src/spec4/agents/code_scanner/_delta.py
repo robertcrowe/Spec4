@@ -26,6 +26,13 @@ plus the working tree's modified files, computed by ``_collect`` and handed
 in. Without it the delta named only files that came or went, so an edit to
 ``.env.example`` or ``main.py`` was invisible to the update seed's carry rule
 (D-SC5-4). ``[]`` when there is no repository or git is unavailable.
+
+Since 2.11.0 (D-SC5-13, D-SC5-14) the same candidate order also answers a
+second question: which review on disk the *update seed* should paste and the
+commit-time carry should merge against, when the session holds none — a new
+brownfield round, where the previous round is implemented and ``v{N+1}`` has
+no review yet. ``prior_envelope`` is that resolver, beside ``prior_scan`` and
+through the same read, so the seed's prior and ``delta.prior`` are one choice.
 """
 
 from __future__ import annotations
@@ -51,14 +58,61 @@ def _capped(items: set[str]) -> tuple[list[str], bool]:
     return ordered[:_MAX_LIST], len(ordered) > _MAX_LIST
 
 
-def _scan_of(path: pathlib.Path) -> dict[str, Any] | None:
-    """A review file's ``scan`` layer, when it is a measured 2.x one."""
+def _envelope_of(path: pathlib.Path) -> dict[str, Any] | None:
+    """A review file parsed to a dict, else ``None`` (missing, unreadable, not a dict)."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    scan = unwrap_scan(data)
+    return data if isinstance(data, dict) else None
+
+
+def _scan_of(envelope: dict[str, Any] | None) -> dict[str, Any] | None:
+    """An envelope's ``scan`` layer, when it is a measured 2.x one (``None`` in → ``None``)."""
+    scan = unwrap_scan(envelope)
     return scan if isinstance(scan.get("inventory"), dict) else None
+
+
+def _prior_candidates(
+    working_dir: str, session: dict[str, Any] | None
+) -> list[tuple[str, int, pathlib.Path]]:
+    """The prior-review files to try, in precedence order (see the module docstring)."""
+    kinds: list[tuple[str, int | None]] = [
+        (_KIND_IMPLEMENTED, project_manager.latest_implemented_version(working_dir)),
+        (_KIND_PRIOR_REVIEW, project_manager.active_version(working_dir, session)),
+    ]
+    return [
+        (
+            kind,
+            version,
+            project_manager.get_version_dir(working_dir, version)
+            / ARTIFACT_CODE_REVIEW,
+        )
+        for kind, version in kinds
+        if version is not None
+    ]
+
+
+def prior_envelope(
+    working_dir: str, session: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """The prior review envelope on disk for a scan the session has no prior for (2.11.0, D-SC5-13).
+
+    The first candidate, in ``prior_scan``'s order, whose file parses to a
+    dict — whatever its schema: the caller decides between the update seed
+    (a schema-2 ``review``), the fresh seed with the prior as context (an
+    older schema, D-SV4) and nothing. ``prior_scan`` wants the first
+    candidate with a *measured* scan instead, so the two can in principle
+    differ (an implemented round under schema 1 beside an active round under
+    schema 2); the session loads the active round's review whenever it
+    parses, so a session with no review never reaches that case, and on the
+    new-round path both resolve to the implemented round (D-SC5-14).
+    """
+    for _kind, _version, path in _prior_candidates(working_dir, session):
+        envelope = _envelope_of(path)
+        if envelope is not None:
+            return envelope
+    return None
 
 
 def prior_scan(
@@ -75,17 +129,8 @@ def prior_scan(
     symbols on an unchanged tree because its 2.2.0 prior predated
     ``variable`` extraction, and nothing in the block said so.
     """
-    candidates: list[tuple[str, int | None]] = [
-        (_KIND_IMPLEMENTED, project_manager.latest_implemented_version(working_dir)),
-        (_KIND_PRIOR_REVIEW, project_manager.active_version(working_dir, session)),
-    ]
-    for kind, version in candidates:
-        if version is None:
-            continue
-        path = (
-            project_manager.get_version_dir(working_dir, version) / ARTIFACT_CODE_REVIEW
-        )
-        scan = _scan_of(path)
+    for kind, version, path in _prior_candidates(working_dir, session):
+        scan = _scan_of(_envelope_of(path))
         if scan is None:
             continue
         git = scan.get("git")

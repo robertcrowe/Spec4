@@ -146,6 +146,55 @@ class TestPriorScan:
         assert validate_code_review(review_envelope(scan={"delta": delta})) != []
 
 
+class TestPriorEnvelope:
+    # 2.11.0 (D-SC5-13/14): the review the update seed pastes when the session
+    # has none, resolved in ``prior_scan``'s order through the same read.
+
+    def test_nothing_on_disk_is_none(self, tmp_path: pathlib.Path) -> None:
+        assert _delta.prior_envelope(str(tmp_path), None) is None
+        d = tmp_path / ".spec4" / "v2"
+        d.mkdir(parents=True)
+        (d / "code_review.json").write_text("{")
+        assert _delta.prior_envelope(str(tmp_path), None) is None
+        (d / "code_review.json").write_text("[1]")
+        assert _delta.prior_envelope(str(tmp_path), None) is None
+
+    def test_the_implemented_round_wins_and_is_the_whole_file(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        install_rounds(tmp_path, 8)
+        implemented = load_fixture(_FIXTURE)
+        _install_review(tmp_path, 8, implemented)
+        other = load_fixture(_FIXTURE)
+        other["code_review"]["scan"]["git"]["head"] = "fffffff"
+        _install_review(tmp_path, 9, other)
+        session = {"phase_version": 9}
+        assert _delta.prior_envelope(str(tmp_path), session) == implemented
+        found = _delta.prior_scan(str(tmp_path), session)
+        assert found is not None
+        assert found[0]["version"] == 8  # the same choice
+
+    def test_an_older_schema_file_is_returned_for_the_seed_but_not_the_delta(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # A v1 review has no measured scan: no delta, but the fresh seed
+        # carries it as context (D-SV4), so the resolver hands it back.
+        stale = {"code_review": {"schema_version": 1, "project_type": "CLI"}}
+        _install_review(tmp_path, 3, stale)
+        session = {"phase_version": 3}
+        assert _delta.prior_envelope(str(tmp_path), session) == stale
+        assert _delta.prior_scan(str(tmp_path), session) is None
+
+    def test_falls_through_to_the_active_round_when_the_implemented_one_is_absent(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        install_rounds(tmp_path, 8)
+        (tmp_path / ".spec4" / "v8" / "code_review.json").unlink()
+        envelope = review_envelope(project_type="CLI")
+        _install_review(tmp_path, 9, envelope)
+        assert _delta.prior_envelope(str(tmp_path), {"phase_version": 9}) == envelope
+
+
 class TestComparisons:
     def test_identical_scans_yield_a_present_empty_block(self) -> None:
         prior = _prior_scan()

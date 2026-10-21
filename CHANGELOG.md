@@ -10,10 +10,46 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.11.0] — unreleased
+
+The 2.10.0 levers measured in the wild (D-SC5-13…16): on the first scan of
+BWS4's v10 round, both models stored the 2.10.0 scan with its `delta` and
+`producer` right — and the same ten `config.py` `env_vars` missing, because
+the commit-time carry was handed no prior. The session loads a round's own
+`code_review.json` only, so the first scan of a new brownfield round — the
+previous round implemented, `v{N+1}` not yet there — entered with
+`session["code_review"]` empty and drew the *fresh* seed, while `delta` found
+the previous round's review on disk by itself. The update seed, its carry
+rule, the rendered changed-path block, the id-reuse sentence and the keyed-
+list carry had never run on that door, which is the one where the tree has
+always changed. A minor bump: the new-round draw's behaviour changes.
+
+### Changed
+- A scan the session holds no review for resolves the previous round's
+  review from disk — `prior_envelope`, beside `_delta.prior_scan` and in its
+  candidate order, so the seed's prior and `delta.prior` are one choice —
+  and draws the update seed against it ("Re-scanning"), carrying the two
+  keyed lists at commit. A prior under an older schema takes the fresh seed
+  with the prior as context, as an in-round one does, decided by the same
+  predicate (`project_manager.code_review_is_stale`, now the function
+  `code_review_needs_rescan` reads). `session["code_review"]` is still
+  minted by the commit, so the new-round gate is untouched.
+- The walk stashes the envelope it drew against as `code_scanner_prior`,
+  beside `code_scanner_scan`; `_scanner_commit` reads it (falling back to
+  `session["code_review"]`) and clears both.
+
+### Corrected
+- 2.10.0's entry below and the regression fixture's `_about` called the
+  10-18 BWS4 datum an "update scan". By its draft turn and `usage.json` it
+  was this same new-round fresh scan; the loss it measured and the
+  instruments 2.10.0 added stand, and the update draw on a changed tree is
+  first measured by the next BWS4 round at 2.11.0.
+
 ## [2.10.0] — unreleased
 
 The changed-tree datum (D-SC5-4 firmed, D-SC5-9, D-SC5-12): on the first
-update scan of BWS4 after the v9 Router round, both Sonnet and Haiku rewrote
+scan of BWS4 after the v9 Router round (recorded here as an update scan; by
+its draft turn a fresh new-round scan — see 2.11.0), both Sonnet and Haiku rewrote
 every `review` field from the context window and dropped the ten `env_vars`
 whose source file (`config.py`, unchanged) had fallen out of the evidence
 sample, plus 21 of 46 `dependencies`. The update draw is now told to carry

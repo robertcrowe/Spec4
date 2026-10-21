@@ -65,6 +65,7 @@ from spec4.agents.code_scanner._collect import (
     collect_scan,
     measure_scan,
 )
+from spec4.agents.code_scanner._delta import prior_envelope
 from spec4.agents.code_scanner._prompt import SYSTEM_PROMPT
 from spec4.agents.code_scanner._review_render import format_review_as_text
 from spec4.agents.code_scanner._sample import (
@@ -779,7 +780,11 @@ def _scanner_first_entry(
 ) -> Generator[str, None, int | None]:
     """A first entry: the existing review shown, or the scan narrated.
 
-    Returns the running total of characters yielded before the draw.
+    Returns the running total of characters yielded before the draw. Writes
+    ``code_scanner_scan`` (the measured layer, D-SC1b-1) and
+    ``code_scanner_prior`` (the envelope the seed was drawn against, 2.11.0,
+    D-SC5-13 — ``None`` on a fresh scan with no prior); both are read and
+    cleared by ``_scanner_commit``.
     """
     existing_review = session.get("code_review")
     working_dir = session.get("working_dir")
@@ -825,6 +830,13 @@ def _scanner_first_entry(
         )
         return None
 
+    # 2.11.0 (D-SC5-13): a round with no review of its own — the start of
+    # every brownfield round after the first — takes the previous round's
+    # review from disk as the prior, so the seed is the update seed and the
+    # commit carries against it. Until 2.10.0 was measured in the wild this
+    # path was a fresh scan with a delta attached, and nothing could carry.
+    prior, stale = _scan_prior(working_dir, session, existing_review, stale)
+
     # D-SC-P1: the directory walk and the sample reads that follow it
     # run for seconds on a large tree, and until now yielded nothing —
     # the user watched an empty bubble with no indication the agent was
@@ -832,7 +844,7 @@ def _scanner_first_entry(
     # display-only: on the artifact turn `_display_override` replaces
     # the visible message wholesale, and the message history records
     # only what `stream_turn` appends.
-    mode = "Re-scanning" if existing_review is not None else "Scanning"
+    mode = "Re-scanning" if prior is not None else "Scanning"
     intro_line = f"**{mode}** `{working_dir}`…\n\n"
     pre_stream_chars += len(intro_line)
     yield intro_line
@@ -855,8 +867,9 @@ def _scanner_first_entry(
         measure_scan(working_dir, all_files, session),
         budget_tokens=evidence_budget(llm_config),
     )
-    seed, record = _scanner_seed(msgs, working_dir, existing_review, evidence, stale)
+    seed, record = _scanner_seed(msgs, working_dir, prior, evidence, stale)
     session["code_scanner_scan"] = attach_coverage(evidence.scan, record)
+    session["code_scanner_prior"] = prior
 
     # D-SC-P2: what follows is a single completion call, and the wait
     # before its first token is dominated by prefill over this request.
@@ -873,6 +886,33 @@ def _scanner_first_entry(
     pre_stream_chars += len(done_line)
     yield done_line
     return pre_stream_chars
+
+
+def _scan_prior(
+    working_dir: str,
+    session: dict[str, Any],
+    existing_review: dict[str, Any] | None,
+    stale: bool,
+) -> tuple[dict[str, Any] | None, bool]:
+    """The envelope this scan is drawn against, and whether it is under an older schema.
+
+    The session's review when it has one (an in-round re-scan; ``stale`` is
+    then the active round's verdict, decided from the file as the gate is).
+    Otherwise the previous round's review resolved from disk by
+    ``prior_envelope`` — ``prior_scan``'s candidate order, so it is the review
+    ``delta.prior`` names (2.11.0, D-SC5-13/14) — with the same staleness
+    predicate applied to it (D-SC5-15): a schema-2 envelope opens the update
+    seed, an older one the fresh seed carrying it as context (D-SV4), none
+    the fresh seed alone. ``session["code_review"]`` is left as it is: the
+    new round's review is minted by the commit, which is what creates
+    ``v{N+1}`` and opens the /agents gate.
+    """
+    if existing_review is not None:
+        return existing_review, stale
+    prior = prior_envelope(working_dir, session)
+    if prior is None:
+        return None, False
+    return prior, project_manager.code_review_is_stale(prior)
 
 
 def _scanner_settle(
@@ -1053,17 +1093,23 @@ def _scanner_commit(
     passed ``validate_review_block``, so a failure means the wrapper or a
     collector, not the model, is wrong — and that must not reach disk.
 
-    ``session["code_review"]`` still holds the prior envelope at this point
-    — the one the update seed was drawn against — and goes to ``wrap_review``
-    as the carry's ``prior`` (D-SC5-4 ii). On a fresh scan it is ``None``;
-    on a stale-schema one it has no ``review`` layer; either way nothing is
-    carried.
+    The carry's ``prior`` (D-SC5-4 ii) is ``code_scanner_prior`` — the
+    envelope the seed was drawn against, stashed by the walk beside the scan
+    (2.11.0, D-SC5-13): on a new round the previous round's review from disk,
+    on an in-round re-scan the session's own. A session that reached the
+    commit with no such stash (one resumed from before the key existed)
+    falls back to ``session["code_review"]``, which on an in-round re-scan is
+    that same prior. On a fresh scan the prior is ``None``; on a stale-schema
+    one it has no ``review`` layer; either way nothing is carried. Both
+    stashes are cleared on success.
     """
     scan = session.get("code_scanner_scan")
     if not isinstance(scan, dict):
         msg = "code_review commit with no scan stashed from the walk"
         raise ValueError(msg)
-    prior = session.get("code_review")
+    prior = session.get("code_scanner_prior")
+    if not isinstance(prior, dict):
+        prior = session.get("code_review")
     review = wrap_review(block, scan, prior if isinstance(prior, dict) else None)
     errors = validate_code_review(review)
     if errors:
@@ -1073,6 +1119,7 @@ def _scanner_commit(
     session["code_scanner_state"] = STATE_REVIEW_COMPLETE
     session["code_review"] = review
     session["code_scanner_scan"] = None
+    session["code_scanner_prior"] = None
     msgs[-1]["content"] = display
     session["_display_override"] = display
     session["code_scanner_artifact_msg_count"] = len(msgs)

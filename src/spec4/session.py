@@ -89,6 +89,10 @@ def default_session() -> dict[str, Any]:
         # The measured `scan` layer from the last walk, held until the review
         # block it belongs to is committed; `None` otherwise (D-SC1b-1).
         "code_scanner_scan": None,
+        # The envelope the last walk's seed was drawn against — on a new round
+        # the previous round's review from disk — held beside the scan until the
+        # commit carries against it (2.11.0, D-SC5-13); `None` otherwise.
+        "code_scanner_prior": None,
         "code_review": None,
         "brainstormer_state": STATE_IN_PROGRESS,
         "brainstormer_messages": [],

@@ -178,6 +178,7 @@ def on_rescan_project(n: int | None, session: Any) -> Any:
         "code_scanner_messages": [],
         "code_scanner_state": STATE_IN_PROGRESS,
         "code_scanner_scan": None,
+        "code_scanner_prior": None,
         "code_scanner_artifact_msg_count": None,
         "code_scanner_resumed": False,
         "messages": [],

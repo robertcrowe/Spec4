@@ -1,5 +1,5 @@
 {
-  "_about": "Regression fixture for the D-SC5-4 ii keyed-list carry (2.10.0): BWS4's 2.9.1 review as the prior, the 2.9.2 (claude-sonnet-5-5) update scan's delta and the env_vars / dependencies it emitted. Trimmed to those fields; everything verbatim.",
+  "_about": "Regression fixture for the D-SC5-4 ii keyed-list carry (2.10.0): BWS4's 2.9.1 review as the prior, the delta and the env_vars / dependencies the first 2.9.2 (claude-sonnet-5-5) scan after the v9 round emitted (a new-round fresh scan with the delta in evidence, not an update scan — 2.11.0). Trimmed to those fields; everything verbatim.",
   "prior_review": {
     "is_software_project": true,
     "env_vars": [

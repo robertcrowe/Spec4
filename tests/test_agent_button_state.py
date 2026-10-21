@@ -345,6 +345,23 @@ def test_missing_shapeless_or_unparseable_review_is_not_stale(tmp_path):
     assert agent_button_state(tmp_path, "code_scanner") == AGENT_BTN_MODIFY
 
 
+def test_code_review_is_stale_is_the_predicate_the_gate_reads(tmp_path):
+    # 2.11.0 (D-SC5-15): the new-round scan applies the same D-SV1 predicate
+    # to the prior it resolves from disk, so the two are one function.
+    assert pm.code_review_is_stale(
+        {"code_review": {"schema_version": CODE_REVIEW_SCHEMA_VERSION - 1}}
+    )
+    assert not pm.code_review_is_stale(
+        {"code_review": {"schema_version": CODE_REVIEW_SCHEMA_VERSION}}
+    )
+    for shapeless in (None, "x", {}, {"code_review": "x"}, {"code_review": {}}):
+        assert not pm.code_review_is_stale(shapeless)
+    _write_review(tmp_path, 0, CODE_REVIEW_SCHEMA_VERSION - 1)
+    assert pm.code_review_needs_rescan(tmp_path) is pm.code_review_is_stale(
+        json.loads((tmp_path / ".spec4" / "v0" / "code_review.json").read_text())
+    )
+
+
 def test_stale_gate_reads_the_active_round(tmp_path):
     # v0 implemented with a stale review (read by no consumer), v1 in flight
     # with a current one: not gated. The session's pinned version is honoured.
