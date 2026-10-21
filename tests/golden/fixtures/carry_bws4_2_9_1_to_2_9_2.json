@@ -1,0 +1,753 @@
+{
+  "_about": "Regression fixture for the D-SC5-4 ii keyed-list carry (2.10.0): BWS4's 2.9.1 review as the prior, the 2.9.2 (claude-sonnet-5-5) update scan's delta and the env_vars / dependencies it emitted. Trimmed to those fields; everything verbatim.",
+  "prior_review": {
+    "is_software_project": true,
+    "env_vars": [
+      {
+        "name": "DATABASE_URL",
+        "purpose": "Neon Postgres connection string",
+        "required": true,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "CORS_ORIGIN",
+        "purpose": "Single allowed cross-origin origin (the deployed web client)",
+        "required": true,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "OPENROUTER_API_KEY",
+        "purpose": "OpenRouter credential for model calls",
+        "required": true,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "EXA_API_KEY",
+        "purpose": "Exa web search credential",
+        "required": true,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "GROQ_API_KEY",
+        "purpose": "Groq credential for the primary model chains; optional in config.py but listed as required in CLAUDE.md",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "OPENAI_API_KEY",
+        "purpose": "OpenAI moderation endpoint credential; optional in config.py but listed as required in CLAUDE.md",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "MODERATION_HASH_SALT",
+        "purpose": "Salt for the moderation log's question hash; process-stable salt generated when unset",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "PORT",
+        "purpose": "Backend port (default 8000)",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "EMBEDDING_MODEL_NAME",
+        "purpose": "Sentence-transformers model name",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "SENTRY_DSN",
+        "purpose": "Enables backend Sentry error tracking; no-ops when unset",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "SENTRY_ENVIRONMENT",
+        "purpose": "Sentry environment tag",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "GENERATION_HOURLY_LIMIT",
+        "purpose": "Per-UTC-hour cap on generation calls",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "STORAGE_HOURLY_LIMIT",
+        "purpose": "Per-UTC-hour cap on storage operations",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "SEARCH_HOURLY_LIMIT",
+        "purpose": "Per-UTC-hour cap on Exa searches",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "PLANNING_HOURLY_LIMIT",
+        "purpose": "Planning-agent runs per UTC hour",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "REACT_CYCLE_BUDGET",
+        "purpose": "Search cycles the ReAct loop may run",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "REACT_DUPLICATE_SIMILARITY_THRESHOLD",
+        "purpose": "Cosine similarity above which a ReAct query is refused as a near-duplicate",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "REACT_SUITABILITY_TIMEOUT_SECONDS",
+        "purpose": "Latency ceiling on the ReAct suitability advisory",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "REACT_SUITABILITY_CHECKS_PER_SESSION",
+        "purpose": "Suitability checks one browser session may spend",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "REACT_SUITABILITY_CACHE_TTL_HOURS",
+        "purpose": "Suitability verdict cache lifetime",
+        "required": false,
+        "source": "backend/app/core/config.py"
+      },
+      {
+        "name": "VITE_API_BASE_URL",
+        "purpose": "Frontend base URL for backend API calls (build-time)",
+        "required": false,
+        "source": ".env.example"
+      },
+      {
+        "name": "VITE_SENTRY_DSN",
+        "purpose": "Enables frontend Sentry error tracking; build-time only, no-ops when unset",
+        "required": false,
+        "source": "frontend/src/main.tsx"
+      }
+    ],
+    "dependencies": [
+      {
+        "name": "alembic",
+        "purpose": "Database migrations (>=1.18.5)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "asyncpg",
+        "purpose": "Async PostgreSQL driver (>=0.31.0)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "fastapi",
+        "purpose": "REST API framework (>=0.140.0)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "httpx",
+        "purpose": "HTTP client for Exa, moderation and model discovery (>=0.28.1)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "litellm",
+        "purpose": "LLM routing to OpenRouter and Groq via shared model registry (>=1.93.0)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "numpy",
+        "purpose": "Numerical arrays (>=2.5.1)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pgvector",
+        "purpose": "pgvector integration for SQLAlchemy (>=0.5.0)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pydantic",
+        "purpose": "Schemas and validation (>=2.13.4)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pydantic-ai",
+        "purpose": "Second model lane with typed output binding (>=2.21.0)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pydantic-settings",
+        "purpose": "Environment-based settings (>=2.14.2)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "scikit-learn",
+        "purpose": "PCA projection of embeddings to 2D (>=1.9.0)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sentence-transformers",
+        "purpose": "In-process embeddings (all-MiniLM-L6-v2) (>=5.6.1)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sentry-sdk",
+        "purpose": "Backend error tracking and LLM-call spans (>=2.66.1)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sqlalchemy",
+        "purpose": "ORM and pgvector queries (>=2.0.51)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sse-starlette",
+        "purpose": "Server-sent events for streaming run endpoints (>=3.4.6)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "structlog",
+        "purpose": "Structured logging (>=26.1.0)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "tenacity",
+        "purpose": "Retry logic (>=9.1.4)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "torch",
+        "purpose": "Backend for sentence-transformers (>=2.0)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "uvicorn",
+        "purpose": "ASGI server (uvicorn[standard], >=0.51.0)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "mypy",
+        "purpose": "Python type checker (dev group, >=2.3.0)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pytest",
+        "purpose": "Backend test runner (dev group, >=9.1.1)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "ruff",
+        "purpose": "Python linter (dev group, >=0.16.1)",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "react",
+        "purpose": "UI library (^19.2.7)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "react-dom",
+        "purpose": "React DOM renderer (^19.2.7)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "react-router",
+        "purpose": "Client-side routing (^8.3.0)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@microsoft/fetch-event-source",
+        "purpose": "Client-side SSE consumption (^2.0.1)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@sentry/react",
+        "purpose": "Frontend error tracking (^10.68.0)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@tanstack/react-query",
+        "purpose": "Server state management (^5.101.4)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "plotly.js",
+        "purpose": "Scatter plot for embeddings example (^3.7.0)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "react-plotly.js",
+        "purpose": "React wrapper for Plotly (^4.0.0)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "react-markdown",
+        "purpose": "Markdown rendering of model-written text (^10.1.0)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "vite",
+        "purpose": "Frontend dev server and build tool (dev, ^8.1.1)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@vitejs/plugin-react",
+        "purpose": "Vite React plugin (dev, ^6.0.3)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "vitest",
+        "purpose": "Frontend test runner (dev, ^4.1.10)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "typescript",
+        "purpose": "Type checking and compilation (dev, ~6.0.2)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "tailwindcss",
+        "purpose": "Utility-first CSS (dev, ^3.4.19)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "postcss",
+        "purpose": "CSS processing for Tailwind (dev, ^8.5.23)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "autoprefixer",
+        "purpose": "PostCSS vendor prefixing (dev, ^10.5.4)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "oxlint",
+        "purpose": "TypeScript linter (dev, ^1.71.0)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "jsdom",
+        "purpose": "DOM environment for Vitest (dev, ^29.1.1)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@testing-library/react",
+        "purpose": "Component testing (dev, ^16.3.2)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@testing-library/jest-dom",
+        "purpose": "DOM matchers for tests (dev, ^7.0.0)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@testing-library/user-event",
+        "purpose": "User interaction simulation in tests (dev, ^14.6.1)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@types/node",
+        "purpose": "Node type definitions (dev, ^24.13.2)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@types/react",
+        "purpose": "React type definitions (dev, ^19.2.17)",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@types/react-dom",
+        "purpose": "React DOM type definitions (dev, ^19.2.3)",
+        "source": "frontend/package.json"
+      }
+    ]
+  },
+  "delta": {
+    "prior": {
+      "kind": "implemented",
+      "version": 9,
+      "head": "861c009",
+      "producer": null
+    },
+    "files": {
+      "added": [
+        "backend/app/api/router.py",
+        "backend/app/db/migrations/versions/0014_router_histories.py",
+        "backend/app/router/__init__.py",
+        "backend/app/router/classifier.py",
+        "backend/app/router/constants.py",
+        "backend/app/router/cost_strip.py",
+        "backend/app/router/decision.py",
+        "backend/app/router/dispatch.py",
+        "backend/app/router/evaluator.py",
+        "backend/app/router/history.py",
+        "backend/app/router/indexed_titles.py",
+        "backend/app/router/presets.py",
+        "backend/app/router/prompts/route_v1.md",
+        "backend/app/router/prompts/search_answer_v1.md",
+        "backend/app/router/prompts/single_call_v1.md",
+        "backend/app/router/rerun.py",
+        "backend/app/router/retrieval_route.py",
+        "backend/app/router/route_descriptions.py",
+        "backend/app/router/run_schemas.py",
+        "backend/app/router/schemas.py",
+        "backend/app/router/search_route.py",
+        "backend/app/router/service.py",
+        "backend/app/router/single_call_route.py",
+        "backend/app/router/state.py",
+        "backend/app/router/unit_table.py",
+        "backend/tests/router/conftest.py",
+        "backend/tests/router/test_classification.py",
+        "backend/tests/router/test_evaluator.py",
+        "backend/tests/router/test_presets.py",
+        "backend/tests/router/test_route_descriptions.py",
+        "backend/tests/router/test_router_dispatch.py",
+        "backend/tests/router/test_router_history.py",
+        "backend/tests/router/test_router_live_smoke.py",
+        "backend/tests/router/test_router_rerun.py",
+        "backend/tests/router/test_router_routes.py",
+        "backend/tests/router/test_run.py",
+        "frontend/src/api/router.ts",
+        "frontend/src/api/useRouterRun.ts",
+        "frontend/src/apps/router/AgreementPanel.tsx",
+        "frontend/src/apps/router/AnswerPanel.tsx",
+        "frontend/src/apps/router/CostStripView.tsx",
+        "frontend/src/apps/router/DecisionCard.tsx",
+        "frontend/src/apps/router/DeterministicResult.tsx",
+        "frontend/src/apps/router/KnowledgePanel.tsx",
+        "frontend/src/apps/router/PresetList.tsx",
+        "frontend/src/apps/router/ResultCard.tsx",
+        "frontend/src/apps/router/RetrievalAnswer.tsx",
+        "frontend/src/apps/router/RouterApp.tsx",
+        "frontend/src/apps/router/RouterOverview.tsx",
+        "frontend/src/apps/router/RunControls.tsx",
+        "frontend/src/apps/router/RunProgress.tsx",
+        "frontend/src/apps/router/SearchAnswer.tsx",
+        "frontend/src/apps/router/SingleCallAnswer.tsx",
+        "frontend/src/apps/router/runAllowance.ts",
+        "frontend/src/apps/router/runState.ts",
+        "frontend/src/apps/router/useRunAllowance.ts",
+        "frontend/src/screens/router/RouterScreen.tsx",
+        "frontend/tests/catalogue-consistency.test.tsx",
+        "frontend/tests/router-answer.test.tsx",
+        "frontend/tests/router-hash.test.tsx",
+        "frontend/tests/router-history.test.tsx",
+        "frontend/tests/router-knowledge.test.tsx",
+        "frontend/tests/router-overview.test.tsx",
+        "frontend/tests/router-rerun.test.tsx",
+        "frontend/tests/router-run.test.tsx",
+        "frontend/tests/router.test.tsx",
+        "frontend/tests/routerFixtures.ts"
+      ],
+      "removed": [],
+      "partial": false,
+      "truncated": false
+    },
+    "dependencies": {
+      "frontend/package.json": {
+        "added": [],
+        "removed": [],
+        "bumped": [],
+        "truncated": false
+      },
+      "pyproject.toml": {
+        "added": [],
+        "removed": [],
+        "bumped": [],
+        "truncated": false
+      }
+    },
+    "candidates": {
+      "entered": [
+        "backend/app/router/constants.py",
+        "frontend/src/api/router.ts"
+      ],
+      "left": [
+        "frontend/src/apps/collab/runState.ts",
+        "frontend/src/components/LayoutShell.tsx"
+      ]
+    },
+    "signatures": {
+      "backend/app/collab/scenarios.py": {
+        "added": [],
+        "removed": [],
+        "changed": [],
+        "truncated": false
+      },
+      "backend/app/core/config.py": {
+        "added": [],
+        "removed": [],
+        "changed": [],
+        "truncated": false
+      },
+      "backend/app/db/models.py": {
+        "added": [
+          "RouterAgreementRecord",
+          "RouterLatencyObservation"
+        ],
+        "removed": [],
+        "changed": [],
+        "truncated": false
+      },
+      "backend/app/db/session.py": {
+        "added": [],
+        "removed": [],
+        "changed": [],
+        "truncated": false
+      },
+      "backend/app/main.py": {
+        "added": [],
+        "removed": [],
+        "changed": [],
+        "truncated": false
+      },
+      "backend/app/services/agent_runtime.py": {
+        "added": [],
+        "removed": [],
+        "changed": [],
+        "truncated": false
+      },
+      "backend/app/services/moderation.py": {
+        "added": [],
+        "removed": [],
+        "changed": [],
+        "truncated": false
+      },
+      "backend/app/services/prompt_loader.py": {
+        "added": [],
+        "removed": [],
+        "changed": [],
+        "truncated": false
+      },
+      "frontend/src/App.tsx": {
+        "added": [],
+        "removed": [],
+        "changed": [],
+        "truncated": false
+      },
+      "frontend/src/components/Markdown.tsx": {
+        "added": [],
+        "removed": [],
+        "changed": [],
+        "truncated": false
+      },
+      "frontend/src/main.tsx": {
+        "added": [],
+        "removed": [],
+        "changed": [],
+        "truncated": false
+      }
+    }
+  },
+  "emitted": {
+    "is_software_project": true,
+    "env_vars": [
+      {
+        "name": "DATABASE_URL",
+        "purpose": "Neon Postgres connection string",
+        "required": true,
+        "source": ".env.example"
+      },
+      {
+        "name": "CORS_ORIGIN",
+        "purpose": "Single allowed cross-origin web client origin",
+        "required": true,
+        "source": "backend/app/main.py"
+      },
+      {
+        "name": "OPENROUTER_API_KEY",
+        "purpose": "OpenRouter model provider credential",
+        "required": true,
+        "source": ".env.example"
+      },
+      {
+        "name": "EXA_API_KEY",
+        "purpose": "Exa web search credential",
+        "required": true,
+        "source": ".env.example"
+      },
+      {
+        "name": "OPENAI_API_KEY",
+        "purpose": "OpenAI moderation endpoint for free-form visitor text",
+        "required": false,
+        "source": ".env.example"
+      },
+      {
+        "name": "GROQ_API_KEY",
+        "purpose": "Optional second LLM provider",
+        "required": false,
+        "source": ".env.example"
+      },
+      {
+        "name": "PORT",
+        "purpose": "Backend listen port",
+        "required": false,
+        "source": ".env.example"
+      },
+      {
+        "name": "EMBEDDING_MODEL_NAME",
+        "purpose": "Sentence-transformers model name",
+        "required": false,
+        "source": ".env.example"
+      },
+      {
+        "name": "SENTRY_DSN",
+        "purpose": "Backend Sentry DSN; error tracking skipped when unset",
+        "required": false,
+        "source": ".env.example"
+      },
+      {
+        "name": "SENTRY_ENVIRONMENT",
+        "purpose": "Sentry environment label",
+        "required": false,
+        "source": ".env.example"
+      },
+      {
+        "name": "VITE_API_BASE_URL",
+        "purpose": "Frontend build-time API base URL",
+        "required": false,
+        "source": ".env.example"
+      },
+      {
+        "name": "VITE_SENTRY_DSN",
+        "purpose": "Frontend build-time Sentry DSN",
+        "required": false,
+        "source": "frontend/src/main.tsx"
+      }
+    ],
+    "dependencies": [
+      {
+        "name": "fastapi",
+        "purpose": "REST/SSE API framework",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sqlalchemy",
+        "purpose": "Async ORM, including pgvector queries",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "asyncpg",
+        "purpose": "Async PostgreSQL driver",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "alembic",
+        "purpose": "Database migrations",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pgvector",
+        "purpose": "pgvector column type and cosine-distance support",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "litellm",
+        "purpose": "LiteLLM lane: completion calls with fallback chains over OpenRouter and Groq",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pydantic-ai",
+        "purpose": "PydanticAI lane: typed agent steps over FallbackModel",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sentence-transformers",
+        "purpose": "In-process all-MiniLM-L6-v2 embeddings",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "torch",
+        "purpose": "Runtime for sentence-transformers",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "scikit-learn",
+        "purpose": "PCA projection of embeddings to 2D",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "numpy",
+        "purpose": "Vector math for embeddings and duplicate guard",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sse-starlette",
+        "purpose": "Server-sent event streaming",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "httpx",
+        "purpose": "HTTP client for Exa, OpenAI moderation and model discovery",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "pydantic-settings",
+        "purpose": "Environment-driven settings",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "structlog",
+        "purpose": "Structured logging",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "tenacity",
+        "purpose": "Retry logic in planning and moderation",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "sentry-sdk",
+        "purpose": "Backend error tracking and LLM-call spans",
+        "source": "pyproject.toml"
+      },
+      {
+        "name": "@tanstack/react-query",
+        "purpose": "Server state with no automatic retries on quota-spending calls",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@microsoft/fetch-event-source",
+        "purpose": "POST-capable SSE client for streamed runs",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "react-markdown",
+        "purpose": "Safe rendering of model-written markdown",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "plotly.js",
+        "purpose": "Scatter plot for the embeddings example",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "react-plotly.js",
+        "purpose": "React wrapper for Plotly",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "@sentry/react",
+        "purpose": "Frontend error tracking",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "vitest",
+        "purpose": "Frontend test runner",
+        "source": "frontend/package.json"
+      },
+      {
+        "name": "oxlint",
+        "purpose": "Frontend linter",
+        "source": "frontend/package.json"
+      }
+    ]
+  }
+}

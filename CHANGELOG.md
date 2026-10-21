@@ -10,6 +10,53 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.10.0] — unreleased
+
+The changed-tree datum (D-SC5-4 firmed, D-SC5-9, D-SC5-12): on the first
+update scan of BWS4 after the v9 Router round, both Sonnet and Haiku rewrote
+every `review` field from the context window and dropped the ten `env_vars`
+whose source file (`config.py`, unchanged) had fallen out of the evidence
+sample, plus 21 of 46 `dependencies`. The update draw is now told to carry
+what the delta did not touch, and the two keyed lists are merged back in
+code. A minor bump: the update draw's behaviour changes.
+
+### Changed
+- The update-scan seed states the carry rule beside its labels: an entry
+  whose `source` / `inferred_from` path is not in the changed-path list is
+  carried verbatim from the prior review; re-derive only where the list
+  names the path, add for paths it adds, drop for paths it removes; an
+  untouched `implemented` entry keeps its status; "complete" means carried
+  plus re-derived, never a fresh listing. The delta's path sets — files
+  added / removed / modified, signatures changed, manifests changed,
+  load-bearing candidates entered / left — are rendered in full under
+  **Paths this scan changed** so the model reads the list rather than
+  inferring it from what it was shown. Without a delta the block says the
+  rule is suspended; with a partial or truncated file delta it says the
+  list is incomplete and suspends it the same way.
+- The seed asks the model to reuse the prior review's `implemented[].id` for
+  a capability it already names and mint one only for a new capability
+  (Haiku re-minted every id; the reconciliation survived only because it
+  joins on `prior_feature_ids`).
+- `wrap_review` takes the prior envelope and, after `consumers`, carries
+  back any `env_vars` / `dependencies` entry (keyed by `name`) the prior had,
+  the model dropped, and whose source path the delta does not name — in the
+  prior's order, after the model's entries. The model's own entry wins by
+  name; nothing is carried without a prior `review` layer, without a delta,
+  or when the delta's file lists are partial or truncated. On the BWS4
+  2.9.1 → 2.9.2 pair this restores `env_vars` to 22 and `dependencies` to
+  46 (the regression fixture).
+
+### Added
+- `scan.delta.files.modified` — files both scans list whose content differs
+  from the prior head: `git diff --name-only <prior head>` plus the working
+  tree's modified files, Spec4's own output excluded, disjoint from `added`
+  and `removed`, capped like them, `[]` outside a repository. The delta's
+  one git-witnessed list (its module docstring said "never git" — this is
+  the stated exception): without it an edit to `.env.example` or `main.py`
+  was invisible to the carry rule. Optional in the schema, so every stored
+  2.x review still validates. The seed's Changes block lists it beside
+  added and removed.
+
 ## [2.9.2] — unreleased
 
 Three small levers from the first measured 2.9.1 update scan on BWS4

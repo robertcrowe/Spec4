@@ -10,9 +10,14 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import pathlib
+import shutil
+import subprocess
 from typing import Any
 from unittest.mock import patch
+
+import pytest
 
 from spec4.agents._code_review_schema import validate_code_review
 from spec4.agents.code_scanner import _collect, _delta
@@ -149,6 +154,7 @@ class TestComparisons:
         assert delta["files"] == {
             "added": [],
             "removed": [],
+            "modified": [],
             "partial": False,
             "truncated": False,
         }
@@ -169,6 +175,59 @@ class TestComparisons:
         delta = _delta.delta_block(current, prior, _descriptor())
         assert delta["files"]["added"] == ["deploy/Caddyfile"]
         assert delta["files"]["removed"] == ["CLA.md"]
+
+    def test_modified_is_git_s_list_narrowed_to_files_both_scans_list(self) -> None:
+        # 2.10.0 (D-SC5-9): the one git-witnessed list. A path only one scan
+        # lists is added or removed, never also modified; Spec4's own output
+        # and non-strings are ignored; ``None`` (no repository) is ``[]``.
+        prior = _prior_scan()
+        current = copy.deepcopy(prior)
+        listed = current["inventory"]["listed"]
+        listed.remove("CLA.md")
+        listed.append("deploy/Caddyfile")
+        modified = [
+            "CLA.md",  # removed, not modified
+            "deploy/Caddyfile",  # added, not modified
+            "README.md",
+            "backend/alembic.ini",
+            "not/listed/anywhere.py",
+            3,
+        ]
+        delta = _delta.delta_block(current, prior, _descriptor(), modified)
+        assert delta["files"]["modified"] == ["README.md", "backend/alembic.ini"]
+        assert delta["files"]["added"] == ["deploy/Caddyfile"]
+        assert delta["files"]["removed"] == ["CLA.md"]
+        assert delta["files"]["truncated"] is False
+        assert (
+            _delta.delta_block(current, prior, _descriptor())["files"]["modified"] == []
+        )
+        assert (
+            _delta.delta_block(current, prior, _descriptor(), None)["files"]["modified"]
+            == []
+        )
+
+    def test_modified_is_capped_and_says_so(self) -> None:
+        prior = _prior_scan()
+        listed = prior["inventory"]["listed"]
+        modified = sorted(listed)[:5]
+        with patch.object(_delta, "_MAX_LIST", 3):
+            delta = _delta.delta_block(
+                copy.deepcopy(prior), prior, _descriptor(), modified
+            )
+        assert delta["files"]["modified"] == modified[:3]
+        assert delta["files"]["added"] == []
+        assert delta["files"]["truncated"] is True
+
+    def test_modified_is_optional_in_the_schema(self) -> None:
+        # A 2.3.0…2.9.2 delta has no ``modified`` and still validates; with
+        # it, a string list.
+        prior = _prior_scan()
+        delta = _delta.delta_block(copy.deepcopy(prior), prior, _descriptor())
+        assert validate_code_review(review_envelope(scan={"delta": delta})) == []
+        del delta["files"]["modified"]
+        assert validate_code_review(review_envelope(scan={"delta": delta})) == []
+        delta["files"]["modified"] = [3]
+        assert validate_code_review(review_envelope(scan={"delta": delta})) != []
 
     def test_partial_when_either_listing_was_capped(self) -> None:
         prior = _prior_scan()
@@ -281,6 +340,7 @@ class TestComparisons:
         assert delta["files"] == {
             "added": [],
             "removed": [],
+            "modified": [],
             "partial": True,
             "truncated": False,
         }
@@ -314,6 +374,56 @@ class TestAssembly:
             "backend/app/db/session.py",
             "backend/app/services/agent_runtime.py",
         ]
+        assert validate_code_review(review_envelope(scan=scan)) == []
+        # Not a repository root: nothing witnesses a content change.
+        assert delta["files"]["modified"] == []
+
+    @pytest.mark.skipif(shutil.which("git") is None, reason="git not installed")
+    def test_modified_comes_from_git_against_the_prior_head(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # 2.10.0 (D-SC5-9), end to end on a throwaway repository: a committed
+        # edit since the prior head and an uncommitted one both count; a new
+        # untracked file is added, not modified.
+        env = {
+            **os.environ,
+            "GIT_AUTHOR_NAME": "A",
+            "GIT_AUTHOR_EMAIL": "a@example.com",
+            "GIT_COMMITTER_NAME": "A",
+            "GIT_COMMITTER_EMAIL": "a@example.com",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+        }
+
+        def git(*args: str) -> str:
+            done = subprocess.run(
+                ["git", *args], cwd=tmp_path, env=env, check=True, capture_output=True
+            )
+            return done.stdout.decode().strip()
+
+        git("init", "-q", "-b", "main")
+        (tmp_path / "CLA.md").write_text("# CLA\n")
+        (tmp_path / "README.md").write_text("# Read\n")
+        git("add", ".")
+        git("commit", "-q", "-m", "prior")
+        prior_head = git("rev-parse", "--short", "HEAD")
+        install_rounds(tmp_path, 8)
+        envelope = load_fixture(_FIXTURE)
+        envelope["code_review"]["scan"]["git"]["head"] = prior_head
+        _install_review(tmp_path, 9, envelope)
+        (tmp_path / "CLA.md").write_text("# CLA v2\n")
+        git("add", ".")
+        git("commit", "-q", "-m", "after")
+        (tmp_path / "README.md").write_text("# Read, edited\n")
+        (tmp_path / "deploy").mkdir()
+        (tmp_path / "deploy" / "Caddyfile").write_text("x {\n}\n")
+        files = collect_files(tmp_path)
+        scan = _collect.collect_scan(
+            str(tmp_path), files, SampleRecord(), {"phase_version": 9}
+        )
+        delta = scan["delta"]
+        assert delta["prior"]["head"] == prior_head
+        assert delta["files"]["modified"] == ["CLA.md", "README.md"]
+        assert delta["files"]["added"] == ["deploy/Caddyfile"]
         assert validate_code_review(review_envelope(scan=scan)) == []
 
     def test_without_a_prior_scan_the_block_is_absent(

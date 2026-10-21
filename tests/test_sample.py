@@ -931,7 +931,7 @@ class TestStep4Blocks:
         since["boundary_kind"] = "prior_review"
         added = [f"src/a{i}.py" for i in range(_sample._MAX_DELTA_SHOWN + 2)]
         delta = {
-            "files": {"added": added, "removed": ["old.py"]},
+            "files": {"added": added, "removed": ["old.py"], "modified": ["main.py"]},
             "candidates": {"entered": ["src/demo/core.py"], "left": []},
         }
         text, _ = _context_since(tmp_path, since, delta)
@@ -943,6 +943,8 @@ class TestStep4Blocks:
         )
         assert f"`src/a{_sample._MAX_DELTA_SHOWN}.py`" not in block
         assert "Files removed since the prior scan: `old.py`\n" in block
+        # 2.10.0 (D-SC5-9): the git-witnessed list reads like the other two.
+        assert "Files modified since the prior scan: `main.py`\n" in block
         assert (
             "Load-bearing candidates entered since the prior scan: "
             "`src/demo/core.py`\n" in block

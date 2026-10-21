@@ -2779,3 +2779,405 @@ class TestWrapReviewClassification:
         )
         odd = {"review": {"is_software_project": True, "unplanned_changes": "n/a"}}
         assert wrap_review(odd, self._scan)["code_review"]["review"] == odd["review"]
+
+
+# ---------------------------------------------------------------------------
+# 2.10.0 (D-SC5-4 ii): the keyed-list carry at commit
+# ---------------------------------------------------------------------------
+
+
+def _delta(**over: Any) -> dict[str, Any]:
+    """A ``delta`` block naming ``src/app/changed.py`` and ``gone.py`` only."""
+    base: dict[str, Any] = {
+        "prior": {
+            "kind": "prior_review",
+            "version": 1,
+            "head": "abc",
+            "producer": None,
+        },
+        "files": {
+            "added": ["src/app/new.py"],
+            "removed": ["gone.py"],
+            "modified": ["src/app/changed.py"],
+            "partial": False,
+            "truncated": False,
+        },
+        "dependencies": {
+            "pyproject.toml": {
+                "added": [],
+                "removed": [],
+                "bumped": [],
+                "truncated": False,
+            }
+        },
+        "candidates": {"entered": [], "left": []},
+        "signatures": {
+            "src/app/quiet.py": {
+                "added": [],
+                "removed": [],
+                "changed": [],
+                "truncated": False,
+            }
+        },
+    }
+    return {**base, **over}
+
+
+def _env(name: str, source: str | None = None, **over: Any) -> dict[str, Any]:
+    entry: dict[str, Any] = {"name": name, "purpose": f"{name} purpose"}
+    if source is not None:
+        entry["source"] = source
+    return {**entry, **over}
+
+
+class TestWrapReviewCarry:
+    def _carry(
+        self,
+        emitted: dict[str, Any],
+        prior: dict[str, Any] | None,
+        scan: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        from spec4.agents.code_scanner import wrap_review
+
+        block = {"review": {"is_software_project": True, **emitted}}
+        return wrap_review(block, scan, prior)["code_review"]["review"]
+
+    def test_a_dropped_entry_from_an_untouched_file_is_restored(self) -> None:
+        # The BWS4 shape: ``config.py`` fell out of the sample, the delta
+        # names nothing about it, and the model listed only what it saw.
+        prior = review_envelope(
+            env_vars=[
+                _env("DATABASE_URL", ".env.example"),
+                _env("HOURLY_LIMIT", "src/app/config.py", required=False),
+                _env("SALT", inferred_from="src/app/config.py"),
+            ]
+        )
+        out = self._carry(
+            {"env_vars": [_env("DATABASE_URL", ".env.example", purpose="new")]},
+            prior,
+            {"delta": _delta()},
+        )
+        assert out["env_vars"] == [
+            _env("DATABASE_URL", ".env.example", purpose="new"),  # the model's
+            _env("HOURLY_LIMIT", "src/app/config.py", required=False),
+            _env("SALT", inferred_from="src/app/config.py"),
+        ]
+        # The prior and the block are untouched.
+        assert len(prior["code_review"]["review"]["env_vars"]) == 3
+
+    def test_entries_from_paths_the_delta_names_are_not_restored(self) -> None:
+        prior = review_envelope(
+            env_vars=[
+                _env("GONE", "gone.py"),  # removed
+                _env("EDITED", "src/app/changed.py"),  # modified
+                _env("UNDER", "src/app/"),  # a directory a changed file is under
+                _env("UNDER2", "src/app"),
+                _env("NAMELESS", "src/app/quiet.py"),
+            ],
+            dependencies=[
+                {"name": "pinned", "source": "pyproject.toml"},
+                {"name": "bumped", "source": "frontend/package.json"},
+            ],
+        )
+        delta = _delta(
+            dependencies={
+                "frontend/package.json": {
+                    "added": [],
+                    "removed": [],
+                    "bumped": ["react"],
+                    "truncated": False,
+                }
+            },
+            signatures={
+                "src/app/quiet.py": {
+                    "added": [],
+                    "removed": [],
+                    "changed": ["main"],
+                    "truncated": False,
+                }
+            },
+        )
+        out = self._carry({"env_vars": [], "dependencies": []}, prior, {"delta": delta})
+        assert out["env_vars"] == []
+        # ``pyproject.toml`` has a delta entry with nothing in it: unchanged.
+        assert out["dependencies"] == [{"name": "pinned", "source": "pyproject.toml"}]
+
+    def test_the_model_s_entry_wins_over_the_prior_s_by_name(self) -> None:
+        prior = review_envelope(
+            dependencies=[
+                {"name": "fastapi", "purpose": "old", "source": "pyproject.toml"},
+                {"name": "pydantic", "purpose": "kept", "source": "pyproject.toml"},
+            ]
+        )
+        out = self._carry(
+            {"dependencies": [{"name": "fastapi", "purpose": "re-derived"}]},
+            prior,
+            {"delta": _delta()},
+        )
+        assert out["dependencies"] == [
+            {"name": "fastapi", "purpose": "re-derived"},
+            {"name": "pydantic", "purpose": "kept", "source": "pyproject.toml"},
+        ]
+
+    def test_a_key_the_model_dropped_whole_comes_back(self) -> None:
+        prior = review_envelope(env_vars=[_env("A", "cfg.py"), _env("B", "cfg.py")])
+        out = self._carry({}, prior, {"delta": _delta()})
+        assert out["env_vars"] == [_env("A", "cfg.py"), _env("B", "cfg.py")]
+
+    def test_nothing_carries_without_a_prior_review_a_delta_or_a_complete_delta(
+        self,
+    ) -> None:
+        prior = review_envelope(env_vars=[_env("A", "cfg.py")])
+        emitted = {"env_vars": []}
+        assert self._carry(emitted, None, {"delta": _delta()})["env_vars"] == []
+        stale = {"code_review": {"schema_version": 1, "env_vars": [_env("A", "c")]}}
+        assert self._carry(emitted, stale, {"delta": _delta()})["env_vars"] == []
+        assert self._carry(emitted, prior, {})["env_vars"] == []
+        assert self._carry(emitted, prior, None)["env_vars"] == []
+        assert self._carry(emitted, prior, {"delta": "x"})["env_vars"] == []
+        for flag in ("partial", "truncated"):
+            delta = _delta()
+            delta["files"][flag] = True
+            assert self._carry(emitted, prior, {"delta": delta})["env_vars"] == []
+        # ...and carries with the same delta when both flags are off.
+        assert self._carry(emitted, prior, {"delta": _delta()})["env_vars"] == [
+            _env("A", "cfg.py")
+        ]
+
+    def test_entries_without_a_name_or_a_path_are_never_carried(self) -> None:
+        prior = review_envelope(
+            env_vars=[
+                _env("NO_PATH"),
+                _env("BLANK", "  "),
+                {"purpose": "nameless", "source": "cfg.py"},
+                {"name": 3, "source": "cfg.py"},
+                "raw",
+                _env("OK", "cfg.py"),
+            ],
+            dependencies="not-a-list",
+        )
+        out = self._carry(
+            {"env_vars": [{"name": 7}, "raw"], "dependencies": []},
+            prior,
+            {"delta": _delta()},
+        )
+        assert out["env_vars"] == [{"name": 7}, "raw", _env("OK", "cfg.py")]
+        assert out["dependencies"] == []
+
+    def test_a_delta_without_the_modified_list_still_carries(self) -> None:
+        # A 2.9.2 delta (the regression fixture's) has no ``modified``.
+        delta = _delta()
+        del delta["files"]["modified"]
+        prior = review_envelope(env_vars=[_env("A", "cfg.py")])
+        out = self._carry({"env_vars": []}, prior, {"delta": delta})
+        assert out["env_vars"] == [_env("A", "cfg.py")]
+
+    def test_bws4_2_9_1_to_2_9_2_env_vars_back_to_22_and_dependencies_to_46(
+        self,
+    ) -> None:
+        # The regression case the lever was built from: both models dropped
+        # the ten ``config.py``-sourced ``env_vars`` and shrank
+        # ``dependencies`` though the delta named neither source file.
+        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents.code_scanner import wrap_review
+
+        fx = load_fixture("carry_bws4_2_9_1_to_2_9_2.json")
+        prior = review_envelope(**{k: v for k, v in fx["prior_review"].items()})
+        emitted = fx["emitted"]
+        assert len(emitted["env_vars"]) == 12
+        assert len(emitted["dependencies"]) == 25
+        out = wrap_review({"review": emitted}, {"delta": fx["delta"]}, prior)
+        review = out["code_review"]["review"]
+        assert validate_code_review(out) == []
+        assert len(review["env_vars"]) == 22
+        assert len(review["dependencies"]) == 46
+        assert [e["name"] for e in review["env_vars"][:12]] == [
+            e["name"] for e in emitted["env_vars"]
+        ]
+        restored = {e["name"] for e in review["env_vars"][12:]}
+        assert restored == {
+            "MODERATION_HASH_SALT",
+            "GENERATION_HOURLY_LIMIT",
+            "STORAGE_HOURLY_LIMIT",
+            "SEARCH_HOURLY_LIMIT",
+            "PLANNING_HOURLY_LIMIT",
+            "REACT_CYCLE_BUDGET",
+            "REACT_DUPLICATE_SIMILARITY_THRESHOLD",
+            "REACT_SUITABILITY_TIMEOUT_SECONDS",
+            "REACT_SUITABILITY_CHECKS_PER_SESSION",
+            "REACT_SUITABILITY_CACHE_TTL_HOURS",
+        }
+        assert all(
+            e["source"] == "backend/app/core/config.py" for e in review["env_vars"][12:]
+        )
+        # Wrapping the merged review again changes nothing.
+        again = wrap_review({"review": review}, {"delta": fx["delta"]}, prior)
+        assert again == out
+
+    def test_delta_named_paths_is_the_union_the_rule_is_stated_against(self) -> None:
+        from spec4.agents.code_scanner import delta_named_paths
+
+        delta = _delta(
+            candidates={"entered": ["src/app/in.py"], "left": ["src/app/out.py"]},
+            signatures={
+                "src/app/sig.py": {
+                    "added": ["x"],
+                    "removed": [],
+                    "changed": [],
+                    "truncated": False,
+                },
+                "src/app/same.py": {
+                    "added": [],
+                    "removed": [],
+                    "changed": [],
+                    "truncated": False,
+                },
+                "bad": "x",
+            },
+            dependencies={
+                "pyproject.toml": {
+                    "added": [],
+                    "removed": ["old"],
+                    "bumped": [],
+                    "truncated": False,
+                }
+            },
+        )
+        assert delta_named_paths(delta) == {
+            "src/app/new.py",
+            "gone.py",
+            "src/app/changed.py",
+            "src/app/in.py",
+            "src/app/out.py",
+            "src/app/sig.py",
+            "pyproject.toml",
+        }
+        assert delta_named_paths({}) == set()
+        assert delta_named_paths({"files": {"partial": True}}) is None
+        assert delta_named_paths({"files": {"truncated": True}}) is None
+        assert delta_named_paths({"files": "x"}) is None
+
+    def test_commit_carries_against_the_session_s_prior_review(self) -> None:
+        # The prior envelope is still ``session["code_review"]`` at commit.
+        from spec4.agents.code_scanner import _scanner_commit
+
+        prior = review_envelope(env_vars=[_env("A", "cfg.py")])
+        session = make_session(
+            code_review=prior,
+            code_scanner_scan={"delta": _delta()},
+            code_scanner_messages=[{"role": "assistant", "content": ""}],
+        )
+        _scanner_commit(
+            session,
+            session["code_scanner_messages"],
+            {"review": {"is_software_project": True, "env_vars": []}},
+        )
+        assert session["code_review"]["code_review"]["review"]["env_vars"] == [
+            _env("A", "cfg.py")
+        ]
+
+
+class TestUpdateSeedCarryRule:
+    def _seed(self, delta: dict[str, Any] | None, with_scan: bool = True) -> str:
+        from spec4.agents.code_scanner import build_update_scan_seed
+        from spec4.agents.code_scanner._sample import ScanEvidence
+
+        scan = {"delta": delta} if delta is not None else {}
+        evidence = ScanEvidence([], scan, frozenset()) if with_scan else None
+        return build_update_scan_seed(
+            "/tmp/does-not-matter", review_envelope(), scan=evidence
+        )
+
+    def test_the_rule_and_the_id_reuse_sentence_are_pinned(self) -> None:
+        # 2.10.0 (D-SC5-4 i, D-SC5-12), pinned on collapsed whitespace.
+        body = " ".join(self._seed(_delta()).split())
+        assert (
+            "**Carry what the scan did not touch.** An entry whose `source` / "
+            "`inferred_from` path is not in the changed-path list below is "
+            "carried verbatim from the prior review: the prior is the evidence "
+            "for it, whether or not that file appears in this scan's evidence. "
+            "Re-derive only entries whose path the list names, add entries for "
+            "paths it adds, and drop entries for paths it removes. This covers "
+            "`implemented[].status`: an entry whose paths the list does not "
+            'name keeps its status. "Complete" means the carried entries plus '
+            "the re-derived ones, never a fresh listing of what you can see." in body
+        )
+        assert (
+            "Reuse the prior review's `implemented[].id` for a capability it "
+            "already names; mint a new id only for a capability it does not." in body
+        )
+        # The earlier labels still hold verbatim beside the new rule.
+        assert "Added / Removed / Changed." in body
+        assert "is marked **Previously omitted**, not Added" in body
+
+    def test_the_changed_paths_block_renders_every_set_in_full(self) -> None:
+        delta = _delta(
+            candidates={"entered": ["src/app/in.py"], "left": []},
+            signatures={
+                "src/app/sig.py": {
+                    "added": [],
+                    "removed": [],
+                    "changed": ["main"],
+                    "truncated": False,
+                },
+                "src/app/same.py": {
+                    "added": [],
+                    "removed": [],
+                    "changed": [],
+                    "truncated": False,
+                },
+            },
+            dependencies={
+                "pyproject.toml": {
+                    "added": ["x"],
+                    "removed": [],
+                    "bumped": [],
+                    "truncated": False,
+                }
+            },
+        )
+        delta["files"]["added"] = [f"src/app/n{i}.py" for i in range(30)]
+        seed = self._seed(delta)
+        block = seed.split("**Paths this scan changed**")[1].split(
+            "**Prior code review on disk:**"
+        )[0]
+        assert "(measured against the prior scan):" in block
+        lines = [ln for ln in block.splitlines() if ln.startswith("- ")]
+        assert lines == [
+            "- Files added: " + ", ".join(f"`src/app/n{i}.py`" for i in range(30)),
+            "- Files removed: `gone.py`",
+            "- Files modified: `src/app/changed.py`",
+            "- Signatures changed: `src/app/sig.py`",
+            "- Manifests changed: `pyproject.toml`",
+            "- Load-bearing candidates entered: `src/app/in.py`",
+            "- Load-bearing candidates left: none",
+        ]
+        assert "incomplete" not in block
+        # The block sits between the instructions and the prior paste.
+        assert (
+            seed.index("**Update mode instructions:**")
+            < seed.index("**Paths this scan changed**")
+            < seed.index("**Prior code review on disk:**")
+        )
+
+    def test_without_a_delta_the_rule_is_suspended(self) -> None:
+        for seed in (self._seed(None), self._seed(None, with_scan=False)):
+            assert (
+                "**Paths this scan changed:** no prior scan was measured, so "
+                "there is no changed-path list; re-derive from the evidence and "
+                "carry nothing on the strength of the prior alone." in seed
+            )
+            assert "Files added:" not in seed
+
+    def test_a_partial_or_truncated_delta_says_the_list_is_incomplete(self) -> None:
+        for flag in ("partial", "truncated"):
+            delta = _delta()
+            delta["files"][flag] = True
+            seed = self._seed(delta)
+            assert "- Files added: `src/app/new.py`" in seed
+            assert (
+                "- This list is incomplete (a capped listing or a capped delta): "
+                "a path not shown may still have changed, so carry nothing on "
+                "the strength of this list alone." in seed
+            )
+        assert "This list is incomplete" not in self._seed(_delta())

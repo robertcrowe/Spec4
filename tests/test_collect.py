@@ -548,6 +548,49 @@ class TestGitBlock:
         assert "since_last_round" not in git
         assert git["activity"]["commits_scanned"] == 3
 
+    def test_modified_paths_unions_the_diff_with_the_working_tree(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # 2.10.0 (D-SC5-9): ``git diff --name-only <prior head>`` plus the
+        # status-modified files; Spec4's own output left out; sorted, unique.
+        seen: list[list[str]] = []
+        canned = _canned(status=" M src/app/main.py\n M README.md\n?? new.txt\n")
+
+        def _run(args: list[str], cwd: pathlib.Path) -> str | None:
+            seen.append(args)
+            if args[0] == "diff":
+                return "src/app/cli.py\nREADME.md\n.spec4/v1/phases.json\n\n"
+            return canned(args, cwd)
+
+        with patch.object(_collect, "_run_git", _run):
+            out = _collect.modified_paths(tmp_path, "861c009")
+        assert out == ["README.md", "src/app/cli.py", "src/app/main.py"]
+        assert ["diff", "--name-only", "861c009", "--"] in seen
+
+    def test_modified_paths_without_a_head_or_a_known_commit_is_the_working_tree(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        seen: list[list[str]] = []
+        canned = _canned(status=" M src/app/main.py\n?? new.txt\n")
+
+        def _run(args: list[str], cwd: pathlib.Path) -> str | None:
+            seen.append(args)
+            return None if args[0] == "diff" else canned(args, cwd)
+
+        with patch.object(_collect, "_run_git", _run):
+            assert _collect.modified_paths(tmp_path, None) == ["src/app/main.py"]
+            assert not any(a[0] == "diff" for a in seen)
+            # A head git no longer knows (a rewritten branch): diff fails,
+            # the working tree still answers.
+            assert _collect.modified_paths(tmp_path, "0000000") == ["src/app/main.py"]
+            assert any(a[0] == "diff" for a in seen)
+
+    def test_modified_paths_is_none_when_git_is_unavailable(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        with patch.object(_collect, "_run_git", return_value=None):
+            assert _collect.modified_paths(tmp_path, "861c009") is None
+
     def test_parse_log_skips_malformed_records(self) -> None:
         commits = _collect._parse_log("\x1egarbage\x1e" + _LOG_SINCE)
         assert [c["sha"] for c in commits] == ["aaa", "bbb"]

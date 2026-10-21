@@ -1249,11 +1249,14 @@ _SCAN_DELTA = _closed(
                 "producer": {**_SCAN_PRODUCER, "type": ["object", "null"]},
             },
         ),
+        # ``modified`` (2.10.0, D-SC5-9) is optional: a 2.3.0…2.9.2 delta
+        # has only the two listing-derived lists and still validates.
         "files": _closed(
             ["added", "removed", "partial", "truncated"],
             {
                 "added": _str_list(),
                 "removed": _str_list(),
+                "modified": _str_list(),
                 "partial": {"type": "boolean"},
                 "truncated": {"type": "boolean"},
             },

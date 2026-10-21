@@ -38,6 +38,11 @@ not capped at ``_MAX_LOG_COMMITS``, so the counts are exact even when the
 commit list is truncated. The sampler's body tier reads it (``_sample``), and
 step 4's ``unplanned_changes`` wants the same list, so it is persisted.
 
+2.10.0 (D-SC5-9) adds ``modified_paths``: ``git diff --name-only`` against
+the prior scan's head plus the working tree's modified files, handed to
+``delta_block`` as ``files.modified`` — the delta's one git-witnessed list,
+since a content change leaves both listings the same.
+
 ``_run_git`` is the one seam to the ``git`` binary, and the first subprocess
 call in Spec4. Tests patch it by name (AGENTS.md: the module-level seam, not
 ``subprocess.run``); every failure mode — no binary, a timeout, a non-zero
@@ -461,6 +466,34 @@ def _status(root: pathlib.Path) -> tuple[list[str], list[str]] | None:
     return modified, untracked
 
 
+def modified_paths(root: pathlib.Path, prior_head: str | None) -> list[str] | None:
+    """Files whose content differs from ``prior_head``, for ``delta.files.modified`` (2.10.0, D-SC5-9).
+
+    ``git diff --name-only <prior_head>`` — the working tree against the
+    commit the prior scan recorded, so uncommitted edits count — unioned
+    with the working tree's modified files from ``status``, which is all
+    there is when the prior recorded no head or that commit is no longer in
+    the history (a rewritten branch): then only uncommitted edits are
+    witnessed, and the delta says nothing about committed ones. Spec4's own
+    ``.spec4/`` output is left out, as everywhere in this block. Sorted,
+    unique; ``None`` when git itself is unavailable. The delta narrows the
+    list to paths both scans list.
+    """
+    status = _status(root)
+    if status is None:
+        return None
+    paths = set(status[0])
+    if prior_head:
+        diffed = _run_git(["diff", "--name-only", prior_head, "--"], root)
+        if diffed is not None:
+            paths.update(
+                line.strip()
+                for line in diffed.splitlines()
+                if line.strip() and not _is_spec4_output(line.strip())
+            )
+    return sorted(paths)
+
+
 def _top_dir_counts(paths: Iterable[str]) -> dict[str, int]:
     counts = collections.Counter(_top_dir(p) for p in paths)
     return dict(sorted(counts.items()))
@@ -539,7 +572,12 @@ def measure_scan(
     found = prior_scan(working_dir, session)
     if found is not None:
         descriptor, earlier = found
-        scan["delta"] = delta_block(scan, earlier, descriptor)
+        # D-SC5-9: ``files.modified`` is the one git-witnessed list in the
+        # delta — a content change leaves the listings untouched.
+        modified = (
+            modified_paths(root, descriptor.get("head")) if is_repo_root(root) else None
+        )
+        scan["delta"] = delta_block(scan, earlier, descriptor, modified)
     scan["producer"] = producer_block()
     return ScanEvidence(all_files, scan, graph.reached)
 

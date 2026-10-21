@@ -100,7 +100,9 @@ def extract_review_json(text: str) -> dict[str, Any] | None:
 
 
 def wrap_review(
-    block: dict[str, Any], scan: dict[str, Any] | None = None
+    block: dict[str, Any],
+    scan: dict[str, Any] | None = None,
+    prior: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the stored envelope from the LLM's validated ``review`` block.
 
@@ -113,10 +115,14 @@ def wrap_review(
     ``prior_round_reconciliation[]`` field but ``gap`` (D-SC4-3) from the
     prior round's phases joined against ``implemented``; and
     ``unplanned_changes[].classification`` (D-SC4-4) from the git block and
-    the delta.
+    the delta. A fourth is a merge rather than an overwrite: with ``prior``
+    — the envelope an update scan was drawn against — ``env_vars`` and
+    ``dependencies`` entries the prior had, the model dropped, and the
+    delta gives no reason to drop are carried back (D-SC5-4 ii, 2.10.0).
     """
     scan = {} if scan is None else scan
     review = _with_consumers(block["review"], scan)
+    review = _with_carried_entries(review, scan, prior)
     review = _with_reconciliation(review, scan)
     review = _with_classification(review, scan)
     return {
@@ -153,6 +159,109 @@ def _with_consumers(review: dict[str, Any], scan: dict[str, Any]) -> dict[str, A
         for e in entries
     ]
     return {**review, "load_bearing": joined}
+
+
+_CARRIED_KEYS = ("env_vars", "dependencies")
+_DELTA_FILE_LISTS = ("added", "removed", "modified")
+_DELTA_SIGNATURE_LISTS = ("added", "removed", "changed")
+_DELTA_MANIFEST_LISTS = ("added", "removed", "bumped")
+
+
+def delta_named_paths(delta: dict[str, Any]) -> set[str] | None:
+    """Every path the ``delta`` block names as changed (D-SC5-4), or ``None``.
+
+    The union of ``files.added`` / ``removed`` / ``modified``, each manifest
+    with a non-empty ``dependencies`` entry, each file with a non-empty
+    ``signatures`` entry, and ``candidates.entered`` / ``left``. ``None``
+    when ``files`` is ``partial`` or ``truncated``: then a path absent from
+    the set may still have changed, and nothing stated against the set is
+    safe to act on. The update seed renders this set for the model, and the
+    keyed-list carry at commit tests prior entries against it.
+    """
+    files = delta.get("files") or {}
+    if not isinstance(files, dict) or files.get("partial") or files.get("truncated"):
+        return None
+    named: set[str] = set()
+    for key in _DELTA_FILE_LISTS:
+        named.update(str(p) for p in files.get(key) or [])
+    for block, lists in (
+        (delta.get("signatures"), _DELTA_SIGNATURE_LISTS),
+        (delta.get("dependencies"), _DELTA_MANIFEST_LISTS),
+    ):
+        for path, change in block.items() if isinstance(block, dict) else []:
+            if isinstance(change, dict) and any(change.get(k) for k in lists):
+                named.add(str(path))
+    candidates = delta.get("candidates") or {}
+    for key in ("entered", "left"):
+        named.update(str(p) for p in candidates.get(key) or [])
+    return named
+
+
+def _path_named(path: str, named: set[str]) -> bool:
+    """Whether ``path`` — a file, or a directory with or without ``/`` — is named."""
+    head = path.rstrip("/")
+    return any(n == head or n.startswith(head + "/") for n in named)
+
+
+def _with_carried_entries(
+    review: dict[str, Any], scan: dict[str, Any], prior: dict[str, Any] | None
+) -> dict[str, Any]:
+    """``review`` with the prior's untouched ``env_vars`` / ``dependencies`` carried back (D-SC5-4 ii).
+
+    The 2.9.2 update scan of BWS4 dropped every ``env_vars`` entry sourced
+    from a file that fell out of the evidence sample and 21 of 46
+    ``dependencies`` — on both models — though the delta named none of
+    their source files: a rewrite from the context window, not a judgement.
+    For these two keyed lists the merge is deterministic and sound (a file
+    the delta did not touch cannot have lost a variable), so it is done here
+    rather than left to the seed's rule. For each key, a prior entry whose
+    ``name`` the model did not emit and whose ``source`` (else
+    ``inferred_from``) is a path ``delta_named_paths`` does not name is
+    appended after the model's entries, in the prior's order; one the model
+    re-emitted is the model's; one whose path the delta names — removed,
+    modified, re-sampled — is not restored, the model having been shown the
+    change. Nothing is carried without a ``prior`` ``review`` layer (a
+    stale-schema fresh scan carries no prior), without a ``delta``, or when
+    the delta's file lists are partial or truncated. Entries without a name
+    or a path are never carried: the prior is evidence for them only
+    through the path.
+    """
+    delta = scan.get("delta")
+    prior_review = unwrap_review(prior)
+    if not isinstance(delta, dict) or not prior_review:
+        return review
+    named = delta_named_paths(delta)
+    if named is None:
+        return review
+    out = dict(review)
+    for key in _CARRIED_KEYS:
+        prior_entries = prior_review.get(key)
+        if not isinstance(prior_entries, list):
+            continue
+        emitted = review.get(key)
+        kept = list(emitted) if isinstance(emitted, list) else []
+        have = {
+            e["name"]
+            for e in kept
+            if isinstance(e, dict) and isinstance(e.get("name"), str)
+        }
+        carried = [
+            e
+            for e in prior_entries
+            if isinstance(e, dict)
+            and isinstance(e.get("name"), str)
+            and e["name"] not in have
+            and _carriable(e, named)
+        ]
+        if carried:
+            out[key] = [*kept, *carried]
+    return out
+
+
+def _carriable(entry: dict[str, Any], named: set[str]) -> bool:
+    """A prior entry is carried when its evidence path is one the delta leaves alone."""
+    path = entry.get("source") or entry.get("inferred_from")
+    return isinstance(path, str) and bool(path.strip()) and not _path_named(path, named)
 
 
 _RECONCILIATION_KEY = "prior_round_reconciliation"
@@ -475,9 +584,22 @@ def build_update_scan_seed(
     "Previously omitted" for an entry the evidence supports but the prior
     review lacked (D-SC5-5): a completeness fix is not a change in the code,
     and on the first 2.9.1 BWS4 scan the model had to say so in prose.
+
+    2.10.0 adds the carry rule (D-SC5-4 i): an entry whose source path the
+    delta does not name is carried verbatim from the prior — the prior is
+    its evidence, whether or not that file is in this scan's sample — and
+    the delta's path set is rendered beside the rule (``_changed_paths_block``)
+    so the model reads the list instead of inferring it from what it was
+    shown. On the first changed-tree update scan of BWS4 both models
+    rewrote every field from the context window and dropped the ten
+    ``env_vars`` whose source file had fallen out of the sample. Status is
+    covered too (4-iii: an untouched ``implemented`` entry keeps its
+    status), and ``implemented[].id`` is reused rather than re-minted
+    (D-SC5-12), since the carry has to be stated against a stable key.
     """
     context = gather_project_context(working_dir, all_files, record, scan)
     prior_json = json.dumps(_prior_review_for_update_seed(prior_review), indent=2)
+    changed = _changed_paths_block(scan)
     return (
         "Please introduce yourself as CodeScanner. The user has asked you to "
         "re-scan this project, which already has a prior code review on disk.\n\n"
@@ -493,16 +615,84 @@ def build_update_scan_seed(
         "prior review simply lacked — a dependency the manifest always "
         "declared, say — is marked **Previously omitted**, not Added: it is a "
         "completeness fix in the review, not a change in the project.\n"
+        "- **Carry what the scan did not touch.** An entry whose `source` / "
+        "`inferred_from` path is not in the changed-path list below is carried "
+        "verbatim from the prior review: the prior is the evidence for it, "
+        "whether or not that file appears in this scan's evidence. Re-derive "
+        "only entries whose path the list names, add entries for paths it "
+        "adds, and drop entries for paths it removes. This covers "
+        "`implemented[].status`: an entry whose paths the list does not name "
+        'keeps its status. "Complete" means the carried entries plus the '
+        "re-derived ones, never a fresh listing of what you can see.\n"
+        "- Reuse the prior review's `implemented[].id` for a capability it "
+        "already names; mint a new id only for a capability it does not.\n"
         '- After presenting the changes, ask: "Anything to correct? Reply '
         "'looks good' to merge and finalize.\"\n"
         "- When the user confirms, emit a complete updated `review` JSON block "
         "reflecting the merged state. The block must be "
         "complete — not a diff — so downstream agents always see the full review.\n\n"
+        f"{changed}"
         "**Prior code review on disk:**\n\n"
         f"```json\n{prior_json}\n```\n\n"
         "**Latest project evidence (fresh scan):**\n\n"
         f"{context}"
     )
+
+
+_CHANGED_PATHS_HEAD = "**Paths this scan changed** (measured against the prior scan):\n"
+_NO_DELTA_LINE = (
+    "**Paths this scan changed:** no prior scan was measured, so there is no "
+    "changed-path list; re-derive from the evidence and carry nothing on the "
+    "strength of the prior alone.\n\n"
+)
+_INCOMPLETE_LINE = (
+    "- This list is incomplete (a capped listing or a capped delta): a path "
+    "not shown may still have changed, so carry nothing on the strength of "
+    "this list alone.\n"
+)
+
+
+def _changed_paths_block(scan: ScanEvidence | None) -> str:
+    """The delta's path sets, rendered for the carry rule (D-SC5-4 i).
+
+    One line per set — files added / removed / modified, signatures changed,
+    manifests changed, load-bearing candidates entered / left — each with its
+    paths in full or ``none``, so the model has the whole accounting and not
+    a sample of it; the delta's own caps bound the length. Without a
+    ``delta`` the block says so and the rule is suspended; with a partial or
+    truncated file delta it says the list is incomplete and suspends the
+    rule the same way, as the commit-time carry does.
+    """
+    delta = scan.scan.get("delta") if scan is not None else None
+    if not isinstance(delta, dict):
+        return _NO_DELTA_LINE
+    files = delta.get("files") or {}
+    lines = [_CHANGED_PATHS_HEAD]
+    for key in _DELTA_FILE_LISTS:
+        lines.append(_paths_line(f"Files {key}", files.get(key) or []))
+    for label, block, lists in (
+        ("Signatures changed", delta.get("signatures"), _DELTA_SIGNATURE_LISTS),
+        ("Manifests changed", delta.get("dependencies"), _DELTA_MANIFEST_LISTS),
+    ):
+        paths = [
+            str(p)
+            for p, change in (block.items() if isinstance(block, dict) else [])
+            if isinstance(change, dict) and any(change.get(k) for k in lists)
+        ]
+        lines.append(_paths_line(label, paths))
+    candidates = delta.get("candidates") or {}
+    for key in ("entered", "left"):
+        lines.append(
+            _paths_line(f"Load-bearing candidates {key}", candidates.get(key) or [])
+        )
+    if delta_named_paths(delta) is None:
+        lines.append(_INCOMPLETE_LINE)
+    return "".join(lines) + "\n"
+
+
+def _paths_line(label: str, paths: list[Any]) -> str:
+    shown = ", ".join(f"`{p}`" for p in paths) if paths else "none"
+    return f"- {label}: {shown}\n"
 
 
 def run(
@@ -862,12 +1052,19 @@ def _scanner_commit(
     The envelope is validated once more here (D-EV3): the block already
     passed ``validate_review_block``, so a failure means the wrapper or a
     collector, not the model, is wrong — and that must not reach disk.
+
+    ``session["code_review"]`` still holds the prior envelope at this point
+    — the one the update seed was drawn against — and goes to ``wrap_review``
+    as the carry's ``prior`` (D-SC5-4 ii). On a fresh scan it is ``None``;
+    on a stale-schema one it has no ``review`` layer; either way nothing is
+    carried.
     """
     scan = session.get("code_scanner_scan")
     if not isinstance(scan, dict):
         msg = "code_review commit with no scan stashed from the walk"
         raise ValueError(msg)
-    review = wrap_review(block, scan)
+    prior = session.get("code_review")
+    review = wrap_review(block, scan, prior if isinstance(prior, dict) else None)
     errors = validate_code_review(review)
     if errors:
         msg = "assembled code_review envelope failed validation: " + "; ".join(errors)

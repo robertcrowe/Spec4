@@ -18,17 +18,28 @@ keyed by name and ``changed`` when the signature text differs. Lists are
 capped and say so. A scan identical to its prior yields a present, empty
 block — "nothing changed" is a measurement, "absent" means there was nothing
 to compare against.
+
+One exception to "never ``git``" since 2.10.0 (D-SC5-9): ``files.modified``
+names the files listed by *both* scans whose content changed, and the only
+witness to a content change is git — ``git diff --name-only <prior head>``
+plus the working tree's modified files, computed by ``_collect`` and handed
+in. Without it the delta named only files that came or went, so an edit to
+``.env.example`` or ``main.py`` was invisible to the update seed's carry rule
+(D-SC5-4). ``[]`` when there is no repository or git is unavailable.
 """
 
 from __future__ import annotations
 
 import json
 import pathlib
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from spec4 import project_manager
 from spec4.agents._code_review_context import unwrap_scan
 from spec4.app_constants import ARTIFACT_CODE_REVIEW
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 _MAX_LIST = 200
 _KIND_IMPLEMENTED = "implemented"
@@ -117,16 +128,31 @@ def _listed(scan: dict[str, Any]) -> tuple[set[str], bool]:
     return paths, bool(inventory.get("truncated"))
 
 
-def _files(current: dict[str, Any], prior: dict[str, Any]) -> dict[str, Any]:
+def _files(
+    current: dict[str, Any],
+    prior: dict[str, Any],
+    modified: Iterable[str] | None,
+) -> dict[str, Any]:
+    """Added, removed and — from git — modified, over the two listings.
+
+    ``modified`` is restricted to paths both scans list: a path only one
+    lists is ``added`` or ``removed``, never both that and modified, so the
+    three lists are disjoint and an untracked new file never counts as a
+    modification.
+    """
     now, now_partial = _listed(current)
     then, then_partial = _listed(prior)
     added, added_truncated = _capped(now - then)
     removed, removed_truncated = _capped(then - now)
+    changed, changed_truncated = _capped(
+        {p for p in (modified or ()) if isinstance(p, str)} & now & then
+    )
     return {
         "added": added,
         "removed": removed,
+        "modified": changed,
         "partial": now_partial or then_partial,
-        "truncated": added_truncated or removed_truncated,
+        "truncated": added_truncated or removed_truncated or changed_truncated,
     }
 
 
@@ -218,12 +244,19 @@ def _signatures(current: dict[str, Any], prior: dict[str, Any]) -> dict[str, Any
 
 
 def delta_block(
-    current: dict[str, Any], prior: dict[str, Any], descriptor: dict[str, Any]
+    current: dict[str, Any],
+    prior: dict[str, Any],
+    descriptor: dict[str, Any],
+    modified: Iterable[str] | None = None,
 ) -> dict[str, Any]:
-    """The ``delta`` block of ``current`` against ``prior``; see the module docstring."""
+    """The ``delta`` block of ``current`` against ``prior``; see the module docstring.
+
+    ``modified`` is git's list of files whose content differs from the prior
+    head (``_collect.modified_paths``), ``None`` when there is no repository.
+    """
     return {
         "prior": dict(descriptor),
-        "files": _files(current, prior),
+        "files": _files(current, prior, modified),
         "dependencies": _manifests(current, prior),
         "candidates": _candidates(current, prior),
         "signatures": _signatures(current, prior),

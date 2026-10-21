@@ -324,8 +324,9 @@ class _Sampler:
         Rendered from ``git.since_last_round`` and ``delta``: the commit and
         author counts, whether agent trailers are present, the touched
         top-level directories, the most-touched files (≤ ``_MAX_TOUCHED_SHOWN``)
-        and, when a prior scan is on disk, the files added and removed since
-        it (≤ ``_MAX_DELTA_SHOWN`` each) and the load-bearing candidates that
+        and, when a prior scan is on disk, the files added, removed and (from
+        2.10.0, D-SC5-9) modified since it (≤ ``_MAX_DELTA_SHOWN`` each) and
+        the load-bearing candidates that
         entered or left. Everything here is after the boundary, so it is the
         evidence ``unplanned_changes`` groups. Absent without a boundary.
         """
@@ -364,7 +365,7 @@ class _Sampler:
             return []
         out: list[str] = []
         files = delta.get("files") or {}
-        for key in ("added", "removed"):
+        for key in ("added", "removed", "modified"):
             names = [str(p) for p in files.get(key) or []]
             if names:
                 shown = ", ".join(f"`{p}`" for p in names[:_MAX_DELTA_SHOWN])
