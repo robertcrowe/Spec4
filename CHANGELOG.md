@@ -10,6 +10,30 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.11.1] — unreleased
+
+2.11.0 measured on BWS4's v10 round (D-SC5-17…19): the new-round scan drew
+the update seed, and the model carried every `env_vars` and `dependencies`
+entry itself — including the 22 dependencies sourced from a manifest the
+delta named as modified, which the commit-time carry could not have put
+back. The one list that still lost entries was `api_surface`: 2 of 8
+endpoints, both from paths the delta did not name. A patch: a third keyed
+list joins an existing merge, and the merge records what it did.
+
+### Changed
+- The commit-time carry covers `api_surface`, keyed by `path_or_method`,
+  with the same path test as `env_vars` and `dependencies`: a prior endpoint
+  the model dropped whose `source` / `inferred_from` the delta does not name
+  is appended after the model's entries, in the prior's order.
+- `scan.delta.carried` records, per carried list, how many prior entries the
+  commit appended — zeros when the model carried everything itself, the key
+  absent when the carry was suspended (no prior review, no delta, partial or
+  truncated file lists). Until now the stored review could not say whether
+  the model or the commit had done the carrying.
+- `approx_tokens`'s docstring says to read it as a floor: four characters
+  per token undercounts the pasted prior review (indented JSON) by about a
+  third, so an update scan's narrated "sent ~N tokens" runs low.
+
 ## [2.11.0] — unreleased
 
 The 2.10.0 levers measured in the wild (D-SC5-13…16): on the first scan of

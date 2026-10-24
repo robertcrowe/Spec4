@@ -1272,6 +1272,16 @@ _SCAN_DELTA = _closed(
             "type": "object",
             "additionalProperties": _delta_lists("added", "removed", "changed"),
         },
+        # ``carried`` (2.11.1, D-SC5-18) is optional and the one commit-time
+        # fact in ``scan``: per keyed list, how many prior entries
+        # ``wrap_review`` appended because the model dropped them and the
+        # delta named no reason. Absent when the carry was suspended (no
+        # prior review, no delta, partial or truncated file lists) — and
+        # on every file written before 2.11.1.
+        "carried": {
+            "type": "object",
+            "additionalProperties": _NON_NEGATIVE,
+        },
     },
 )
 

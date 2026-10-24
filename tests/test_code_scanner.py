@@ -3175,9 +3175,139 @@ class TestWrapReviewCarry:
         assert all(
             e["source"] == "backend/app/core/config.py" for e in review["env_vars"][12:]
         )
-        # Wrapping the merged review again changes nothing.
+        # The counts say the commit did the work (D-SC5-18); the prior has
+        # no ``api_surface`` to give.
+        assert out["code_review"]["scan"]["delta"]["carried"] == {
+            "env_vars": 10,
+            "dependencies": 21,
+            "api_surface": 0,
+        }
+        # Wrapping the merged review again changes no review entry — and
+        # records that this time nothing needed carrying.
         again = wrap_review({"review": review}, {"delta": fx["delta"]}, prior)
-        assert again == out
+        assert again["code_review"]["review"] == review
+        assert again["code_review"]["scan"]["delta"]["carried"] == {
+            "env_vars": 0,
+            "dependencies": 0,
+            "api_surface": 0,
+        }
+
+    def test_bws4_2_11_0_update_draw_restores_the_two_dropped_endpoints(
+        self,
+    ) -> None:
+        # The D-SC5-17 datum: the first update draw carried every env var
+        # and dependency itself and dropped 2 of 8 endpoints, both from
+        # paths the delta did not name.
+        from spec4.agents._code_review_schema import validate_code_review
+        from spec4.agents.code_scanner import wrap_review
+
+        fx = load_fixture("carry_bws4_2_11_0_update_draw.json")
+        prior = review_envelope(**{k: v for k, v in fx["prior_review"].items()})
+        emitted = fx["emitted"]
+        assert len(emitted["api_surface"]) == 10
+        out = wrap_review({"review": emitted}, {"delta": fx["delta"]}, prior)
+        review = out["code_review"]["review"]
+        assert validate_code_review(out) == []
+        assert review["env_vars"] == emitted["env_vars"]
+        assert review["dependencies"] == emitted["dependencies"]
+        assert len(review["api_surface"]) == 12
+        assert review["api_surface"][:10] == emitted["api_surface"]
+        assert [e["path_or_method"] for e in review["api_surface"][10:]] == [
+            "GET /api/react/presets",  # the prior's order, not the drop order
+            "GET /api/embeddings/presets",
+        ]
+        assert [e["source"] for e in review["api_surface"][10:]] == [
+            "backend/app/react/schemas.py",
+            "backend/app/embeddings/schemas.py",
+        ]
+        assert out["code_review"]["scan"]["delta"]["carried"] == {
+            "env_vars": 0,
+            "dependencies": 0,
+            "api_surface": 2,
+        }
+
+    def test_api_surface_carries_by_path_or_method_and_respects_named_paths(
+        self,
+    ) -> None:
+        def ep(path: str, source: str, **over: Any) -> dict[str, Any]:
+            return {
+                "protocol": "http",
+                "path_or_method": path,
+                "source": source,
+                **over,
+            }
+
+        prior = review_envelope(
+            api_surface=[
+                ep("GET /a", "src/app/quiet.py", summary="old"),  # re-emitted
+                ep("GET /gone", "gone.py"),  # removed file
+                ep("GET /edited", "src/app/changed.py"),  # modified file
+                ep("GET /kept", "src/app/other.py"),  # untouched → carried
+                {"protocol": "http", "path_or_method": "GET /nopath"},
+                {"protocol": "http", "source": "src/app/other.py"},
+            ]
+        )
+        out = self._carry(
+            {"api_surface": [ep("GET /a", "src/app/quiet.py", summary="new")]},
+            prior,
+            {"delta": _delta()},
+        )
+        assert out["api_surface"] == [
+            ep("GET /a", "src/app/quiet.py", summary="new"),
+            ep("GET /kept", "src/app/other.py"),
+        ]
+
+    def test_carried_counts_are_recorded_only_when_the_carry_ran(self) -> None:
+        from spec4.agents.code_scanner import wrap_review
+
+        def scan_of(emitted: dict[str, Any], prior: Any, scan: Any) -> dict[str, Any]:
+            block = {"review": {"is_software_project": True, **emitted}}
+            s: dict[str, Any] = wrap_review(block, scan, prior)["code_review"]["scan"]
+            return s
+
+        prior = review_envelope(
+            env_vars=[_env("A", "cfg.py")],
+            dependencies=[{"name": "x", "source": "pyproject.toml"}],
+        )
+        # Ran: the prior gave one env var, one dependency, no endpoints.
+        ran = scan_of({"env_vars": [], "dependencies": []}, prior, {"delta": _delta()})
+        assert ran["delta"]["carried"] == {
+            "env_vars": 1,
+            "dependencies": 1,
+            "api_surface": 0,
+        }
+        # Ran, nothing to do: zeros, not absence.
+        full = scan_of(
+            {
+                "env_vars": [_env("A", "cfg.py")],
+                "dependencies": [{"name": "x", "source": "pyproject.toml"}],
+            },
+            prior,
+            {"delta": _delta()},
+        )
+        assert full["delta"]["carried"] == {
+            "env_vars": 0,
+            "dependencies": 0,
+            "api_surface": 0,
+        }
+        # Suspended: the key is absent and the delta is otherwise untouched.
+        for flag in ("partial", "truncated"):
+            delta = _delta()
+            delta["files"][flag] = True
+            s = scan_of({"env_vars": []}, prior, {"delta": delta})
+            assert "carried" not in s["delta"]
+            assert s["delta"] == delta
+        assert (
+            "carried"
+            not in scan_of({"env_vars": []}, None, {"delta": _delta()})["delta"]
+        )
+        stale = {"code_review": {"schema_version": 1, "env_vars": []}}
+        assert (
+            "carried"
+            not in scan_of({"env_vars": []}, stale, {"delta": _delta()})["delta"]
+        )
+        assert "delta" not in scan_of({"env_vars": []}, prior, {})
+        assert scan_of({"env_vars": []}, prior, {"delta": "x"}) == {"delta": "x"}
 
     def test_delta_named_paths_is_the_union_the_rule_is_stated_against(self) -> None:
         from spec4.agents.code_scanner import delta_named_paths

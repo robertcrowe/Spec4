@@ -424,5 +424,11 @@ def approx_tokens(text: str) -> int:
     and the narrated request size agree. It still decides only how much
     evidence is pasted, never a request parameter, so no tokenizer dependency
     is warranted.
+
+    Read it as a floor (D-SC5-19). Four-per-token is about right for prose
+    and code; indented JSON tokenizes nearer 2.5 characters per token, so on
+    an update scan — whose seed pastes the prior review as JSON — the
+    narrated "sent ~N tokens" undercounts the bill by roughly a third (BWS4,
+    2.11.0: ~12 k estimated for the paste against ~19 k billed).
     """
     return len(text) // 4

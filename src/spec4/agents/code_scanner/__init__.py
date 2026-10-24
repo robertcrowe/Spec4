@@ -117,13 +117,17 @@ def wrap_review(
     prior round's phases joined against ``implemented``; and
     ``unplanned_changes[].classification`` (D-SC4-4) from the git block and
     the delta. A fourth is a merge rather than an overwrite: with ``prior``
-    — the envelope an update scan was drawn against — ``env_vars`` and
-    ``dependencies`` entries the prior had, the model dropped, and the
-    delta gives no reason to drop are carried back (D-SC5-4 ii, 2.10.0).
+    — the envelope an update scan was drawn against — ``env_vars``,
+    ``dependencies`` and (2.11.1) ``api_surface`` entries the prior had, the
+    model dropped, and the delta gives no reason to drop are carried back
+    (D-SC5-4 ii, 2.10.0; D-SC5-17), and how many per list is written to
+    ``scan.delta.carried`` (D-SC5-18) — the one place the stored ``scan``
+    records something decided at commit rather than at walk time.
     """
     scan = {} if scan is None else scan
     review = _with_consumers(block["review"], scan)
-    review = _with_carried_entries(review, scan, prior)
+    review, carried = _with_carried_entries(review, scan, prior)
+    scan = _with_carried_counts(scan, carried)
     review = _with_reconciliation(review, scan)
     review = _with_classification(review, scan)
     return {
@@ -162,7 +166,13 @@ def _with_consumers(review: dict[str, Any], scan: dict[str, Any]) -> dict[str, A
     return {**review, "load_bearing": joined}
 
 
-_CARRIED_KEYS = ("env_vars", "dependencies")
+# (review list, the field that keys its entries) — the lists the commit-time
+# carry merges. ``api_surface`` joined in 2.11.1 (D-SC5-17).
+_CARRIED_KEYS: tuple[tuple[str, str], ...] = (
+    ("env_vars", "name"),
+    ("dependencies", "name"),
+    ("api_surface", "path_or_method"),
+)
 _DELTA_FILE_LISTS = ("added", "removed", "modified")
 _DELTA_SIGNATURE_LISTS = ("added", "removed", "changed")
 _DELTA_MANIFEST_LISTS = ("added", "removed", "bumped")
@@ -206,57 +216,86 @@ def _path_named(path: str, named: set[str]) -> bool:
 
 def _with_carried_entries(
     review: dict[str, Any], scan: dict[str, Any], prior: dict[str, Any] | None
-) -> dict[str, Any]:
-    """``review`` with the prior's untouched ``env_vars`` / ``dependencies`` carried back (D-SC5-4 ii).
+) -> tuple[dict[str, Any], dict[str, int] | None]:
+    """``review`` with the prior's untouched keyed-list entries carried back (D-SC5-4 ii), and the counts.
 
-    The 2.9.2 update scan of BWS4 dropped every ``env_vars`` entry sourced
+    The first 2.10.0 scan of BWS4 dropped every ``env_vars`` entry sourced
     from a file that fell out of the evidence sample and 21 of 46
     ``dependencies`` — on both models — though the delta named none of
     their source files: a rewrite from the context window, not a judgement.
-    For these two keyed lists the merge is deterministic and sound (a file
-    the delta did not touch cannot have lost a variable), so it is done here
-    rather than left to the seed's rule. For each key, a prior entry whose
-    ``name`` the model did not emit and whose ``source`` (else
-    ``inferred_from``) is a path ``delta_named_paths`` does not name is
-    appended after the model's entries, in the prior's order; one the model
-    re-emitted is the model's; one whose path the delta names — removed,
-    modified, re-sampled — is not restored, the model having been shown the
-    change. Nothing is carried without a ``prior`` ``review`` layer (a
-    stale-schema fresh scan carries no prior), without a ``delta``, or when
-    the delta's file lists are partial or truncated. Entries without a name
-    or a path are never carried: the prior is evidence for them only
-    through the path.
+    For a keyed list the merge is deterministic and sound (a file the delta
+    did not touch cannot have lost a variable or an endpoint), so it is done
+    here rather than left to the seed's rule. For each list in
+    ``_CARRIED_KEYS``, a prior entry whose key the model did not emit and
+    whose ``source`` (else ``inferred_from``) is a path ``delta_named_paths``
+    does not name is appended after the model's entries, in the prior's
+    order; one the model re-emitted is the model's; one whose path the delta
+    names — removed, modified, re-sampled — is not restored, the model
+    having been shown the change. Nothing is carried without a ``prior``
+    ``review`` layer (a stale-schema fresh scan carries no prior), without a
+    ``delta``, or when the delta's file lists are partial or truncated.
+    Entries without a key or a path are never carried: the prior is evidence
+    for them only through the path.
+
+    ``api_surface`` (keyed by ``path_or_method``) joined the two 2.10.0
+    lists in 2.11.1 (D-SC5-17): on the first update draw of BWS4 the model
+    carried all 22 ``env_vars`` and 46 ``dependencies`` itself and still
+    dropped 2 of 8 endpoints, both from paths the delta did not name.
+
+    Returns the merged review and, per list, how many entries this merge
+    appended (0 when the prior had none to give) — or ``None`` when the
+    merge was suspended for one of the three reasons above — so
+    ``wrap_review`` can record them as ``scan.delta.carried`` (D-SC5-18)
+    and the stored file says whether the model or the commit did the work.
     """
     delta = scan.get("delta")
     prior_review = unwrap_review(prior)
     if not isinstance(delta, dict) or not prior_review:
-        return review
+        return review, None
     named = delta_named_paths(delta)
     if named is None:
-        return review
+        return review, None
     out = dict(review)
-    for key in _CARRIED_KEYS:
+    counts: dict[str, int] = {}
+    for key, entry_key in _CARRIED_KEYS:
         prior_entries = prior_review.get(key)
         if not isinstance(prior_entries, list):
+            counts[key] = 0
             continue
         emitted = review.get(key)
         kept = list(emitted) if isinstance(emitted, list) else []
         have = {
-            e["name"]
+            e[entry_key]
             for e in kept
-            if isinstance(e, dict) and isinstance(e.get("name"), str)
+            if isinstance(e, dict) and isinstance(e.get(entry_key), str)
         }
         carried = [
             e
             for e in prior_entries
             if isinstance(e, dict)
-            and isinstance(e.get("name"), str)
-            and e["name"] not in have
+            and isinstance(e.get(entry_key), str)
+            and e[entry_key] not in have
             and _carriable(e, named)
         ]
+        counts[key] = len(carried)
         if carried:
             out[key] = [*kept, *carried]
-    return out
+    return out, counts
+
+
+def _with_carried_counts(
+    scan: dict[str, Any], counts: dict[str, int] | None
+) -> dict[str, Any]:
+    """``scan`` with ``delta.carried`` set to ``counts``, or unchanged (D-SC5-18).
+
+    Only when the carry ran: with ``counts`` ``None`` the key is left absent,
+    so a reader can tell "nothing was carried" (all zeros) from "the carry
+    was suspended" (no key). A ``delta`` that is not a dict is left alone.
+    """
+    delta = scan.get("delta")
+    if counts is None or not isinstance(delta, dict):
+        return scan
+    return {**scan, "delta": {**delta, "carried": counts}}
 
 
 def _carriable(entry: dict[str, Any], named: set[str]) -> bool:
