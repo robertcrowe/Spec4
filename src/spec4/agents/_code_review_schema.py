@@ -1205,6 +1205,15 @@ _SCAN_PLAN_DRIFT = _closed(
                 },
             ),
         },
+        # ``planned_tooling`` (2.13.0, D-SC1d-11) is optional: a 2.3.0…2.12.0
+        # block has three planned buckets and still validates.
+        "planned_tooling": {
+            "type": "array",
+            "items": _closed(
+                ["name", "sources", "witnessed_by"],
+                {**_DRIFT_PLANNED, "witnessed_by": _str_list()},
+            ),
+        },
         "planned_unmatched": {
             "type": "array",
             "items": _closed(["name", "sources"], dict(_DRIFT_PLANNED)),

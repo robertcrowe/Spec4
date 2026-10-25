@@ -96,7 +96,7 @@ _Typed observations about what is fragile. Weigh them before proposing a technol
 - a bare risk
 
 **Planned last round, not found in the code**
-_Measured: technologies the last round's stack or phases named that no manifest declares and no module imports. They were never adopted or have since been dropped — do not carry them forward unexamined._
+_Measured: technologies the last round's stack or phases named that no manifest declares, no module imports and no file in the tree witnesses (a lockfile, a unit file, a tool's own config). They were never adopted or have since been dropped — do not carry them forward unexamined._
 - **@microsoft/fetch-event-source** — sources: stack
 - **@sentry/react** — sources: stack
 - **Alembic** — sources: stack; phase:1

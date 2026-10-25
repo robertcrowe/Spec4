@@ -43,6 +43,10 @@ the prior scan's head plus the working tree's modified files, handed to
 ``delta_block`` as ``files.modified`` — the delta's one git-witnessed list,
 since a content change leaves both listings the same.
 
+2.13.0 (D-SC1d-11) hands ``plan_drift`` the tooling witnesses from ``_tooling``
+— the lockfiles, unit files and config files that place a planned runtime or
+tool in the tree without any manifest declaring it.
+
 2.12.0 (D-SC5-20) adds ``seed_baseline``: the delta the update seed renders
 and the commit carries against, which is the stored ``delta`` except on an
 in-round re-scan after a new round, where it is measured against the review
@@ -79,6 +83,7 @@ from spec4.agents.code_scanner._manifests import dependencies_block
 from spec4.agents.code_scanner._prior import prior_round_block
 from spec4.agents.code_scanner._sample import ScanEvidence
 from spec4.agents.code_scanner._scan import _SKIP_DIRS, SampleRecord
+from spec4.agents.code_scanner._tooling import tooling_witnesses
 from spec4.agents._code_review_schema import CODE_REVIEW_SCHEMA_VERSION
 from spec4.app_constants import ARTIFACT_CODE_REVIEW
 
@@ -579,7 +584,12 @@ def measure_scan(
     prior = prior_round_block(working_dir)
     if prior is not None:
         scan["prior_round"] = prior
-        scan["plan_drift"] = plan_drift_block(prior, dependencies, graph.block)
+        # 2.13.0 (D-SC1d-11): the tooling the tree witnesses by file, so a
+        # planned runtime or unit file is not "planned, not found".
+        witnesses = tooling_witnesses(root, all_files)
+        scan["plan_drift"] = plan_drift_block(
+            prior, dependencies, graph.block, witnesses
+        )
     found = prior_scan(working_dir, session)
     if found is not None:
         descriptor, earlier = found

@@ -145,8 +145,9 @@ FIELD_GUIDANCE: dict[str, str] = {
     ),
     "scan.plan_drift.planned_unmatched": (
         "Measured: technologies the last round's stack or phases named that no "
-        "manifest declares and no module imports. They were never adopted or "
-        "have since been dropped — do not carry them forward unexamined."
+        "manifest declares, no module imports and no file in the tree witnesses "
+        "(a lockfile, a unit file, a tool's own config). They were never adopted "
+        "or have since been dropped — do not carry them forward unexamined."
     ),
     "scan.plan_drift.declared_not_planned": (
         "Measured: dependencies a manifest declares that the last round's plan "

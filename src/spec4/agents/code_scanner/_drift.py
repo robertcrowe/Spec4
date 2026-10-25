@@ -12,9 +12,15 @@ planned name lands in one bucket:
 - ``planned_only_imported`` — never declared, but imported: it appears in
   ``module_graph.unresolved`` (a dependency the code reaches for that no
   manifest pins — a smell, which is why the bucket exists);
-- ``planned_unmatched`` — neither: systemd, Caddy, uv, Node — infrastructure
-  a manifest cannot see, or a plan the code never followed. Which it is, is
-  the consumer's call.
+- ``planned_tooling`` (2.13.0, D-SC1d-11) — neither declared nor imported,
+  but a file in the tree witnesses it as a runtime, a package manager, a
+  piece of infrastructure or a configured tool: ``uv.lock`` for ``uv``, a
+  ``*.service`` unit for ``systemd``, a ``Caddyfile``, ``package.json`` for
+  ``Node`` — the names a manifest can never declare (``_tooling``);
+- ``planned_unmatched`` — none of the three: a plan the code never followed,
+  or a dropped one. Until 2.13.0 the tooling landed here too, and on BWS4's
+  v8 round five of the six "planned, not found" entries StackAdvisor read
+  were in daily use.
 
 ``declared_not_planned`` is the other direction: manifest entries no plan
 named. The two sides spell names differently (StackAdvisor writes the
@@ -136,14 +142,27 @@ def _subset_match(name: str, declared: dict[str, tuple[str, str]]) -> str | None
 
 
 def plan_drift_block(
-    prior: dict[str, Any], dependencies: dict[str, Any], graph: dict[str, Any]
+    prior: dict[str, Any],
+    dependencies: dict[str, Any],
+    graph: dict[str, Any],
+    witnesses: dict[str, list[str]] | None = None,
 ) -> dict[str, Any]:
-    """The ``plan_drift`` block; see the module docstring."""
+    """The ``plan_drift`` block; see the module docstring.
+
+    ``witnesses`` is ``_tooling.tooling_witnesses``'s map — tooling key to
+    the files that witness it — and decides ``planned_tooling``; ``None``
+    (a caller from before 2.13.0) witnesses nothing, so every such name is
+    unmatched as before. A planned name is tried against the manifests, then
+    the imports, then the witnesses: a declared or imported tool is evidence
+    of use in the code, a witness only of presence in the tree.
+    """
     planned = _planned(prior)
     declared = _declared(dependencies)
     imported = _imported(graph)
+    witnessed = witnesses or {}
     in_manifests: list[dict[str, Any]] = []
     only_imported: list[dict[str, Any]] = []
+    tooling: list[dict[str, Any]] = []
     unmatched: list[dict[str, Any]] = []
     matched_keys: set[str] = set()
     for key, entry in sorted(planned.items(), key=lambda kv: kv[1]["name"].lower()):
@@ -155,6 +174,8 @@ def plan_drift_block(
         elif key in imported:
             name, count = imported[key]
             only_imported.append({**entry, "imported_as": name, "imports": count})
+        elif key in witnessed:
+            tooling.append({**entry, "witnessed_by": list(witnessed[key])})
         else:
             unmatched.append(dict(entry))
     not_planned = [
@@ -164,13 +185,14 @@ def plan_drift_block(
         )
         if key not in matched_keys
     ]
-    buckets = (in_manifests, only_imported, unmatched, not_planned)
+    buckets = (in_manifests, only_imported, tooling, unmatched, not_planned)
     return {
         "prior_version": prior.get("version"),
         "planned": len(planned),
         "declared": len(declared),
         "planned_in_manifests": in_manifests[:_MAX_ENTRIES],
         "planned_only_imported": only_imported[:_MAX_ENTRIES],
+        "planned_tooling": tooling[:_MAX_ENTRIES],
         "planned_unmatched": unmatched[:_MAX_ENTRIES],
         "declared_not_planned": not_planned[:_MAX_ENTRIES],
         "truncated": any(len(b) > _MAX_ENTRIES for b in buckets),

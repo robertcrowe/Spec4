@@ -132,6 +132,15 @@ class TestSummaryLines:
             "- Prior round: v3 (1 phase); plan drift: 1 planned dep unmatched, "
             "2 imported but undeclared, 0 declared but unplanned"
         )
+        # 2.13.0 (D-SC1d-11): the tooling count sits between the two, and only
+        # when there is one — a pre-2.13.0 block renders as above.
+        drift["planned_tooling"] = [{}, {}, {}]
+        assert _scan_prior_line(prior, drift) == (
+            "- Prior round: v3 (1 phase); plan drift: 1 planned dep unmatched, "
+            "2 imported but undeclared, 3 tooling witnessed, 0 declared but unplanned"
+        )
+        drift["planned_tooling"] = []
+        assert "tooling" not in _scan_prior_line(prior, drift)
         text = format_review_as_text(
             review_envelope(
                 scan={"inventory": {"files_total": 1}, "prior_round": prior}

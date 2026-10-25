@@ -131,10 +131,13 @@ def _scan_prior_line(prior: dict[str, Any], drift: Any) -> str:
     if isinstance(drift, dict):
         unmatched = len(drift.get("planned_unmatched") or [])
         imported = len(drift.get("planned_only_imported") or [])
+        tooling = len(drift.get("planned_tooling") or [])
         unplanned = len(drift.get("declared_not_planned") or [])
         parts = [f"{unmatched} planned dep{'' if unmatched == 1 else 's'} unmatched"]
         if imported:
             parts.append(f"{imported} imported but undeclared")
+        if tooling:
+            parts.append(f"{tooling} tooling witnessed")
         parts.append(f"{unplanned} declared but unplanned")
         line += "; plan drift: " + ", ".join(parts)
     return line

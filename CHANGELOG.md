@@ -10,6 +10,39 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.13.0] — unreleased
+
+The last open item from step 1d (D-SC1d-11, noted at D-SC4b-12): on BWS4's
+v8 round `plan_drift.planned_unmatched` held seven names, and five of them —
+`Caddy 2`, `Node 20`, `Python 3.12`, `systemd`, `uv` — were a runtime, a
+package manager, a unit file and a reverse proxy in daily use that no
+manifest can declare, so StackAdvisor's "planned, not found" block carried
+them as drift. A manifest is not the only thing that places a tool in a tree.
+
+### Added
+- `scan.plan_drift.planned_tooling`: planned names no manifest declares and
+  no module imports, but a file in the walked tree witnesses — `uv.lock`, a
+  `*.service` unit, a `Caddyfile`, `Dockerfile`, `.github/workflows/*.yml`,
+  a tool's own config (`playwright.config.*`, `tsconfig.json`, `ruff.toml`,
+  …) — or a manifest names without depending on it (`pyproject.toml`'s
+  `[tool.*]`, `requires-python` and `[build-system].requires`;
+  `package.json`'s `engines` and `packageManager`; `.tool-versions`). Each
+  entry carries up to three `witnessed_by` paths. Bucket order is manifests,
+  then imports, then witnesses; `planned_unmatched` is what remains. A
+  presence test, never a version check. Optional in the schema, so every
+  stored 2.x review validates as before.
+
+### Changed
+- The review's "Prior round" line counts the tooling witnessed; the
+  StackAdvisor guidance on `planned_unmatched` says the tree's witnesses were
+  checked too.
+- README: the CodeScanner description now covers the two layers of the
+  review — the measured `scan` (inventory, graph, signatures, manifests, git,
+  the prior round and the drift from its plan, including the tooling the
+  tree witnesses) and the model's `review` — and the re-scan's carry, which
+  the README had not described since 2.10.0; the Rounds section notes that
+  the drift is measured, not recalled.
+
 ## [2.12.0] — unreleased
 
 2.11.1 measured on an in-round re-scan of BWS4's v10 round (D-SC5-20): the
