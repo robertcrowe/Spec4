@@ -93,6 +93,11 @@ def default_session() -> dict[str, Any]:
         # the previous round's review from disk — held beside the scan until the
         # commit carries against it (2.11.0, D-SC5-13); `None` otherwise.
         "code_scanner_prior": None,
+        # The delta the last walk's seed rendered as its changed-path block —
+        # the stored `delta`, or on an in-round re-scan after a new round one
+        # measured against the pasted review — held until the commit carries
+        # against the same list (2.12.0, D-SC5-20); `None` otherwise.
+        "code_scanner_baseline": None,
         "code_review": None,
         "brainstormer_state": STATE_IN_PROGRESS,
         "brainstormer_messages": [],

@@ -49,8 +49,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 _MAX_LIST = 200
-_KIND_IMPLEMENTED = "implemented"
-_KIND_PRIOR_REVIEW = "prior_review"
+KIND_IMPLEMENTED = "implemented"
+KIND_PRIOR_REVIEW = "prior_review"
 
 
 def _capped(items: set[str]) -> tuple[list[str], bool]:
@@ -78,8 +78,8 @@ def _prior_candidates(
 ) -> list[tuple[str, int, pathlib.Path]]:
     """The prior-review files to try, in precedence order (see the module docstring)."""
     kinds: list[tuple[str, int | None]] = [
-        (_KIND_IMPLEMENTED, project_manager.latest_implemented_version(working_dir)),
-        (_KIND_PRIOR_REVIEW, project_manager.active_version(working_dir, session)),
+        (KIND_IMPLEMENTED, project_manager.latest_implemented_version(working_dir)),
+        (KIND_PRIOR_REVIEW, project_manager.active_version(working_dir, session)),
     ]
     return [
         (
@@ -133,16 +133,25 @@ def prior_scan(
         scan = _scan_of(_envelope_of(path))
         if scan is None:
             continue
-        git = scan.get("git")
-        head = git.get("head") if isinstance(git, dict) else None
-        descriptor = {
-            "kind": kind,
-            "version": version,
-            "head": head if isinstance(head, str) else None,
-            "producer": _producer_of(scan),
-        }
-        return descriptor, scan
+        return describe_prior(kind, version, scan), scan
     return None
+
+
+def describe_prior(kind: str, version: int, scan: dict[str, Any]) -> dict[str, Any]:
+    """The ``delta.prior`` descriptor of ``scan``, read as round ``version`` of ``kind``.
+
+    The head the scan recorded when it had a ``git`` block, and its
+    ``producer``. Shared with the seed baseline (2.12.0, D-SC5-20), which
+    describes the active round's own scan the same way.
+    """
+    git = scan.get("git")
+    head = git.get("head") if isinstance(git, dict) else None
+    return {
+        "kind": kind,
+        "version": version,
+        "head": head if isinstance(head, str) else None,
+        "producer": _producer_of(scan),
+    }
 
 
 def _producer_of(scan: dict[str, Any]) -> dict[str, Any] | None:

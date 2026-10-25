@@ -97,13 +97,18 @@ class ScanEvidence:
     ``scan`` holds every block but ``coverage``, which is attached after the
     seed from the record the sampler fills. ``reached`` is the graph's
     in-memory reached set; only its summary is persisted. ``budget_tokens``
-    is the evidence budget for this scan (D-SC2-2).
+    is the evidence budget for this scan (D-SC2-2). ``baseline`` (2.12.0,
+    D-SC5-20) is the delta the update seed renders as its changed-path
+    block: ``scan["delta"]`` itself, or an unstored one measured against the
+    review the seed pastes when that is not the file ``delta.prior`` names;
+    ``None`` when no prior scan was measured, which suspends the carry rule.
     """
 
     files: list[pathlib.Path]
     scan: dict[str, Any]
     reached: frozenset[str]
     budget_tokens: int = EVIDENCE_TOKEN_BUDGET
+    baseline: dict[str, Any] | None = None
 
 
 def evidence_budget(llm_config: dict[str, Any]) -> int:

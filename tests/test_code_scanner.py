@@ -1114,6 +1114,235 @@ class TestNewRoundScan:
         assert session["code_scanner_prior"]["code_review"]["scan"]["git"]["head"] == (
             "abc1234"
         )
+        # 2.12.0 (D-SC5-20): on a new-round scan the seed's baseline is the
+        # stored delta itself, and the commit records that it carried
+        # against v9.
+        assert session["code_scanner_baseline"] is session["code_scanner_scan"]["delta"]
+
+    def test_a_new_round_scan_carries_against_the_delta_s_prior(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from tests._review_helpers import review_block_text
+
+        prior = _implemented_prior()
+        prior["code_review"]["scan"]["git"] = {"available": True, "head": "abc1234"}
+        _new_round_project(tmp_path, prior)
+        session = make_session(working_dir=str(tmp_path))
+        with mock_litellm_stream("Anything to correct?"):
+            collect(code_scanner.run(None, session, session["llm_config"]))
+        with mock_litellm_stream(review_block_text(env_vars=[])):
+            collect(code_scanner.run("looks good", session, session["llm_config"]))
+        delta = session["code_review"]["code_review"]["scan"]["delta"]
+        assert delta["prior"]["version"] == 9
+        assert delta["carried"] == {
+            "env_vars": 2,
+            "dependencies": 0,
+            "api_surface": 0,
+            "against": {"kind": "implemented", "version": 9, "head": "abc1234"},
+        }
+        assert session["code_scanner_baseline"] is None
+
+
+def _in_round_project(tmp_path: pathlib.Path) -> dict[str, Any]:
+    """A tree whose v9 is implemented and whose active v10 holds a review of it.
+
+    The v9 review lists the tree as it was; the v10 review (the session's)
+    lists the file the round added, ``src/router.py``, and sources an env var
+    from it. Returns the v10 envelope.
+    """
+    _new_round_project(tmp_path, _implemented_prior())
+    (tmp_path / "src" / "router.py").write_text("ROUTER_RUNS = 5\n")
+    v10 = review_envelope(
+        scan={
+            "inventory": {
+                "files_total": 4,
+                "files_listed": 4,
+                "truncated": False,
+                "listed": ["README.md", "src/app.py", "src/config.py", "src/router.py"],
+            },
+            "git": {"available": True, "head": "v10head"},
+        },
+        project_type="CLI",
+        env_vars=[
+            {"name": "HOURLY_LIMIT", "purpose": "cap", "source": "src/config.py"},
+            {"name": "ROUTER_RUNS", "purpose": "allowance", "source": "src/router.py"},
+        ],
+    )
+    d = tmp_path / ".spec4" / "v10"
+    d.mkdir(parents=True)
+    (d / "code_review.json").write_text(json.dumps(v10), encoding="utf-8")
+    return v10
+
+
+class TestInRoundRescanBaseline:
+    # 2.12.0 (D-SC5-20): on an in-round re-scan after a new round the session
+    # holds v10's review while ``delta.prior`` is v9's. The seed's block and
+    # the commit's carry are measured against v10 — the review being pasted —
+    # and the stored ``delta`` keeps its round-boundary meaning. On the first
+    # such re-scan of BWS4 the block said 67 added / 12 modified against a
+    # prior that already had them, and the carry could not restore a v10
+    # entry sourced from any path the round had added.
+
+    def test_the_block_and_the_carry_read_the_pasted_review_s_scan(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        from tests._review_helpers import review_block_text
+
+        v10 = _in_round_project(tmp_path)
+        session = make_session(code_review=v10, working_dir=str(tmp_path))
+        with mock_litellm_stream("Anything to correct?"):
+            out = collect(code_scanner.run(None, session, session["llm_config"]))
+        assert "Re-scanning" in out
+        seed = session["code_scanner_messages"][0]["content"]
+        assert '"name": "ROUTER_RUNS"' in seed  # the v10 review is the paste
+        block = seed.split("**Paths this scan changed**")[1].split(
+            "**Prior code review on disk:**"
+        )[0]
+        lines = [ln for ln in block.splitlines() if ln.startswith("- ")]
+        assert lines == [
+            "- Files added: none",
+            "- Files removed: none",
+            "- Files modified: none",
+            "- Signatures changed: none",
+            "- Manifests changed: none",
+            "- Load-bearing candidates entered: none",
+            "- Load-bearing candidates left: none",
+        ]
+        # The stored delta is still the round-boundary one: v9's.
+        stored = session["code_scanner_scan"]["delta"]
+        assert stored["prior"]["version"] == 9
+        assert stored["files"]["added"] == ["src/router.py"]
+        baseline = session["code_scanner_baseline"]
+        assert baseline is not stored
+        assert baseline["prior"] == {
+            "kind": "prior_review",
+            "version": 10,
+            "head": "v10head",
+            "producer": None,
+        }
+        assert baseline["files"]["added"] == []
+        # The model drops the entry sourced from the path v9's delta names as
+        # added; the carry, reading v10's delta, restores it.
+        emitted = [{"name": "HOURLY_LIMIT", "purpose": "re-derived"}]
+        with mock_litellm_stream(review_block_text(env_vars=emitted)):
+            collect(code_scanner.run("looks good", session, session["llm_config"]))
+        review = session["code_review"]["code_review"]["review"]
+        assert review["env_vars"] == [
+            *emitted,
+            {"name": "ROUTER_RUNS", "purpose": "allowance", "source": "src/router.py"},
+        ]
+        delta = session["code_review"]["code_review"]["scan"]["delta"]
+        assert delta["prior"]["version"] == 9
+        assert delta["files"]["added"] == ["src/router.py"]
+        assert delta["carried"] == {
+            "env_vars": 1,
+            "dependencies": 0,
+            "api_surface": 0,
+            "against": {"kind": "prior_review", "version": 10, "head": "v10head"},
+        }
+        assert session["code_scanner_baseline"] is None
+
+    def test_without_the_baseline_the_carry_could_not_restore_the_entry(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # The 2.11.1 behaviour, as a control: the same commit against the
+        # stored delta leaves the router-sourced entry dropped.
+        from spec4.agents.code_scanner import wrap_review
+
+        v10 = _in_round_project(tmp_path)
+        session = make_session(code_review=v10, working_dir=str(tmp_path))
+        with mock_litellm_stream("Anything to correct?"):
+            collect(code_scanner.run(None, session, session["llm_config"]))
+        block = {"review": {"is_software_project": True, "env_vars": []}}
+        scan = session["code_scanner_scan"]
+        against_v9 = wrap_review(block, scan, v10)["code_review"]
+        assert against_v9["review"]["env_vars"] == [
+            {"name": "HOURLY_LIMIT", "purpose": "cap", "source": "src/config.py"}
+        ]
+        assert against_v9["scan"]["delta"]["carried"]["against"]["version"] == 9
+        baseline = session["code_scanner_baseline"]
+        against_v10 = wrap_review(block, scan, v10, baseline)["code_review"]
+        assert [e["name"] for e in against_v10["review"]["env_vars"]] == [
+            "HOURLY_LIMIT",
+            "ROUTER_RUNS",
+        ]
+        assert against_v10["scan"]["delta"]["carried"]["against"]["version"] == 10
+
+    def test_the_active_round_as_the_delta_s_prior_pins_the_stored_delta(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        # No implemented round: ``delta.prior`` is the active round's own
+        # review, the same file the session holds, so the two baselines are
+        # one object and ``against`` is that prior.
+        from tests._review_helpers import review_block_text
+
+        (tmp_path / "README.md").write_text("# App\n")
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.py").write_text("x = 1\n")
+        v1 = review_envelope(
+            scan={
+                "inventory": {
+                    "files_total": 2,
+                    "files_listed": 2,
+                    "truncated": False,
+                    "listed": ["README.md", "src/app.py"],
+                },
+                "git": {"available": True, "head": "v1head"},
+            },
+            project_type="CLI",
+            env_vars=[{"name": "X", "purpose": "x", "source": "src/app.py"}],
+        )
+        d = tmp_path / ".spec4" / "v1"
+        d.mkdir(parents=True)
+        (d / "code_review.json").write_text(json.dumps(v1), encoding="utf-8")
+        session = make_session(code_review=v1, working_dir=str(tmp_path))
+        with mock_litellm_stream("Anything to correct?"):
+            collect(code_scanner.run(None, session, session["llm_config"]))
+        stored = session["code_scanner_scan"]["delta"]
+        assert stored["prior"] == {
+            "kind": "prior_review",
+            "version": 1,
+            "head": "v1head",
+            "producer": None,
+        }
+        assert session["code_scanner_baseline"] is stored
+        with mock_litellm_stream(review_block_text(env_vars=[])):
+            collect(code_scanner.run("looks good", session, session["llm_config"]))
+        delta = session["code_review"]["code_review"]["scan"]["delta"]
+        assert delta["carried"] == {
+            "env_vars": 1,
+            "dependencies": 0,
+            "api_surface": 0,
+            "against": {"kind": "prior_review", "version": 1, "head": "v1head"},
+        }
+
+    def test_a_commit_without_the_stash_carries_against_the_stored_delta(
+        self,
+    ) -> None:
+        # A session resumed from before the key existed: the fallback is
+        # 2.11.1's, and ``against`` says so.
+        from spec4.agents.code_scanner import _scanner_commit
+
+        prior = review_envelope(env_vars=[_env("A", "cfg.py")])
+        session = make_session(
+            code_review=prior,
+            code_scanner_scan={"delta": _delta()},
+            code_scanner_messages=[{"role": "assistant", "content": ""}],
+        )
+        assert "code_scanner_baseline" not in session
+        _scanner_commit(
+            session,
+            session["code_scanner_messages"],
+            {"review": {"is_software_project": True, "env_vars": []}},
+        )
+        delta = session["code_review"]["code_review"]["scan"]["delta"]
+        assert delta["carried"]["env_vars"] == 1
+        assert delta["carried"]["against"] == {
+            "kind": "prior_review",
+            "version": 1,
+            "head": "abc",
+        }
+        assert session["code_scanner_baseline"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -3176,11 +3405,14 @@ class TestWrapReviewCarry:
             e["source"] == "backend/app/core/config.py" for e in review["env_vars"][12:]
         )
         # The counts say the commit did the work (D-SC5-18); the prior has
-        # no ``api_surface`` to give.
+        # no ``api_surface`` to give. ``against`` (2.12.0, D-SC5-20) is the
+        # stored prior: with no baseline given the stored delta is the one.
+        against = {"kind": "implemented", "version": 9, "head": "861c009"}
         assert out["code_review"]["scan"]["delta"]["carried"] == {
             "env_vars": 10,
             "dependencies": 21,
             "api_surface": 0,
+            "against": against,
         }
         # Wrapping the merged review again changes no review entry — and
         # records that this time nothing needed carrying.
@@ -3190,6 +3422,7 @@ class TestWrapReviewCarry:
             "env_vars": 0,
             "dependencies": 0,
             "api_surface": 0,
+            "against": against,
         }
 
     def test_bws4_2_11_0_update_draw_restores_the_two_dropped_endpoints(
@@ -3224,6 +3457,7 @@ class TestWrapReviewCarry:
             "env_vars": 0,
             "dependencies": 0,
             "api_surface": 2,
+            "against": {"kind": "implemented", "version": 9, "head": "861c009"},
         }
 
     def test_api_surface_carries_by_path_or_method_and_respects_named_paths(
@@ -3275,6 +3509,7 @@ class TestWrapReviewCarry:
             "env_vars": 1,
             "dependencies": 1,
             "api_surface": 0,
+            "against": {"kind": "prior_review", "version": 1, "head": "abc"},
         }
         # Ran, nothing to do: zeros, not absence.
         full = scan_of(
@@ -3289,6 +3524,7 @@ class TestWrapReviewCarry:
             "env_vars": 0,
             "dependencies": 0,
             "api_surface": 0,
+            "against": {"kind": "prior_review", "version": 1, "head": "abc"},
         }
         # Suspended: the key is absent and the delta is otherwise untouched.
         for flag in ("partial", "truncated"):
@@ -3378,7 +3614,9 @@ class TestUpdateSeedCarryRule:
         from spec4.agents.code_scanner._sample import ScanEvidence
 
         scan = {"delta": delta} if delta is not None else {}
-        evidence = ScanEvidence([], scan, frozenset()) if with_scan else None
+        evidence = (
+            ScanEvidence([], scan, frozenset(), baseline=delta) if with_scan else None
+        )
         return build_update_scan_seed(
             "/tmp/does-not-matter", review_envelope(), scan=evidence
         )

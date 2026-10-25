@@ -145,6 +145,51 @@ class TestPriorScan:
         delta["prior"]["producer"] = {"spec4": "2.9.2"}
         assert validate_code_review(review_envelope(scan={"delta": delta})) != []
 
+    def test_carried_against_validates_as_kind_version_head(self) -> None:
+        # 2.12.0 (D-SC5-20): ``against`` is optional and closed; the counts
+        # beside it stay non-negative integers.
+        prior = _prior_scan()
+        delta = _delta.delta_block(copy.deepcopy(prior), prior, _descriptor())
+
+        def errors(carried: dict[str, Any]) -> list[str]:
+            scan = {"delta": {**delta, "carried": carried}}
+            return validate_code_review(review_envelope(scan=scan))
+
+        counts = {"env_vars": 0, "dependencies": 1, "api_surface": 0}
+        assert errors(counts) == []
+        for against in (
+            {"kind": "implemented", "version": 9, "head": "861c009"},
+            {"kind": "prior_review", "version": 10, "head": None},
+        ):
+            assert errors({**counts, "against": against}) == []
+        for bad in (
+            {"kind": "implemented", "version": 9},
+            {"kind": "implemented", "version": 9, "head": "x", "producer": None},
+            {"kind": "other", "version": 9, "head": "x"},
+            {"kind": "implemented", "version": -1, "head": "x"},
+            "v9",
+        ):
+            assert errors({**counts, "against": bad}) != []
+        assert errors({**counts, "env_vars": -1}) != []
+
+    def test_describe_prior_reads_the_head_and_the_producer(self) -> None:
+        scan = {"git": {"available": True, "head": "abc"}, "producer": None}
+        assert _delta.describe_prior("prior_review", 10, scan) == {
+            "kind": "prior_review",
+            "version": 10,
+            "head": "abc",
+            "producer": None,
+        }
+        producer = {"spec4": "2.12.0", "schema": 2}
+        scan = {"git": {"available": False}, "producer": producer}
+        assert _delta.describe_prior("implemented", 9, scan) == {
+            "kind": "implemented",
+            "version": 9,
+            "head": None,
+            "producer": {"spec4": "2.12.0", "schema": 2},
+        }
+        assert _delta.describe_prior("implemented", 9, {})["head"] is None
+
 
 class TestPriorEnvelope:
     # 2.11.0 (D-SC5-13/14): the review the update seed pastes when the session

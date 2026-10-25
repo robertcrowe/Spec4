@@ -10,6 +10,35 @@ version bump eight days earlier, so 1.5.0 covers everything in between; and
 1.1.0 was bumped in `pyproject.toml` but never tagged, so its changes reached
 users as part of 1.5.0.
 
+## [2.12.0] — unreleased
+
+2.11.1 measured on an in-round re-scan of BWS4's v10 round (D-SC5-20): the
+carry was byte-identical and `scan.delta.carried` all zeros, but the seed's
+"Paths this scan changed" block told the model 67 files were added and 12
+modified — true since the implemented v9 round, which is what the stored
+`delta` measures, and false against the v10 review the seed pasted, which
+already had every one of them. The rule then asks the model to re-derive
+every entry the round added on every in-round re-scan, and the commit-time
+carry cannot restore any of them, since the delta names their paths as
+added. The seed's block and the carry now read the review being updated.
+
+### Changed
+- On an in-round re-scan after a new round — the session holds the active
+  round's review while `delta.prior` is the implemented round's — the update
+  seed's changed-path block and the commit-time carry are measured against
+  the pasted review's own scan: a second comparison computed the way the
+  stored `delta` is (git's modified list against *that* scan's head) and
+  never stored. On a new-round scan the two baselines are one file and
+  nothing changes. The stored `delta` keeps its round-boundary meaning for
+  `unplanned_changes` and `since_last_round`.
+- `scan.delta.carried` gains `against: {kind, version, head}` — the scan the
+  counts were taken against — so a stored review says which baseline the
+  carry read; absent on files written before 2.12.0.
+- The session holds the seed's baseline as `code_scanner_baseline` beside
+  the scan and prior stashes, so the commit carries against the list the
+  model was shown; a session without it carries against the stored `delta`,
+  as before.
+
 ## [2.11.1] — unreleased
 
 2.11.0 measured on BWS4's v10 round (D-SC5-17…19): the new-round scan drew

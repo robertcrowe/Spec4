@@ -64,6 +64,7 @@ from spec4.agents.code_scanner._collect import (
     attach_coverage,
     collect_scan,
     measure_scan,
+    seed_baseline,
 )
 from spec4.agents.code_scanner._delta import prior_envelope
 from spec4.agents.code_scanner._prompt import SYSTEM_PROMPT
@@ -104,6 +105,7 @@ def wrap_review(
     block: dict[str, Any],
     scan: dict[str, Any] | None = None,
     prior: dict[str, Any] | None = None,
+    baseline: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the stored envelope from the LLM's validated ``review`` block.
 
@@ -122,12 +124,19 @@ def wrap_review(
     model dropped, and the delta gives no reason to drop are carried back
     (D-SC5-4 ii, 2.10.0; D-SC5-17), and how many per list is written to
     ``scan.delta.carried`` (D-SC5-18) — the one place the stored ``scan``
-    records something decided at commit rather than at walk time.
+    records something decided at commit rather than at walk time. The
+    carry tests paths against ``baseline`` (2.12.0, D-SC5-20): the delta
+    measured against the review the seed pasted, which is ``scan["delta"]``
+    itself except on an in-round re-scan after a new round (``seed_baseline``);
+    ``None`` falls back to ``scan["delta"]``. ``carried.against`` names the
+    baseline's prior, so the file says which scan the counts were taken
+    against.
     """
     scan = {} if scan is None else scan
+    delta = scan.get("delta") if baseline is None else baseline
     review = _with_consumers(block["review"], scan)
-    review, carried = _with_carried_entries(review, scan, prior)
-    scan = _with_carried_counts(scan, carried)
+    review, carried = _with_carried_entries(review, delta, prior)
+    scan = _with_carried_counts(scan, carried, _against(delta))
     review = _with_reconciliation(review, scan)
     review = _with_classification(review, scan)
     return {
@@ -215,7 +224,7 @@ def _path_named(path: str, named: set[str]) -> bool:
 
 
 def _with_carried_entries(
-    review: dict[str, Any], scan: dict[str, Any], prior: dict[str, Any] | None
+    review: dict[str, Any], delta: dict[str, Any] | None, prior: dict[str, Any] | None
 ) -> tuple[dict[str, Any], dict[str, int] | None]:
     """``review`` with the prior's untouched keyed-list entries carried back (D-SC5-4 ii), and the counts.
 
@@ -231,9 +240,11 @@ def _with_carried_entries(
     does not name is appended after the model's entries, in the prior's
     order; one the model re-emitted is the model's; one whose path the delta
     names — removed, modified, re-sampled — is not restored, the model
-    having been shown the change. Nothing is carried without a ``prior``
-    ``review`` layer (a stale-schema fresh scan carries no prior), without a
-    ``delta``, or when the delta's file lists are partial or truncated.
+    having been shown the change. ``delta`` is the baseline the seed's
+    changed-path block rendered (2.12.0, D-SC5-20), so the model and the
+    merge read one list. Nothing is carried without a ``prior`` ``review``
+    layer (a stale-schema fresh scan carries no prior), without a ``delta``,
+    or when the delta's file lists are partial or truncated.
     Entries without a key or a path are never carried: the prior is evidence
     for them only through the path.
 
@@ -248,7 +259,6 @@ def _with_carried_entries(
     ``wrap_review`` can record them as ``scan.delta.carried`` (D-SC5-18)
     and the stored file says whether the model or the commit did the work.
     """
-    delta = scan.get("delta")
     prior_review = unwrap_review(prior)
     if not isinstance(delta, dict) or not prior_review:
         return review, None
@@ -284,18 +294,38 @@ def _with_carried_entries(
 
 
 def _with_carried_counts(
-    scan: dict[str, Any], counts: dict[str, int] | None
+    scan: dict[str, Any],
+    counts: dict[str, int] | None,
+    against: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """``scan`` with ``delta.carried`` set to ``counts``, or unchanged (D-SC5-18).
+    """``scan`` with ``delta.carried`` set to ``counts`` plus ``against``, or unchanged (D-SC5-18).
 
     Only when the carry ran: with ``counts`` ``None`` the key is left absent,
     so a reader can tell "nothing was carried" (all zeros) from "the carry
-    was suspended" (no key). A ``delta`` that is not a dict is left alone.
+    was suspended" (no key). ``against`` (2.12.0, D-SC5-20) — ``{kind,
+    version, head}`` of the scan the counts were taken against — is written
+    beside the counts when known: on a new-round scan it is ``delta.prior``,
+    on an in-round re-scan after a new round the active round's own review.
+    A ``delta`` that is not a dict is left alone.
     """
     delta = scan.get("delta")
     if counts is None or not isinstance(delta, dict):
         return scan
-    return {**scan, "delta": {**delta, "carried": counts}}
+    carried: dict[str, Any] = dict(counts)
+    if against is not None:
+        carried["against"] = against
+    return {**scan, "delta": {**delta, "carried": carried}}
+
+
+_AGAINST_KEYS = ("kind", "version", "head")
+
+
+def _against(delta: dict[str, Any] | None) -> dict[str, Any] | None:
+    """``{kind, version, head}`` of a delta's ``prior`` descriptor, or ``None``."""
+    prior = delta.get("prior") if isinstance(delta, dict) else None
+    if not isinstance(prior, dict):
+        return None
+    return {k: prior.get(k) for k in _AGAINST_KEYS}
 
 
 def _carriable(entry: dict[str, Any], named: set[str]) -> bool:
@@ -639,7 +669,7 @@ def build_update_scan_seed(
     """
     context = gather_project_context(working_dir, all_files, record, scan)
     prior_json = json.dumps(_prior_review_for_update_seed(prior_review), indent=2)
-    changed = _changed_paths_block(scan)
+    changed = _changed_paths_block(scan.baseline if scan is not None else None)
     return (
         "Please introduce yourself as CodeScanner. The user has asked you to "
         "re-scan this project, which already has a prior code review on disk.\n\n"
@@ -692,18 +722,20 @@ _INCOMPLETE_LINE = (
 )
 
 
-def _changed_paths_block(scan: ScanEvidence | None) -> str:
+def _changed_paths_block(delta: dict[str, Any] | None) -> str:
     """The delta's path sets, rendered for the carry rule (D-SC5-4 i).
 
     One line per set — files added / removed / modified, signatures changed,
     manifests changed, load-bearing candidates entered / left — each with its
     paths in full or ``none``, so the model has the whole accounting and not
-    a sample of it; the delta's own caps bound the length. Without a
+    a sample of it; the delta's own caps bound the length. ``delta`` is the
+    seed's baseline (``ScanEvidence.baseline``, 2.12.0, D-SC5-20): the stored
+    delta, or on an in-round re-scan after a new round one measured against
+    the review being pasted, so the block and the paste agree. Without a
     ``delta`` the block says so and the rule is suspended; with a partial or
     truncated file delta it says the list is incomplete and suspends the
     rule the same way, as the commit-time carry does.
     """
-    delta = scan.scan.get("delta") if scan is not None else None
     if not isinstance(delta, dict):
         return _NO_DELTA_LINE
     files = delta.get("files") or {}
@@ -822,8 +854,10 @@ def _scanner_first_entry(
     Returns the running total of characters yielded before the draw. Writes
     ``code_scanner_scan`` (the measured layer, D-SC1b-1) and
     ``code_scanner_prior`` (the envelope the seed was drawn against, 2.11.0,
-    D-SC5-13 — ``None`` on a fresh scan with no prior); both are read and
-    cleared by ``_scanner_commit``.
+    D-SC5-13 — ``None`` on a fresh scan with no prior) and
+    ``code_scanner_baseline`` (the delta the seed's changed-path block
+    rendered, 2.12.0, D-SC5-20 — ``None`` when no prior scan was measured);
+    all three are read and cleared by ``_scanner_commit``.
     """
     existing_review = session.get("code_review")
     working_dir = session.get("working_dir")
@@ -902,13 +936,21 @@ def _scanner_first_entry(
     # the seed actually pasted — is attached after. D-SC1b-1: the result is
     # held in the session until the review block arrives — the commit may be
     # turns away (a chat first, or the re-ask path).
+    # 2.12.0 (D-SC5-20): the seed's changed-path block and the commit's carry
+    # are measured against the review the seed pastes, which on an in-round
+    # re-scan after a new round is not the file ``delta.prior`` names.
+    measured = measure_scan(working_dir, all_files, session)
     evidence = dataclasses.replace(
-        measure_scan(working_dir, all_files, session),
+        measured,
         budget_tokens=evidence_budget(llm_config),
+        baseline=seed_baseline(
+            working_dir, session, measured.scan, prior, existing_review is not None
+        ),
     )
     seed, record = _scanner_seed(msgs, working_dir, prior, evidence, stale)
     session["code_scanner_scan"] = attach_coverage(evidence.scan, record)
     session["code_scanner_prior"] = prior
+    session["code_scanner_baseline"] = evidence.baseline
 
     # D-SC-P2: what follows is a single completion call, and the wait
     # before its first token is dominated by prefill over this request.
@@ -1139,8 +1181,11 @@ def _scanner_commit(
     commit with no such stash (one resumed from before the key existed)
     falls back to ``session["code_review"]``, which on an in-round re-scan is
     that same prior. On a fresh scan the prior is ``None``; on a stale-schema
-    one it has no ``review`` layer; either way nothing is carried. Both
-    stashes are cleared on success.
+    one it has no ``review`` layer; either way nothing is carried. The
+    carry's baseline (2.12.0, D-SC5-20) is ``code_scanner_baseline``, the
+    delta the seed's changed-path block rendered; a session without the
+    stash falls back to the stored ``delta``, as every commit did before.
+    All three stashes are cleared on success.
     """
     scan = session.get("code_scanner_scan")
     if not isinstance(scan, dict):
@@ -1149,7 +1194,13 @@ def _scanner_commit(
     prior = session.get("code_scanner_prior")
     if not isinstance(prior, dict):
         prior = session.get("code_review")
-    review = wrap_review(block, scan, prior if isinstance(prior, dict) else None)
+    baseline = session.get("code_scanner_baseline")
+    review = wrap_review(
+        block,
+        scan,
+        prior if isinstance(prior, dict) else None,
+        baseline if isinstance(baseline, dict) else None,
+    )
     errors = validate_code_review(review)
     if errors:
         msg = "assembled code_review envelope failed validation: " + "; ".join(errors)
@@ -1159,6 +1210,7 @@ def _scanner_commit(
     session["code_review"] = review
     session["code_scanner_scan"] = None
     session["code_scanner_prior"] = None
+    session["code_scanner_baseline"] = None
     msgs[-1]["content"] = display
     session["_display_override"] = display
     session["code_scanner_artifact_msg_count"] = len(msgs)

@@ -874,6 +874,12 @@ class TestScanStash:
         session = {"code_scanner_prior": {"code_review": {}}, "messages": ["x"]}
         assert on_rescan_project(1, session)["code_scanner_prior"] is None
 
+    def test_the_baseline_stash_rides_beside_the_other_two(self) -> None:
+        # 2.12.0 (D-SC5-20): the delta the seed rendered, held like the prior.
+        assert session_mod.default_session()["code_scanner_baseline"] is None
+        session = {"code_scanner_baseline": {"files": {}}, "messages": ["x"]}
+        assert on_rescan_project(1, session)["code_scanner_baseline"] is None
+
     def test_walk_stashes_and_commit_merges_then_clears(
         self, tmp_path: pathlib.Path
     ) -> None:
@@ -954,3 +960,105 @@ class TestScanStash:
             )
         assert session["code_review"] is None
         assert session["code_scanner_state"] != STATE_REVIEW_COMPLETE
+
+
+class TestSeedBaseline:
+    # 2.12.0 (D-SC5-20): the delta the update seed renders and the commit
+    # carries against. The entry-point cases are in ``test_code_scanner``;
+    # these pin the selection and the git call on their own.
+
+    @staticmethod
+    def _scan(listed: list[str], head: str | None = None) -> dict[str, Any]:
+        scan: dict[str, Any] = {
+            "inventory": {
+                "files_total": len(listed),
+                "files_listed": len(listed),
+                "truncated": False,
+                "listed": listed,
+            }
+        }
+        if head is not None:
+            scan["git"] = {"available": True, "head": head}
+        return scan
+
+    def _rounds(self, tmp_path: pathlib.Path) -> dict[str, Any]:
+        """v9 implemented, v10 active; returns the v10 envelope."""
+        v9 = tmp_path / ".spec4" / "v9"
+        v9.mkdir(parents=True)
+        (v9 / "IMPLEMENTED").write_text("")
+        (tmp_path / ".spec4" / "v10").mkdir()
+        return review_envelope(scan=self._scan(["a.py", "b.py"], "v10head"))
+
+    def test_the_stored_delta_when_the_seed_s_prior_is_the_delta_s(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        v10 = self._rounds(tmp_path)
+        stored = {"prior": {"kind": "implemented", "version": 9}, "files": {}}
+        scan = {**self._scan(["a.py"]), "delta": stored}
+        # From disk (a new-round scan): one resolver, so the stored delta.
+        assert _collect.seed_baseline(str(tmp_path), None, scan, v10, False) is stored
+        # From the session, but the active round is the delta's prior.
+        same = {**scan, "delta": {**stored, "prior": {"version": 10}}}
+        assert (
+            _collect.seed_baseline(str(tmp_path), None, same, v10, True)
+            is same["delta"]
+        )
+        # No prior at all, or no stored delta: nothing to measure against.
+        assert _collect.seed_baseline(str(tmp_path), None, scan, None, False) is stored
+        assert _collect.seed_baseline(str(tmp_path), None, scan, None, True) is stored
+        bare = self._scan(["a.py"])
+        assert _collect.seed_baseline(str(tmp_path), None, bare, v10, True) is None
+        assert _collect.seed_baseline(str(tmp_path), None, bare, None, False) is None
+
+    def test_a_different_pasted_prior_is_measured_against_its_own_scan(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        v10 = self._rounds(tmp_path)
+        stored = {"prior": {"kind": "implemented", "version": 9}, "files": {}}
+        scan = {**self._scan(["a.py", "c.py"]), "delta": stored}
+        calls: list[tuple[pathlib.Path, str | None]] = []
+
+        def _modified(root: pathlib.Path, head: str | None) -> list[str] | None:
+            calls.append((root, head))
+            return ["a.py", "zzz.py"]
+
+        # Not a repository root: no git, ``modified`` empty.
+        with patch.object(_collect, "modified_paths", _modified):
+            out = _collect.seed_baseline(str(tmp_path), None, scan, v10, True)
+        assert calls == []
+        assert out is not None
+        assert out["prior"] == {
+            "kind": "prior_review",
+            "version": 10,
+            "head": "v10head",
+            "producer": None,
+        }
+        assert out["files"]["added"] == ["c.py"]
+        assert out["files"]["removed"] == ["b.py"]
+        assert out["files"]["modified"] == []
+        assert out["files"]["partial"] is False
+        # A repository root: git's modified list against the pasted prior's
+        # head, narrowed to the paths both scans list.
+        (tmp_path / ".git").mkdir()
+        with patch.object(_collect, "modified_paths", _modified):
+            out = _collect.seed_baseline(
+                str(tmp_path), {"phase_version": 10}, scan, v10, True
+            )
+        assert calls == [(tmp_path, "v10head")]
+        assert out is not None
+        assert out["files"]["modified"] == ["a.py"]
+        # The stored delta is untouched by either.
+        assert scan["delta"] is stored
+        assert "carried" not in stored
+
+    def test_a_pasted_prior_with_no_measured_scan_yields_a_partial_baseline(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        self._rounds(tmp_path)
+        unmeasured = review_envelope()
+        scan = {**self._scan(["a.py"]), "delta": {"prior": {"version": 9}}}
+        out = _collect.seed_baseline(str(tmp_path), None, scan, unmeasured, True)
+        assert out is not None
+        assert out["prior"]["head"] is None
+        assert out["files"]["partial"] is True
+        assert code_scanner.delta_named_paths(out) is None

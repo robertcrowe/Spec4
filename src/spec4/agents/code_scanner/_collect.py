@@ -43,6 +43,11 @@ the prior scan's head plus the working tree's modified files, handed to
 ``delta_block`` as ``files.modified`` — the delta's one git-witnessed list,
 since a content change leaves both listings the same.
 
+2.12.0 (D-SC5-20) adds ``seed_baseline``: the delta the update seed renders
+and the commit carries against, which is the stored ``delta`` except on an
+in-round re-scan after a new round, where it is measured against the review
+the seed pastes and never stored.
+
 ``_run_git`` is the one seam to the ``git`` binary, and the first subprocess
 call in Spec4. Tests patch it by name (AGENTS.md: the module-level seam, not
 ``subprocess.run``); every failure mode — no binary, a timeout, a non-zero
@@ -61,7 +66,13 @@ import subprocess
 from typing import TYPE_CHECKING, Any
 
 from spec4 import __version__, project_manager
-from spec4.agents.code_scanner._delta import delta_block, prior_scan
+from spec4.agents._code_review_context import unwrap_scan
+from spec4.agents.code_scanner._delta import (
+    KIND_PRIOR_REVIEW,
+    delta_block,
+    describe_prior,
+    prior_scan,
+)
 from spec4.agents.code_scanner._drift import plan_drift_block
 from spec4.agents.code_scanner._graph import analyse, signatures_block
 from spec4.agents.code_scanner._manifests import dependencies_block
@@ -580,6 +591,56 @@ def measure_scan(
         scan["delta"] = delta_block(scan, earlier, descriptor, modified)
     scan["producer"] = producer_block()
     return ScanEvidence(all_files, scan, graph.reached)
+
+
+def seed_baseline(
+    working_dir: str,
+    session: dict[str, Any] | None,
+    scan: dict[str, Any],
+    prior: dict[str, Any] | None,
+    from_session: bool,
+) -> dict[str, Any] | None:
+    """The delta the update seed renders and the commit carries against (2.12.0, D-SC5-20).
+
+    ``scan["delta"]`` itself when the envelope the seed pastes is the file
+    ``delta.prior`` names: every new-round scan, where ``prior_envelope`` and
+    ``prior_scan`` resolve by one candidate order (D-SC5-14), and an in-round
+    re-scan whose active round *is* the delta's prior (no implemented round,
+    or the active round implemented). Otherwise — an in-round re-scan after a
+    new round, where the session holds the active round's review while
+    ``delta.prior`` is the implemented round's — a second comparison of this
+    scan against the pasted prior's own ``scan``, computed the way the stored
+    one is (``delta_block``, git's modified list against *that* scan's head)
+    and never stored: the stored ``delta`` keeps its round-boundary meaning
+    for ``unplanned_changes`` and ``since_last_round``. On the first such
+    re-scan of BWS4 at 2.11.1 the block told the model 67 files were added
+    and 12 modified against a prior that already had all of them, and the
+    carry's named set excluded every path the round had added.
+
+    The baseline's ``prior`` descriptor is read as ``scan.delta.carried.against``
+    at commit. ``None`` only when the scan has no ``delta`` — the block then
+    says no prior scan was measured, and the carry is suspended, as before. A
+    pasted prior with no measured scan (a schema-2 file written without an
+    ``inventory``, which no 2.x writer produces) yields a ``partial`` baseline
+    and the same suspension at both ends.
+    """
+    stored = scan.get("delta")
+    if not isinstance(stored, dict) or prior is None:
+        return stored if isinstance(stored, dict) else None
+    version = project_manager.active_version(working_dir, session)
+    prior_descriptor = stored.get("prior")
+    if not from_session or (
+        isinstance(prior_descriptor, dict)
+        and prior_descriptor.get("version") == version
+    ):
+        return stored
+    earlier = unwrap_scan(prior)
+    descriptor = describe_prior(KIND_PRIOR_REVIEW, version, earlier)
+    root = pathlib.Path(working_dir)
+    modified = (
+        modified_paths(root, descriptor.get("head")) if is_repo_root(root) else None
+    )
+    return delta_block(scan, earlier, descriptor, modified)
 
 
 def producer_block() -> dict[str, Any]:

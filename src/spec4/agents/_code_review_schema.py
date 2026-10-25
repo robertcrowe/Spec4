@@ -1277,9 +1277,23 @@ _SCAN_DELTA = _closed(
         # ``wrap_review`` appended because the model dropped them and the
         # delta named no reason. Absent when the carry was suspended (no
         # prior review, no delta, partial or truncated file lists) — and
-        # on every file written before 2.11.1.
+        # on every file written before 2.11.1. ``against`` (2.12.0,
+        # D-SC5-20) names the scan the counts were taken against — the
+        # stored ``prior`` on a new-round scan, the active round's own
+        # review on an in-round re-scan after a new round — and is absent
+        # on files written before 2.12.0.
         "carried": {
             "type": "object",
+            "properties": {
+                "against": _closed(
+                    ["kind", "version", "head"],
+                    {
+                        "kind": {"enum": ["implemented", "prior_review"]},
+                        "version": _NON_NEGATIVE,
+                        "head": _NULLABLE_STRING,
+                    },
+                )
+            },
             "additionalProperties": _NON_NEGATIVE,
         },
     },
